@@ -1,0 +1,340 @@
+/**
+ * Reference client for the Griip Message protocol (griip-envelope-v1), used by integration tests
+ * and by the headless "bot" that acts as a second participant against the Android app.
+ * Mirrors android/.../crypto/EnvelopeCrypto.kt byte-for-byte (see docs/SECURITY.md §3).
+ */
+import { Aes256Gcm, CipherSuite, DhkemX25519HkdfSha256, HkdfSha256 } from "@hpke/core";
+import crypto from "node:crypto";
+import WebSocket from "ws";
+
+const ED25519_PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
+const HPKE_INFO = new TextEncoder().encode("griip-envelope-v1/key");
+
+export const suite = new CipherSuite({ kem: new DhkemX25519HkdfSha256(), kdf: new HkdfSha256(), aead: new Aes256Gcm() });
+
+export interface Ed25519Pair {
+  seed: Buffer;
+  pub: Buffer;
+  key: crypto.KeyObject;
+}
+
+export function ed25519FromSeed(seed: Buffer): Ed25519Pair {
+  const key = crypto.createPrivateKey({ key: Buffer.concat([ED25519_PKCS8_PREFIX, seed]), format: "der", type: "pkcs8" });
+  const jwk = crypto.createPublicKey(key).export({ format: "jwk" }) as { x: string };
+  return { seed, pub: Buffer.from(jwk.x, "base64url"), key };
+}
+
+export function newEd25519(): Ed25519Pair {
+  return ed25519FromSeed(crypto.randomBytes(32));
+}
+
+export function sign(pair: Ed25519Pair, message: string): string {
+  return crypto.sign(null, Buffer.from(message, "utf8"), pair.key).toString("base64");
+}
+
+export function verify(pubB64: string, message: string, sigB64: string): boolean {
+  try {
+    const key = crypto.createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: Buffer.from(pubB64, "base64").toString("base64url") }, format: "jwk" });
+    return crypto.verify(null, Buffer.from(message, "utf8"), key, Buffer.from(sigB64, "base64"));
+  } catch {
+    return false;
+  }
+}
+
+export function newX25519(): { priv: Buffer; pub: Buffer } {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("x25519");
+  const d = (privateKey.export({ format: "jwk" }) as { d: string }).d;
+  const x = (publicKey.export({ format: "jwk" }) as { x: string }).x;
+  return { priv: Buffer.from(d, "base64url"), pub: Buffer.from(x, "base64url") };
+}
+
+export const canonical = {
+  deviceCert: (identityKey: string, signingKey: string, encryptionKey: string) =>
+    `griip-device-cert-v1\n${identityKey}\n${signingKey}\n${encryptionKey}`,
+  authProof: (purpose: string, nonce: string, signingKey: string) => `griip-auth-v1\n${purpose}\n${nonce}\n${signingKey}`,
+  header: (h: { messageId: string; conversationId: string; senderUserId: string; senderDeviceId: string; sentAt: number; cls: string }) =>
+    `griip-envelope-v1\n${h.messageId}\n${h.conversationId}\n${h.senderUserId}\n${h.senderDeviceId}\n${h.sentAt}\n${h.cls}`,
+};
+
+export interface DeviceKeys {
+  id: string;
+  signingKey: string;
+  encryptionKey: string;
+  certificate: string;
+}
+export interface UserKeys {
+  userId: string;
+  identityKey: string;
+  devices: DeviceKeys[];
+}
+
+export interface DecryptedMessage {
+  queueId: number;
+  messageId: string;
+  conversationId: string;
+  senderUserId: string;
+  senderDeviceId: string;
+  cls: string;
+  sentAt: number;
+  payload: any;
+}
+
+export class ApiFailure extends Error {
+  constructor(
+    public status: number,
+    public body: any,
+  ) {
+    super(`HTTP ${status}: ${JSON.stringify(body)}`);
+  }
+}
+
+export class GriipClient {
+  identity = newEd25519();
+  device = newEd25519();
+  enc = newX25519();
+  userId = "";
+  deviceId = "";
+  token = "";
+  ws: WebSocket | null = null;
+  received: DecryptedMessage[] = [];
+  receipts: any[] = [];
+  events: any[] = [];
+  private keyCache = new Map<string, UserKeys>();
+  private waiters: (() => void)[] = [];
+  autoAck = true;
+
+  constructor(
+    public baseUrl: string,
+    public username: string,
+    public displayName = username,
+  ) {}
+
+  get signingKeyB64() {
+    return this.device.pub.toString("base64");
+  }
+  get identityKeyB64() {
+    return this.identity.pub.toString("base64");
+  }
+  get encKeyB64() {
+    return this.enc.pub.toString("base64");
+  }
+
+  certificate(): string {
+    return sign(this.identity, canonical.deviceCert(this.identityKeyB64, this.signingKeyB64, this.encKeyB64));
+  }
+
+  async req(method: string, path: string, body?: unknown, raw?: Buffer): Promise<any> {
+    const headers: Record<string, string> = {};
+    if (this.token) headers.authorization = `Bearer ${this.token}`;
+    let payload: BodyInit | undefined;
+    if (raw) {
+      headers["content-type"] = "application/octet-stream";
+      payload = new Uint8Array(raw);
+    } else if (body !== undefined) {
+      headers["content-type"] = "application/json";
+      payload = JSON.stringify(body);
+    }
+    const res = await fetch(this.baseUrl + path, { method, headers, body: payload });
+    const ct = res.headers.get("content-type") ?? "";
+    const data = ct.includes("application/json") ? await res.json() : Buffer.from(await res.arrayBuffer());
+    if (!res.ok) throw new ApiFailure(res.status, data);
+    return data;
+  }
+
+  async register(): Promise<this> {
+    const { nonce } = await this.req("POST", "/v1/auth/challenge");
+    const r = await this.req("POST", "/v1/auth/register", {
+      username: this.username,
+      displayName: this.displayName,
+      identityKey: this.identityKeyB64,
+      device: { name: "test-bot", signingKey: this.signingKeyB64, encryptionKey: this.encKeyB64, certificate: this.certificate() },
+      nonce,
+      signature: sign(this.device, canonical.authProof("register", nonce, this.signingKeyB64)),
+    });
+    this.userId = r.userId;
+    this.deviceId = r.deviceId;
+    this.token = r.sessionToken;
+    return this;
+  }
+
+  async login(): Promise<void> {
+    const { nonce } = await this.req("POST", "/v1/auth/challenge");
+    const r = await this.req("POST", "/v1/auth/login", {
+      deviceId: this.deviceId,
+      nonce,
+      signature: sign(this.device, canonical.authProof("login", nonce, this.signingKeyB64)),
+    });
+    this.token = r.sessionToken;
+  }
+
+  // ───── realtime ─────
+  connect(): Promise<void> {
+    const wsUrl = this.baseUrl.replace(/^http/, "ws") + "/v1/ws";
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(wsUrl, { headers: { authorization: `Bearer ${this.token}` } });
+      this.ws = ws;
+      let resolved = false;
+      ws.on("message", async (data) => {
+        const msg = JSON.parse(data.toString());
+        this.events.push(msg);
+        if (msg.t === "hello" && !resolved) {
+          resolved = true;
+          resolve();
+        }
+        if (msg.t === "queue") await this.handleQueue(msg.items, !!msg.backlog);
+        this.notify();
+      });
+      ws.on("error", (e) => {
+        if (!resolved) reject(e);
+      });
+      ws.on("close", () => {
+        if (!resolved) reject(new Error("closed before hello"));
+      });
+    });
+  }
+
+  disconnect(): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this.ws || this.ws.readyState === WebSocket.CLOSED) return resolve();
+      this.ws.once("close", () => resolve());
+      this.ws.close();
+    });
+  }
+
+  private notify() {
+    const w = this.waiters;
+    this.waiters = [];
+    w.forEach((f) => f());
+  }
+
+  async waitFor<T>(pred: () => T | undefined | false, timeoutMs = 5000): Promise<T> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const v = pred();
+      if (v) return v;
+      if (Date.now() > deadline) throw new Error("waitFor timed out");
+      await new Promise<void>((r) => {
+        const t = setTimeout(r, 100);
+        this.waiters.push(() => {
+          clearTimeout(t);
+          r();
+        });
+      });
+    }
+  }
+
+  private async handleQueue(items: any[], backlog: boolean) {
+    const ackIds: number[] = [];
+    for (const it of items) {
+      try {
+        if (it.kind === "receipt") {
+          this.receipts.push(it);
+        } else {
+          const m = await this.decrypt(it);
+          if (!this.received.some((r) => r.messageId === m.messageId)) this.received.push(m);
+        }
+        ackIds.push(it.id);
+      } catch (e) {
+        this.events.push({ t: "decrypt_error", error: String(e), item: it });
+        ackIds.push(it.id);
+      }
+    }
+    if (this.autoAck && this.ws && (ackIds.length || backlog)) this.ws.send(JSON.stringify({ t: "ack", ids: ackIds, backlog }));
+  }
+
+  // ───── keys ─────
+  async conversationKeys(conversationId: string): Promise<UserKeys[]> {
+    const r = await this.req("GET", `/v1/conversations/${conversationId}/devices`);
+    for (const u of r.users as UserKeys[]) this.keyCache.set(u.userId, u);
+    return r.users;
+  }
+
+  async userKeys(userId: string): Promise<UserKeys> {
+    const cached = this.keyCache.get(userId);
+    if (cached) return cached;
+    const r = await this.req("POST", "/v1/users/devices", { userIds: [userId] });
+    const u = r.users[0] as UserKeys;
+    this.keyCache.set(userId, u);
+    return u;
+  }
+
+  // ───── messaging ─────
+  async encrypt(conversationId: string, payload: unknown, cls: "message" | "control", recipients: DeviceKeys[], messageId = crypto.randomUUID()) {
+    const sentAt = Date.now();
+    const header = canonical.header({ messageId, conversationId, senderUserId: this.userId, senderDeviceId: this.deviceId, sentAt, cls });
+    const contentKey = crypto.randomBytes(32);
+    const nonce = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv("aes-256-gcm", contentKey, nonce);
+    cipher.setAAD(Buffer.from(header, "utf8"));
+    const ct = Buffer.concat([cipher.update(Buffer.from(JSON.stringify(payload), "utf8")), cipher.final(), cipher.getAuthTag()]);
+    const ciphertext = ct.toString("base64");
+    const nonceB64 = nonce.toString("base64");
+    const signature = sign(this.device, `${header}\n${nonceB64}\n${ciphertext}`);
+    const wraps = [];
+    for (const d of recipients) {
+      const recipientPublicKey = await suite.kem.deserializePublicKey(Buffer.from(d.encryptionKey, "base64"));
+      const sealed = await suite.seal({ recipientPublicKey, info: HPKE_INFO }, contentKey, Buffer.from(`${messageId}\n${d.id}`, "utf8"));
+      wraps.push({ deviceId: d.id, enc: Buffer.from(sealed.enc).toString("base64"), wrappedKey: Buffer.from(sealed.ct).toString("base64") });
+    }
+    return { conversationId, messageId, cls, sentAt, nonce: nonceB64, ciphertext, signature, recipients: wraps };
+  }
+
+  /** Encrypt to every member device (refetching keys once on device_mismatch) and submit. */
+  async send(conversationId: string, payload: unknown, cls: "message" | "control" = "message", messageId?: string) {
+    const id = messageId ?? crypto.randomUUID();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const users = await this.conversationKeys(conversationId);
+      const devices = users.flatMap((u) => this.verifiedDevices(u)).filter((d) => d.id !== this.deviceId);
+      const env = await this.encrypt(conversationId, payload, cls, devices, id);
+      try {
+        return await this.req("POST", "/v1/messages", env);
+      } catch (e) {
+        if (e instanceof ApiFailure && e.status === 409 && e.body?.error?.code === "device_mismatch" && attempt === 0) continue;
+        throw e;
+      }
+    }
+  }
+
+  /** Only devices whose certificate verifies against the user's identity key are encrypted to. */
+  verifiedDevices(u: UserKeys): DeviceKeys[] {
+    return u.devices.filter((d) => verify(u.identityKey, canonical.deviceCert(u.identityKey, d.signingKey, d.encryptionKey), d.certificate));
+  }
+
+  async decrypt(item: any): Promise<DecryptedMessage> {
+    const p = item.payload;
+    const sender = await this.userKeys(item.senderUserId);
+    const dev = this.verifiedDevices(sender).find((d) => d.id === item.senderDeviceId);
+    if (!dev) {
+      this.keyCache.delete(item.senderUserId);
+      throw new Error("unknown or uncertified sender device");
+    }
+    const header = canonical.header({
+      messageId: item.messageId,
+      conversationId: item.conversationId,
+      senderUserId: item.senderUserId,
+      senderDeviceId: item.senderDeviceId,
+      sentAt: p.sentAt,
+      cls: p.cls,
+    });
+    if (!verify(dev.signingKey, `${header}\n${p.nonce}\n${p.ciphertext}`, p.signature)) throw new Error("bad signature");
+    const recipientKey = await suite.kem.deserializePrivateKey(this.enc.priv);
+    const contentKey = Buffer.from(
+      await suite.open({ recipientKey, enc: Buffer.from(p.enc, "base64"), info: HPKE_INFO }, Buffer.from(p.wrappedKey, "base64"), Buffer.from(`${item.messageId}\n${this.deviceId}`, "utf8")),
+    );
+    const ct = Buffer.from(p.ciphertext, "base64");
+    const decipher = crypto.createDecipheriv("aes-256-gcm", contentKey, Buffer.from(p.nonce, "base64"));
+    decipher.setAAD(Buffer.from(header, "utf8"));
+    decipher.setAuthTag(ct.subarray(ct.length - 16));
+    const pt = Buffer.concat([decipher.update(ct.subarray(0, ct.length - 16)), decipher.final()]);
+    return {
+      queueId: item.id,
+      messageId: item.messageId,
+      conversationId: item.conversationId,
+      senderUserId: item.senderUserId,
+      senderDeviceId: item.senderDeviceId,
+      cls: p.cls,
+      sentAt: p.sentAt,
+      payload: JSON.parse(pt.toString("utf8")),
+    };
+  }
+}

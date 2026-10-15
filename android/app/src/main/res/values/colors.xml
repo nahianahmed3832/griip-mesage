@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="griip_teal">#1FB5A6</color>
+    <color name="griip_teal_bright">#34C8C2</color>
+    <color name="canvas_light">#F3FAF8</color>
+    <color name="canvas_dark">#0E1719</color>
+    <color name="icon_bg_top">#E6F6F3</color>
+</resources>

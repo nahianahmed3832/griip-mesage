@@ -1,0 +1,12 @@
+{
+  "name": "griip-bot",
+  "private": true,
+  "type": "module",
+  "description": "Headless Griip Message peer for testing the Android app (chat, calls, screen-share receipt).",
+  "scripts": {
+    "bot": "../../server/node_modules/.bin/tsx bot.ts"
+  },
+  "dependencies": {
+    "@livekit/rtc-node": "1.0.0"
+  }
+}

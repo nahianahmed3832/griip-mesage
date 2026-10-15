@@ -1,0 +1,210 @@
+package com.griipbuddy.message.data.db
+
+import android.content.Context
+import androidx.room.Dao
+import androidx.room.Database
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.room.Upsert
+import kotlinx.coroutines.flow.Flow
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
+
+@Dao
+interface ConversationDao {
+    @Query("SELECT * FROM conversations WHERE removed = 0 ORDER BY CASE WHEN lastMessageAt > 0 THEN lastMessageAt ELSE serverUpdatedAt END DESC")
+    fun observeAll(): Flow<List<ConversationEntity>>
+
+    @Query("SELECT * FROM conversations WHERE id = :id")
+    fun observe(id: String): Flow<ConversationEntity?>
+
+    @Query("SELECT * FROM conversations WHERE id = :id")
+    suspend fun get(id: String): ConversationEntity?
+
+    @Query("SELECT * FROM conversations")
+    suspend fun all(): List<ConversationEntity>
+
+    @Upsert
+    suspend fun upsert(c: ConversationEntity)
+
+    @Query("UPDATE conversations SET unreadCount = 0, mentionCount = 0 WHERE id = :id")
+    suspend fun markRead(id: String)
+
+    @Query("UPDATE conversations SET muted = :muted WHERE id = :id")
+    suspend fun setMuted(id: String, muted: Boolean)
+
+    @Query("UPDATE conversations SET draft = :draft WHERE id = :id")
+    suspend fun setDraft(id: String, draft: String?)
+
+    @Query("UPDATE conversations SET removed = 1, canPost = 0 WHERE id = :id")
+    suspend fun markRemoved(id: String)
+
+    @Query("UPDATE conversations SET lastMessageId = :mid, lastMessagePreview = :preview, lastMessageAt = :at, lastSenderName = :sender, unreadCount = unreadCount + :unreadInc, mentionCount = mentionCount + :mentionInc WHERE id = :id AND lastMessageAt <= :at")
+    suspend fun bumpPreview(id: String, mid: String, preview: String, at: Long, sender: String?, unreadInc: Int, mentionInc: Int): Int
+
+    @Query("UPDATE conversations SET unreadCount = unreadCount + :unreadInc, mentionCount = mentionCount + :mentionInc WHERE id = :id")
+    suspend fun bumpUnread(id: String, unreadInc: Int, mentionInc: Int)
+
+    @Query("SELECT COALESCE(SUM(unreadCount), 0) FROM conversations WHERE muted = 0 AND removed = 0")
+    fun observeTotalUnread(): Flow<Int>
+}
+
+@Dao
+interface MessageDao {
+    @Query("SELECT * FROM messages WHERE conversationId = :cid AND threadRootId IS NULL ORDER BY sortTs DESC LIMIT :limit")
+    fun observeLatest(cid: String, limit: Int): Flow<List<MessageEntity>>
+
+    @Query("SELECT * FROM messages WHERE threadRootId = :root ORDER BY sortTs ASC")
+    fun observeThread(root: String): Flow<List<MessageEntity>>
+
+    @Query("SELECT threadRootId AS root, COUNT(*) AS n FROM messages WHERE conversationId = :cid AND threadRootId IS NOT NULL AND deleted = 0 GROUP BY threadRootId")
+    fun observeThreadCounts(cid: String): Flow<List<ThreadCount>>
+
+    @Query("SELECT * FROM messages WHERE conversationId = :cid AND pinned = 1 AND deleted = 0 ORDER BY sortTs DESC")
+    fun observePinned(cid: String): Flow<List<MessageEntity>>
+
+    @Query("SELECT * FROM messages WHERE id = :id")
+    suspend fun get(id: String): MessageEntity?
+
+    @Query("SELECT * FROM messages WHERE id = :id")
+    fun observe(id: String): Flow<MessageEntity?>
+
+    @Query("SELECT COUNT(*) FROM messages WHERE conversationId = :cid AND threadRootId IS NULL")
+    suspend fun count(cid: String): Int
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(m: MessageEntity): Long
+
+    @Upsert
+    suspend fun upsert(m: MessageEntity)
+
+    @Query("UPDATE messages SET status = :status, serverTs = COALESCE(:serverTs, serverTs), errorText = :error WHERE id = :id")
+    suspend fun setStatus(id: String, status: String, serverTs: Long?, error: String?)
+
+    /** Never downgrade: only SENDING/SENT may advance to a later state through this call. */
+    @Query("UPDATE messages SET status = 'SENT', serverTs = :serverTs, sortTs = :serverTs, errorText = NULL WHERE id = :id AND status IN ('SENDING','FAILED')")
+    suspend fun markSent(id: String, serverTs: Long)
+
+    @Query("UPDATE messages SET status = 'DELIVERED' WHERE id = :id AND status IN ('SENDING','SENT')")
+    suspend fun markDelivered(id: String)
+
+    @Query("SELECT * FROM messages WHERE kind = 'text' AND deleted = 0 AND text LIKE '%' || :q || '%' ESCAPE '\\' ORDER BY sortTs DESC LIMIT 100")
+    suspend fun search(q: String): List<MessageEntity>
+
+    @Query("SELECT * FROM messages WHERE conversationId = :cid AND kind = 'text' AND deleted = 0 AND text LIKE '%' || :q || '%' ESCAPE '\\' ORDER BY sortTs DESC LIMIT 100")
+    suspend fun searchIn(cid: String, q: String): List<MessageEntity>
+
+    @Query("SELECT * FROM messages WHERE conversationId = :cid AND outgoing = 1 AND status IN ('SENT','DELIVERED') AND sortTs <= :upTo")
+    suspend fun outgoingUpTo(cid: String, upTo: Long): List<MessageEntity>
+
+    @Query("SELECT * FROM messages WHERE conversationId = :cid AND outgoing = 0 ORDER BY sortTs DESC LIMIT 1")
+    suspend fun latestIncoming(cid: String): MessageEntity?
+
+    @Query("SELECT * FROM messages WHERE conversationId = :cid AND threadRootId IS NULL AND deleted = 0 ORDER BY sortTs DESC LIMIT 1")
+    suspend fun latestVisible(cid: String): MessageEntity?
+}
+
+data class ThreadCount(val root: String, val n: Int)
+
+@Dao
+interface OutboxDao {
+    @Query("SELECT * FROM outbox WHERE nextAttemptAt <= :now ORDER BY createdAt LIMIT 20")
+    suspend fun due(now: Long): List<OutboxEntity>
+
+    @Query("SELECT MIN(nextAttemptAt) FROM outbox")
+    suspend fun nextDue(): Long?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(e: OutboxEntity)
+
+    @Query("DELETE FROM outbox WHERE messageId = :id")
+    suspend fun remove(id: String)
+
+    @Query("SELECT * FROM outbox WHERE messageId = :id")
+    suspend fun get(id: String): OutboxEntity?
+}
+
+@Dao
+interface UserDao {
+    @Query("SELECT * FROM users WHERE id = :id")
+    suspend fun get(id: String): UserEntity?
+
+    @Query("SELECT * FROM users WHERE id = :id")
+    fun observe(id: String): Flow<UserEntity?>
+
+    @Query("SELECT * FROM users")
+    fun observeAll(): Flow<List<UserEntity>>
+
+    @Query("SELECT * FROM users WHERE username = :username LIMIT 1")
+    suspend fun byUsername(username: String): UserEntity?
+
+    @Upsert
+    suspend fun upsert(u: UserEntity)
+
+    @Query("UPDATE users SET online = :online, lastSeenAt = COALESCE(:lastSeen, lastSeenAt) WHERE id = :id")
+    suspend fun setPresence(id: String, online: Boolean, lastSeen: Long?)
+}
+
+@Dao
+interface CallDao {
+    @Query("SELECT * FROM call_log ORDER BY startedAt DESC LIMIT 50")
+    fun observeLog(): Flow<List<CallLogEntity>>
+
+    @Upsert
+    suspend fun upsertLog(e: CallLogEntity)
+
+    @Query("SELECT * FROM call_log WHERE callId = :id")
+    suspend fun getLog(id: String): CallLogEntity?
+
+    @Upsert
+    suspend fun putKey(k: CallKeyEntity)
+
+    /** First key for a call wins: a later call_invite can't swap the media key mid-call. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun putKeyIfAbsent(k: CallKeyEntity): Long
+
+    @Query("SELECT * FROM call_keys WHERE callId = :id")
+    suspend fun key(id: String): CallKeyEntity?
+
+    @Query("DELETE FROM call_keys WHERE callId = :id OR receivedAt < :olderThan")
+    suspend fun dropKey(id: String, olderThan: Long)
+}
+
+@Dao
+interface KvDao {
+    @Query("SELECT v FROM kv WHERE k = :k")
+    suspend fun get(k: String): String?
+
+    @Upsert
+    suspend fun put(e: KvEntity)
+}
+
+@Database(
+    entities = [ConversationEntity::class, MessageEntity::class, OutboxEntity::class, UserEntity::class, CallLogEntity::class, CallKeyEntity::class, KvEntity::class],
+    version = 1,
+    exportSchema = true,
+)
+abstract class GriipDatabase : RoomDatabase() {
+    abstract fun conversations(): ConversationDao
+    abstract fun messages(): MessageDao
+    abstract fun outbox(): OutboxDao
+    abstract fun users(): UserDao
+    abstract fun calls(): CallDao
+    abstract fun kv(): KvDao
+
+    companion object {
+        /**
+         * The database file is encrypted with SQLCipher (AES-256) using a random passphrase that is
+         * itself sealed by an Android Keystore key (docs/SECURITY.md §6).
+         */
+        fun open(context: Context, passphrase: ByteArray, name: String): GriipDatabase {
+            System.loadLibrary("sqlcipher")
+            return Room.databaseBuilder(context, GriipDatabase::class.java, name)
+                .openHelperFactory(SupportOpenHelperFactory(passphrase))
+                .fallbackToDestructiveMigrationOnDowngrade(true)
+                .build()
+        }
+    }
+}

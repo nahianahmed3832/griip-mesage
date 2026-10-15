@@ -1,0 +1,35 @@
+{
+  "name": "griip-message-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Griip Message relay/API server (internal beta)",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "admin": "node dist/admin.js",
+    "seed:dev": "node dist/seed.js"
+  },
+  "dependencies": {
+    "@fastify/rate-limit": "11.2.1",
+    "@fastify/websocket": "11.3.4",
+    "better-sqlite3": "13.0.3",
+    "fastify": "5.12.7",
+    "livekit-server-sdk": "2.19.1",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@hpke/core": "1.9.0",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "22.20.5",
+    "@types/ws": "8.18.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12",
+    "ws": "8.22.0"
+  }
+}

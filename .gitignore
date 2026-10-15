@@ -1,0 +1,22 @@
+# Secrets / local config
+.env
+deploy/.env
+deploy/livekit/livekit.yaml
+android/local.properties
+tools/griip-bot/bot-identity*.json
+
+# Build outputs
+node_modules/
+server/dist/
+server/data/
+android/.gradle/
+android/build/
+android/app/build/
+android/.kotlin/
+*.apk
+!artifacts/.keep
+
+# OS / IDE
+.DS_Store
+.idea/
+*.iml

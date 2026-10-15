@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Deploy/redeploy Griip Message to a VPS over SSH. Only touches /opt/griip-internal-messaging
+# and Compose project griip-internal-messaging. Never runs global Docker cleanup.
+#   TARGET=root@your-vps ./deploy/scripts/deploy.sh
+set -euo pipefail
+: "${TARGET:?set TARGET=user@host}"
+DIR=/opt/griip-internal-messaging
+PROJECT=griip-internal-messaging
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+SSH="ssh -o BatchMode=yes $TARGET"
+
+echo "→ preflight (read-only)"
+$SSH "mkdir -p $DIR/scripts && chmod 750 $DIR"
+scp -q "$ROOT/deploy/scripts/preflight.sh" "$TARGET:$DIR/scripts/preflight.sh"
+$SSH "bash $DIR/scripts/preflight.sh" || { echo "Preflight failed; not deploying."; exit 1; }
+
+echo "→ sync files"
+rsync -az --delete --exclude node_modules --exclude dist --exclude data --exclude test \
+  "$ROOT/server/" "$TARGET:$DIR/server/"
+rsync -az "$ROOT/deploy/compose.yaml" "$ROOT/deploy/.env.example" "$TARGET:$DIR/"
+rsync -az "$ROOT/deploy/livekit/livekit.yaml.template" "$TARGET:$DIR/livekit/"
+rsync -az "$ROOT/deploy/scripts/" "$TARGET:$DIR/scripts/"
+
+echo "→ config"
+$SSH "sh $DIR/scripts/gen-config.sh"
+
+echo "→ build & start (project-scoped)"
+$SSH "cd $DIR && docker compose -p $PROJECT -f compose.yaml config -q && docker compose -p $PROJECT -f compose.yaml up -d --build --remove-orphans"
+$SSH "bash $DIR/scripts/verify.sh"

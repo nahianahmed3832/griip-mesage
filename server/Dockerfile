@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+# Griip Message API — multi-stage build, runs as non-root.
+FROM node:22.22.3-alpine3.24 AS build
+WORKDIR /app
+RUN apk add --no-cache python3 make g++
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build && npm prune --omit=dev
+
+FROM node:22.22.3-alpine3.24
+ENV NODE_ENV=production \
+    DATA_DIR=/data \
+    PORT=8080
+WORKDIR /app
+RUN apk add --no-cache tini wget && mkdir -p /data && chown node:node /data
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --chown=node:node migrations ./migrations
+COPY --chown=node:node package.json ./
+USER node
+EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=4 \
+  CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "dist/index.js"]

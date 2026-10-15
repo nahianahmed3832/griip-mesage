@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DEBUG/INTERNAL BETA ONLY: permits plain http so testers can reach a LAN/VPS server before TLS is
+     configured. The app shows a persistent "unencrypted connection" warning when the server URL is http://.
+     Message content is still end-to-end encrypted; session tokens and metadata are not. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
