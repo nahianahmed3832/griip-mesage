@@ -165,7 +165,9 @@ fun CallOverlay() {
             }
             else -> CallerHero(s, Modifier.align(Alignment.Center))
         }
-        if (local?.camera != null && (hasVideo || remote.size <= 1)) {
+        val gridLayout = s.phase == CallPhase.Connected && remote.size > 1 && !(hasVideo && screen != null)
+        // Floating self-preview only in 1:1 / screen-share layouts; the grid already has a "You" tile.
+        if (local?.camera != null && !gridLayout) {
             VideoTile(local.camera, Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 80.dp, end = 16.dp).size(110.dp, 150.dp).clip(Shapes.tile).border(2.dp, Color.White.copy(alpha = 0.7f), Shapes.tile), mirror = true)
         }
 
@@ -296,20 +298,25 @@ private fun ParticipantTile(p: ParticipantUi, modifier: Modifier) {
     }
 }
 
-/** LiveKit video sink rendered through a TextureView so it composes with rounded clipping. */
+/**
+ * LiveKit video sink rendered through a TextureView so it composes with rounded clipping.
+ * The sink is attached only while the screen is started and the room is alive: pushing frames into a
+ * destroyed surface (e.g. when the screen-share consent dialog covers the app) crashed WebRTC natively.
+ */
 @Composable
 fun VideoTile(track: VideoTrack?, modifier: Modifier, mirror: Boolean = false, fit: Boolean = false) {
     val container = LocalContainer.current
-    val room = container.calls.room
-    if (track == null || room == null) {
+    val room by container.calls.roomFlow.collectAsStateWithLifecycle()
+    val r0 = room
+    if (track == null || r0 == null) {
         Box(modifier.background(Color.Black.copy(alpha = 0.3f)))
         return
     }
-    var renderer by remember { mutableStateOf<TextureViewRenderer?>(null) }
+    var renderer by remember(r0) { mutableStateOf<TextureViewRenderer?>(null) }
     AndroidView(
         factory = { ctx ->
             TextureViewRenderer(ctx).also { r ->
-                room.initVideoRenderer(r)
+                r0.initVideoRenderer(r)
                 r.setMirror(mirror)
                 r.setScalingType(if (fit) livekit.org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FIT else livekit.org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FILL)
                 renderer = r
@@ -317,12 +324,30 @@ fun VideoTile(track: VideoTrack?, modifier: Modifier, mirror: Boolean = false, f
         },
         modifier = modifier,
     )
-    DisposableEffect(track, renderer) {
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(track, renderer, lifecycle) {
         val r = renderer
-        if (r != null) track.addRenderer(r)
-        onDispose { if (r != null) track.removeRenderer(r) }
+        var attached = false
+        fun attach() { if (r != null && !attached) { runCatching { track.addRenderer(r) }; attached = true } }
+        fun detach() { if (r != null && attached) { runCatching { track.removeRenderer(r) }; attached = false } }
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            when (e) {
+                androidx.lifecycle.Lifecycle.Event.ON_START -> attach()
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> detach()
+                else -> {}
+            }
+        }
+        if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) attach()
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            detach()
+        }
     }
-    DisposableEffect(Unit) { onDispose { renderer?.release() } }
+    DisposableEffect(renderer) {
+        val r = renderer
+        onDispose { runCatching { r?.release() } }
+    }
 }
 
 @Composable

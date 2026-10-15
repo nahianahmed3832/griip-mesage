@@ -1,6 +1,11 @@
 # Known issues & limitations
 
 ## Fixed during testing
+- **Native WebRTC crashes (SIGSEGV)** on a physical phone.
+  - One happened when the screen-share consent dialog covered the call, the other on the audio thread after a call ended.
+  - The cause was freeing native call objects while video sinks and audio threads still used them.
+  - Fixed with ordered teardown and lifecycle-aware sinks. **The re-test of screen share on the fixed build is still pending.**
+- **The floating self-preview overlapped the "You" tile in grid (3+ participant) layouts.**
 - **Every call crashed with `UnsatisfiedLinkError`.** The E2EE key provider was created before WebRTC's native library had loaded.
   The fix calls `LiveKit.init()` first, and native init errors now show an error instead of crashing. Verified on the phone.
 - **A later `call_invite` could replace a call's media key.** The first key for a call now wins.

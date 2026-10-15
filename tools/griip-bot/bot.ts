@@ -18,7 +18,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ed25519FromSeed, GriipClient } from "../../server/test/support/griipClient.ts";
+import { canonical, ed25519FromSeed, GriipClient, sign } from "../../server/test/support/griipClient.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SERVER = process.env.GRIIP_SERVER ?? "https://msg.griipbuddy.cloud";
@@ -39,8 +39,27 @@ async function loadBot(): Promise<GriipClient> {
     await c.login();
     return c;
   }
-  const c = new GriipClient(SERVER, `griipbot${crypto.randomBytes(2).toString("hex")}`, "Griip Bot");
-  await c.register();
+  const linkFrom = process.env.GRIIP_BOT_LINK_FROM;
+  let c: GriipClient;
+  if (linkFrom) {
+    // Add a second *device* to an existing bot account (same identity key, new device keys).
+    const p = JSON.parse(fs.readFileSync(path.join(here, linkFrom), "utf8"));
+    c = new GriipClient(SERVER, p.username, p.displayName);
+    c.identity = ed25519FromSeed(Buffer.from(p.identitySeed, "base64"));
+    const { nonce } = await c.req("POST", "/v1/auth/challenge");
+    const r = await c.req("POST", "/v1/auth/add-device", {
+      username: p.username,
+      device: { name: "griip-bot-device-2", signingKey: c.signingKeyB64, encryptionKey: c.encKeyB64, certificate: c.certificate() },
+      nonce,
+      signature: sign(c.device, canonical.authProof("add-device", nonce, c.signingKeyB64)),
+    });
+    c.userId = r.userId;
+    c.deviceId = r.deviceId;
+    c.token = r.sessionToken;
+  } else {
+    c = new GriipClient(SERVER, `griipbot${crypto.randomBytes(2).toString("hex")}`, "Griip Bot");
+    await c.register();
+  }
   fs.writeFileSync(
     STORE,
     JSON.stringify({
@@ -182,6 +201,10 @@ async function runMedia(bot: GriipClient, callId: string, media: { url: string; 
   const room = new Room();
   const watch = watchRemote(room);
   const opts: any = { autoSubscribe: true, dynacast: false };
+  if (key && process.env.GRIIP_BOT_WRONG_KEY === "1") {
+    key = crypto.randomBytes(32).toString("base64");
+    log("⚠️  NEGATIVE TEST: joining with a deliberately WRONG media key");
+  }
   // Android's BaseKeyProvider.setSharedKey(String) uses the string's UTF-8 bytes; mirror that.
   if (key) opts.encryption = { keyProviderOptions: { sharedKey: new TextEncoder().encode(key) } };
   await room.connect(media.url, media.token, opts);

@@ -103,11 +103,14 @@ A→B delivery (515 ms), delivery receipt, B→A, offline queue after reconnect,
 | **Video call phone ↔ bot** | PASS | Bot received phone camera 360×640 (348 frames) + mic; phone rendered bot's test pattern with "End-to-end encrypted" badge |
 | Mute, camera toggle, speaker controls rendered | PASS | Screenshot during call |
 | **Screen share from phone** (MediaProjection consent → publish) | PASS | Bot subscribed `SOURCE_SCREENSHARE` at 1200×2664; "You're sharing your screen" banner + Stop shown; Stop unpublished the track |
-| Screen-share track E2EE | NOT VERIFIED | Participant encryption status stayed `true` while sharing, but no wrong-key test was run on the Android-published screen track |
+| Screen-share track E2EE | NOT VERIFIED | Participant encryption status stayed `true` while sharing. The wrong-key run was interrupted by the native crash above and needs re-running on the fixed build |
 | Call end/cleanup propagates | PASS | Server `ENDED reason=hangup`; bot room torn down |
-| Incoming call UI on phone (bot calls phone) | PASS | Ringing shown; accepting crashed before the fix (see above); accept after fix not yet re-run |
+| **Incoming call → Accept on phone** (bot calls phone) | PASS | After fix: phone joined, showed bot video + self-preview + E2EE badge; bot received phone camera 360×640 + mic |
 | Background/locked incoming calls | NOT VERIFIED | Needs the "stay connected" service; no push wake-up |
-| Group calls with 3+ physical participants | NOT VERIFIED | Only one phone was available |
+| 3-party call (phone + 2 bot devices) | PASS | Phone rendered a grid (You, bot test pattern, undecodable wrong-key bot tile) |
+| **Wrong-key participant vs phone's camera/mic** | PASS | Second bot device with a deliberately wrong media key: **0 video frames, 0 audible audio frames** from the phone (1,584 silent frames), while the correct-key bot decoded camera and mic normally; phone couldn't decode the wrong-key bot either |
+| Native crash during screen-share consent / after call end | FAIL → fixed (re-test pending) | `ApplicationExitInfo`: 2× SIGSEGV in `libjingle_peerconnection_so`. One was on the main thread when the consent dialog covered the call, the other on the audio playout thread after release. Fixed by ordered teardown (UI detaches sinks, then disconnect, then delayed release) and lifecycle-aware video sinks |
+| Group calls with 3+ physical phones | NOT VERIFIED | Only one phone was available |
 
 ## 6. Visual review
 

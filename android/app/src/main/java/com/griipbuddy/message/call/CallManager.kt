@@ -31,6 +31,7 @@ import io.livekit.android.room.track.Track
 import io.livekit.android.room.track.VideoTrack
 import io.livekit.android.room.track.screencapture.ScreenCaptureParams
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -92,8 +93,12 @@ class CallManager(
 ) {
     private val _state = MutableStateFlow(CallUiState())
     val state: StateFlow<CallUiState> = _state
-    var room: Room? = null
-        private set
+    private val _room = MutableStateFlow<Room?>(null)
+    /** Observed by the call UI; set to null first on teardown so video sinks detach before native release. */
+    val roomFlow: StateFlow<Room?> = _room
+    var room: Room?
+        get() = _room.value
+        private set(value) { _room.value = value }
     private var eventsJob: Job? = null
     private val e2eeStates = HashMap<String, E2EEState>()
 
@@ -263,7 +268,10 @@ class CallManager(
             }
             is RoomEvent.Reconnecting -> _state.update { it.copy(phase = CallPhase.Reconnecting) }
             is RoomEvent.Reconnected -> _state.update { it.copy(phase = CallPhase.Connected) }
-            is RoomEvent.Disconnected -> if (_state.value.phase != CallPhase.Idle && _state.value.phase != CallPhase.Ended) finish("disconnected", notifyServer = true)
+            is RoomEvent.Disconnected -> if (_state.value.phase != CallPhase.Idle && _state.value.phase != CallPhase.Ended) {
+                Log.i(TAG, "room disconnected: ${ev.reason}")
+                finish("disconnected", notifyServer = true)
+            }
             is RoomEvent.TrackE2EEStateEvent -> {
                 e2eeStates[ev.participant.identity?.value + ":" + ev.publication.sid] = ev.state
                 val vals = e2eeStates.values
@@ -344,12 +352,14 @@ class CallManager(
     fun clearError() = _state.update { it.copy(error = null) }
 
     fun hangup() {
+        Log.i(TAG, "user tapped end")
         finish("hangup", notifyServer = true)
     }
 
     private fun finish(remoteReason: String, notifyServer: Boolean) {
         val s = _state.value
         if (s.phase == CallPhase.Idle) return
+        Log.i(TAG, "call ending: reason=$remoteReason notifyServer=$notifyServer phase=${s.phase} participants=${s.participants.size}")
         val id = s.callId
         if (notifyServer && id != null) {
             scope.launch {
@@ -380,16 +390,27 @@ class CallManager(
         }
     }
 
+    /**
+     * Ordered shutdown. Freeing WebRTC's native objects while its audio/render threads or the call
+     * UI's video sinks still reference them crashed the process (SIGSEGV in libjingle_peerconnection_so,
+     * seen on a physical phone). So: drop the room reference (the UI detaches its sinks), disconnect,
+     * and only release native resources after those threads have wound down.
+     */
     private fun teardown() {
         IncomingCallNotifier.cancel(context)
         eventsJob?.cancel()
         eventsJob = null
-        room?.let {
-            runCatching { it.disconnect() }
-            runCatching { it.release() }
-        }
+        val r = room
         room = null
         CallService.stop(context)
+        if (r != null) {
+            scope.launch(Dispatchers.Main) {
+                delay(600)
+                runCatching { r.disconnect() }
+                delay(2000)
+                runCatching { r.release() }
+            }
+        }
     }
 
     private fun reset() {

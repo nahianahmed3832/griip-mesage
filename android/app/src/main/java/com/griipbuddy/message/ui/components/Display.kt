@@ -324,7 +324,8 @@ fun EmptyState(
             Box(Modifier.size(120.dp).clip(CircleShape).background(Brush.radialGradient(listOf(tint.copy(alpha = 0.22f), Color.Transparent))))
             Box(
                 Modifier.size(76.dp).shadow(14.dp, CircleShape, ambientColor = tint.copy(alpha = 0.4f), spotColor = tint.copy(alpha = 0.4f)).clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(Color.White, c.primarySoft))).border(1.dp, Color.White, CircleShape),
+                    .background(Brush.linearGradient(if (c.isDark) listOf(c.glassStrong, c.primarySoft) else listOf(Color.White, c.primarySoft)))
+                    .border(1.dp, if (c.isDark) c.glassBorder else Color.White, CircleShape),
                 contentAlignment = Alignment.Center,
             ) { Icon(icon, null, tint = tint, modifier = Modifier.size(34.dp)) }
         }
