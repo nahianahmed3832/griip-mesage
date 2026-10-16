@@ -50,12 +50,43 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
 - The release (R8) build compiles but has never been run on a device.
 
 ## Calls (open, 2026-10-16)
-- **One native abort (SIGABRT) on WebRTC's `signaling_thread`.** It happened at 02:50 on the test phone, after the crash-fix
-  commit, with the app in the background 35 s after start. The frames sit in the E2EE `FrameCryptor` observer JNI path.
-  - Probable cause, not confirmed: LiveKit 2.29.0's `E2EEManager` runs `checkNotNull(publication.track)` inside the frame-cryptor
-    state callback. If that callback arrives after the track was cleared (unpublish, screen-share stop, teardown), the
-    exception is thrown inside a native callback and WebRTC aborts.
-  - Not reproduced in six calls on 2026-10-16. A fix needs an SDK change or upgrade.
+- **Native abort (SIGABRT) on WebRTC's `signaling_thread`: mitigated in the app, never reproduced on demand, not proven fixed.**
+  It happened once, at 02:50 on 2026-10-16 on the test phone, with the app in the background 35 s after start.
+  - **Suspected upstream failure (LiveKit Android 2.29.0):**
+    - The tombstone analysis places the abort in WebRTC's JNI exception check, right after the Java
+      `FrameCryptor.Observer.onFrameCryptionStateChanged` threw.
+    - LiveKit's own observer only logs and emits `RoomEvent.TrackE2EEStateEvent`. Its bytecode, checked again, does run
+      `checkNotNull(publication.getTrack())` inside that callback.
+    - `RemoteParticipant.unpublishTrack` clears a remote track while its cryptor can still report:
+      - a state change already queued on `signaling_thread` when the SDK disposes the cryptor (remote unpublish or leave);
+      - on disconnect, `Room.cleanupRoom()` drops its `E2EEManager` before unpublishing, so the remote cryptors are never
+        disposed and keep reporting until the peer connection closes.
+    - Local tracks are never cleared, so stopping your own screen share can't trigger it.
+    - This is a strong hypothesis, not a confirmed cause: the abort has never been reproduced. There's no upstream fix;
+      2.29.0 is the newest release, and LiveKit's `main` still has the same observer and teardown order.
+  - **App-side mitigation (`FrameCryptorGuard`):**
+    - When the SDK reports a track (`TrackSubscribed`/`TrackPublished`, posted only after it has created the cryptor), and
+      again before disconnecting, the guard gives each cryptor an observer that can't throw. That observer ignores
+      callbacks for cleared tracks and feeds the E2EE badge.
+    - Encryption is unchanged. `setObserver` swaps only the status observer, not the cryptor, key provider, key index or
+      enabled flag.
+    - Failures are still reported: missing-key, encryption, decryption and internal errors still turn the badge into
+      `E2eeProblem`. Late callbacks and callbacks whose own handling failed are counted and logged in debug builds.
+    - The guard can't crash the app itself (hardened 2026-10-16). Errors while copying the SDK's cryptor map or swapping
+      an observer are caught. In that case the SDK's own observer simply stays in place.
+  - **Remaining uncertainty:**
+    - The original crash was never reproduced on demand, and the stress test also passed without the guard. The stress
+      runs don't prove the guard removes the crash.
+    - In the patched runs the guard counted **0 late callbacks**: the crash's precondition never occurred, so its
+      protective path wasn't exercised on a device. Only the JVM tests exercise it.
+    - A callback queued between the SDK creating a cryptor and the guard swapping its observer still goes to LiveKit's
+      observer.
+    - `FrameCryptor.setObserver` and the SDK's `dispose` aren't synchronised in WebRTC's Java code, and the SDK changes
+      its cryptor map without a lock. A swap racing a disposal of the same cryptor (a track unpublished within
+      milliseconds of being subscribed) can't be excluded app-side.
+    - The guard reaches the cryptors through LiveKit's private `frameCryptors` field. `FrameCryptorGuardTest` fails if a
+      LiveKit upgrade moves it; re-check then whether LiveKit fixed the observer, and remove the guard if so.
+    - The hardening changes made after the stress runs haven't been on a device yet.
 - **Android ↔ Android on two physical phones isn't verified.** Only one phone was available. Both directions were
   verified against the Node peer, which uses the same SFU, codec (VP8) and E2EE scheme.
 

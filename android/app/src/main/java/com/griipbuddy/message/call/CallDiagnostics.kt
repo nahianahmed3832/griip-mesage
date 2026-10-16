@@ -38,6 +38,10 @@ internal class CallDiagnostics(private val scope: CoroutineScope) {
         job = null
     }
 
+    fun log(line: String) {
+        if (BuildConfig.DEBUG) Log.i(TAG, line)
+    }
+
     fun event(ev: RoomEvent) {
         if (!BuildConfig.DEBUG) return
         val line = when (ev) {

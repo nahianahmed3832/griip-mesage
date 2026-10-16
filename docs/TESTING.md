@@ -26,8 +26,8 @@ There was no second physical phone. Every two-party test used the phone plus the
 | ABIs | PASS | arm64-v8a, armeabi-v7a, x86_64 |
 | Installs and launches (emulator) | PASS | No crash. Cold start 4.7–6.6 s on the emulator (debug build) |
 | Installs and launches (physical phone) | PASS | No crash. Cold start **1.97 s** (`am start -W`), container init 190 ms |
-| Release (R8) build | NOT VERIFIED | Configured but not built in this session |
-| Android unit tests | PASS | `./gradlew :app:testDebugUnitTest` → `VideoSinkBindingTest` 8/8 (renderer lifetime, sink ordering, track switching, stop/start, release) |
+| Release (R8) build | NOT VERIFIED | `assembleRelease` succeeds (2026-10-16, about 65 MB unsigned); never run on a device |
+| Android unit tests | PASS | `./gradlew :app:testDebugUnitTest` → `VideoSinkBindingTest` 8/8 (renderer lifetime, sink ordering, track switching, stop/start, release), `FrameCryptorGuardTest` 8/8 (observer never throws, late callbacks dropped, callback failures reported, map copy survives concurrent changes, state mapping, LiveKit internals still where the guard looks) |
 
 ## 2. Backend (vitest: 87 tests, all PASS on 2026-10-16)
 
@@ -156,6 +156,30 @@ production SFU, with Griip Bot as the other participant. Debug builds log per-tr
 | Crashes in these runs | PASS | `dumpsys activity exit-info`: only package-update restarts. No new `data_app_native_crash` entries |
 | **Android ↔ Android, two physical phones** | BLOCKED | Only one phone was available. Needs two testers on this build |
 
+## 5b. Frame-cryptor abort stress test (2026-10-16)
+
+Background and fix: `KNOWN_ISSUES.md` › Calls. The bot's stress options keep the phone's frame decryptors reporting
+(`MISSING_KEY` ↔ `OK`, about 300 callbacks a second) while remote tracks are unpublished and the call is torn down. In every
+run the phone answered, Home was pressed, and the phone stayed in the background. Phone against the production SFU.
+
+| Test | Status | Evidence |
+|---|---|---|
+| Unpatched build (4073c51): key flap, 6 extra tone tracks, call ended through the API while the bot kept sending | Not reproduced | No crash. About 5,300 E2EE callbacks in 17 s, then the phone tore the room down under load |
+| Unpatched build: same, plus tone tracks republished every 1.5 s for 60 s | Not reproduced | No crash. 12,496 callbacks, 116 remote unsubscribes, then the API-ended teardown |
+| Patched build, normal video call | PASS | Badge fed by the guard (`media security: E2eeActive`); `4 observers replaced`, 0 late callbacks |
+| Patched build, flap and churn as above (60 s, twice) | PASS | No crash. LiveKit emitted no E2EE events of its own (the guard had every cryptor, 121 in the last run); 112–119 remote unsubscribes; 0 late callbacks |
+| Crash records after the runs | PASS | No new `data_app_native_crash` or tombstone; `exit-info` shows only package updates |
+
+**What these runs do and don't show (reviewed 2026-10-16 from the phone logs):**
+- They do show that the guard takes over every cryptor without breaking calls, and that key problems still reach the badge.
+  In the last patched run the badge flipped between `E2eeProblem` and `E2eeActive` 23 times during the key flap.
+- They don't show that the guard prevents the 02:50 abort:
+  - The unpatched build survived the same load (thousands of LiveKit E2EE events and 116 remote unsubscribes).
+  - The guard counted **0 late callbacks** in every patched run. A state callback for an already-cleared track, the crash's
+    precondition, never occurred, so the guard's protective path wasn't exercised on the device.
+- The hardening added after these runs (map-copy and swap errors caught, callback failures reported, `FrameCryptorGuardTest`
+  6 → 8) hasn't been run on the phone yet. Re-run is **BLOCKED**: no phone was connected.
+
 ## 6a. Android unit tests (JVM, T2.4 harness)
 
 Run with `cd android && ./gradlew :app:testDebugUnitTest` (JDK: Android Studio's JBR). They're plain JUnit 4 + `kotlinx-coroutines-test` tests,
@@ -227,6 +251,15 @@ Bot calls you and shares a landscape test screen from 10 s to 40 s:
 ```bash
 cd tools/griip-bot && GRIIP_BOT_SCREEN=1 npm run bot -- call <yourUsername> video 60
 ```
+
+Frame-cryptor stress test (§5b). Answer on the phone, press Home, and leave it until the bot exits:
+
+```bash
+cd tools/griip-bot && GRIIP_BOT_KEY_FLAP=1 GRIIP_BOT_KEY_FLAP_MS=20 GRIIP_BOT_EXTRA_AUDIO=6 GRIIP_BOT_CHURN_MS=1500 GRIIP_BOT_END_FIRST=1 npm run bot -- call <yourUsername> video 60
+```
+
+Afterwards, `CallDiag` logs a `frame-cryptor guard:` summary, and `adb shell dumpsys dropbox --print data_app_native_crash`
+should have no new entry.
 
 Wrong-key E2EE check: call the bot from the phone while two bot devices answer, one of them with a wrong key:
 

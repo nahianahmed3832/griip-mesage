@@ -100,6 +100,8 @@ class CallManager(
         get() = _room.value
         private set(value) { _room.value = value }
     private var eventsJob: Job? = null
+    private var cryptorGuard: FrameCryptorGuard? = null
+    /** Guarded: written from room events and, through [cryptorGuard], from WebRTC's signaling thread. */
     private val e2eeStates = HashMap<String, E2EEState>()
     private val diag = CallDiagnostics(scope)
 
@@ -230,7 +232,8 @@ class CallManager(
         }
         room = r
         diag.start(r)
-        e2eeStates.clear()
+        synchronized(e2eeStates) { e2eeStates.clear() }
+        cryptorGuard = if (key != null) FrameCryptorGuard(onState = { k, st -> if (room === r) onE2eeState(k, st) }, log = diag::log) else null
         _state.update { it.copy(security = if (key != null) MediaSecurity.Unknown else MediaSecurity.TransportOnly) }
         eventsJob = scope.launch { r.events.events.collect { ev -> onRoomEvent(ev) } }
         CallService.start(context, _state.value.title, video)
@@ -275,19 +278,28 @@ class CallManager(
                 Log.i(TAG, "room disconnected: ${ev.reason}")
                 finish("disconnected", notifyServer = true)
             }
-            is RoomEvent.TrackE2EEStateEvent -> {
-                e2eeStates[ev.participant.identity?.value + ":" + ev.publication.sid] = ev.state
-                val vals = e2eeStates.values
-                val sec = when {
-                    vals.any { it == E2EEState.DECRYPTION_FAILED || it == E2EEState.ENCRYPTION_FAILED || it == E2EEState.MISSING_KEY || it == E2EEState.INTERNAL_ERROR } -> MediaSecurity.E2eeProblem
-                    vals.isNotEmpty() && vals.all { it == E2EEState.OK || it == E2EEState.KEY_RATCHETED } -> MediaSecurity.E2eeActive
-                    else -> MediaSecurity.Unknown
-                }
-                _state.update { it.copy(security = sec) }
-            }
+            // The SDK has set up the track's frame cryptor by now: swap in the crash-safe observer.
+            is RoomEvent.TrackSubscribed -> cryptorGuard?.guard(ev.room, ev.publication, ev.participant)
+            is RoomEvent.TrackPublished -> cryptorGuard?.guard(ev.room, ev.publication, ev.participant)
+            // Only until the guard has replaced a cryptor's observer; afterwards states arrive through the guard.
+            is RoomEvent.TrackE2EEStateEvent -> onE2eeState(FrameCryptorGuard.key(ev.participant.identity?.value, ev.publication.sid), ev.state)
             else -> {}
         }
         refreshParticipants()
+    }
+
+    private fun onE2eeState(key: String, st: E2EEState) {
+        val sec = synchronized(e2eeStates) {
+            e2eeStates[key] = st
+            val vals = e2eeStates.values
+            when {
+                vals.any { it == E2EEState.DECRYPTION_FAILED || it == E2EEState.ENCRYPTION_FAILED || it == E2EEState.MISSING_KEY || it == E2EEState.INTERNAL_ERROR } -> MediaSecurity.E2eeProblem
+                vals.isNotEmpty() && vals.all { it == E2EEState.OK || it == E2EEState.KEY_RATCHETED } -> MediaSecurity.E2eeActive
+                else -> MediaSecurity.Unknown
+            }
+        }
+        if (_state.value.security != sec) diag.log("media security: $sec")
+        _state.update { if (it.security == sec) it else it.copy(security = sec) }
     }
 
     private fun refreshParticipants() {
@@ -402,6 +414,8 @@ class CallManager(
      * UI's video sinks still reference them crashed the process (SIGSEGV in libjingle_peerconnection_so,
      * seen on a physical phone). So: drop the room reference (the UI detaches its sinks), disconnect,
      * and only release native resources after those threads have wound down.
+     * Disconnecting clears the remote tracks but leaves their frame cryptors running, so every cryptor
+     * gets the crash-safe observer first, including ones whose TrackSubscribed event was still queued.
      */
     private fun teardown() {
         IncomingCallNotifier.cancel(context)
@@ -410,13 +424,17 @@ class CallManager(
         diag.stop()
         val r = room
         room = null
+        val guard = cryptorGuard
+        cryptorGuard = null
         CallService.stop(context)
         if (r != null) {
             scope.launch(Dispatchers.Main) {
                 delay(600)
+                runCatching { guard?.sweep(r) }
                 runCatching { r.disconnect() }
                 delay(2000)
                 runCatching { r.release() }
+                guard?.let { diag.log("frame-cryptor guard after release: ${it.lateCallbacks} late callbacks ignored, ${it.failedCallbacks} failed") }
             }
         }
     }

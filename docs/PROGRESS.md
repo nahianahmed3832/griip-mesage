@@ -31,6 +31,35 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **Department editing** | ✅ server + app (not deployed; device check pending) | See below |
 | **Phase 17 decentralisation readiness** | ✅ evaluated (nothing implemented; D-16 proposed) | See below |
 
+### Frame-cryptor abort mitigation isolated and validated (2026-10-16)
+
+- **Defect:** one native abort (SIGABRT) on WebRTC's `signaling_thread` at 02:50, in the E2EE frame-cryptor callback path.
+  The investigation itself was done in a separate session; this record covers the review and the commit.
+- **Suspected cause:** LiveKit Android 2.29.0's frame-cryptor observer runs `checkNotNull(publication.getTrack())` inside a
+  JNI callback, and remote tracks are cleared while their cryptors can still report. Re-checked in the SDK bytecode. The abort
+  has not been reproduced.
+- **Mitigation:** `FrameCryptorGuard` replaces each cryptor's status observer with one that can't throw and ignores callbacks
+  for cleared tracks. `CallManager` feeds the E2EE badge from it, with its state map synchronised and a cross-call check
+  (`room === r`). `CallDiagnostics.log` writes debug-only summaries. The bot gained stress options.
+- **Review findings, fixed before committing:**
+  - `guard()` ran unprotected on the room-event coroutine. Copying LiveKit's unsynchronised `LinkedHashMap` could fail with
+    more than `ConcurrentModificationException` (only that one was caught), and an escaping exception would have crashed the
+    app. Now every exception is caught, and the SDK's own observer stays in place.
+  - Exceptions inside the state callback were swallowed without a trace. They're now counted and logged (still never rethrown
+    into WebRTC).
+- **Verified:** `setObserver` touches only the status observer (WebRTC bytecode), so E2EE isn't weakened, and failure states
+  still reach the badge (unit tests, and the phone logs from the stress runs).
+- **Tests:** `FrameCryptorGuardTest` 8/8 (6 original + 2 for the hardening). Android **94/94**, `lintDebug` no errors,
+  `assembleDebug` and `assembleRelease` succeed.
+- **Not verified:**
+  - The stress-test re-run is BLOCKED (no phone connected). The earlier stress runs passed with and without the guard, and
+    counted 0 late callbacks, so they don't prove the guard removes the crash.
+  - The hardened build hasn't been on a device.
+  - The remaining races are listed in `KNOWN_ISSUES.md` › Calls.
+- **Deployment:** app-only, nothing to deploy.
+- **Next:** re-run the §5b stress test on the phone with this build. Key rotation (T5.4), busy/declined handling (T5.6) and
+  call-state restore are separate follow-ups.
+
 ### Phase 17: decentralisation readiness evaluated (2026-10-16)
 
 - **Deliverable:** `DECENTRALISATION_READINESS.md` covers the nine items in the brief, each with current evidence from the code,

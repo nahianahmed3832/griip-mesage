@@ -11,13 +11,23 @@
  * decoded frames it receives per remote track (camera / microphone / screen share).
  * GRIIP_BOT_SCREEN=1 also publishes a landscape "screen share" pattern from 10 s to 40 s into a video call,
  * so the peer's switch from camera to screen share and back can be checked.
+ * Stress test for the frame-cryptor observer abort (docs/KNOWN_ISSUES.md › Calls):
+ *   GRIIP_BOT_KEY_FLAP=1     switch the key index the bot encrypts with between 0 and a missing one every
+ *                            GRIIP_BOT_KEY_FLAP_MS (default 40) ms, so the peer's decryptors keep reporting
+ *                            OK ↔ MISSING_KEY. The peer shows an E2EE problem while this runs.
+ *   GRIIP_BOT_EXTRA_AUDIO=n  publish n extra tone tracks, so the peer has n more decryptors reporting.
+ *   GRIIP_BOT_CHURN_MS=n     every n ms unpublish and republish those tone tracks (remote unpublish on the peer).
+ *   GRIIP_BOT_END_FIRST=1    at the deadline, end the call through the API and keep sending media for 5 s,
+ *                            so the peer tears its room down while frames are still arriving.
  */
 import {
   AudioFrame, AudioSource, AudioStream, dispose, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, TrackKind,
   TrackPublishOptions, TrackSource, VideoBufferType, VideoFrame, VideoSource, VideoStream,
 } from "@livekit/rtc-node";
+import { E2eeRequest, FrameCryptorSetKeyIndexRequest } from "@livekit/rtc-ffi-bindings";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { canonical, ed25519FromSeed, GriipClient, sign } from "../../server/test/support/griipClient.ts";
@@ -161,6 +171,11 @@ function startMedia(room: Room, video: boolean) {
   const vsrc = new VideoSource(640, 360);
   const asrc = new AudioSource(48000, 1);
   const pubs: Promise<unknown>[] = [room.localParticipant!.publishTrack(LocalAudioTrack.createAudioTrack("bot-mic", asrc), new TrackPublishOptions({ source: TrackSource.SOURCE_MICROPHONE }))];
+  // GRIIP_BOT_EXTRA_AUDIO=n publishes n more tone tracks: more remote decryptors on the peer for the key-flap stress test.
+  const extra = Array.from({ length: Number(process.env.GRIIP_BOT_EXTRA_AUDIO ?? 0) }, () => new AudioSource(48000, 1));
+  const publishTone = (i: number) => room.localParticipant!.publishTrack(LocalAudioTrack.createAudioTrack(`bot-tone-${i}`, extra[i]), new TrackPublishOptions({ source: TrackSource.SOURCE_UNKNOWN }));
+  const toneSids: (string | undefined)[] = [];
+  extra.forEach((_, i) => pubs.push(publishTone(i).then((p) => { toneSids[i] = p.sid; })));
   if (video) pubs.push(room.localParticipant!.publishTrack(LocalVideoTrack.createVideoTrack("bot-cam", vsrc), new TrackPublishOptions({ source: TrackSource.SOURCE_CAMERA })));
   let t = 0;
   const timer = setInterval(() => {
@@ -176,10 +191,27 @@ function startMedia(room: Room, video: boolean) {
     const f = AudioFrame.create(48000, 1, 4800);
     for (let i = 0; i < f.data.length; i++) f.data[i] = Math.round(Math.sin(((t * 4800 + i) * 2 * Math.PI * 440) / 48000) * 6000);
     void asrc.captureFrame(f);
+    for (const src of extra) void src.captureFrame(f);
     t++;
   }, 100);
   const screen = video && process.env.GRIIP_BOT_SCREEN === "1" ? startScreenShare(room) : null;
-  return { stop: () => { clearInterval(timer); screen?.stop(); }, published: Promise.all(pubs) };
+  // GRIIP_BOT_CHURN_MS=n: every n ms unpublish and republish each extra tone track (remote-unpublish stress on the peer).
+  const churnMs = Number(process.env.GRIIP_BOT_CHURN_MS ?? 0);
+  let churning = churnMs > 0 && extra.length > 0;
+  if (churning) (async () => {
+    await Promise.all(pubs);
+    let cycles = 0;
+    while (churning) {
+      await new Promise((r) => setTimeout(r, churnMs));
+      for (let i = 0; i < extra.length && churning; i++) {
+        const sid = toneSids[i];
+        if (sid) await room.localParticipant!.unpublishTrack(sid).catch(() => {});
+        toneSids[i] = (await publishTone(i).catch(() => undefined))?.sid;
+      }
+      if (++cycles % 5 === 0) log(`🔁 republished ${extra.length} tone tracks ${cycles} times`);
+    }
+  })().catch((e) => log("churn stopped:", e));
+  return { stop: () => { churning = false; clearInterval(timer); screen?.stop(); }, published: Promise.all(pubs) };
 }
 
 /** Landscape 960×540 pattern published as SOURCE_SCREENSHARE between 10 s and 40 s. */
@@ -206,6 +238,33 @@ function startScreenShare(room: Room) {
     log("🖥  stopped screen share");
   }, 40_000);
   return { stop: () => { clearInterval(timer); clearTimeout(on); clearTimeout(off); } };
+}
+
+/**
+ * GRIIP_BOT_KEY_FLAP: alternate the key index the bot encrypts with between 0 (the call key) and 1 (a key the
+ * peer doesn't have). The peer reports MISSING_KEY ↔ OK on every switch. Flipping the key *value* instead is
+ * silent there: Android's default failureTolerance (-1) never reports decryption failures.
+ * rtc-node 1.0.0's FrameCryptor.setKeyIndex omits the required track sid, so the FFI request is sent directly.
+ */
+function startKeyFlap(room: Room) {
+  const e2ee = room.e2eeManager as any;
+  const me = room.localParticipant?.identity;
+  if (!e2ee?.keyProvider || !me) { log("key flap: room has no E2EE manager"); return null; }
+  const { FfiClient } = createRequire(import.meta.url)(path.join(here, "node_modules/@livekit/rtc-node/dist/ffi_client.cjs"));
+  const e2eeReq = (message: any) => FfiClient.instance.request({ message: { case: "e2ee", value: new E2eeRequest({ roomHandle: e2ee.roomHandle, message }) } });
+  e2ee.keyProvider.setSharedKey(new TextEncoder().encode(crypto.randomBytes(32).toString("base64")), 1);
+  const setIndex = (keyIndex: number) => {
+    const res: any = e2eeReq({ case: "managerGetFrameCryptors", value: {} });
+    for (const c of res.message.value.frameCryptors) {
+      if (c.participantIdentity !== me) continue;
+      e2eeReq({ case: "cryptorSetKeyIndex", value: new FrameCryptorSetKeyIndexRequest({ participantIdentity: me, trackSid: c.trackSid, keyIndex }) });
+    }
+  };
+  const ms = Number(process.env.GRIIP_BOT_KEY_FLAP_MS ?? 40);
+  let n = 0;
+  const timer = setInterval(() => setIndex(++n % 2), ms);
+  log(`⚠️  STRESS TEST: switching the media key index 0 ↔ 1 every ${ms} ms (the peer will report a missing key)`);
+  return { stop: () => { clearInterval(timer); setIndex(0); } };
 }
 
 function watchRemote(room: Room) {
@@ -245,17 +304,26 @@ async function runMedia(bot: GriipClient, callId: string, media: { url: string; 
   const m = startMedia(room, video);
   await m.published;
   log("📡 publishing test pattern" + (video ? " + tone" : " (tone only)"));
+  const flap = key && process.env.GRIIP_BOT_KEY_FLAP === "1" ? startKeyFlap(room) : null;
   const deadline = Date.now() + seconds * 1000;
   let ended = false;
   while (Date.now() < deadline && !ended) {
     if (bot.events.some((e) => e.t === "call" && e.event === "ended" && e.call.id === callId)) ended = true;
     await new Promise((r) => setTimeout(r, 500));
   }
+  let endedFirst = false;
+  if (!ended && process.env.GRIIP_BOT_END_FIRST === "1") {
+    await bot.req("POST", `/v1/calls/${callId}/end`).catch(() => {});
+    log("📴 ended the call through the API; still in the room sending media for 5 s");
+    await new Promise((r) => setTimeout(r, 5000));
+    endedFirst = true;
+  }
+  flap?.stop();
   m.stop();
   watch.stop();
-  log("final:", JSON.stringify(watch.counts), "encryption:", JSON.stringify(watch.enc), ended ? "(peer ended the call)" : "(timeout)");
+  log("final:", JSON.stringify(watch.counts), "encryption:", JSON.stringify(watch.enc), ended ? "(peer ended the call)" : endedFirst ? "(bot ended the call first)" : "(timeout)");
   await room.disconnect();
-  if (!ended) await bot.req("POST", `/v1/calls/${callId}/end`).catch(() => {});
+  if (!ended && !endedFirst) await bot.req("POST", `/v1/calls/${callId}/end`).catch(() => {});
 }
 
 async function call(peerName: string, mode: string, seconds: number) {
