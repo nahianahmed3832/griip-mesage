@@ -185,7 +185,10 @@ import kotlinx.serialization.json.JsonObject
     /** First time a recipient device confirmed it is ringing (server ≥ 2026-10-16; null on older servers). */
     val alertedAt: Long? = null,
     val participants: List<CallParticipantDto> = emptyList(),
+    /** Ended calls (server ≥ 2026-10-17): one entry per person who connected. Null from older servers: not known. */
+    val attended: List<CallAttendanceDto>? = null,
 )
+@Serializable data class CallAttendanceDto(val userId: String, val joinedAt: Long, val leftAt: Long, val seconds: Long)
 @Serializable data class MediaGrant(val url: String, val token: String, val room: String)
 @Serializable data class CallRes(val call: CallDto, val media: MediaGrant? = null, val joinedExisting: Boolean = false)
 @Serializable data class CallsRes(val calls: List<CallDto>)

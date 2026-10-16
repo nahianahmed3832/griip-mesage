@@ -157,6 +157,8 @@ class CallManager(
         scope.launch {
             messages.callFrames.collect { f ->
                 val call = f.call ?: return@collect
+                // Call history: the conversation's entry for this call follows the server's record of it.
+                if (f.event == "ring" || f.event == "started" || f.event == "ended") scope.launch { runCatching { messages.recordCall(call) } }
                 when (f.event) {
                     "ring" -> onRing(call)
                     "ended" -> if (call.id == _state.value.callId) finish(remoteReason = call.endReason ?: "ended", notifyServer = false)
@@ -233,7 +235,12 @@ class CallManager(
             isGroup = conv?.type != "DM", speakerOn = video,
         )
         try {
-            val res = api.post<StartCallReq, CallRes>("/v1/calls", StartCallReq(conversationId, video))
+            val res = try {
+                api.post<StartCallReq, CallRes>("/v1/calls", StartCallReq(conversationId, video))
+            } catch (e: ApiException) {
+                scope.launch { runCatching { messages.recordFailedCall(conversationId, video) } }
+                throw e
+            }
             markHandled(res.call.id)
             _state.update { it.copy(callId = res.call.id, alerted = res.call.alertedAt != null) }
             val key = if (res.joinedExisting) waitForKey(res.call.id) else newKey().also { messages.sendCallKey(conversationId, res.call.id, video, it) }
@@ -275,7 +282,10 @@ class CallManager(
         val id = _state.value.callId ?: return
         markHandled(id)
         IncomingCallNotifier.cancel(context)
-        scope.launch { runCatching { api.post<CallRes>("/v1/calls/$id/decline") } }
+        scope.launch {
+            db.calls().getLog(id)?.let { db.calls().upsertLog(it.copy(endedAt = System.currentTimeMillis(), endReason = "declined")) }
+            runCatching { api.post<CallRes>("/v1/calls/$id/decline") }.onSuccess { runCatching { messages.recordCall(it.call) } }
+        }
         reset()
     }
 

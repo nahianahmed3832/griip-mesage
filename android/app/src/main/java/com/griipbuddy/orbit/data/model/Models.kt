@@ -51,7 +51,19 @@ data class MemberSummary(
 )
 
 @Serializable
-data class CallInfo(val callId: String, val video: Boolean, val outcome: String? = null, val durationSec: Long? = null)
+data class CallInfo(
+    val callId: String,
+    val video: Boolean,
+    /** [CallHistory] outcome; null on entries written before call history (shown as a plain call). */
+    val outcome: String? = null,
+    /** Connected time in seconds, only when the server recorded both ends of it (never estimated). */
+    val durationSec: Long? = null,
+    /** Who started the call (user id). */
+    val startedBy: String? = null,
+    /** How many people connected, for group calls (null: not known). */
+    val joined: Int? = null,
+    val group: Boolean = false,
+)
 
 object MessageStatus {
     const val SENDING = "SENDING"

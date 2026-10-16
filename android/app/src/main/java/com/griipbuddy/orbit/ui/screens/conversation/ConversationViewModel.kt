@@ -88,6 +88,8 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     init {
         viewModelScope.launch { c.conversations.refreshOne(conversationId); loadMentionMembers() }
         viewModelScope.launch { runCatching { memberIds.value = c.directory.conversationMemberIds(conversationId) } }
+        // Call history: entries for calls that rang or ended while this phone was offline.
+        viewModelScope.launch { runCatching { c.messages.syncCalls(conversationId) } }
         viewModelScope.launch {
             val conv = c.db.conversations().get(conversationId)
             val ids = conv?.let { com.griipbuddy.orbit.data.repo.ConversationRepository.members(it).map { m -> m.id } }.orEmpty()

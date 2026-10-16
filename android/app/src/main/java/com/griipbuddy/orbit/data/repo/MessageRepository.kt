@@ -31,6 +31,9 @@ import com.griipbuddy.orbit.data.db.QuarantineEntity
 import com.griipbuddy.orbit.data.model.AttachmentRef
 import com.griipbuddy.orbit.voice.VoiceNote
 import com.griipbuddy.orbit.data.model.CallInfo
+import com.griipbuddy.orbit.data.model.CallHistory
+import com.griipbuddy.orbit.data.api.CallDto
+import com.griipbuddy.orbit.data.api.CallsRes
 import com.griipbuddy.orbit.data.model.MessageStatus
 import com.griipbuddy.orbit.data.model.MentionNotify
 import com.griipbuddy.orbit.data.model.MentionRules
@@ -724,13 +727,65 @@ class MessageRepository(
         db.messages().upsert(t.copy(reactionsJson = json.encodeToString(reactionsSer, map)))
     }
 
+    // ─────────────────────────── Call history ───────────────────────────
+
+    /**
+     * Writes or updates the conversation's entry for [call] from the server's record (docs/CALL_HISTORY.md). Idempotent:
+     * one entry per call id, updated in place, so repeated events and syncs never duplicate it.
+     */
+    suspend fun recordCall(call: CallDto) {
+        val me = session.session?.userId ?: return
+        if (db.conversations().get(call.conversationId) == null) return
+        val declinedHere = db.calls().getLog(call.id)?.endReason == "declined"
+        val info = CallHistory.summarize(call, me, declinedHere)
+        val id = "call-${call.id}"
+        val encoded = json.encodeToString(CallInfo.serializer(), info)
+        val existing = db.messages().get(id)
+        if (existing == null) {
+            val mine = call.createdBy == me
+            db.messages().insertIgnore(
+                MessageEntity(
+                    id = id, conversationId = call.conversationId, senderUserId = call.createdBy, senderDeviceId = "", outgoing = mine,
+                    kind = "call", text = if (call.video) "Video call" else "Voice call", sentAt = call.createdAt, serverTs = call.createdAt,
+                    sortTs = call.createdAt, status = if (mine) MessageStatus.SENT else MessageStatus.RECEIVED, callJson = encoded,
+                ),
+            )
+        } else if (existing.kind == "call" && existing.conversationId == call.conversationId && existing.callJson != encoded) {
+            db.messages().upsert(existing.copy(callJson = encoded))
+        } else return
+        refreshPreview(call.conversationId)
+    }
+
+    /** Brings the conversation's call entries up to date (on open). Servers before 2026-10-17 have no call list: skipped. */
+    suspend fun syncCalls(cid: String) {
+        val calls = runCatching { api.get<CallsRes>("/v1/conversations/$cid/calls?limit=50").calls }.getOrNull() ?: return
+        for (c in calls.asReversed()) if (c.conversationId == cid) recordCall(c)
+    }
+
+    /** A call that never started because the request to start it failed: a local entry, so the attempt isn't lost. */
+    suspend fun recordFailedCall(cid: String, video: Boolean) {
+        val conv = db.conversations().get(cid) ?: return
+        val me = session.session?.userId ?: return
+        val now = System.currentTimeMillis()
+        val id = "local-${UUID.randomUUID()}"
+        val info = CallHistory.failedAttempt(id, video, me, conv.type != "DM")
+        db.messages().insertIgnore(
+            MessageEntity(
+                id = "call-$id", conversationId = cid, senderUserId = me, senderDeviceId = "", outgoing = true, kind = "call",
+                text = if (video) "Video call" else "Voice call", sentAt = now, sortTs = now, status = MessageStatus.SENT,
+                callJson = json.encodeToString(CallInfo.serializer(), info),
+            ),
+        )
+        refreshPreview(cid)
+    }
+
     private suspend fun refreshPreview(cid: String) {
         val conv = db.conversations().get(cid) ?: return
         val last = db.messages().latestVisible(cid)
         db.conversations().upsert(
             conv.copy(
                 lastMessageId = last?.id,
-                lastMessagePreview = last?.let { if (it.kind == "call") "📞 ${it.text}" else it.text.ifEmpty { VoiceNote.label(attachments(it)) ?: "📎 Attachment" } } ?: "Message deleted",
+                lastMessagePreview = last?.let { if (it.kind == "call") CallHistory.preview(callInfo(it), it.outgoing, it.text) else it.text.ifEmpty { VoiceNote.label(attachments(it)) ?: "📎 Attachment" } } ?: "Message deleted",
                 lastMessageAt = last?.sortTs ?: conv.lastMessageAt,
             ),
         )

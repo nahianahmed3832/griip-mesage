@@ -65,6 +65,9 @@ import androidx.compose.ui.unit.dp
 import com.griipbuddy.orbit.data.db.MessageEntity
 import com.griipbuddy.orbit.data.db.UserEntity
 import com.griipbuddy.orbit.data.model.AttachmentRef
+import com.griipbuddy.orbit.data.model.CallHistory
+import com.griipbuddy.orbit.data.model.CallInfo
+import androidx.compose.runtime.remember
 import com.griipbuddy.orbit.data.model.MessageStatus
 import com.griipbuddy.orbit.ui.TimeFmt
 import com.griipbuddy.orbit.ui.components.Avatar
@@ -121,7 +124,7 @@ fun MessageBubble(
     val m = b.m
     val out = m.outgoing
     if (m.kind == "call") {
-        CallChip(m, out)
+        CallChip(m, out, b.sender?.displayName)
         return
     }
     val r = Shapes.bubble
@@ -350,17 +353,29 @@ fun humanSize(b: Long): String = when {
     else -> "$b B"
 }
 
+/** A call history line (docs/CALL_HISTORY.md): outcome, duration when recorded, and for groups who started it. */
 @Composable
-private fun CallChip(m: MessageEntity, out: Boolean) {
+private fun CallChip(m: MessageEntity, out: Boolean, starter: String?) {
     val c = Griip.colors
+    val info = remember(m.callJson) {
+        m.callJson?.let { runCatching { com.griipbuddy.orbit.data.api.GriipJson.decodeFromString(CallInfo.serializer(), it) }.getOrNull() }
+    }
+    val video = info?.video ?: m.text.startsWith("Video")
+    val line = info?.let { CallHistory.line(it, out, starter) } ?: CallHistory.Line("${if (out) "Outgoing" else "Incoming"} ${m.text.lowercase()}", null, false)
+    val tint = if (line.missed) c.danger else c.primary
+    val detail = listOfNotNull(line.detail, TimeFmt.clock(m.sortTs)).joinToString(" · ")
     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.Center) {
         Row(
-            Modifier.clip(Shapes.pill).background(c.surface).border(1.dp, c.border, Shapes.pill).padding(horizontal = 12.dp, vertical = 5.dp),
+            Modifier.clip(Shapes.pill).background(if (line.missed) c.dangerSoft else c.surface)
+                .border(1.dp, if (line.missed) c.danger.copy(alpha = 0.35f) else c.border, Shapes.pill)
+                .padding(horizontal = 12.dp, vertical = 5.dp)
+                .semantics(mergeDescendants = true) {},
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(if (m.text.startsWith("Video")) Icons.Rounded.Videocam else Icons.Rounded.Call, null, tint = c.primary, modifier = Modifier.size(16.dp))
+            Icon(if (video) Icons.Rounded.Videocam else Icons.Rounded.Call, null, tint = tint, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
-            Text("${if (out) "Outgoing" else "Incoming"} ${m.text.lowercase()} · ${TimeFmt.clock(m.sortTs)}", style = Griip.type.label, color = c.textSecondary)
+            Text(line.title, style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = if (line.missed) c.danger else c.textPrimary)
+            Text(" · $detail", style = Griip.type.label, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
