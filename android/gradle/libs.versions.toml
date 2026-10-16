@@ -15,6 +15,7 @@ coroutines = "1.10.2"
 bouncycastle = "1.79"
 livekit = "2.29.0"
 zxing = "3.5.3"
+camerax = "1.4.2"
 iconsExtended = "1.7.8"
 
 [libraries]
@@ -45,6 +46,9 @@ kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-t
 bouncycastle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 livekit-android = { module = "io.livekit:livekit-android", version.ref = "livekit" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+camerax-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
+camerax-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
+camerax-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
 junit = { module = "junit:junit", version = "4.13.2" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version = "3.46.1.3" }
 

@@ -25,6 +25,22 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
 | **T5.2 Call key authenticity** | ✅ code + JVM (device check pending) | See below |
 | **Phase 14 collaboration check** | ✅ 2 fixes + wire-format tests (device check pending) | See below |
+| **T4.2 In-app invite QR scanner** | ✅ code + JVM (device check pending) | See below |
+
+### T4.2 In-app invite QR scanner (2026-10-16)
+
+- **Gap:** the app drew invite QR codes but couldn't scan them. People had to rely on the system camera opening `griip://invite/…`.
+- **Added:** a *Scan invite QR code* button on the join screen opens a full-screen camera scanner (`ui/scan/InviteScanner.kt`).
+  - Frames are decoded on the phone with zxing (already a dependency). Nothing is uploaded.
+  - **Only Griip invite codes are accepted** (`InviteCodes.fromScan`): the `griip://invite/CODE` link, the shared invite text that
+    contains it, or a bare `XXXX-XXXX-XXXX` code. Web links and other QR codes are reported and ignored, so a QR code can never
+    make the app open a URL. `griip://invite` deep links now use the same parser.
+  - The camera permission is asked through Android's own dialog (already declared for video calls). If it's refused or the camera
+    can't start, the screen says so and the code can still be typed.
+- **New dependency:** CameraX 1.4.2 (`camera-camera2`, `camera-lifecycle`, `camera-view`), Apache-2.0, from Google Maven. No Play services.
+- **Tests:** `InviteScanTest` (5): accepted and refused inputs, decoding the QR code the invite screen draws, a padded camera row
+  stride, and a frame with no code. Android **81/81**; `assembleDebug` succeeds.
+- **NOT VERIFIED on a device:** the camera preview, the permission dialog and real-world scanning need the phone.
 
 ### Phase 14: collaboration features checked; two fixes (2026-10-16)
 

@@ -111,6 +111,12 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
   file-based encryption, not SQLCipher. "Sign out & erase" first revokes the device on the server (T1.9), so contacts stop encrypting to it, then deletes the keys, the database and the attachments. If the revocation can't be confirmed, the user is told and decides whether to erase anyway.
 - Plaintext of unsent messages lives only in the encrypted database's outbox table.
 
+## 6b. Scanned QR codes
+
+- The in-app scanner (T4.2) decodes frames on the phone and accepts **only Griip invite codes** (`InviteCodes.fromScan`). It never
+  opens a URL from a QR code, and `griip://invite` deep links pass through the same parser. A scanned code only fills the join form;
+  joining still needs the invite preview and an explicit tap.
+
 ## 7. Call media
 
 - Calls use LiveKit 1.13.10 (self-hosted SFU) with the official LiveKit Android SDK 2.29.0.

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Apartment
 import androidx.compose.material.icons.outlined.ConfirmationNumber
 import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +39,7 @@ import com.griipbuddy.message.data.api.InvitePreviewRes
 import com.griipbuddy.message.ui.LocalContainer
 import com.griipbuddy.message.ui.Routes
 import com.griipbuddy.message.ui.components.BannerKind
+import com.griipbuddy.message.ui.components.ButtonTone
 import com.griipbuddy.message.ui.components.GlassCard
 import com.griipbuddy.message.ui.components.GriipTextField
 import com.griipbuddy.message.ui.components.GriipTopBar
@@ -48,6 +50,7 @@ import com.griipbuddy.message.ui.components.RoleBadge
 import com.griipbuddy.message.ui.components.SegmentedPills
 import com.griipbuddy.message.ui.components.StatusBanner
 import com.griipbuddy.message.ui.friendly
+import com.griipbuddy.message.ui.scan.InviteScanner
 import com.griipbuddy.message.ui.switchTab
 import com.griipbuddy.message.ui.theme.Griip
 import com.griipbuddy.message.ui.theme.Shapes
@@ -68,6 +71,7 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
     var orgDesc by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var scanning by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(code) {
         preview = null
@@ -83,6 +87,11 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
         nav.switchTab(Routes.WORKSPACE)
     }
 
+    if (scanning) {
+        InviteScanner(onCode = { code = it; scanning = false }, onClose = { scanning = false })
+        return
+    }
+
     Column(Modifier.fillMaxSize().imePadding()) {
         GriipTopBar("Your workspace", onBack = { nav.popBackStack() })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Space.gutter)) {
@@ -95,6 +104,8 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
                     helper = "Ask an owner, admin, branch manager or team lead for a code.",
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
                 )
+                Spacer(Modifier.height(12.dp))
+                PillButton("Scan invite QR code", { scanning = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.QrCodeScanner, height = 50.dp)
                 preview?.let { p ->
                     Spacer(Modifier.height(16.dp))
                     GlassCard(Modifier.fillMaxWidth(), shape = Shapes.hero) {

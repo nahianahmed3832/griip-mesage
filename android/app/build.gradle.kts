@@ -108,6 +108,10 @@ dependencies {
     implementation(libs.bouncycastle)
     implementation(libs.livekit.android)
     implementation(libs.zxing.core)
+    // In-app invite QR scanner (T4.2). Apache-2.0, like zxing.
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

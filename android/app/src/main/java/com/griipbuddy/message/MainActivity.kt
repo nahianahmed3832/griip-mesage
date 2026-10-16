@@ -19,6 +19,7 @@ import androidx.lifecycle.lifecycleScope
 import com.griipbuddy.message.call.CallPhase
 import com.griipbuddy.message.data.repo.SessionState
 import com.griipbuddy.message.ui.AppRoot
+import com.griipbuddy.message.ui.scan.InviteCodes
 import com.griipbuddy.message.ui.theme.GriipTheme
 import com.griipbuddy.message.ui.theme.ThemeMode
 import kotlinx.coroutines.launch
@@ -85,7 +86,7 @@ class MainActivity : ComponentActivity() {
         intent.getStringExtra(EXTRA_CONVERSATION)?.let { pendingConversation = it }
         val data = intent.data
         if (data != null && data.scheme == "griip" && data.host == "invite") {
-            pendingInvite = data.lastPathSegment?.filter { it.isLetterOrDigit() || it == '-' }
+            pendingInvite = InviteCodes.fromScan(data.toString()) // same rule as the in-app scanner
         }
     }
 
