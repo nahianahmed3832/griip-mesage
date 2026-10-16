@@ -104,6 +104,7 @@ class MessageRepository(
     fun start() {
         scope.launch { realtime.frames.collect { f -> runCatching { handleFrame(f) }.onFailure { Log.w(TAG, "frame ${f.t} failed: ${it.javaClass.simpleName}") } } }
         scope.launch { outboxLoop() }
+        scope.launch { runCatching { retrySetAside() } }
         scope.launch {
             realtime.state.collect { st ->
                 if (st == ConnState.Connected) {
@@ -370,27 +371,17 @@ class MessageRepository(
         }
     }
 
+    /** Acknowledges an item only once its local state is committed or it's safely kept (T1.4, [QueueProcessor]). */
+    private val processor = QueueProcessor(
+        apply = { handleItem(it) },
+        undecryptable = { item, reason -> recordUndecryptable(item, reason) },
+        quarantine = { quarantine(it) },
+        setAside = { item, e -> setAside(item, e) },
+    )
+
     private suspend fun processQueue(items: List<QueueItem>, backlog: Boolean) = processLock.withLock {
-        val acks = ArrayList<Long>()
-        for (item in items) {
-            try {
-                handleItem(item)
-                acks += item.id
-            } catch (e: ApiException) {
-                // Couldn't fetch keys etc. (transient) — leave unacknowledged; it will be redelivered.
-                Log.w(TAG, "deferring queue item: ${e.code}")
-            } catch (e: SenderIdentityChanged) {
-                quarantine(item)
-                acks += item.id
-            } catch (e: EnvelopeException) {
-                recordUndecryptable(item, e.message ?: "")
-                acks += item.id
-            } catch (e: Exception) {
-                Log.w(TAG, "dropping malformed item: ${e.javaClass.simpleName}")
-                recordUndecryptable(item, "malformed")
-                acks += item.id
-            }
-        }
+        val acks = processor.process(items)
+        if (acks.size < items.size) Log.w(TAG, "deferring ${items.size - acks.size} queue item(s) for redelivery")
         if (acks.isNotEmpty() || backlog) {
             val sent = realtime.send("""{"t":"ack","ids":[${acks.joinToString(",")}],"backlog":$backlog}""")
             if (!sent && acks.isNotEmpty()) runCatching { api.post<AckReq, OkRes>("/v1/queue/ack", AckReq(acks)) }
@@ -401,25 +392,25 @@ class MessageRepository(
     suspend fun pollQueueOnce() {
         val r = api.get<QueueRes>("/v1/queue?limit=100")
         if (r.items.isEmpty()) return
-        val acks = processLock.withLock {
-            val ids = ArrayList<Long>()
-            for (i in r.items) {
-                try {
-                    handleItem(i); ids += i.id
-                } catch (e: SenderIdentityChanged) {
-                    quarantine(i); ids += i.id
-                } catch (e: EnvelopeException) {
-                    recordUndecryptable(i, e.message ?: ""); ids += i.id
-                } catch (_: ApiException) {
-                }
-            }
-            ids
-        }
+        val acks = processLock.withLock { processor.process(r.items) }
         if (acks.isNotEmpty()) api.post<AckReq, OkRes>("/v1/queue/ack", AckReq(acks))
     }
 
+    /**
+     * Retries items set aside after repeated failures (for example after an app update fixed the
+     * cause). Called at start-up; whatever still fails stays set aside.
+     */
+    private suspend fun retrySetAside() = processLock.withLock {
+        for (q in db.quarantine().setAside()) {
+            val item = runCatching { json.decodeFromString(QueueItem.serializer(), q.itemJson) }.getOrNull() ?: continue
+            if (runCatching { handleItem(item) }.isSuccess) db.quarantine().remove(q.queueId)
+        }
+    }
+
     private suspend fun handleItem(item: QueueItem) {
-        val me = myUserId ?: return
+        // Never "succeed" without a session: that would acknowledge (and lose) the item unprocessed.
+        val me = myUserId ?: throw ApiException(0, "not_signed_in", "Not signed in yet")
+        val myDevice = myDeviceId ?: throw ApiException(0, "not_signed_in", "Not signed in yet")
         if (item.kind == "receipt") {
             if (item.payload.status == "delivered") {
                 val m = db.messages().get(item.messageId) ?: return
@@ -432,14 +423,22 @@ class MessageRepository(
         }
         val p = item.payload
         val existing = db.messages().get(item.messageId)
-        if (existing != null && p.cls == "message") return // duplicate delivery
+        // A duplicate delivery is ignored, but a placeholder left by an earlier failure may be replaced.
+        val placeholder = existing?.kind == "undecryptable" && existing.senderUserId == item.senderUserId
+        if (existing != null && p.cls == "message" && !placeholder) return
         val signingKey = when (val k = directory.senderKey(item.senderUserId, item.senderDeviceId)) {
             is SenderKey.Trusted -> k.signingKey
             SenderKey.IdentityChanged -> throw SenderIdentityChanged()
             SenderKey.Unknown -> throw EnvelopeException("unknown or uncertified sender device")
         }
         val header = EnvelopeHeader(item.messageId, item.conversationId, item.senderUserId, item.senderDeviceId, p.sentAt ?: 0, p.cls ?: "message")
-        val plain = crypto.open(ReceivedEnvelope(header, p.nonce!!, p.ciphertext!!, p.signature!!, p.enc!!, p.wrappedKey!!), signingKey, myDeviceId!!)
+        val env = ReceivedEnvelope(
+            header,
+            p.nonce ?: throw EnvelopeException("malformed envelope"), p.ciphertext ?: throw EnvelopeException("malformed envelope"),
+            p.signature ?: throw EnvelopeException("malformed envelope"), p.enc ?: throw EnvelopeException("malformed envelope"),
+            p.wrappedKey ?: throw EnvelopeException("malformed envelope"),
+        )
+        val plain = crypto.open(env, signingKey, myDevice)
         val payload = json.decodeFromString(Payload.serializer(), String(plain))
         val conv = db.conversations().get(item.conversationId) ?: conversations.refreshOne(item.conversationId)
         if (db.users().get(item.senderUserId)?.displayName.isNullOrEmpty()) runCatching { users.fetch(item.senderUserId) }
@@ -550,6 +549,26 @@ class MessageRepository(
     }
 
     /**
+     * An item that kept failing for an unexpected reason (a local database error or a bug): kept on
+     * the phone with the reason, shown in the conversation, and retried at start-up (T1.4).
+     */
+    private suspend fun setAside(item: QueueItem, e: Throwable) {
+        Log.w(TAG, "setting aside queue item after repeated failures: ${e.javaClass.simpleName}")
+        db.quarantine().put(
+            QuarantineEntity(item.id, item.conversationId, item.senderUserId, json.encodeToString(QueueItem.serializer(), item), System.currentTimeMillis(), reason = "failed: ${e.javaClass.simpleName}"),
+        )
+        if (item.payload.cls == "message") {
+            db.messages().insertIgnore(
+                MessageEntity(
+                    id = item.messageId, conversationId = item.conversationId, senderUserId = item.senderUserId, senderDeviceId = item.senderDeviceId,
+                    outgoing = false, kind = "undecryptable", text = "This message couldn't be processed. It's kept on this phone and will be tried again when the app restarts.",
+                    sentAt = item.createdAt, serverTs = item.createdAt, sortTs = item.createdAt, status = MessageStatus.RECEIVED, errorText = e.javaClass.simpleName,
+                ),
+            )
+        }
+    }
+
+    /**
      * The user reviewed [identityKey] (the safety number they compared) and accepts it for [userId]:
      * pin it, resume paused sends and open the messages held while the key was untrusted.
      */
@@ -559,7 +578,7 @@ class MessageRepository(
         db.outbox().resume(HELD_REASON, System.currentTimeMillis())
         kick()
         processLock.withLock {
-            for (q in db.quarantine().bySender(userId)) {
+            for (q in db.quarantine().heldForIdentity(userId)) {
                 val item = runCatching { json.decodeFromString(QueueItem.serializer(), q.itemJson) }.getOrNull()
                 if (item == null) {
                     db.quarantine().remove(q.queueId)
@@ -606,6 +625,3 @@ class MessageRepository(
         private val BACKOFF = listOf(2_000L, 5_000L, 15_000L, 30_000L, 60_000L, 120_000L)
     }
 }
-
-/** The sender's identity key changed and hasn't been accepted: hold the item instead of discarding it. */
-private class SenderIdentityChanged : Exception()

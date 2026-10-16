@@ -135,4 +135,6 @@ data class QuarantineEntity(
     val senderUserId: String,
     val itemJson: String,
     val receivedAt: Long,
+    /** null: held for an identity change (T1.2). Otherwise why it was set aside after repeated failures (T1.4). */
+    val reason: String? = null,
 )

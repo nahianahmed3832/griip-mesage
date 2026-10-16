@@ -96,6 +96,11 @@ private object Fixtures {
     fun insert(c: Connection, version: Int): Map<String, Int> {
         val s = c.createStatement()
         when (version) {
+            2 -> {
+                val base = insert(c, 1)
+                s.execute("INSERT INTO quarantine (queueId, conversationId, senderUserId, itemJson, receivedAt) VALUES (7, 'c1', 'u1', '{}', 1)")
+                return base + ("quarantine" to 1)
+            }
             1 -> {
                 s.execute(
                     "INSERT INTO conversations (id, type, archived, memberCount, membersJson, joined, canPost, canManage, activeCallVideo, serverUpdatedAt, lastMessageAt, unreadCount, mentionCount, muted, removed) " +

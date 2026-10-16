@@ -69,7 +69,13 @@ This is the starting point for the feature-first phase. Every row was checked ag
 | Multi-device fan-out (sender's other devices get a copy) | WORKING | `messaging.test` | `routes/messages.ts` |
 | Idempotent resubmission | WORKING | `messaging.test` | `submitted_messages` |
 | Delivery order and de-duplication | PARTIALLY WORKING | **P6:** live pushes overtake backlog batches and are delivered twice. The client drops duplicate *messages* by id, but *control* messages (edit, delete, reaction, pin, read) whose target is still in a later batch are discarded, then acked, so they're lost. `Hub.Conn.flushing` was meant to prevent this but is never used | `hub.ts` `pushQueued/flushBacklog`, `MessageRepository.apply` |
-| Client never loses a message on local errors | **BROKEN** (data integrity) | `MessageRepository.processQueue` acks and discards an item on **any** exception, including `CancellationException`, database errors and an NPE in `apply`, after storing a "couldn't be verified" placeholder. A transient local fault loses the message permanently. (Found by code reading; there's no Android test) | `MessageRepository.kt` `processQueue` |
+| Client never loses a message on local errors | **WORKING (JVM-tested)**. Was BROKEN | T1.4 (2026-10-16): `QueueProcessor` acknowledges only:
+- committed items;
+- quarantined items (identity change);
+- recorded permanent crypto or format failures;
+- items set aside locally after 5 unexpected failures (kept with a visible placeholder and retried at start-up).
+
+Cancellation propagates. Database errors and bugs aren't acknowledged; network errors aren't counted. The REST fallback uses the same path. `QueueProcessorTest` (8), `MigrationsTest` (v3) | `QueueProcessor.kt`, `MessageRepository` |
 | Realtime frames never dropped | PARTIALLY WORKING | `RealtimeClient` emits into a `MutableSharedFlow(extraBufferCapacity = 256)` with `tryEmit`. A burst while the consumer waits on key fetches drops frames. Dropped live items are re-sent only at the next reconnect | `RealtimeClient.kt` |
 
 ## 3. Offline delivery, acknowledgements, expiration

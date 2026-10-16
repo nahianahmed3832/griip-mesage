@@ -77,7 +77,7 @@ Extend these, don't replace them:
 - **Risks:** LiveKit unreachable. Retry from the 60 s reconciliation job by comparing room participants with membership.
 - **Verification:** vitest with a recording LiveKit stub (as in probe P3). Also run once on production with Griip Bot.
 
-### T1.4 Never discard a message because of a local failure (Android)
+### T1.4 Never discard a message because of a local failure (Android). **Done 2026-10-16**
 - **Purpose:** `processQueue` acks and deletes queue items after *any* exception: cancellation, database errors, bugs in `apply`. Each case loses a message permanently.
 - **Dependencies:** T2.4 for tests.
 - **Modules:** `MessageRepository.processQueue/pollQueueOnce`.

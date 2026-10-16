@@ -16,13 +16,40 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T1.1 Demotion to Guest revokes access** (P1) | ✅ server | See below |
 | **T1.2 Enforce pinned identity keys** | ✅ (device check pending) | See below |
 | **T1.3 Evict removed members from live calls** (P3) | ✅ server | See below. Not deployed |
-| T1.4 Never discard messages on local failure | ⏳ | Needs T2.4 |
+| **T1.4 Never discard messages on local failure** | ✅ | See below |
 | **T1.6 Registration gating, quotas, limits** (P5) | ✅ server + app | See below. Not deployed |
 | **T1.7 Presence privacy** (P4) | ✅ server | See below. Not deployed |
 | **T1.8 Activity feed scope** (P2) | ✅ server | See below. Not deployed |
 | **T2.4 Android test harness** | ✅ foundation | See below. 25 JVM tests; device check blocked |
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
+
+### T1.4 No message lost during queue processing (2026-10-16)
+
+- **Defect:** `processQueue` acknowledged an item after *any* exception: a database error, cancellation (for example the screen closing) or a bug in `apply`. The relay then deleted its only copy. The REST fallback (`pollQueueOnce`) had different rules again.
+- **Telegram reference (behaviour only):** an update counts as handled once it's applied locally, and gaps are re-fetched. Applied here as *acknowledge only after a local commit*. No Telegram code was used.
+- **Change:**
+  - New `QueueProcessor`, shared by the socket and REST paths, acknowledges an item only when one of these holds:
+    - it was applied;
+    - it was quarantined (identity change, T1.2);
+    - it was recorded as a permanent crypto or format failure (`EnvelopeException`, invalid decrypted payload, or a missing envelope field, which no longer throws an NPE);
+    - it failed for an unexpected reason **5 times** and was **set aside**.
+  - Set-aside items are stored locally with the reason (in the quarantine table, `reason` column, **Room v3**, migration 2→3), shown as a placeholder, and retried at start-up. A later successful retry replaces the placeholder.
+  - `CancellationException` is rethrown. Network and key errors are retried without counting.
+  - `handleItem` no longer "succeeds" without a session: that used to acknowledge items unprocessed.
+  - One poisoned item never holds others back: the rest of the batch is still acknowledged.
+- **Tests:** `QueueProcessorTest` has 8 tests:
+  - in-order acknowledgement;
+  - an injected database error leaves the item for redelivery while others proceed;
+  - cancellation propagates and stops the batch;
+  - crypto and format failures are recorded and acknowledged;
+  - network errors don't count;
+  - quarantine;
+  - a poison item is set aside after the bound without blocking others;
+  - success resets the count.
+
+  `MigrationsTest` now checks 1→2→3 with sample rows, including a quarantine row. Android **48/48**.
+- **Not verified on a device.**
 
 ### T1.10 Deleting a message deletes its decrypted files (2026-10-16)
 

@@ -11,7 +11,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 | D1 | ~~The certificate check uses the server's current identity key, not the pinned one~~ **Fixed 2026-10-16 (T1.2)** in the app and the reference client | `Directory.kt`, `griipClient.ts` | High | T1.2 |
 | D2 | Demotion to Guest relies on `revalidateChannelMemberships`, whose GUEST branch keeps everything. Branch and team rows also survive | `server/src/authz.ts`, `routes/orgs.ts` | High | T1.1 |
 | D3 | ~~No call eviction on membership change~~ **Fixed 2026-10-16 (T1.3), not deployed** | `server/src/routes/calls.ts`, `jobs.ts` | High | T1.3 |
-| D4 | The catch-all in `processQueue` acks after any exception | `MessageRepository.kt` | High | T1.4 |
+| D4 | ~~The catch-all in `processQueue` acks after any exception~~ **Fixed 2026-10-16 (T1.4)** | `QueueProcessor.kt` | High | T1.4 |
 | D5 | ~~Open registration and no per-user quotas~~ **Fixed in code 2026-10-16 (T1.6), not deployed** | `routes/auth.ts`, `routes/attachments.ts`, `compose.yaml` | High | T1.6 |
 | D6 | `Hub.Conn.flushing` is declared but unused. Live pushes and the backlog interleave | `server/src/hub.ts` | Medium | T2.1 |
 | D7 | `RealtimeClient` drops frames with `tryEmit` into a bounded buffer | `RealtimeClient.kt` | Medium | T2.2 |

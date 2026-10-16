@@ -19,6 +19,8 @@ object Migrations {
             "CREATE INDEX IF NOT EXISTS `index_quarantine_senderUserId` ON `quarantine` (`senderUserId`)",
             "CREATE INDEX IF NOT EXISTS `index_quarantine_conversationId` ON `quarantine` (`conversationId`)",
         ),
+        // v3 (T1.4): items set aside after repeated processing failures share the table, with a reason.
+        2 to listOf("ALTER TABLE `quarantine` ADD COLUMN `reason` TEXT"),
     )
 
     fun all(): Array<Migration> = steps.map { (from, sql) ->
