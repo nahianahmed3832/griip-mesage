@@ -129,6 +129,16 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
 ## 8. Server hardening
 
 - Every route validates input with zod. Body limits apply (256 KiB default, 2 MiB for messages, 25 MiB for attachments).
+- **Registration is invite-only by default (T1.6).** A new account needs either a registration invite or a valid org invite.
+  - Registration invites are issued only by the operator CLI.
+  - Org invites are minted only by authenticated org managers.
+  - Codes are 60-bit random and stored as SHA-256 hashes. Uses and expiry are bounded and enforced inside the registration transaction.
+  - Residual risk: anyone who can create an org can invite people into it, and so let them register.
+- **Upload quotas (T1.6):**
+  - Attachments stream to disk; nothing buffers a whole file in memory.
+  - Limits: per-user daily and stored bytes, a server-wide byte cap (`507`), and per-user and global concurrent uploads and in-flight bytes.
+  - Partial files from interrupted uploads are deleted, and stale ones are removed at startup.
+  - Containers have CPU, memory and process limits.
   Rate limits are global per device or IP, with tighter limits on auth and invite endpoints.
 - Authorisation is enforced on the server for every resource (`server/src/authz.ts`). Non-members get `404` to avoid
   leaking existence. Tested with direct API calls in `server/test/orgs.test.ts`.

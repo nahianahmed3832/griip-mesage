@@ -1,7 +1,8 @@
 /**
  * Production smoke test: real TLS, real nginx WebSocket proxying, real relay.
- *   npx tsx test/e2e/prod-smoke.ts https://msg.griipbuddy.cloud
- * Creates two throwaway "e2e.*" accounts (disable afterwards with the admin CLI).
+ *   GRIIP_INVITE=<registration invite, 2 uses> npx tsx test/e2e/prod-smoke.ts https://msg.griipbuddy.cloud
+ * Creates two throwaway "e2e.*" accounts (disable afterwards with the admin CLI). Servers in invite-only
+ * mode need GRIIP_INVITE: `docker compose ... exec api node dist/admin.js reg-invite 2 1 smoke-test`.
  */
 import crypto from "node:crypto";
 import { GriipClient } from "../support/griipClient.js";
@@ -16,8 +17,8 @@ const check = (name: string, ok: boolean, detail?: string) => {
 
 const a = new GriipClient(base, `e2e.a${tag}`, "E2E Alpha");
 const b = new GriipClient(base, `e2e.b${tag}`, "E2E Bravo");
-await a.register();
-await b.register();
+await a.register(process.env.GRIIP_INVITE);
+await b.register(process.env.GRIIP_INVITE);
 check("register two identities over TLS", !!a.userId && !!b.userId);
 
 const dm = (await a.req("POST", "/v1/conversations/dm", { userId: b.userId })).conversation.id;

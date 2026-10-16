@@ -1,6 +1,13 @@
 import path from "node:path";
 
 const SEVEN_DAYS_S = 7 * 24 * 3600;
+const MiB = 1024 * 1024;
+
+function registrationMode(v: string | undefined): "invite" | "open" {
+  if (v === undefined || v === "" || v === "invite") return "invite";
+  if (v === "open") return "open";
+  throw new Error("REGISTRATION_MODE must be invite or open");
+}
 
 function intFrom(env: NodeJS.ProcessEnv, name: string, def: number): number {
   const v = env[name];
@@ -19,6 +26,16 @@ export interface Config {
   queueTtlSeconds: number;
   attachmentTtlSeconds: number;
   attachmentMaxBytes: number;
+  /** Upload quotas protecting the shared VPS (bytes). */
+  attachmentUserDailyBytes: number;
+  attachmentUserStoredBytes: number;
+  attachmentTotalBytes: number;
+  /** Uploads streaming at once, per user and for the whole server, and the bytes they may have in flight. */
+  attachmentMaxConcurrentPerUser: number;
+  attachmentMaxConcurrent: number;
+  attachmentMaxPendingBytes: number;
+  /** "invite" (default): registering needs a registration or org invite code. "open": anyone may register. */
+  registrationMode: "invite" | "open";
   sessionTtlSeconds: number;
   cleanupIntervalSeconds: number;
   ringTimeoutSeconds: number;
@@ -52,7 +69,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     attachmentDir: env.ATTACHMENT_DIR ?? path.join(dataDir, "attachments"),
     queueTtlSeconds: Math.max(queueTtl, 1),
     attachmentTtlSeconds: Math.min(int("ATTACHMENT_TTL_SECONDS", SEVEN_DAYS_S), SEVEN_DAYS_S),
-    attachmentMaxBytes: int("ATTACHMENT_MAX_BYTES", 25 * 1024 * 1024),
+    attachmentMaxBytes: int("ATTACHMENT_MAX_BYTES", 25 * MiB),
+    attachmentUserDailyBytes: int("ATTACHMENT_USER_DAILY_BYTES", 250 * MiB),
+    attachmentUserStoredBytes: int("ATTACHMENT_USER_STORED_BYTES", 1024 * MiB),
+    attachmentTotalBytes: int("ATTACHMENT_TOTAL_BYTES", 5 * 1024 * MiB),
+    attachmentMaxConcurrentPerUser: int("ATTACHMENT_MAX_CONCURRENT_PER_USER", 2),
+    attachmentMaxConcurrent: int("ATTACHMENT_MAX_CONCURRENT", 8),
+    attachmentMaxPendingBytes: int("ATTACHMENT_MAX_PENDING_BYTES", 200 * MiB),
+    registrationMode: registrationMode(env.REGISTRATION_MODE),
     sessionTtlSeconds: int("SESSION_TTL_SECONDS", 7 * 24 * 3600),
     cleanupIntervalSeconds: Math.max(int("CLEANUP_INTERVAL_SECONDS", 60), 1),
     ringTimeoutSeconds: int("RING_TIMEOUT_SECONDS", 45),

@@ -31,10 +31,13 @@ services:
       timeout: 5s
       retries: 4
       start_period: 20s
+    # A fair share of the shared 2-vCPU host, and a cap on runaway process or thread creation.
+    pids_limit: 256
     deploy:
       resources:
         limits:
           memory: 512M
+          cpus: "1.0"
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "5" }
@@ -51,10 +54,12 @@ services:
       # Media must be reachable directly. Host port == container port so ICE candidates are correct.
       - "${LIVEKIT_RTC_TCP_PORT:-7881}:${LIVEKIT_RTC_TCP_PORT:-7881}/tcp"
       - "${LIVEKIT_RTC_UDP_PORT:-7882}:${LIVEKIT_RTC_UDP_PORT:-7882}/udp"
+    pids_limit: 512
     deploy:
       resources:
         limits:
           memory: 1G
+          cpus: "1.5"
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "5" }

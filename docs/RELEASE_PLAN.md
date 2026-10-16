@@ -17,6 +17,8 @@ Production runs Compose project `griip-internal-messaging` in `/opt/griip-intern
 | T1.1 Demotion to Guest revokes branch, team and channel access | see `git log -- server/src/authz.ts` | `authz.ts` (`demoteToGuest`), `routes/orgs.ts` (role change notifies removed conversations) | none | **Pending approval.** Tests: 36/36 + tsc clean (2026-10-16) |
 | T1.3 Evict removed members from live calls; cleanup in-flight guard | see `git log -- server/src/routes/calls.ts` | `routes/calls.ts` (`evictFromCall`, webhook check), `livekit.ts` (identities, removal outcome, 5 s timeouts), `jobs.ts` (reconciliation pass, in-flight guard), `routes/orgs.ts`, `routes/conversations.ts`, `routes/auth.ts` (call sites) | none | **Pending approval.** Tests: 44/44 + tsc clean. Smoke test after deploy: start a group call with Griip Bot and the phone, remove the bot from the group, confirm the bot's room is closed within seconds |
 
+| T1.6 Invite-only registration, streamed uploads with quotas, container CPU/pids limits | see `git log -- server/src/invites.ts` | `invites.ts` (new), `routes/auth.ts`, `routes/orgs.ts`, `routes/attachments.ts`, `app.ts`, `config.ts`, `admin.ts`, `migrations/002_registration_gate.sql`; `deploy/compose.yaml`, `deploy/.env.example`, `deploy/scripts/verify.sh` | **002** adds `registration_invites` and an index (additive; the old code ignores both) | **Pending approval. Must ship together with an Android build whose onboarding sends an invite code**, otherwise new users can't register from the app. Before go-live, mint codes with `admin.js reg-invite`. Tests: 56/56 + tsc clean |
+
 Later tasks append rows here as they land.
 
 ## Procedure for an approved release

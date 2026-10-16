@@ -17,8 +17,47 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | T1.2 Enforce pinned identity keys | ⏳ | Owner decision (2026-10-16 master prompt): **block** sending and receiving on an identity change until the user accepts. Needs T2.4 |
 | **T1.3 Evict removed members from live calls** (P3) | ✅ server | See below. Not deployed |
 | T1.4 Never discard messages on local failure | ⏳ | Needs T2.4 |
-| T1.6 Registration gating and quotas | ⏳ | Owner decision (2026-10-16): **invite-only registration** for the internal beta |
+| **T1.6 Registration gating, quotas, limits** (P5) | ✅ server | See below. Android invite field pending; not deployed |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
+
+### T1.6 Invite-only registration, upload quotas, container limits (2026-10-16)
+
+- **Defect (probe P5):** anyone on the internet could register, DM anyone, upload 25 MB per request with no quota, and create orgs. Uploads were
+  buffered whole in a 512 MB container. Compose limited memory only, on a VPS shared with production apps.
+- **Owner decision:** invite-only registration for the internal beta.
+- **Change (server):**
+  - `REGISTRATION_MODE` defaults to `invite`. `POST /v1/auth/register` needs `inviteCode`, which is either:
+    - a **registration invite** (new table `registration_invites`, migration 002; issued only by `admin.js reg-invite`; listed with `reg-invites`; revoked with `reg-invite-revoke`); or
+    - a valid **org invite**, which also joins the person to that org, branch or team (shared `joinOrgByInvite`, extracted from `/v1/invites/accept`).
+  - Lookup and use counting happen inside the registration transaction. Codes are stored as SHA-256 only.
+  - Existing accounts are untouched, because login doesn't check invites.
+  - **Attachments** stream from the request to a `.part` file through a byte counter (no buffering). Limits are checked before reading:
+    - per-user bytes per 24 h and stored bytes (`429 quota_exceeded`);
+    - per-user and global concurrent uploads and in-flight bytes (`429 too_many_uploads`);
+    - a server-wide stored-byte cap (`507 storage_full`).
+
+    Oversized or interrupted streams delete their `.part` file, and leftovers are removed at startup.
+  - **Deploy:** Compose gets `cpus` (api 1.0, LiveKit 1.5) and `pids_limit` (256, 512). `.env.example` documents the new settings, and `verify.sh` warns below 5 GB free disk.
+  - **Reference client and smoke test:** `register(inviteCode?)`. `prod-smoke.ts` reads `GRIIP_INVITE`. The test harness runs in `open` mode except for the gate's own suite.
+- **Tests:** `server/test/registration_quotas.test.ts` has 12 tests:
+  - no code or a bad code refused, with nothing created;
+  - use limits, with loose typing accepted;
+  - only a hash stored;
+  - expired and revoked codes refused;
+  - an org-invite registration that joins the org and team and consumes the use;
+  - existing login unaffected;
+  - no HTTP route mints registration invites;
+  - a chunked upload of unknown length streamed and served back byte-exact;
+  - oversized declared and streamed bodies refused, with no `.part` left;
+  - the per-user concurrency limit;
+  - the daily quota;
+  - the global cap;
+  - stale `.part` cleanup.
+- **Results:** `npm test` gives **56/56** on three consecutive runs, and `tsc` is clean. Not run: `docker compose config` (Docker isn't installed on this workstation).
+- **Not done:**
+  - **Android onboarding needs an invitation-code field** before this is deployed (Android phase).
+  - **Not deployed** (`RELEASE_PLAN.md`).
+- **Security:** closes P5, D5 and D26 once deployed, and fixes the server half of D15. Residual: an org owner can invite people to register.
 
 ### T1.3 Evict removed members from live calls (2026-10-16)
 

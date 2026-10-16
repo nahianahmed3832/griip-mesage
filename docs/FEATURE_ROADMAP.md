@@ -99,7 +99,7 @@ Extend these, don't replace them:
 - **Risks:** a stolen device could keep sending until revoked (unchanged). Rejecting items queued after revocation still holds because the server already deletes them.
 - **Verification:** extend the P7 probe into a permanent vitest; add an Android JVM test (T2.4).
 
-### T1.6 Protect the shared VPS: registration gating, upload quotas, CPU and disk limits (P5)
+### T1.6 Protect the shared VPS: registration gating, upload quotas, CPU and disk limits (P5). **Server done 2026-10-16 (not deployed); Android invite field pending**
 - **Purpose:** anyone on the internet can register, DM anyone and upload 25 MB blobs with no quota. Uploads are buffered in a 512 MB container. Other production apps run on the same 2-vCPU VPS.
 - **Dependencies:** an owner decision on gating. Options: invite code required to register (recommended), an email or domain allowlist, or an operator approval step.
 - **Modules:** `routes/auth.ts`, `routes/attachments.ts` (stream to disk, per-user daily byte quota, global disk cap), `config.ts`, `deploy/compose.yaml` (`cpus`, `pids_limit`), the onboarding screen (invite field), docs.

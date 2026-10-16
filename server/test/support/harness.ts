@@ -23,6 +23,8 @@ export async function startServer(env: Record<string, string> = {}): Promise<Har
     LIVEKIT_API_SECRET: "test-secret-that-is-at-least-32-characters-long",
     LIVEKIT_PUBLIC_URL: "ws://127.0.0.1:1", // unreachable on purpose: tests don't need a media server
     RATE_LIMIT_PER_MINUTE: "100000",
+    // Most suites create many users; the invite gate has its own suite (registration_quotas.test.ts).
+    REGISTRATION_MODE: "open",
     ...env,
   } as NodeJS.ProcessEnv);
   const built = await buildApp(config, { logger: false });

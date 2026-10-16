@@ -12,7 +12,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 | D2 | Demotion to Guest relies on `revalidateChannelMemberships`, whose GUEST branch keeps everything. Branch and team rows also survive | `server/src/authz.ts`, `routes/orgs.ts` | High | T1.1 |
 | D3 | ~~No call eviction on membership change~~ **Fixed 2026-10-16 (T1.3), not deployed** | `server/src/routes/calls.ts`, `jobs.ts` | High | T1.3 |
 | D4 | The catch-all in `processQueue` acks after any exception | `MessageRepository.kt` | High | T1.4 |
-| D5 | Open registration and no per-user quotas on a relay that shares a VPS with production apps | `routes/auth.ts`, `routes/attachments.ts`, `compose.yaml` | High | T1.6 |
+| D5 | ~~Open registration and no per-user quotas~~ **Fixed in code 2026-10-16 (T1.6), not deployed** | `routes/auth.ts`, `routes/attachments.ts`, `compose.yaml` | High | T1.6 |
 | D6 | `Hub.Conn.flushing` is declared but unused. Live pushes and the backlog interleave | `server/src/hub.ts` | Medium | T2.1 |
 | D7 | `RealtimeClient` drops frames with `tryEmit` into a bounded buffer | `RealtimeClient.kt` | Medium | T2.2 |
 | D8 | `call_invite` keys are accepted from any member (first wins) | `MessageRepository.apply` | Medium | T5.2 |
@@ -27,7 +27,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 |---|---|---|---|
 | D13 | Room `version = 1` with no migrations. Local history is the only copy | `Database.kt` | High (before any schema change) |
 | D14 | Channel fan-out stores the **full ciphertext once per recipient device**: up to 1,000 recipients × 128 KiB per message. Storage grows with members × devices | `routes/messages.ts`, `delivery_queue.payload` | Medium |
-| D15 | Attachments are buffered fully in memory: server (`parseAs: "buffer"`, 512 MB container), client (`ByteArray` read and download) | `app.ts`, `routes/attachments.ts`, `ApiClient.kt`, `ConversationViewModel.attach` | Medium |
+| D15 | Attachments are buffered fully in memory. **Server side fixed 2026-10-16** (uploads stream to disk, T1.6). The client (`ByteArray` read and download) remains, see T2.6 | `ApiClient.kt`, `ConversationViewModel.attach` | Medium |
 | D16 | `calls`, `call_participants` and `audit_log` are never pruned | `jobs.ts` | Low |
 | D17 | No `PRAGMA secure_delete`. Deleted ciphertext lingers in free pages and the WAL | `db.ts` | Low |
 | D18 | Decrypted attachment files survive message deletion | `MessageRepository` | Medium (T1.10) |
@@ -48,7 +48,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 
 | # | Debt | Severity |
 |---|---|---|
-| D26 | Compose limits memory only. No `cpus` or `pids_limit`, and no disk quota for `api-data` on a shared 2-vCPU host | Medium (T1.6) |
+| D26 | ~~Compose limits memory only~~ **`cpus` and `pids_limit` added 2026-10-16 (T1.6), not deployed.** No Docker volume quota is possible here, so attachment caps plus `verify.sh` disk warning stand in | Medium (T1.6) |
 | D27 | No TURN, so restricted networks can't place calls | Medium (T5.1) |
 | D28 | Public `/healthz` reveals the online device count | Low |
 | D29 | Admin CLI `disable` can't close live sockets (separate process) | Low (T3.3) |

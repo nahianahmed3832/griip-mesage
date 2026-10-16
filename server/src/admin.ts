@@ -6,6 +6,9 @@
  *   stats                          counts of users, devices, orgs, queued items (no content)
  *   users                          list usernames and device counts
  *   invite <orgSlug> [ROLE] [uses] create an org invite (ROLE: ADMIN|MEMBER|GUEST)
+ *   reg-invite [uses] [days] [note] create a registration invite (default 1 use, 7 days)
+ *   reg-invites                    list registration invites (hint, uses, expiry; never the code)
+ *   reg-invite-revoke <hint|id>    revoke a registration invite
  *   disable <username>             disable an account and drop its sessions
  *   enable <username>
  *   cleanup                        run the retention job now
@@ -14,6 +17,7 @@ import { Authz } from "./authz.js";
 import { loadConfig } from "./config.js";
 import { openDatabase } from "./db.js";
 import { Hub } from "./hub.js";
+import { createRegistrationInvite } from "./invites.js";
 import { runCleanup } from "./jobs.js";
 import { humanCode, newId, now, sha256Hex } from "./util.js";
 
@@ -59,6 +63,32 @@ switch (cmd) {
     console.log(`${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}  (${role}, ${uses} use(s), 72h)`);
     break;
   }
+  case "reg-invite": {
+    const [uses = "1", days = "7", ...note] = rest;
+    try {
+      const { code } = createRegistrationInvite(db, { maxUses: Number(uses), days: Number(days), note: note.join(" ") || null });
+      console.log(`${code}  (registration, ${uses} use(s), ${days} day(s))`);
+    } catch (e) {
+      console.error(`usage: reg-invite [uses 1-1000] [days ≤30] [note]  (${(e as Error).message})`);
+      process.exit(2);
+    }
+    break;
+  }
+  case "reg-invites":
+    console.table(
+      db
+        .prepare(
+          "SELECT id, code_hint hint, note, uses, max_uses, datetime(expires_at / 1000, 'unixepoch') expires, revoked_at IS NOT NULL revoked FROM registration_invites ORDER BY created_at DESC",
+        )
+        .all(),
+    );
+    break;
+  case "reg-invite-revoke": {
+    const key = (rest[0] ?? "").toUpperCase();
+    const res = db.prepare("UPDATE registration_invites SET revoked_at = ? WHERE (id = ? OR code_hint = ?) AND revoked_at IS NULL").run(now(), rest[0], key);
+    console.log(res.changes ? `revoked ${res.changes} invite(s)` : "no matching active invite");
+    break;
+  }
   case "disable":
   case "enable": {
     const u = db.prepare("SELECT id FROM users WHERE username = ?").get(rest[0]) as { id: string } | undefined;
@@ -77,6 +107,8 @@ switch (cmd) {
     break;
   }
   default:
-    console.log("commands: stats | users | invite <orgSlug> [role] [uses] | disable <username> | enable <username> | cleanup");
+    console.log(
+      "commands: stats | users | invite <orgSlug> [role] [uses] | reg-invite [uses] [days] [note] | reg-invites | reg-invite-revoke <hint|id> | disable <username> | enable <username> | cleanup",
+    );
 }
 db.close();

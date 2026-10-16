@@ -51,6 +51,24 @@ docker compose -p griip-internal-messaging -f compose.yaml exec api node dist/ad
 docker compose -p griip-internal-messaging -f compose.yaml exec api node dist/admin.js invite griipbuddy MEMBER 20
 ```
 
+**Registration is invite-only by default** (`REGISTRATION_MODE=invite`, T1.6). A new account needs one of:
+- an **org invite** code from an org manager, which also joins the person to that org;
+- a **registration invite** from the operator. The code is shown once, and only its hash is stored. Existing accounts sign in as before.
+
+```bash
+docker compose -p griip-internal-messaging -f compose.yaml exec api node dist/admin.js reg-invite 5 7 "QA testers"
+```
+
+That gives 5 uses for 7 days. List invites with `reg-invites` and revoke one with `reg-invite-revoke <hint|id>`.
+
+**Limits on the shared VPS** (T1.6):
+- Compose caps the API at 1 CPU, 512 MB and 256 processes, and LiveKit at 1.5 CPU, 1 GB and 512 processes.
+- Uploads stream to disk.
+- Per-user (250 MiB/day, 1 GiB stored) and server-wide (5 GiB) attachment quotas and in-flight limits are set by the
+  `ATTACHMENT_*` variables (`.env.example`).
+- Docker local volumes have no disk quota. The storage bound comes from the server-wide attachment cap plus the 7-day expiry, and from
+  capped container logs (10 MB × 5 each). `verify.sh` warns when the Docker disk has less than 5 GB free.
+
 Restart this project only:
 
 ```bash

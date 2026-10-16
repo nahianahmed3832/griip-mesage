@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { BranchRow, ConversationRow, OrgRole, TeamRow } from "../authz.js";
 import { type AppContext, me, parse, requireAuth, zName, zText } from "../context.js";
 import { badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex } from "../util.js";
+import { findOrgInvite, joinOrgByInvite } from "../invites.js";
 import { userSummary } from "./auth.js";
 import { evictRemovedMember } from "./calls.js";
 import { conversationView } from "./conversations.js";
@@ -618,8 +619,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   const findInvite = (code: string) => {
-    const inv = db.prepare("SELECT * FROM invitations WHERE code_hash = ?").get(sha256Hex(normalizeCode(code))) as any;
-    if (!inv || inv.revoked_at || inv.expires_at <= now() || inv.uses >= inv.max_uses) throw notFound("This invite is invalid, expired or already used");
+    const inv = findOrgInvite(db, code);
+    if (!inv) throw notFound("This invite is invalid, expired or already used");
     return inv;
   };
 
@@ -642,27 +643,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const userId = me(req).userId;
     const { code } = parse(z.object({ code: z.string().min(8).max(40) }), req.body);
     const t = now();
-    const result = db.transaction(() => {
-      const inv = findInvite(code);
-      const existing = authz.orgRole(inv.org_id, userId);
-      // Upgrade only: an invite never downgrades an existing member.
-      const rank: Record<string, number> = { GUEST: 0, MEMBER: 1, ADMIN: 2, OWNER: 3 };
-      if (!existing) {
-        db.prepare("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)").run(inv.org_id, userId, inv.role, t);
-      } else if (rank[inv.role] > rank[existing]) {
-        db.prepare("UPDATE org_members SET role = ? WHERE org_id = ? AND user_id = ?").run(inv.role, inv.org_id, userId);
-      }
-      const role = authz.orgRole(inv.org_id, userId)!;
-      if (role !== "GUEST") {
-        if (inv.branch_id)
-          db.prepare("INSERT OR IGNORE INTO branch_members (branch_id, user_id, role, joined_at) VALUES (?, ?, 'MEMBER', ?)").run(inv.branch_id, userId, t);
-        if (inv.team_id)
-          db.prepare("INSERT OR IGNORE INTO team_members (team_id, user_id, role, joined_at) VALUES (?, ?, 'MEMBER', ?)").run(inv.team_id, userId, t);
-      }
-      db.prepare("UPDATE invitations SET uses = uses + 1 WHERE id = ?").run(inv.id);
-      authz.autoJoinScope(inv.org_id, userId, t);
-      return { orgId: inv.org_id as string, inviteId: inv.id as string, role };
-    })();
+    const result = db.transaction(() => joinOrgByInvite(ctx, findInvite(code), userId, t))();
     ctx.audit({ actorId: userId, orgId: result.orgId, action: "invite.accept", target: result.inviteId, detail: result.role });
     notifyOrg(ctx, result.orgId);
     return { org: orgSummary(ctx, db.prepare("SELECT * FROM orgs WHERE id = ?").get(result.orgId), userId) };

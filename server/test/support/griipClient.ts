@@ -141,9 +141,11 @@ export class GriipClient {
     return data;
   }
 
-  async register(): Promise<this> {
+  /** `inviteCode` is required by servers in invite-only mode (the default); a registration or org invite. */
+  async register(inviteCode?: string): Promise<this> {
     const { nonce } = await this.req("POST", "/v1/auth/challenge");
     const r = await this.req("POST", "/v1/auth/register", {
+      ...(inviteCode ? { inviteCode } : {}),
       username: this.username,
       displayName: this.displayName,
       identityKey: this.identityKeyB64,

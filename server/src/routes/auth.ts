@@ -3,8 +3,10 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { type AppContext, bearer, me, parse, requireAuth, zKey, zName, zSig } from "../context.js";
 import { canonical, isValidPublicKey, keyFingerprint, verifyEd25519 } from "../crypto.js";
+import { findOrgInvite, findRegistrationInvite, joinOrgByInvite } from "../invites.js";
 import { ApiError, badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex, unauthorized } from "../util.js";
 import { evictUserDevicesFromCalls } from "./calls.js";
+import { notifyOrg } from "./orgs.js";
 
 const USERNAME = /^[a-z0-9](?:[a-z0-9._]{1,22})[a-z0-9]$/;
 const CHALLENGE_TTL_MS = 2 * 60 * 1000;
@@ -96,9 +98,14 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
         device: zDevice,
         nonce: z.string().min(16).max(64),
         signature: zSig,
+        inviteCode: z.string().trim().min(8).max(40).optional(),
       }),
       req.body,
     );
+    // Invite-only registration (default): checked before any key work so a missing code costs nothing.
+    if (ctx.config.registrationMode === "invite" && !body.inviteCode) {
+      throw new ApiError(403, "invite_required", "Registration needs an invitation code");
+    }
     verifyDevice(body.identityKey, body.device);
     if (!verifyEd25519(body.device.signingKey, canonical.authProof("register", body.nonce, body.device.signingKey), body.signature)) {
       throw unauthorized("Invalid proof signature");
@@ -108,8 +115,9 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
     const t = now();
     const userId = newId("u");
     const deviceId = newId("d");
+    let admitted: { via: string | null; joined: { orgId: string; inviteId: string; role: string } | null };
     try {
-      ctx.db.transaction(() => {
+      admitted = ctx.db.transaction(() => {
         ctx.db
           .prepare(
             "INSERT INTO users (id, username, display_name, identity_key, avatar_color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -120,14 +128,32 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
             "INSERT INTO devices (id, user_id, name, signing_key, encryption_key, certificate, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
           )
           .run(deviceId, userId, body.device.name, body.device.signingKey, body.device.encryptionKey, body.device.certificate, t);
+        if (ctx.config.registrationMode === "invite") {
+          // Looked up inside the transaction so two registrations can't both take an invite's last use.
+          const reg = findRegistrationInvite(ctx.db, body.inviteCode!);
+          const org = reg ? undefined : findOrgInvite(ctx.db, body.inviteCode!);
+          if (reg) {
+            ctx.db.prepare("UPDATE registration_invites SET uses = uses + 1 WHERE id = ?").run(reg.id);
+            return { via: `registration-invite:${reg.id}`, joined: null };
+          }
+          // An org invite admits the person and joins them to that org in one step.
+          if (org) return { via: `org-invite:${org.id}`, joined: joinOrgByInvite(ctx, org, userId, t) };
+          throw new ApiError(403, "invalid_invite", "This invitation code is invalid, expired or already used");
+        }
+        return { via: null, joined: null };
       })();
     } catch (e) {
       if (String(e).includes("UNIQUE")) throw conflict("That username is already taken");
       throw e;
     }
-    ctx.audit({ actorId: userId, action: "user.register", target: userId });
+    const { via, joined } = admitted;
+    ctx.audit({ actorId: userId, action: "user.register", target: userId, detail: via });
+    if (joined) {
+      ctx.audit({ actorId: userId, orgId: joined.orgId, action: "invite.accept", target: joined.inviteId, detail: joined.role });
+      notifyOrg(ctx, joined.orgId);
+    }
     const session = issueSession(ctx, userId, deviceId);
-    return { userId, deviceId, sessionToken: session.token, expiresAt: session.expiresAt };
+    return { userId, deviceId, sessionToken: session.token, expiresAt: session.expiresAt, orgId: joined?.orgId ?? null };
   });
 
   app.post("/v1/auth/login", strict, async (req) => {

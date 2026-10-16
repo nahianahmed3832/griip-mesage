@@ -59,9 +59,9 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
     },
   };
 
-  app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: config.attachmentMaxBytes + 1024 }, (_req, body, done) =>
-    done(null, body),
-  );
+  // Attachment uploads are streamed to disk by their route (size and quota enforced while reading),
+  // so the raw request stream is passed through instead of being buffered in memory.
+  app.addContentTypeParser("application/octet-stream", (_req, payload, done) => done(null, payload));
   // LiveKit webhooks: keep the raw string, the signature covers the exact bytes.
   app.addContentTypeParser("application/webhook+json", { parseAs: "string" }, (_req, body, done) => done(null, body));
 
