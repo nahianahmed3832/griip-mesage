@@ -112,7 +112,7 @@ Extend these, don't replace them:
 - **Risks:** locking out legitimate testers. Ship an operator CLI that issues registration invites.
 - **Verification:** vitest for the gate and quota. `docker compose config` and `verify.sh` for the limits. Deploying is a separate, approved step.
 
-### T1.7 Presence privacy (P4)
+### T1.7 Presence privacy (P4). **Done 2026-10-16 (server; not deployed)**
 - **Purpose:** any account can watch any user's online and last-seen state.
 - **Modules:** `GET /v1/presence`, `GET /v1/users/:id`, `ws.ts`, the conversation member views.
 - **Acceptance:** online and last-seen state are returned only for users who share a conversation or org with the caller (non-guest). Otherwise the response is `null`.

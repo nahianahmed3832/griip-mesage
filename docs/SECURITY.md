@@ -134,6 +134,9 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
   - Org invites are minted only by authenticated org managers.
   - Codes are 60-bit random and stored as SHA-256 hashes. Uses and expiry are bounded and enforced inside the registration transaction.
   - Residual risk: anyone who can create an org can invite people into it, and so let them register.
+- **Presence privacy (T1.7):** online state and last-seen are shown only to the person, to anyone sharing a conversation
+  with them, and to non-guest members of a shared org (`Authz.canSeePresence`). Knowing a username or id reveals nothing;
+  realtime presence events go only to DM and group peers.
 - **Upload quotas (T1.6):**
   - Attachments stream to disk; nothing buffers a whole file in memory.
   - Limits: per-user daily and stored bytes, a server-wide byte cap (`507`), and per-user and global concurrent uploads and in-flight bytes.

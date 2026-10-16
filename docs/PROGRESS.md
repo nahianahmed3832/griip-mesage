@@ -18,7 +18,25 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T1.3 Evict removed members from live calls** (P3) | ✅ server | See below. Not deployed |
 | T1.4 Never discard messages on local failure | ⏳ | Needs T2.4 |
 | **T1.6 Registration gating, quotas, limits** (P5) | ✅ server | See below. Android invite field pending; not deployed |
+| **T1.7 Presence privacy** (P4) | ✅ server | See below. Not deployed |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
+
+### T1.7 Presence privacy (2026-10-16)
+
+- **Defect (probe P4):** any account could read anyone's online state and last-seen time. It only needed `/v1/presence`, `/v1/users/:id` or an exact-username search.
+- **Change:**
+  - `Authz.canSeePresence(viewer, target)` allows the person themself, anyone sharing a conversation, and non-guest members of a shared org.
+  - `/v1/users/:id` and `/v1/users/search` return `online`/`lastSeenAt` as `null` otherwise.
+  - `/v1/presence` leaves hidden users out, because released apps decode `online` as a non-null boolean.
+  - Member lists already required a shared conversation or a non-guest org role, and the realtime push already went only to DM and group peers, so neither changed.
+- **Tests:** `server/test/presence.test.ts` has 4 tests:
+  - a stranger learns nothing, but the directory profile still works;
+  - a DM peer, an org colleague and the person themself see presence;
+  - a guest sees it only after sharing a channel;
+  - realtime events reach the DM peer and not the stranger.
+
+  Without the fix 2 fail (stranger, guest). With it, `npm test` gives **60/60** and `tsc` is clean.
+- **Not deployed** (`RELEASE_PLAN.md`). **Security:** closes P4 and D10 once deployed.
 
 ### T1.6 Invite-only registration, upload quotas, container limits (2026-10-16)
 

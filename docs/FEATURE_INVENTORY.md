@@ -108,7 +108,7 @@ This is the starting point for the feature-first phase. Every row was checked ag
 | Invites outlive the creator's rights | UNVERIFIED (likely defect) | An invite made by a branch manager stays valid after that person is demoted or removed. The code never re-checks the creator | `findInvite()` |
 | Invite by QR (image), code, `griip://invite/…` link | PARTIALLY WORKING | QR image and link generation exist. **No in-app QR scanner** | `InvitesScreen`, `MainActivity.handleIntent` |
 | Directory and people search | WORKING | Search by name within shared orgs, plus exact username globally | `GET /v1/users/search`, `/v1/orgs/:id/members` |
-| Presence privacy | **BROKEN** (privacy) | **P4:** any account can read anyone's online and last-seen state. Realtime presence pushes are correctly limited to DM and group peers | `GET /v1/presence`, `GET /v1/users/:id` |
+| Presence privacy | **WORKING (server, not deployed)**. Was BROKEN (P4) | T1.7 (2026-10-16): online and last-seen are visible only to the person, people sharing a conversation, and non-guest members of a shared org. Strangers get `null` from `/v1/users/:id` and search, and are omitted from `/v1/presence`. Realtime pushes are unchanged (DM and group peers only). `presence.test.ts` (2 of 4 fail without the fix) | `authz.canSeePresence`, `routes/users.ts` |
 | Activity feed | **BROKEN** (P2) | See above | `audit_log` |
 
 ## 6. Message interactions, attachments, search

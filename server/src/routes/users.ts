@@ -93,20 +93,22 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
          ) ORDER BY u.username LIMIT 30`,
       )
       .all(userId, term, like, like, `% ${like}`, userId) as any[];
-    return { users: rows.map((u) => ({ ...userSummary(u), online: ctx.hub.isUserOnline(u.id) })) };
+    // Exact-username matches can be strangers: their presence stays hidden (null).
+    return { users: rows.map((u) => ({ ...userSummary(u), online: ctx.authz.canSeePresence(userId, u.id) ? ctx.hub.isUserOnline(u.id) : null })) };
   });
 
   app.get("/v1/users/:id", auth, async (req) => {
     const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
     const u = ctx.db.prepare("SELECT * FROM users WHERE id = ? AND disabled_at IS NULL").get(id) as any;
     if (!u) throw notFound("User not found");
+    const visible = ctx.authz.canSeePresence(me(req).userId, u.id);
     return {
       user: {
         ...userSummary(u),
         identityKey: u.identity_key,
         fingerprint: keyFingerprint(u.identity_key),
-        online: ctx.hub.isUserOnline(u.id),
-        lastSeenAt: ctx.hub.lastSeenAt(u.id),
+        online: visible ? ctx.hub.isUserOnline(u.id) : null,
+        lastSeenAt: visible ? ctx.hub.lastSeenAt(u.id) : null,
       },
     };
   });
@@ -116,9 +118,11 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
     return { users: deviceDirectory(ctx, [...new Set(userIds)]) };
   });
 
+  // Users the caller may not see are left out (not nulled): released apps parse `online` as non-null.
   app.get("/v1/presence", auth, async (req) => {
+    const { userId } = me(req);
     const { ids } = parse(z.object({ ids: z.string().max(5000) }), req.query);
-    const list = ids.split(",").filter(Boolean).slice(0, 200);
+    const list = [...new Set(ids.split(",").filter(Boolean))].slice(0, 200).filter((u) => ctx.authz.canSeePresence(userId, u));
     return {
       presence: list.map((u) => ({ userId: u, online: ctx.hub.isUserOnline(u), lastSeenAt: ctx.hub.lastSeenAt(u) })),
     };

@@ -234,6 +234,22 @@ export class Authz {
     return rows.map((r) => r.id);
   }
 
+  /**
+   * Online state and last-seen are visible to the person themself, to anyone who shares a
+   * conversation with them, and to non-guest members of an organisation they belong to. Knowing a
+   * username or id is not enough.
+   */
+  canSeePresence(viewerId: string, targetId: string): boolean {
+    if (viewerId === targetId) return true;
+    const shared = this.db
+      .prepare("SELECT 1 FROM conversation_members a JOIN conversation_members b ON b.conversation_id = a.conversation_id WHERE a.user_id = ? AND b.user_id = ? LIMIT 1")
+      .get(viewerId, targetId);
+    if (shared) return true;
+    return !!this.db
+      .prepare("SELECT 1 FROM org_members a JOIN org_members b ON b.org_id = a.org_id WHERE a.user_id = ? AND a.role != 'GUEST' AND b.user_id = ? LIMIT 1")
+      .get(viewerId, targetId);
+  }
+
   /** Auto-join public + announcement channels of a scope the user just gained access to. */
   autoJoinScope(orgId: string, userId: string, now: number): string[] {
     const role = this.orgRole(orgId, userId);
