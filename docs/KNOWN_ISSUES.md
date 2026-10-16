@@ -44,7 +44,7 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
   - ~~Erasing a device doesn't revoke it (T1.9).~~ Fixed 2026-10-16: it revokes first and asks before erasing if the server can't confirm. The device check is pending.
   - ~~Deleted messages leave decrypted files on the device (T1.10).~~ Fixed 2026-10-16.
   - ~~Backlog and live deliveries interleave and duplicate (P6, T2.1).~~ Fixed 2026-10-16. The server change (not yet deployed) keeps live items behind the backlog. The app holds controls that arrive before their target.
-  - Realtime frames can be dropped under load (T2.2).
+  - ~~Realtime frames can be dropped under load (T2.2).~~ Fixed 2026-10-16 (bounded ordered inbox; a stall reconnects instead of dropping frames).
 - The release (R8) build compiles but has never been run on a device.
 
 ## Calls (open, 2026-10-16)

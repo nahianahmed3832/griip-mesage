@@ -164,6 +164,7 @@ with no device or emulator. `crypto/Bytes.kt` uses `java.util.Base64`, so the re
 | `crypto/AttachmentCryptoTest` | 2 | PASS | Fresh key per file; a modified ciphertext fails the integrity check |
 | `ui/screens/calls/VideoSinkBindingTest` | 8 | PASS | Renderer lifetime and sink ordering (video fix) |
 | `data/db/MigrationsTest` | 3 | PASS | D-13: schema versions contiguous and equal to `GriipDatabase.VERSION`; each migration step gives the next exported schema and keeps sample rows (sqlite-jdbc). Proven to fail when v2 had no step |
+| `data/api/FrameInboxTest` | 3 | PASS | T2.2: a 1,000-frame burst arrives complete and in order with a slow consumer; a stalled consumer triggers a reconnect, not loss; bounded |
 | `data/api/RegisterReqTest` | 2 | PASS | T1.6: `inviteCode` is sent when entered and omitted when blank |
 | `data/repo/AttachmentFilesTest` | 3 | PASS | T1.10: a message's decrypted files are deleted with it; names from messages can't reach outside `filesDir/attachments` |
 | `data/repo/PendingControlsTest` | 5 | PASS | T2.1: early edits, deletions, reactions and pins are replayed in order; duplicates held once; same-conversation only; bounded; expiring |

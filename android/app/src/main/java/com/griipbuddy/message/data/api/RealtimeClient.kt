@@ -8,9 +8,8 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -37,8 +36,8 @@ class RealtimeClient(
 ) {
     private val _state = MutableStateFlow(ConnState.Disconnected)
     val state: StateFlow<ConnState> = _state
-    private val _frames = MutableSharedFlow<RealtimeFrame>(extraBufferCapacity = 256)
-    val frames: SharedFlow<RealtimeFrame> = _frames
+    private val inbox = FrameInbox<RealtimeFrame>()
+    val frames: Flow<RealtimeFrame> = inbox.frames
 
     private var ws: WebSocket? = null
     private var wanted = false
@@ -103,7 +102,11 @@ class RealtimeClient(
                     attempt = 0
                     _state.value = ConnState.Connected
                 }
-                _frames.tryEmit(frame)
+                if (!inbox.offer(frame)) {
+                    // The app can't keep up: reconnect rather than drop a frame (unacked items are redelivered).
+                    Log.w("Realtime", "frame consumer stalled; reconnecting")
+                    webSocket.cancel()
+                }
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {

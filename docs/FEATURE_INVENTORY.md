@@ -76,7 +76,7 @@ This is the starting point for the feature-first phase. Every row was checked ag
 - items set aside locally after 5 unexpected failures (kept with a visible placeholder and retried at start-up).
 
 Cancellation propagates. Database errors and bugs aren't acknowledged; network errors aren't counted. The REST fallback uses the same path. `QueueProcessorTest` (8), `MigrationsTest` (v3) | `QueueProcessor.kt`, `MessageRepository` |
-| Realtime frames never dropped | PARTIALLY WORKING | `RealtimeClient` emits into a `MutableSharedFlow(extraBufferCapacity = 256)` with `tryEmit`. A burst while the consumer waits on key fetches drops frames. Dropped live items are re-sent only at the next reconnect | `RealtimeClient.kt` |
+| Realtime frames never dropped | **WORKING (JVM-tested)**. Was PARTIALLY WORKING | T2.2 (2026-10-16): `FrameInbox` is a bounded, ordered channel (1,024 frames). When full, the socket's reader waits, which is TCP backpressure. A consumer stalled for 20 s triggers a reconnect, and unacknowledged items are redelivered, so nothing is silently dropped. `FrameInboxTest`: a 1,000-frame burst with a slow consumer arrives complete and in order | `FrameInbox.kt`, `RealtimeClient` |
 
 ## 3. Offline delivery, acknowledgements, expiration
 

@@ -24,6 +24,21 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
 
+### T2.2 Realtime frames are never dropped (2026-10-16)
+
+- **Defect:** `RealtimeClient` emitted frames into a `MutableSharedFlow` with a 256-frame buffer using `tryEmit`. A burst arriving while the app was busy, for example fetching keys, silently dropped frames, including `queue` frames.
+- **Change:** `FrameInbox`, a bounded `Channel` (1,024) read by the single consumer:
+  - it keeps order;
+  - when full, the OkHttp reader thread waits, so backpressure reaches the relay over TCP and memory stays bounded;
+  - if the consumer is stalled for 20 s, the socket is cancelled and reconnects. The relay redelivers unacknowledged items, so the worst case is a reconnect, never a lost message.
+  - No other networking layer was added.
+- **Tests:** `FrameInboxTest` has 3 tests:
+  - a 1,000-frame burst from a reader thread with a deliberately slow consumer arrives complete and in order;
+  - a stalled consumer makes `offer` fail after the timeout without losing accepted frames;
+  - the buffer is bounded.
+
+  Android **56/56**.
+
 ### T2.1 (app) Controls that arrive before their target, and T3.4 scope checks (2026-10-16)
 
 - **Defect:** an edit, deletion, reaction or pin whose target message hadn't arrived yet was dropped, and acknowledged, so it was lost for good. A reaction could also be applied to a message in a *different* conversation (T3.4).

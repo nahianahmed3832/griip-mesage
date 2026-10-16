@@ -147,7 +147,7 @@ Extend these, don't replace them:
 - **Acceptance:** with a 105-item backlog and a live message, delivery order equals queue order and each item is delivered once. A reaction that arrives before its target is applied later.
 - **Verification:** the P6 scenario becomes a vitest; Android JVM test.
 
-### T2.2 Realtime frames are never dropped
+### T2.2 Realtime frames are never dropped. **Done 2026-10-16**
 - **Modules:** `RealtimeClient` (replace `tryEmit` into a 256-item buffer with a suspending, ordered channel).
 - **Acceptance:** a burst of 1,000 frames is processed completely.
 - **Verification:** JVM test with a fake socket.
