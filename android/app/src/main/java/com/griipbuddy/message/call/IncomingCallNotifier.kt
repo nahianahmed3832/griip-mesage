@@ -43,7 +43,7 @@ object IncomingCallNotifier {
             .setContentIntent(open)
             .addAction(0, "Decline", decline)
             .addAction(0, "Answer", open)
-            .setColor(0xFF1FB5A6.toInt())
+            .setColor(0xFF1FA874.toInt())
             .build()
         // Ring until answered, declined or timed out: a notification sound otherwise plays once and stops, which on
         // the test phones left most of a 45-second ring silent. Volume, silent and vibrate modes still apply.

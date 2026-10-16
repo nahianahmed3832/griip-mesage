@@ -100,8 +100,8 @@ object MediaPath {
  * missing media server, a join timeout and a capture failure don't all read "something went wrong".
  */
 object CallFailure {
-    const val MICROPHONE = "Couldn't start the microphone. Check that Griip Message may use it."
-    const val CAMERA = "Couldn't start the camera. Check that Griip Message may use it."
+    const val MICROPHONE = "Couldn't start the microphone. Check that Orbit may use it."
+    const val CAMERA = "Couldn't start the camera. Check that Orbit may use it."
 
     fun forApi(e: com.griipbuddy.message.data.api.ApiException): String = when {
         e.status == 410 -> "This call has already ended."

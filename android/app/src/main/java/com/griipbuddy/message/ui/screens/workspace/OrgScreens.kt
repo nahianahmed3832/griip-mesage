@@ -447,7 +447,7 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
                 Text("Shown once — the server stores only a hash. ${inv.maxUses} use(s), ${inv.role.lowercase()}.", style = Griip.type.caption, color = c.textTertiary, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(16.dp))
                 PillButton("Share code", {
-                    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "Join ${d?.org?.name ?: "our workspace"} on Griip Message with invite code $code (griip://invite/$code)")
+                    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "Join ${d?.org?.name ?: "our workspace"} on Orbit with invite code $code (griip://invite/$code)")
                     ctx.startActivity(Intent.createChooser(send, "Share invite"))
                 }, Modifier.fillMaxWidth(), leadingIcon = Icons.Outlined.Share, height = 50.dp)
             }

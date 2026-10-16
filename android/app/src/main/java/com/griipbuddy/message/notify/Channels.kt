@@ -32,7 +32,7 @@ object Channels {
             },
         )
         nm.createNotificationChannel(NotificationChannel(ONGOING_CALL, "Ongoing call", NotificationManager.IMPORTANCE_LOW))
-        nm.createNotificationChannel(NotificationChannel(CONNECTION, "Background connection", NotificationManager.IMPORTANCE_MIN).apply { description = "Shown while Griip Message stays connected for background delivery" })
+        nm.createNotificationChannel(NotificationChannel(CONNECTION, "Background connection", NotificationManager.IMPORTANCE_MIN).apply { description = "Shown while Orbit stays connected for background delivery" })
     }
 }
 
@@ -59,10 +59,10 @@ class MessageNotifier(private val context: Context) {
             .setContentIntent(open)
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setColor(0xFF1FB5A6.toInt())
+            .setColor(0xFF1FA874.toInt())
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(
-                NotificationCompat.Builder(context, Channels.MESSAGES).setSmallIcon(R.drawable.ic_stat_griip).setContentTitle("Griip Message").setContentText("New message").build(),
+                NotificationCompat.Builder(context, Channels.MESSAGES).setSmallIcon(R.drawable.ic_stat_griip).setContentTitle("Orbit").setContentText("New message").build(),
             )
         // Reply only where the user may post; both actions need the phone unlocked (T4.4).
         if (n.canReply) {

@@ -21,7 +21,9 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.griipbuddy.message"
+        // Orbit (2026-10-16 rebrand). A new application id installs as a separate app beside Griip Message; nothing
+        // migrates between them. The Kotlin namespace (and so R/BuildConfig) stays com.griipbuddy.message.
+        applicationId = "com.griipbuddy.orbit"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -81,6 +83,7 @@ ksp {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

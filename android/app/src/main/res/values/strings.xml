@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Griip Message</string>
+    <string name="app_name">Orbit</string>
+    <string name="brand_attribution">Orbit by GriipBuddy</string>
+    <string name="brand_tagline">Private by design. Connected by everyone.</string>
 </resources>

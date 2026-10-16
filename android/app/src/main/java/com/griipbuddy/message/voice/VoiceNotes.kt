@@ -179,6 +179,6 @@ class VoiceDraftController(
         const val MIC_FAILED = "Couldn't record from the microphone. Another app or a call may be using it."
         const val TOO_SHORT = "Too short to send. Tap the microphone and speak for at least a second."
         const val LIMIT = "Recording stopped at the 10-minute limit."
-        const val PERMISSION = "Griip Message needs microphone access to record voice messages. You can allow it in Android Settings."
+        const val PERMISSION = "Orbit needs microphone access to record voice messages. You can allow it in Android Settings."
     }
 }

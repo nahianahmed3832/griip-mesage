@@ -5,4 +5,7 @@
     <color name="canvas_light">#F3FAF8</color>
     <color name="canvas_dark">#0E1719</color>
     <color name="icon_bg_top">#E6F6F3</color>
+    <!-- Orbit identity: deep green / near-black ground, mint accents. -->
+    <color name="orbit_night">#FF050D0A</color>
+    <color name="orbit_mint">#FF3EE0A0</color>
 </resources>

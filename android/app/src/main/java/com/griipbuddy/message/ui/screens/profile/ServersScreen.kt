@@ -69,7 +69,7 @@ suspend fun checkServer(session: SessionRepository, input: String): ServerCheck 
         session.serverInfo(parsed.url)
     } catch (e: ApiException) {
         val why = when {
-            e.code == "decode" || e.status == 404 -> "That address answered, but not like a Griip Message server."
+            e.code == "decode" || e.status == 404 -> "That address answered, but not like an Orbit (Griip) server."
             else -> e.message
         }
         return ServerCheck(false, why, parsed.url, parsed.cleartext)

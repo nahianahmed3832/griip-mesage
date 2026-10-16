@@ -150,8 +150,8 @@ object ServerCompat {
         }
         val api = info.api ?: 1
         val minClient = info.minClientApi ?: 1
-        if (minClient > CLIENT_API) return Verdict.Unsupported("This server needs a newer version of Griip Message.")
-        if (api < CLIENT_API) return Verdict.Unsupported("This server is too old for this version of Griip Message.")
+        if (minClient > CLIENT_API) return Verdict.Unsupported("This server needs a newer version of Orbit.")
+        if (api < CLIENT_API) return Verdict.Unsupported("This server is too old for this version of Orbit.")
         return Verdict.Ok
     }
 }

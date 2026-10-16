@@ -168,7 +168,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsSections(
             val scope = rememberCoroutineScope()
             address?.let { a ->
                 MenuRow(
-                    Icons.Outlined.AlternateEmail, a, subtitle = "Your address on the Griip network. Share it so people on other servers can message you. Tap to copy.",
+                    Icons.Outlined.AlternateEmail, a, subtitle = "Your address on the Orbit network. Share it so people on other servers can message you. Tap to copy.",
                     onClick = { scope.launch { clipboard.setClipEntry(androidx.compose.ui.platform.ClipEntry(android.content.ClipData.newPlainText("address", a))) } },
                     trailing = null,
                 )
@@ -232,7 +232,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsSections(
                 subtitle = "Servers on this phone: add your organisation's or community's server, or switch between them. Your accounts stay separate.",
                 tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.SERVERS) },
             )
-            MenuRow(Icons.Outlined.Info, "About Griip Message", subtitle = "Version ${BuildConfig.VERSION_NAME} · internal beta · how your data is protected", tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.SECURITY) })
+            MenuRow(Icons.Outlined.Info, "About Orbit", subtitle = "Orbit by GriipBuddy · version ${BuildConfig.VERSION_NAME} · internal beta · how your data is protected", tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.SECURITY) })
         }
         if (container.session.serverUrl.startsWith("http://")) {
             StatusBanner("Unencrypted connection to the server (internal testing). Message content stays end-to-end encrypted; metadata and session tokens don't.", BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 8.dp), icon = Icons.Rounded.GppMaybe)

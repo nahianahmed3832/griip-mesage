@@ -38,7 +38,7 @@ class CallService : Service() {
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setContentIntent(open)
-            .setColor(0xFF1FB5A6.toInt())
+            .setColor(0xFF1FA874.toInt())
             .build()
         var type = 0
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {

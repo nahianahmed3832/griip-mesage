@@ -77,6 +77,8 @@ import com.griipbuddy.message.GriipApp
 import com.griipbuddy.message.data.repo.PendingPairing
 import com.griipbuddy.message.ui.LocalContainer
 import com.griipbuddy.message.ui.art.HeroBubbleArt
+import com.griipbuddy.message.ui.components.OrbitLockup
+import com.griipbuddy.message.ui.components.OrbitLogo
 import com.griipbuddy.message.ui.components.Avatar
 import com.griipbuddy.message.ui.components.BannerKind
 import com.griipbuddy.message.ui.components.ButtonTone
@@ -122,18 +124,21 @@ private data class Slide(val title: String, val accent: String, val body: String
 private fun WelcomeScreen(onStart: () -> Unit, onRestore: () -> Unit, onLink: () -> Unit, onServer: () -> Unit) {
     val c = Griip.colors
     val slides = listOf(
-        Slide("Talk freely.", "Work together.", "Private messages, team channels, calls and screen sharing — built for GriipBuddy teams."),
+        Slide("Private by design.", "Connected by everyone.", "Orbit by GriipBuddy: messages, team channels, calls and screen sharing, encrypted on your phone."),
         Slide("Your keys stay", "on your phone.", "Messages are encrypted on your device before they leave it. History lives on your phone, not on our server."),
         Slide("Branches, teams", "and channels.", "Find your colleagues, join your branch and keep every team conversation in one calm place."),
     )
     val pager = rememberPagerState { slides.size }
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.End) {
+        Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            OrbitLockup(Modifier.weight(1f))
             CircleIconButton(Icons.Outlined.Dns, "Server settings", onServer)
         }
         HorizontalPager(pager, Modifier.weight(1f)) { i ->
             Column(Modifier.fillMaxSize().padding(horizontal = 28.dp), verticalArrangement = Arrangement.Center) {
-                HeroBubbleArt(Modifier.fillMaxWidth().aspectRatio(1.05f))
+                // First slide: the Orbit symbol itself; then the illustrations.
+                if (i == 0) Box(Modifier.fillMaxWidth().aspectRatio(1.05f), contentAlignment = Alignment.Center) { OrbitLogo(184.dp) }
+                else HeroBubbleArt(Modifier.fillMaxWidth().aspectRatio(1.05f))
                 Spacer(Modifier.height(8.dp))
                 Text(
                     buildAnnotatedString {
@@ -400,7 +405,7 @@ fun ServerSheet(onDismiss: () -> Unit) {
     var others by remember { mutableStateOf<List<GriipApp.ProfileSummary>>(emptyList()) }
     LaunchedEffect(Unit) { others = withContext(Dispatchers.IO) { app.profileSummaries().filterNot { it.active } } }
     GlassSheet(onDismiss, title = "Server") {
-        Text("Griip Message connects to your organisation's relay. Internal beta default: the GriipBuddy test server.", style = Griip.type.bodySmall, color = c.textSecondary)
+        Text("Orbit connects to your organisation's relay. Internal beta default: the GriipBuddy test server.", style = Griip.type.bodySmall, color = c.textSecondary)
         Spacer(Modifier.height(16.dp))
         GriipTextField(url, { url = it.trim(); status = null }, "Server address", placeholder = "https://msg.example.com", leadingIcon = Icons.Outlined.Dns)
         status?.let {

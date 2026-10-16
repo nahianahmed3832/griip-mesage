@@ -27,7 +27,7 @@ class RelayConnectionService : Service() {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val n = NotificationCompat.Builder(this, Channels.CONNECTION)
             .setSmallIcon(R.drawable.ic_stat_griip)
-            .setContentTitle("Griip Message is connected")
+            .setContentTitle("Orbit is connected")
             .setContentText("Receiving messages and calls in the background")
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)

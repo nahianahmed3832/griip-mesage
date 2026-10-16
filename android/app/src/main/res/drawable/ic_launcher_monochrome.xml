@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Orbit mark, generated (scratchpad orbit/gen.py): planet ring, tilted orbit, satellite. 108×108 adaptive-icon space; everything inside the 66 dp safe circle. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
-        android:pathData="M34,35h40a8,8 0 0 1 8,8v20a8,8 0 0 1 -8,8h-24l-10,8v-8h-6a8,8 0 0 1 -8,-8v-20a8,8 0 0 1 8,-8z M54,41.5l10.5,4v7.5c0,7.2 -4.6,11.4 -10.5,13.6c-5.9,-2.2 -10.5,-6.4 -10.5,-13.6v-7.5z" />
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+  <group>
+    <path android:pathData="M78.355,32.590 A32.0,9.0 -32.0 0,0 60.584,34.490" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.3" android:strokeLineCap="round" android:fillColor="#00000000"/>
+    <path android:pathData="M24.080,66.505 A32.0,9.0 -32.0 0,1 33.578,51.365" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.3" android:strokeLineCap="round" android:fillColor="#00000000"/>
+    <path android:pathData="M54.000,32.500 A21.5,21.5 0 1,1 54.000,75.500 A21.5,21.5 0 1,1 54.000,32.500 Z M54.882,38.011 A10.0,15.0 15.0 1,0 47.118,66.989 A10.0,15.0 15.0 1,0 54.882,38.011 Z" android:fillType="evenOdd" android:fillColor="#FFFFFFFF"/>
+    <path android:pathData="M24.080,66.505 A32.0,7.5 -32.0 0,0 78.355,32.590 A32.0,3.0 -32.0 0,1 24.080,66.505 Z" android:fillColor="#FFFFFFFF"/>
+    <path android:pathData="M66.203,41.545 A5.2,5.2 0 1,1 76.603,41.545 A5.2,5.2 0 1,1 66.203,41.545 Z" android:fillColor="#FFFFFFFF"/>
+  </group>
 </vector>

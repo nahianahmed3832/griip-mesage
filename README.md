@@ -1,6 +1,10 @@
-# Griip Message
+# Orbit (formerly Griip Message)
 
-A native Android messaging and collaboration app for GriipBuddy teams, as an internal beta.
+**Orbit by GriipBuddy** · *Private by design. Connected by everyone.*
+
+A native Android messaging and collaboration app for GriipBuddy teams, as an internal beta. The app was renamed from
+Griip Message on 2026-10-16; servers, protocols (`griip-envelope-v1`, `griip-fed/1`), the `griip://invite/` link and the
+Docker deployment keep their names.
 - **Messaging:** end-to-end encrypted direct messages, groups and team channels.
 - **Workspaces:** organisations, branches, departments and teams with role-based access.
 - **Calls:** voice and video calls and Android screen sharing over a self-hosted LiveKit SFU.
@@ -10,8 +14,8 @@ A native Android messaging and collaboration app for GriipBuddy teams, as an int
 
 | | |
 |---|---|
-| Android application ID | `com.griipbuddy.message` |
-| APK | [`artifacts/GriipMessage-debug.apk`](artifacts/GriipMessage-debug.apk), debug-signed, about 85 MB, default server `https://msg.griipbuddy.cloud` |
+| Android application ID | `com.griipbuddy.orbit` (Orbit). Builds before 2026-10-16 were `com.griipbuddy.message` (Griip Message): a separate app; nothing moves between them, so an Orbit install signs in or registers afresh |
+| APK | `artifacts/GriipMessage-Federation-v1-testing.apk` (Orbit, debug-signed); older Griip Message builds stay in `artifacts/`. Default server `https://msg.griipbuddy.cloud` |
 | Relay / API | `https://msg.griipbuddy.cloud` |
 | Calls (LiveKit) | `wss://rtc.griipbuddy.cloud`, media on 7881/tcp and 7882/udp |
 | Compose project | `griip-internal-messaging` in `/opt/griip-internal-messaging` on 72.60.107.88 |
