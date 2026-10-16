@@ -18,6 +18,8 @@
  *   fed-rotate-key                 add a new server key signed by the current one (stop the server first; the id stays)
  *   fed-decommission <reason> --yes  permanently retire this server id on the core network (can't be undone)
  *   fed-block <serverId> [reason]  refuse federation with a server; fed-unblock <serverId> lifts it
+ *   org-duplicates                 list workspaces one person owns under the same name, with what each holds (counts only)
+ *   org-delete-empty <orgId> [--yes]  remove one provably empty duplicate (dry run without --yes; back up first)
  */
 import { Authz } from "./authz.js";
 import { backupDatabase, verifyBackup } from "./backup.js";
@@ -27,6 +29,7 @@ import { ServerIdentity } from "./federation/identity.js";
 import { Hub } from "./hub.js";
 import { createRegistrationInvite } from "./invites.js";
 import { runCleanup } from "./jobs.js";
+import { deleteEmptyOrg, findDuplicateOrgs, keepReason, orgFootprint } from "./orgRepair.js";
 import { humanCode, newId, now, sha256Hex } from "./util.js";
 
 const [cmd, ...rest] = process.argv.slice(2);
@@ -168,6 +171,43 @@ switch (cmd) {
       const r = await fetch(`${c.url.replace(/\/$/, "")}/core/v1/decommission`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(rec) }).catch((e) => e as Error);
       console.log(c.url, r instanceof Error ? r.message : r.status);
     }
+    break;
+  }
+  case "org-duplicates": {
+    const groups = findDuplicateOrgs(db);
+    if (groups.length === 0) console.log("No duplicate workspaces.");
+    for (const g of groups) {
+      console.log(`\n"${g.name}" owned by ${g.ownerUsername ?? g.ownerId}: ${g.orgs.length} workspaces (oldest first)`);
+      console.table(
+        g.orgs.map((o) => ({
+          id: o.id,
+          slug: o.slug,
+          created: new Date(o.createdAt).toISOString(),
+          members: o.members,
+          teams: o.teams,
+          channels: o.channels,
+          removable: o.removable ? "yes (empty)" : `no: ${o.keepReason}`,
+        })),
+      );
+    }
+    break;
+  }
+  case "org-delete-empty": {
+    const orgId = rest[0];
+    if (!orgId) {
+      console.error("usage: org-delete-empty <orgId> [--yes]   (refuses anything that isn't provably empty; back up first)");
+      process.exit(2);
+    }
+    const f = orgFootprint(db, orgId);
+    const reason = keepReason(db, orgId);
+    console.log(JSON.stringify({ org: f ?? null, removable: reason === null, keepReason: reason }, null, 2));
+    if (reason) process.exit(1);
+    if (!rest.includes("--yes")) {
+      console.log("Dry run: nothing deleted. Run again with --yes to remove it.");
+      break;
+    }
+    deleteEmptyOrg(db, orgId);
+    console.log(`Deleted empty workspace ${orgId}.`);
     break;
   }
   case "fed-block":

@@ -1,0 +1,206 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { deleteEmptyOrg, findDuplicateOrgs, keepReason } from "../src/orgRepair.js";
+import { GriipClient } from "./support/griipClient.js";
+import { expectStatus, type Harness, startServer } from "./support/harness.js";
+
+// Physical-device defects (2026-10-16): a valid invite code showed "Unexpected server response" on the joining phone,
+// and the person who couldn't join ended up owning five identical "GriipBuddy" workspaces.
+
+let h: Harness;
+let owner: GriipClient;
+let orgId: string;
+
+const invite = async (by: GriipClient, org: string, body: object = {}) => (await by.req("POST", `/v1/orgs/${org}/invites`, body)).invite;
+
+beforeAll(async () => {
+  h = await startServer();
+  owner = await h.client("inviteowner");
+  orgId = (await owner.req("POST", "/v1/orgs", { name: "GriipBuddy", description: "test" })).org.id;
+});
+afterAll(async () => h.close());
+
+describe("invite preview and accept (phase 1)", () => {
+  it("the preview's org has the same shape as every other org response (id, name, slug)", async () => {
+    const joiner = await h.client("previewer");
+    const { code } = await invite(owner, orgId);
+    const preview = await joiner.req("POST", "/v1/invites/preview", { code });
+    // The Android OrgDto requires id, name and slug; without the slug the app rejected a valid code.
+    expect(preview.org).toMatchObject({ id: orgId, name: "GriipBuddy", slug: expect.any(String), description: "test" });
+    expect(preview.org.slug.length).toBeGreaterThan(0);
+    expect(preview.role).toBe("MEMBER");
+    expect(preview.alreadyMember).toBe(false);
+  });
+
+  it("accepts the code however it was typed: lower case, without dashes, with spaces", async () => {
+    const { code } = await invite(owner, orgId, { maxUses: 3 });
+    const variants = [code.toLowerCase(), code.replace(/-/g, ""), ` ${code.replace(/-/g, " ")} `];
+    for (const v of variants) {
+      const c = await h.client("typed");
+      expect((await c.req("POST", "/v1/invites/preview", { code: v })).org.id).toBe(orgId);
+      const r = await c.req("POST", "/v1/invites/accept", { code: v });
+      expect(r.org).toMatchObject({ id: orgId, myRole: "MEMBER" });
+    }
+  });
+
+  it("says why a code can't be used: unknown, revoked, expired, used up, or its creator lost the right", async () => {
+    const c = await h.client("refused");
+    const unknown = await expectStatus(c.req("POST", "/v1/invites/preview", { code: "ABCD-EFGH-JKMN" }), 404);
+    expect(unknown.error.code).toBe("invite_not_found");
+
+    const revoked = await invite(owner, orgId);
+    await owner.req("DELETE", `/v1/invites/${revoked.id}`);
+    expect((await expectStatus(c.req("POST", "/v1/invites/accept", { code: revoked.code }), 404)).error.code).toBe("invite_revoked");
+
+    const expired = await invite(owner, orgId);
+    h.ctx.db.prepare("UPDATE invitations SET expires_at = ? WHERE id = ?").run(Date.now() - 1, expired.id);
+    const e = await expectStatus(c.req("POST", "/v1/invites/preview", { code: expired.code }), 404);
+    expect(e.error.code).toBe("invite_expired");
+    expect(e.error.message).toMatch(/expired/i);
+
+    const single = await invite(owner, orgId, { maxUses: 1 });
+    await (await h.client("first")).req("POST", "/v1/invites/accept", { code: single.code });
+    expect((await expectStatus(c.req("POST", "/v1/invites/accept", { code: single.code }), 404)).error.code).toBe("invite_used_up");
+
+    // An admin's invite stops working once they're no longer an admin (T3.1).
+    const admin = await h.client("demoted");
+    await admin.req("POST", "/v1/invites/accept", { code: (await invite(owner, orgId, { role: "ADMIN" })).code });
+    const byAdmin = await invite(admin, orgId, { role: "MEMBER" });
+    await owner.req("PATCH", `/v1/orgs/${orgId}/members/${admin.userId}`, { role: "MEMBER" });
+    expect((await expectStatus(c.req("POST", "/v1/invites/accept", { code: byAdmin.code }), 404)).error.code).toBe("invite_unavailable");
+
+    // None of the refusals joined anyone.
+    expect((await c.req("GET", "/v1/orgs")).orgs).toHaveLength(0);
+  });
+
+  it("needs a signed-in user", async () => {
+    const { code } = await invite(owner, orgId);
+    const anon = new GriipClient(h.baseUrl, "anon", "Anon");
+    await expectStatus(anon.req("POST", "/v1/invites/accept", { code }), 401);
+    await expectStatus(anon.req("POST", "/v1/invites/preview", { code }), 401);
+  });
+
+  it("a double tap or retry joins once, uses the invite once, and succeeds both times", async () => {
+    const inv = await invite(owner, orgId, { maxUses: 1 });
+    const c = await h.client("doubletap");
+    const [a, b] = await Promise.all([
+      c.req("POST", "/v1/invites/accept", { code: inv.code }),
+      c.req("POST", "/v1/invites/accept", { code: inv.code }),
+    ]);
+    expect(a.org.id).toBe(orgId);
+    expect(b.org.id).toBe(orgId);
+    expect([a.alreadyMember, b.alreadyMember].sort()).toEqual([false, true]);
+    // A later retry (the last use is gone) still succeeds for the person who already joined.
+    expect((await c.req("POST", "/v1/invites/accept", { code: inv.code })).alreadyMember).toBe(true);
+    const row = h.ctx.db.prepare("SELECT uses FROM invitations WHERE id = ?").get(inv.id) as { uses: number };
+    expect(row.uses).toBe(1);
+    const memberships = h.ctx.db.prepare("SELECT COUNT(*) n FROM org_members WHERE org_id = ? AND user_id = ?").get(orgId, c.userId) as { n: number };
+    expect(memberships.n).toBe(1);
+    expect((await c.req("GET", "/v1/orgs")).orgs.map((o: any) => o.id)).toEqual([orgId]);
+  });
+
+  it("two people racing for an invite's last use: exactly one joins", async () => {
+    const inv = await invite(owner, orgId, { maxUses: 1 });
+    const [x, y] = [await h.client("racer"), await h.client("racer")];
+    const results = await Promise.allSettled([x.req("POST", "/v1/invites/accept", { code: inv.code }), y.req("POST", "/v1/invites/accept", { code: inv.code })]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const failed = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(failed.reason.body.error.code).toBe("invite_used_up");
+  });
+
+  it("an invite that would upgrade a member is not 'already satisfied'", async () => {
+    const guest = await h.client("upgraded");
+    await guest.req("POST", "/v1/invites/accept", { code: (await invite(owner, orgId, { role: "GUEST" })).code });
+    const r = await guest.req("POST", "/v1/invites/accept", { code: (await invite(owner, orgId, { role: "MEMBER" })).code });
+    expect(r.alreadyMember).toBe(false);
+    expect(r.org.myRole).toBe("MEMBER");
+  });
+
+  it("registration with an unusable org invite says why (invite-only servers)", async () => {
+    const gated = await startServer({ REGISTRATION_MODE: "invite" });
+    try {
+      const o = new GriipClient(gated.baseUrl, "gatedowner", "Owner");
+      const reg = (await import("../src/invites.js")).createRegistrationInvite(gated.ctx.db, { maxUses: 1, days: 1 });
+      await o.register(reg.code);
+      const org = (await o.req("POST", "/v1/orgs", { name: "Gated" })).org.id;
+      const inv = await invite(o, org);
+      gated.ctx.db.prepare("UPDATE invitations SET expires_at = ? WHERE id = ?").run(Date.now() - 1, inv.id);
+      const body = await expectStatus(new GriipClient(gated.baseUrl, "lateperson", "Late").register(inv.code), 403);
+      expect(body.error.code).toBe("invalid_invite");
+      expect(body.error.message).toMatch(/expired/i);
+      expect(body.error.details).toEqual({ reason: "invite_expired" });
+    } finally {
+      await gated.close();
+    }
+  });
+});
+
+describe("creating a workspace is idempotent (phase 3)", () => {
+  it("the same request id returns the same workspace, even for simultaneous taps", async () => {
+    const c = await h.client("creator");
+    const requestId = "req-" + "a".repeat(20);
+    const [a, b] = await Promise.all([
+      c.req("POST", "/v1/orgs", { name: "Acme", requestId }),
+      c.req("POST", "/v1/orgs", { name: "Acme", requestId }),
+    ]);
+    expect(a.org.id).toBe(b.org.id);
+    const again = await c.req("POST", "/v1/orgs", { name: "Acme", requestId });
+    expect(again.org.id).toBe(a.org.id);
+    const list = (await c.req("GET", "/v1/orgs")).orgs;
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: a.org.id, name: "Acme", myRole: "OWNER", memberCount: 1 });
+  });
+
+  it("refuses a second workspace with a name its owner already uses, pointing at the first", async () => {
+    const c = await h.client("samename");
+    const first = (await c.req("POST", "/v1/orgs", { name: "GriipBuddy" })).org;
+    for (const name of ["GriipBuddy", " griipbuddy "]) {
+      const body = await expectStatus(c.req("POST", "/v1/orgs", { name, requestId: crypto.randomUUID() }), 409);
+      expect(body.error.code).toBe("org_name_taken");
+      expect(body.error.details).toEqual({ orgId: first.id });
+    }
+    expect((await c.req("GET", "/v1/orgs")).orgs).toHaveLength(1);
+    // Other people may use the same name, and the owner may use another one.
+    expect((await (await h.client("othersame")).req("POST", "/v1/orgs", { name: "GriipBuddy" })).org.id).not.toBe(first.id);
+    await c.req("POST", "/v1/orgs", { name: "GriipBuddy Dhaka" });
+    expect((await c.req("GET", "/v1/orgs")).orgs).toHaveLength(2);
+  });
+
+  it("an account in one workspace lists exactly one workspace", async () => {
+    const c = await h.client("single");
+    await c.req("POST", "/v1/orgs", { name: "Solo", requestId: crypto.randomUUID() });
+    const lists = await Promise.all([1, 2, 3].map(() => c.req("GET", "/v1/orgs")));
+    for (const l of lists) expect(l.orgs.map((o: any) => o.name)).toEqual(["Solo"]);
+  });
+});
+
+describe("operator repair of existing duplicates (phase 3)", () => {
+  it("lists same-name workspaces and removes only provably empty ones", async () => {
+    const c = await h.client("legacy");
+    const db = h.ctx.db;
+    // Duplicates as an older server made them (no request id, no name check): insert directly.
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const id = `o_legacy${i}`;
+      db.prepare("INSERT INTO orgs (id, name, slug, created_by, created_at, updated_at) VALUES (?, 'GriipBuddy', ?, ?, ?, ?)").run(id, `griipbuddy-legacy${i}`, c.userId, 1000 + i, 1000 + i);
+      db.prepare("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, 'OWNER', ?)").run(id, c.userId, 1000 + i);
+      ids.push(id);
+    }
+    // The first one is in use: someone joined it through an invite.
+    const used = await invite(c, ids[0]);
+    await (await h.client("colleague")).req("POST", "/v1/invites/accept", { code: used.code });
+    // The second has an owner-only channel; the third is completely empty.
+    await c.req("POST", `/v1/orgs/${ids[1]}/channels`, { name: "notes", scope: "ORG" });
+
+    const group = findDuplicateOrgs(db).find((g) => g.ownerId === c.userId)!;
+    expect(group.orgs.map((o) => o.id)).toEqual(ids);
+    expect(group.orgs.map((o) => o.removable)).toEqual([false, true, true]);
+    expect(keepReason(db, ids[0])).toMatch(/members|joined/);
+
+    expect(() => deleteEmptyOrg(db, ids[0])).toThrow(/refusing/);
+    deleteEmptyOrg(db, ids[2]);
+    deleteEmptyOrg(db, ids[1]);
+    expect(db.prepare("SELECT COUNT(*) n FROM conversations WHERE org_id = ?").get(ids[1])).toEqual({ n: 0 });
+    expect((await c.req("GET", "/v1/orgs")).orgs.map((o: any) => o.id)).toEqual([ids[0]]);
+    expect(findDuplicateOrgs(db).find((g) => g.ownerId === c.userId)).toBeUndefined();
+  });
+});

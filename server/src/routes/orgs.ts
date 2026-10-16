@@ -2,8 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { BranchRow, ConversationRow, OrgRole, TeamRow } from "../authz.js";
 import { type AppContext, me, parse, requireAuth, zName, zText } from "../context.js";
-import { badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex } from "../util.js";
-import { findOrgInvite, joinOrgByInvite } from "../invites.js";
+import { ApiError, badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex } from "../util.js";
+import { INVITE_PROBLEMS, inviteAlreadySatisfied, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../invites.js";
 import { userSummary } from "./auth.js";
 import { evictRemovedMember } from "./calls.js";
 import { conversationView } from "./conversations.js";
@@ -70,21 +70,28 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   // ───────────── Organisations ─────────────
   app.post("/v1/orgs", auth, async (req) => {
     const { userId } = me(req);
-    const body = parse(z.object({ name: zName, description: zOptText }), req.body);
+    const body = parse(z.object({ name: zName, description: zOptText, requestId: z.string().trim().min(8).max(64).optional() }), req.body);
+    // Idempotent: the app sends one request id per create form, so a retry or a double tap returns the first result.
+    if (body.requestId) {
+      const prior = db.prepare("SELECT * FROM orgs WHERE created_by = ? AND create_request_id = ?").get(userId, body.requestId);
+      if (prior) return { org: orgSummary(ctx, prior, userId) };
+    }
+    // One person owning two workspaces with the same name can't tell them apart: refuse, and point at the existing one.
+    const sameName = db
+      .prepare(
+        `SELECT o.id FROM orgs o JOIN org_members m ON m.org_id = o.id AND m.user_id = ? AND m.role = 'OWNER'
+          WHERE lower(trim(o.name)) = lower(trim(?)) LIMIT 1`,
+      )
+      .get(userId, body.name) as { id: string } | undefined;
+    if (sameName) throw new ApiError(409, "org_name_taken", `You already own a workspace called "${body.name.trim()}". Open it, or choose another name.`, { orgId: sameName.id });
     const id = newId("o");
     const t = now();
     let slug = slugify(body.name);
     if (db.prepare("SELECT 1 FROM orgs WHERE slug = ?").get(slug)) slug = `${slug}-${humanCode(4).toLowerCase()}`;
     db.transaction(() => {
-      db.prepare("INSERT INTO orgs (id, name, slug, description, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
-        id,
-        body.name,
-        slug,
-        body.description ?? null,
-        userId,
-        t,
-        t,
-      );
+      db.prepare(
+        "INSERT INTO orgs (id, name, slug, description, created_by, created_at, updated_at, create_request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run(id, body.name, slug, body.description ?? null, userId, t, t, body.requestId ?? null);
       db.prepare("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, 'OWNER', ?)").run(id, userId, t);
     })();
     ctx.audit({ actorId: userId, orgId: id, action: "org.create", target: id });
@@ -649,10 +656,12 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     return { ok: true };
   });
 
+  /** The usable invitation for [code]; otherwise 404 with a code saying why (not found, revoked, expired, used up, unavailable). */
   const findInvite = (code: string) => {
-    const inv = findOrgInvite(db, authz, code);
-    if (!inv) throw notFound("This invite is invalid, expired or already used");
-    return inv;
+    const inv = lookupOrgInvite(db, code);
+    const problem = orgInviteProblem(authz, inv);
+    if (problem) throw new ApiError(404, problem, INVITE_PROBLEMS[problem]);
+    return inv!;
   };
 
   const inviteRate = { preHandler: requireAuth(ctx), config: { rateLimit: { max: 20, timeWindow: "1 minute" } } };
@@ -662,7 +671,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const inv = findInvite(code);
     const org = db.prepare("SELECT * FROM orgs WHERE id = ?").get(inv.org_id) as any;
     return {
-      org: { id: org.id, name: org.name, description: org.description },
+      // Same org shape as everywhere else (the app decodes it with the same model; without the slug it refused the response).
+      org: { id: org.id, name: org.name, slug: org.slug, description: org.description },
       role: inv.role,
       branch: inv.branch_id ? (db.prepare("SELECT id, name FROM branches WHERE id = ?").get(inv.branch_id) as any) : null,
       team: inv.team_id ? (db.prepare("SELECT id, name FROM teams WHERE id = ?").get(inv.team_id) as any) : null,
@@ -674,10 +684,19 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const userId = me(req).userId;
     const { code } = parse(z.object({ code: z.string().min(8).max(40) }), req.body);
     const t = now();
-    const result = db.transaction(() => joinOrgByInvite(ctx, findInvite(code), userId, t))();
-    ctx.audit({ actorId: userId, orgId: result.orgId, action: "invite.accept", target: result.inviteId, detail: result.role });
-    notifyOrg(ctx, result.orgId);
-    return { org: orgSummary(ctx, db.prepare("SELECT * FROM orgs WHERE id = ?").get(result.orgId), userId) };
+    // One transaction: two taps (or two people racing for the last use) can't both pass the checks and over-use it.
+    const result = db.transaction(() => {
+      const known = lookupOrgInvite(db, code);
+      // Already joined through this invite (a retry or a double tap): succeed again without using it up, even if
+      // that first accept took its last use. Grants nothing the person doesn't already have.
+      if (known && inviteAlreadySatisfied(authz, db, known, userId)) return { orgId: known.org_id, inviteId: known.id, role: authz.orgRole(known.org_id, userId)!, repeated: true };
+      return { ...joinOrgByInvite(ctx, findInvite(code), userId, t), repeated: false };
+    })();
+    if (!result.repeated) {
+      ctx.audit({ actorId: userId, orgId: result.orgId, action: "invite.accept", target: result.inviteId, detail: result.role });
+      notifyOrg(ctx, result.orgId);
+    }
+    return { org: orgSummary(ctx, db.prepare("SELECT * FROM orgs WHERE id = ?").get(result.orgId), userId), alreadyMember: result.repeated };
   });
 
   // ───────────── Channels ─────────────

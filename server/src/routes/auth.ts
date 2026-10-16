@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { type AppContext, bearer, me, parse, requireAuth, zKey, zName, zSig } from "../context.js";
 import { canonical, isValidPublicKey, keyFingerprint, verifyEd25519 } from "../crypto.js";
-import { findOrgInvite, findRegistrationInvite, joinOrgByInvite } from "../invites.js";
+import { findOrgInvite, findRegistrationInvite, INVITE_PROBLEMS, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../invites.js";
 import { ApiError, badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex, unauthorized } from "../util.js";
 import { evictUserDevicesFromCalls } from "./calls.js";
 import { notifyOrg } from "./orgs.js";
@@ -141,7 +141,10 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
           }
           // An org invite admits the person and joins them to that org in one step.
           if (org) return { via: `org-invite:${org.id}`, joined: joinOrgByInvite(ctx, org, userId, t) };
-          throw new ApiError(403, "invalid_invite", "This invitation code is invalid, expired or already used");
+          // A known org invite that can't be used says why (expired, revoked, used up…); the code stays invalid_invite.
+          const problem = orgInviteProblem(ctx.authz, lookupOrgInvite(ctx.db, body.inviteCode!));
+          const why = problem && problem !== "invite_not_found" ? INVITE_PROBLEMS[problem] : "This invitation code is invalid, expired or already used";
+          throw new ApiError(403, "invalid_invite", why, problem ? { reason: problem } : undefined);
         }
         return { via: null, joined: null };
       })();

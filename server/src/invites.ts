@@ -30,14 +30,56 @@ export interface RegistrationInviteRow {
 const usable = (r: { revoked_at: number | null; expires_at: number; uses: number; max_uses: number } | undefined) =>
   !!r && !r.revoked_at && r.expires_at > now() && r.uses < r.max_uses;
 
+/** Why an org invitation code can't be used, as the API reports it (status 404 for all of them, code tells which). */
+export type InviteProblem = "invite_not_found" | "invite_revoked" | "invite_expired" | "invite_used_up" | "invite_unavailable";
+
+export const INVITE_PROBLEMS: Record<InviteProblem, string> = {
+  invite_not_found: "This invite code doesn't exist. Check the code with the person who sent it.",
+  invite_revoked: "This invite was cancelled by the person who created it. Ask them for a new one.",
+  invite_expired: "This invite has expired. Ask for a new one.",
+  invite_used_up: "This invite has already been used as many times as it allows. Ask for a new one.",
+  invite_unavailable: "This invite can no longer be used: whoever created it can't invite people there any more. Ask for a new one.",
+};
+
+/** The org invitation stored for this code (usable or not), or undefined if no invitation has that code. */
+export function lookupOrgInvite(db: DB, code: string): OrgInviteRow | undefined {
+  return db.prepare("SELECT * FROM invitations WHERE code_hash = ?").get(sha256Hex(normalizeCode(code))) as OrgInviteRow | undefined;
+}
+
 /**
- * A usable org invitation for this code: not revoked, expired or used up, and its creator may still
- * issue it (T3.1). An invite made by someone who has since been demoted or removed stops working.
+ * Checks an org invitation: usable means not revoked, expired or used up, its branch/team not archived (D-14), and its
+ * creator may still issue it (T3.1): an invite made by someone who has since been demoted or removed stops working.
  */
+export function orgInviteProblem(authz: Authz, inv: OrgInviteRow | undefined): InviteProblem | null {
+  if (!inv) return "invite_not_found";
+  if (inv.revoked_at) return "invite_revoked";
+  if (inv.expires_at <= now()) return "invite_expired";
+  if (inv.uses >= inv.max_uses) return "invite_used_up";
+  if (authz.scopeArchived(inv.branch_id, inv.team_id)) return "invite_unavailable";
+  if (!authz.canIssueInvite(inv.org_id, inv.created_by, inv.role, inv.branch_id, inv.team_id)) return "invite_unavailable";
+  return null;
+}
+
+/** A usable org invitation for this code, or undefined (see [orgInviteProblem] for why not). */
 export function findOrgInvite(db: DB, authz: Authz, code: string): OrgInviteRow | undefined {
-  const inv = db.prepare("SELECT * FROM invitations WHERE code_hash = ?").get(sha256Hex(normalizeCode(code))) as OrgInviteRow | undefined;
-  if (!inv || !usable(inv) || authz.scopeArchived(inv.branch_id, inv.team_id)) return undefined; // D-14
-  return authz.canIssueInvite(inv.org_id, inv.created_by, inv.role, inv.branch_id, inv.team_id) ? inv : undefined;
+  const inv = lookupOrgInvite(db, code);
+  return orgInviteProblem(authz, inv) ? undefined : inv;
+}
+
+/**
+ * Whether accepting [inv] would change nothing for [userId]: they're already in its org with at least its role and
+ * already in the branch/team it names. Accepting it again then succeeds without using up the invite, so a retry or
+ * a double tap never consumes a second use or fails with "used up".
+ */
+export function inviteAlreadySatisfied(authz: Authz, db: DB, inv: OrgInviteRow, userId: string): boolean {
+  const existing = authz.orgRole(inv.org_id, userId);
+  if (!existing) return false;
+  const rank: Record<string, number> = { GUEST: 0, MEMBER: 1, ADMIN: 2, OWNER: 3 };
+  if (rank[inv.role] > rank[existing]) return false;
+  if (existing === "GUEST") return true; // guests aren't added to branches or teams
+  if (inv.branch_id && !db.prepare("SELECT 1 FROM branch_members WHERE branch_id = ? AND user_id = ?").get(inv.branch_id, userId)) return false;
+  if (inv.team_id && !db.prepare("SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?").get(inv.team_id, userId)) return false;
+  return true;
 }
 
 /** A usable registration invite for this code. */
