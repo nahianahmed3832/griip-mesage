@@ -18,7 +18,10 @@
  └───────────────────────────────┘
 ```
 
-Single-server internal beta. This is **not** a decentralised network yet. The protocol boundaries allow one later (§8).
+The diagram shows the GriipBuddy production instance. Anyone can run the same stack (`SELF_HOSTING.md`); each instance is independent,
+and federated servers form one network: users address each other as `@name:domain`, home servers exchange signed ciphertext, and a
+replicated registry of independently operated core nodes verifies servers (`FEDERATION_PROTOCOL.md`, §9). The app can also hold one
+account per server as separate on-device profiles (`ANDROID_SERVER_SETUP.md`).
 
 ## 2. Repository layout
 
@@ -28,18 +31,25 @@ Single-server internal beta. This is **not** a decentralised network yet. The pr
 | `server/` | Relay/API: Node 22, TypeScript, Fastify 5, better-sqlite3, zod, livekit-server-sdk. Tests use vitest. |
 | `server/test/support/griipClient.ts` | Reference protocol client (same crypto as the app), used by the tests and the bot |
 | `tools/griip-bot/` | Headless test peer: chat, and calls through `@livekit/rtc-node` |
-| `deploy/` | `compose.yaml`, LiveKit config template, preflight/deploy/verify scripts |
-| `docs/` | Design system, architecture, security, retention, deployment, testing, issues, decisions, progress |
+| `deploy/` | `compose.yaml`, `.env.example`, LiveKit config template; scripts: `bundle.sh` (assemble a deployment), `gen-config.sh`, `validate-env.sh`, `preflight.sh`, `deploy.sh`, `verify.sh`, `backup.sh`, `restore.sh` |
+| `docs/` | Design system, architecture, security, retention, deployment, self-hosting, server setup, calling, voice messages, troubleshooting, testing, issues, decisions (`DECISIONS.md` and `decisions/`), progress |
 
 ## 3. Android app
 
 - **MVVM with repositories** and manual DI (`di/AppContainer.kt`, decision D-07). Coroutines and Flow throughout. Navigation Compose uses string routes.
+- **One container per server profile.** `GriipApp` holds the active `AppContainer`, built for a `ProfileStorage` (Keystore alias, sealed
+  identity preferences, SQLCipher database, attachment folder, server setting). Switching, adding, removing or erasing a profile closes the
+  container and builds a new one; `MainActivity` rebuilds the UI tree for it. The original install is the `default` profile with its
+  original storage names (ADR 0002).
 - **Layers**
   - `crypto/`: Keystore sealer, identity store, Ed25519/HPKE/AES-GCM wrappers, `EnvelopeV1` (behind the `MessageCrypto` interface), recovery code, fingerprints.
   - `data/api/`: `ApiClient` (OkHttp, kotlinx.serialization; re-authenticates on 401 by signing a challenge) and `RealtimeClient` (one WebSocket, exponential backoff with jitter, reconnects when the network returns).
   - `data/db/`: Room entities for conversations, messages, outbox, users (with pinned identity keys), call log, call keys and key-value pairs. SQLCipher open-helper.
   - `data/repo/`: session, directory (TOFU pinning), conversations, messages, orgs, settings.
-  - `call/`: `CallManager` (LiveKit room lifecycle, E2EE key handling, screen share), `CallService` (microphone/camera foreground service), incoming-call notification.
+  - `call/`: `CallManager` (LiveKit room lifecycle, E2EE key handling, screen share, ring recovery, alerted/busy), `CallReachability.kt`
+    (`RingRecovery`, `MediaFlowMonitor`, `MediaPath`, `CallFailure`), `MediaSecurityTracker`, `FrameCryptorGuard`, `CallDiagnostics`,
+    `CallService` (microphone/camera foreground service), incoming-call notification. See `CALLING_AND_E2EE.md`.
+  - `voice/`: voice message recording (`AndroidAudioRecorder`, `VoiceDraftController`) and app-wide playback (`VoicePlayer`). See `VOICE_MESSAGES.md`.
   - `service/RelayConnectionService`: optional "stay connected" foreground service (type `remoteMessaging`) for background delivery without FCM.
   - `ui/`: theme tokens, reusable glass components, screens.
 - **Message pipeline**
@@ -57,13 +67,16 @@ Single-server internal beta. This is **not** a decentralised network yet. The pr
 
 - `src/app.ts` builds Fastify (rate limit, websocket, content parsers, error handler) and registers the route modules in `src/routes/`.
 - `src/authz.ts` holds all authorisation logic (§5). `src/hub.ts` tracks online sockets and pushes queue items. `src/jobs.ts` runs retention cleanup and call reconciliation every 60 s.
-- SQLite in WAL mode with foreign keys on; migrations are in `server/migrations/` (§6). A single process means writes are serialised. Multi-row operations use transactions.
+- SQLite in WAL mode with foreign keys on; migrations are in `server/migrations/` (§6), applied at start. A single process means writes are serialised. Multi-row operations use transactions.
+- Public, unauthenticated: `GET /healthz` and `GET /v1/server-info` (instance name, version, client API range, registration mode, calling,
+  limits). Operator CLI `src/admin.ts`, including `backup` (online SQLite snapshot, `src/backup.ts`) and `verify-backup`.
 - Realtime frames:
-  - Server → client: `hello`, `queue` (+`backlog`), `queue.drained`, `typing`, `presence`, `call` (`ring`/`started`/`updated`/`ended`/`declined`/`dismissed`), `conv.updated`, `org.updated`, `devices.changed`.
+  - Server → client: `hello`, `queue` (+`backlog`), `queue.drained`, `typing`, `presence`, `call` (`ring`/`started`/`updated`/`ended`/`declined`/`dismissed`/`alerted`), `conv.updated`, `org.updated`, `devices.changed`.
   - Client → server: `ack`, `typing`, `ping`.
 - Calls:
   - `POST /v1/calls` creates one live call per conversation and issues a 10-minute room-scoped LiveKit token.
-  - `join`/`decline`/`leave`/`end`/`connected` endpoints change call state.
+  - `join`/`decline` (optional `reason`: `declined` or `busy`)/`leave`/`end`/`connected` endpoints change call state; `alerted` records that a
+    callee device is ringing; `GET /v1/calls/active` lists live calls, which the app uses to recover rings it missed while reconnecting.
   - LiveKit webhooks plus a 60 s reconciliation against `RoomService.listParticipants` keep the state correct. Unanswered 1:1 calls end as `missed` after 45 s.
 
 ## 5. Authorisation matrix (enforced in `authz.ts`, tested in `test/orgs.test.ts`)
@@ -103,7 +116,7 @@ Permanent organisational metadata:
 Temporary data:
 - `delivery_queue` (≤ 7 d), `submitted_messages` (idempotency, ≤ 7 d), `attachments` (≤ 7 d)
 - `auth_challenges` (2 min), `sessions` (7 d), `pairing_requests` (10 min)
-- `calls` / `call_participants` (operational)
+- `calls` / `call_participants` (operational; `calls.alerted_at` since migration 003)
 
 ## 7. Scaling limits (honest)
 
@@ -117,7 +130,28 @@ Evaluated item by item in `DECENTRALISATION_READINESS.md` (2026-10-16).
 
 - The protocol is already server-agnostic: clients hold their keys and encrypt end to end, and a relay only routes ciphertext and checks signatures.
   The exception is group membership, which the server asserts and clients don't verify.
+- Done (2026-10-16): the app holds one account per server as separate profiles, and servers describe themselves in `/v1/server-info`.
+- Done (2026-10-16): federation v1 (§9).
 - The next steps would be:
-  - Make the server URL per organisation (the app already stores it in the session).
   - Federate the user directory with signed identity documents.
   - Run separate media servers per organisation. The call API already returns the LiveKit URL per call.
+
+## 9. Federation (2026-10-16)
+
+```
+ Alice ─▶ Server A ──signed griip-fed/1──▶ Server B ─▶ Bob          core 1 ◀─▶ core 2 ◀─▶ core 3
+            │  outbox (bounded, ordered)       │  shadows of A's users     (registry: descriptors, domain bindings,
+            └──── register / heartbeat / resolve (quorum) ─────────────────▶ leases, decommissions, revocations)
+```
+
+- **Code:** `server/src/federation/` (`identity.ts` server keys and descriptors, `records.ts` decommission/revocation/answers,
+  `resolver.ts` quorum resolution and cache, `transport.ts` signed requests, `service.ts` lookup, shadows, outbox, inbound delivery,
+  calls, `routes.ts` HTTP), `server/src/core/` (core node: `node.ts`, `app.ts`, `index.ts`). Migrations 004 and 005.
+- **Server side:** remote users are shadow rows with their real ids (ADR 0006); federated DMs have a derived id; fan-out sends remote
+  devices' rows to the outbox; receipts, attachments (pushed ciphertext) and call events follow; calls are hosted by the caller's server
+  (ADR 0007). Federation is off unless `FEDERATION_DOMAIN` is set.
+- **App side:** `data/repo/Federation.kt` (`GlobalAddress`, `FederationRepository`), New chat resolves `@name:server` with a verified-identity
+  sheet, conversation header and banners for remote servers, own address in Settings, Block on profiles. Everything else (encryption,
+  pinning, attachments, voice, calls) is the existing code.
+- Specification: `FEDERATION_PROTOCOL.md`; identities: `GLOBAL_IDENTITIES_AND_DISCOVERY.md`; lifecycle: `SERVER_LIFECYCLE.md`; threats and
+  metadata: `SECURITY_AND_PRIVACY.md`; audit and plan: `FEDERATION_GAP_ANALYSIS.md`.

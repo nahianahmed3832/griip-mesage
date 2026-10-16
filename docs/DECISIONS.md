@@ -87,6 +87,7 @@
   media isn't decoding, but it isn't specific to keys.
 
 **D-16 (proposed, for owner confirmation): decentralisation means independent instances, not federation (2026-10-16, Phase 17).**
+*Superseded the same day by `decisions/0005-federated-network.md`: the owner asked for a federated network.*
 - Each organisation can run its own instance and media server. Griip has no central account service.
 - Federation between instances, and any blockchain or global ledger, are not planned.
 - Client-verifiable group membership (MLS or a signed membership log) and signed identity documents come first, through a separate

@@ -200,7 +200,7 @@ No route is unreachable, and no button is a no-op: every tab and route in `AppRo
 | Clients own their keys; the relay sees only ciphertext | WORKING | Groundwork is in place |
 | Server URL per session | PARTIALLY WORKING | Stored per session; set before sign-up |
 | Group membership verified by clients (signed group state) | MISSING | The server asserts membership (`SECURITY.md` §4) |
-| Federation and identity documents | MISSING | — |
+| Federation and identity documents | IMPLEMENTED (v1: DMs, receipts, attachments, voice, 1:1 calls; 2026-10-16, not deployed) | `FEDERATION_PROTOCOL.md` |
 | Horizontal scaling (shared pub/sub) | MISSING | In-memory hub (`ARCHITECTURE.md` §7) |
 
 ## Existing features that should not be rebuilt

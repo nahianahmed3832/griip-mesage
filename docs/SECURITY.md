@@ -116,6 +116,16 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
   unlocked, go only to the app's own non-exported receiver, and *Reply* is offered only where the user may post. "Sign out & erase"
   now also removes message notifications, so decrypted text doesn't stay in the shade.
 
+- **Server profiles (2026-10-16, ADR 0002):** each server account on the phone has its own Keystore key
+  (`griip_master_v1` for the first account, `griip_master_v1_<id>` for others), its own sealed identity and session preferences,
+  its own SQLCipher database and passphrase, and its own attachment folder. Profiles never read each other's keys; switching
+  closes one and opens the other; identity keys are never copied between servers. The profile list (`griip_profiles`) holds only
+  random ids, server addresses and the active id, unencrypted in app-private storage. Erasing or removing a profile deletes its
+  Keystore key, preferences, database and files, and nothing of the other profiles.
+- **Voice messages:** a recording is written to `cacheDir/voice/` (app-private) while it's recorded and previewed, then deleted
+  when it's sent, cancelled or abandoned; leftovers older than 6 hours are removed. Once sent, the clip is an ordinary encrypted
+  attachment (same keys, hashes and storage as files).
+
 ## 6b. Scanned QR codes
 
 - The in-app scanner (T4.2) decodes frames on the phone and accepts **only Griip invite codes** (`InviteCodes.fromScan`). It never
@@ -160,6 +170,17 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
   - Until deployed, production still has the audit's finding (probe P3).
   The key is per call and is deleted from the device 24 h after the call ends.
 - LiveKit tokens are JWTs scoped to one room, valid for 10 minutes, and issued only to conversation members.
+- **Call reachability (2026-10-16):** ring recovery reads `GET /v1/calls/active` (only the user's own conversations); `POST /alerted` tells
+  the caller that a callee device is ringing (members only, not the caller, once per call), and a busy decline tells the caller the callee
+  is in another call. These reveal device activity to the people you share the conversation with, similar to delivery receipts. No key,
+  token or address is logged; the new call diagnostics record timing, flow state and the candidate *type* only.
+
+## 7b. Public server information
+
+`GET /healthz` and `GET /v1/server-info` are unauthenticated by design (the app checks a server before any account exists). They
+return version, client API range, registration mode, an optional instance name, whether calling is configured, and limits. They
+don't return secrets, file paths, usage numbers or user data (`server/test/server_info.test.ts`). The LiveKit API secret, the database
+and the operator CLI are never exposed to the app or the network.
 
 ## 8. Server hardening
 
@@ -189,3 +210,8 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
 - Logs never contain request bodies, Authorization headers or message content.
 - There is no admin HTTP surface. Operator commands run through `docker compose exec api node dist/admin.js`.
 - The API and LiveKit signalling bind to `127.0.0.1` behind the host's nginx TLS. Only LiveKit's media ports (7881/tcp, 7882/udp) are public.
+
+## 9. Federation
+
+Federated servers, core nodes, metadata and the threat model: `SECURITY_AND_PRIVACY.md`. Envelopes, keys and storage on devices are as
+described above; nothing in federation decrypts or re-encrypts content.

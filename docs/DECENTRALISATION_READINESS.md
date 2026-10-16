@@ -1,5 +1,8 @@
 # Decentralisation readiness (Phase 17)
 
+> **Superseded on 2026-10-16 (later the same day):** the owner clarified that Griip must be a federated network. Federation v1 is now
+> implemented (`FEDERATION_PROTOCOL.md`, ADR 0005). This evaluation is kept as the record of the earlier assessment.
+
 2026-10-16. **Scope:** an evaluation, not an implementation. It covers each item the master prompt lists, judged from the current code.
 Nothing here changes `griip-envelope-v1`, the org model or production.
 

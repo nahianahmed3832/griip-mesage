@@ -13,6 +13,8 @@ Test environments:
 - **Emulator:** Android 16 (API 36.1), arm64.
 - **Physical phone:** HONOR ELI-AN00, MagicOS 10 / Android 16, arm64, 1200×2664, connected over USB and wireless debugging.
 - **Second participant:** the headless Griip Bot (`tools/griip-bot`), using the TypeScript reference client and the official `@livekit/rtc-node` SDK.
+- **Isolated local instance (2026-10-16, §7):** the server from this checkout (`node dist/index.js`) with its own data directory, plus
+  Homebrew `livekit-server` 1.13.10, on the development Mac; reached from devices through `adb reverse`. Never connected to production.
 
 There was no second physical phone. Every two-party test used the phone plus the bot.
 
@@ -26,12 +28,20 @@ There was no second physical phone. Every two-party test used the phone plus the
 | ABIs | PASS | arm64-v8a, armeabi-v7a, x86_64 |
 | Installs and launches (emulator) | PASS | No crash. Cold start 4.7–6.6 s on the emulator (debug build) |
 | Installs and launches (physical phone) | PASS | No crash. Cold start **1.97 s** (`am start -W`), container init 190 ms |
-| Release (R8) build | NOT VERIFIED | `assembleRelease` succeeds (2026-10-16, about 65 MB unsigned); never run on a device |
+| Release (R8) build | NOT VERIFIED | `assembleRelease` succeeds (2026-10-16, again after this release's changes, 65 MB unsigned); never run on a device |
 | Android unit tests | PASS | `./gradlew :app:testDebugUnitTest` → `VideoSinkBindingTest` 8/8 (renderer lifetime, sink ordering, track switching, stop/start, release), `FrameCryptorGuardTest` 8/8 (observer never throws, late callbacks dropped, callback failures reported, map copy survives concurrent changes, state mapping, LiveKit internals still where the guard looks), `MediaSecurityTrackerTest` 16/16 (badge needs decryption evidence; D-17) |
 
-## 2. Backend (vitest: 87 tests, all PASS on 2026-10-16)
+## 2. Backend (vitest: 129 tests, all PASS on 2026-10-16)
 
-`cd server && npm test` gives 15 files and 87 tests passed, and `tsc --noEmit` is clean. Earlier results on this list were recorded on older builds (32, 36, 69, 81).
+`cd server && npm test` gives 20 files and 129 tests passed, and `tsc --noEmit` is clean. Earlier results on this list were recorded on older builds (32, 36, 69, 81, 87, 98).
+Federation suites (§8): `federation_registry.test.ts` (9) and `federation_e2e.test.ts` (22).
+Added for calls, self-hosting and backups (2026-10-16, second pass):
+- `call_reachability.test.ts` (4): ringing calls are listed for an offline callee; `alerted` once per call, refused for the caller,
+  non-members and ended calls; `busy` decline ends the call and tells the caller; invalid reason rejected; late decline keeps `hangup`.
+- `server_info.test.ts` (3): `/v1/server-info` states `infoVersion`, `api`, `minClientApi`, `version`, `instanceName` (trimmed) and
+  `registration`, and contains no secret or path; `/healthz` works without authentication.
+- `backup.test.ts` (4): a live snapshot is owner-only and verifies (integrity, schema, user count); existing files are never overwritten;
+  a restored snapshot opens and migrates; missing, corrupt, foreign and newer-schema files are rejected.
 Suites added in the 2026-10-16 feature pass. For each, the tests failed with the fix removed, except where noted:
 
 | Suite | Tests | Covers |
@@ -238,6 +248,21 @@ publishing lock (an ordering fix). On the final build only the valid path (V4) w
 | Incoming and connected voice call from Griip Bot | PASS. Neutral "Verifying encryption…" before media; "End-to-end encrypted" once connected; the bot decoded 2,230 frames, 864 audible |
 | TalkBack, font scaling, rotation | NOT VERIFIED |
 
+## 5f. Calls, update and profiles on the phone (2026-10-16, second pass)
+
+Build: this release's working tree (call reachability, voice messages, server profiles), installed with `adb install -r` over the
+redesign build; the owner confirmed the install on the phone. App data kept.
+
+| Check | Status | Evidence |
+|---|---|---|
+| Existing account survives the update | PASS | Servers screen after the update: `msg.griipbuddy.cloud`, "@nahian · first account on this phone", Active. No registry existed before; storage names unchanged |
+| Voice call from Griip Bot (production) | PASS | `media room joined in 1241 ms`, `media security: E2eeActive`, `media Flowing via udp · direct` 4 s after answering; bot decoded 2,806 audio frames with encryption on; same app process before and after |
+| Video call from Griip Bot (production) | PASS | `media room joined in 1166 ms`, E2EE active, `udp · direct`, media flowing; same process |
+| Slow join seen earlier (about 11 s inside LiveKit connect, 2 of 18 calls with `JOIN_FAILURE`) | NOT REPRODUCED | both joins took about 1.2 s over UDP. The new join-time and path diagnostics will show whether a slow join is a TCP fallback when it happens again |
+| `alerted`, busy, ring recovery against production | NOT APPLICABLE | the production server doesn't have this release's server changes (not deployed); verified on the local instance (§7) |
+| Adding a server profile on the phone | PASS | Add a server → `http://localhost:18090` → "Griip local test · server 0.1.0 · calls available · anyone can sign up" plus the http warning → Add and switch; separate `griip-<id>.db` and `griip_identity_<id>` created next to the untouched originals. The owner then created `@nahian2` on the local instance |
+| Voice message on the phone (play, record, send) | NOT VERIFIED | waiting for the owner (the bot sent a voice message to `@nahian2`); see the final report |
+
 ## 6a. Android unit tests (JVM, T2.4 harness)
 
 Run with `cd android && ./gradlew :app:testDebugUnitTest` (JDK: Android Studio's JBR). They're plain JUnit 4 + `kotlinx-coroutines-test` tests,
@@ -271,9 +296,95 @@ with no device or emulator. `crypto/Bytes.kt` uses `java.util.Base64`, so the re
 | `ui/screens/calls/CallLogTextTest` | 4 | PASS | Calls tab: missed vs not answered, durations only for answered calls |
 | `call/MediaSecurityTrackerTest` | 16 | PASS | D-17: verified only with OK/KEY_RATCHETED from every live track (at least one remote); a silent wrong-key peer stays unverified; missing key shows a problem and recovers; key changes leave nothing stale; removed tracks and participants are forgotten and their late callbacks ignored; muted tracks need no proof; a new call starts fresh; SDK default `failureTolerance` is still -1. **8 of 16 fail with the old rule** |
 
-**Totals (2026-10-16):** 118/118 with the UI redesign's tests (110/110 before it; the frame-cryptor guard's tests are committed since b97c09c). Earlier on 2026-10-16: 92 in the working tree, 86 committed. The outbox and the repository's receive wiring still have no JVM tests (D35, D36).
+**Totals (2026-10-16, federation pass):** **142/142** with `data/repo/GlobalAddressTest` (2); `lintDebug` 0 errors; debug and release builds succeed.
+**Totals (2026-10-16, second pass):** **140/140**, with `call/CallReachabilityTest` (7), `voice/VoiceNotesTest` (3),
+`voice/VoiceDraftControllerTest` (6) and `data/repo/ServerProfilesTest` (6) added, and a voice vector in `PayloadVectorsTest`. `lintDebug`: 0 errors.
+Before: 118/118 with the UI redesign's tests (110/110 before it; the frame-cryptor guard's tests are committed since b97c09c). Earlier on 2026-10-16: 92 in the working tree, 86 committed. The outbox and the repository's receive wiring still have no JVM tests (D35, D36).
 **Device check of the Base64 change: BLOCKED.** The phone refused the USB install (`INSTALL_FAILED_ABORTED: User rejected permissions`,
 which needs the owner to confirm on screen).
+
+## 7. Self-hosting and two-client acceptance on an isolated instance (2026-10-16)
+
+Setup: `server/dist` started with `DATA_DIR` in a scratch folder, `REGISTRATION_MODE=open`, `INSTANCE_NAME="Griip local test"`, LiveKit
+keys generated for the test; Homebrew `livekit-server` with `node_ip 127.0.0.1`, TCP 7891, UDP 7892. A second instance ("Community B",
+no LiveKit) on another port. Clients: the emulator (Android 16) and Griip Bot identities created on the instance.
+
+| Check | Status | Evidence |
+|---|---|---|
+| Fresh database, migrations | PASS | `schema_migrations`: 001, 002, 003 applied at first start |
+| `/healthz`, `/v1/server-info` | PASS | `{"ok":true,…,"livekit":true}`; `instanceName "Griip local test"`, `api 1`, `minClientApi 1`, `registration "open"`, `calling true`. Unquoted names with spaces break shell sourcing, now documented in `.env.example` |
+| `bundle.sh` → `gen-config.sh` → `validate-env.sh` | PASS | bundle without `node_modules`/tests/`.DS_Store`; `.env` mode 600, 48-character secret; example URLs → 2 errors; fixed values → 0 errors; drifted key, duplicate port, bad mode → 4 errors; re-bundling kept `.env` and `livekit.yaml` |
+| `docker compose up`, `backup.sh`, `restore.sh` | BLOCKED | Docker isn't installed on this machine; scripts pass `bash -n`. Their building blocks (`admin.js backup`/`verify-backup`) pass `backup.test.ts` |
+| Server check from the app | PASS | production (older server, no new fields): "msg.griipbuddy.cloud · server 0.1.0 · calls available"; bare `localhost:18090` → https → "Can't reach the server…"; `http://localhost:18090` → instance name, calls, open sign-up |
+| Onboarding on a self-hosted server (emulator) | PASS | server saved, `@emutest` created; footer "Server: http://localhost:18090" with the unencrypted-connection warning |
+| Voice message received and played (emulator) | PASS | from the bot (`GRIIP_BOT_SEND_VOICE`, 3.7 s): chat list "🎤 Voice message (0:04)"; bubble with play, seek, `0:04`; play → download, decrypt, "Pause", `0:02 / 0:04`, back to play at the end, audio focus released; seek → `0:03 / 0:04` |
+| Add a profile; duplicate refused | PASS | adding the active server: "You're already using this server."; Community B: "Community B · server 0.1.0 · calls not set up · anyone can sign up" |
+| Switch after adding | **FAIL → fixed → PASS** | first try showed the old profile's (closed) chat list: `MainActivity` read the container outside the scope that recomposes on `generation`. Fixed (`remember(gen)`); afterwards Add and switch opened onboarding immediately. The same bug likely affected "erase this device" before |
+| Isolation | PASS | `emub` exists only on B; `emutest` and the bots only on A; per-profile database and identity files |
+| Switch back | PASS | Servers → Switch → confirm: `@emutest` chat list with the bot conversation and voice message intact, connected |
+| Remove a profile | PASS | B's database, identity preferences and `serverUrl@<id>` removed, registry back to the original only; `emub` still exists on server B |
+| Erase a non-original profile | PASS | device revoked on B; onboarding for B with its address; "Other servers on this phone · @emutest · switch back"; switching back worked |
+| Ring + **alerted** (R1) | PASS | emulator showed "Incoming voice call"; caller got `alerted` about 1 s after ringing; decline → caller `ended (reason declined)`; `calls.alerted_at` set |
+| **Ring recovery** (R2) | PASS | app force-stopped; ring sent at 19:45:56; app launched 19:46:04; `GET /v1/calls/active` at 19:46:09; incoming-call screen shown and `alerted` the same second |
+| **Busy** (R3) | PASS | while a first call rang, a second 1:1 call ended `busy` within 1 s and never rang or alerted; the first kept ringing |
+| Call media on the instance | NOT VERIFIED | the emulator has no microphone permission (granting it needs the owner); a phone ↔ bot call on the instance is pending |
+
+Permission prompts: no permission was granted by tooling except one `pm grant` of notifications on the emulator, which was
+immediately revoked (state restored). The notification prompt on the emulator was dismissed with Back (nothing granted).
+
+## 8. Federation (2026-10-16)
+
+### 8.1 Automated (vitest, real HTTP between in-process servers)
+
+Three core nodes and three home servers (A `a.test`, B `b.test`, C `c.test`) per run; reference clients encrypt and verify exactly like the app.
+A message counts as delivered only after the recipient's client verified the certificate against its pinned key, the signature, the HPKE
+unwrap and the AES-GCM tag.
+
+| Area | Tests | Status |
+|---|---|---|
+| Server identity: self-certifying id, rotation keeps the id, tampering, expiry, forged chain | registry 1 | PASS |
+| Join only with endpoint challenge; spoofed endpoint, taken domain, http/host mismatch in production | registry 2–3 | PASS |
+| Invalid, expired, stale and **rolled-back** descriptors (a real stolen old key) and old-key heartbeats | registry 4 | PASS (mutation-checked: removing the key-chain check fails it) |
+| Replication to 3 nodes with independent re-challenge; idempotent replays | registry 5 | PASS |
+| Unreachable without deletion; revalidation on return; no duplicate registration | registry 6 | PASS |
+| Decommission replicated, never re-registrable, domain freed for a new id | registry 7 | PASS |
+| Revocation needs a threshold (1 signature refused, 2 accepted), replicated | registry 8 | PASS |
+| Discovery continues with one node down; returning node catches up | registry 9 | PASS |
+| Global lookup through a quorum; same ids and keys as on the home server; unknown names/servers; shadows can't sign in, aren't searchable, can't join groups | e2e 1–3 | PASS |
+| E2EE messages both ways A ⇄ B; same conversation id on both; cross-server delivery receipts | e2e 4–5 | PASS |
+| No plaintext in either server's database + WAL | e2e 6 | PASS |
+| Offline recipient, delivery on reconnect; retried item deduplicated | e2e 7 | PASS |
+| Bounded outbox (503 when full); expired items dropped | e2e 8 | PASS |
+| Voice message (attachment) pushed to B, downloaded from B, hash-verified and decrypted; non-member refused | e2e 9 | PASS |
+| Calls: ring across servers, alerted, token from A for B's user (verified JWT: identity and room), ACTIVE on both, end on both; first-contact ring creates the DM; remote decline (`busy`) ends the host's call; forged call actions and events refused | e2e 10–13 | PASS (mutation-checked) |
+| Third server delivering as A's user refused (`sender_not_from_peer`, exact code) | e2e 14 | PASS (mutation-checked) |
+| Unsigned (401), replayed (401), misdirected (421) and unregistered-server (403) requests | e2e 15 | PASS |
+| Substituted identity key accepted by B's server but refused by Bob's client (pinning), restored afterwards | e2e 16 | PASS |
+| Peer outage: messages kept, retried with backoff, delivered in order after recovery | e2e 17 | PASS |
+| Live key rotation: delivery continues; old key refused (401) | e2e 18 | PASS |
+| Operator block → 403 "peer_refused" | e2e 19 | PASS |
+| Decommission: requests refused (410), id can't re-register | e2e 20 | PASS |
+| **Acceptance:** with 1 of 3 core nodes down, a fresh lookup is verified by 2 nodes and the conversation continues; with 2 down, unknown domains fail closed (503) and known servers keep delivering from cache | e2e 21–22 | PASS |
+
+### 8.2 Local network with the Android app (2026-10-16, this Mac)
+
+Three core nodes (`node dist/core/index.js`, ports 19001–19003, peered), server A (`a.griip.test`, port 18090, existing data from §7, LiveKit) and
+server B (`b.griip.test`, port 18091, existing data, no LiveKit), both restarted with federation on (migrations 004 and 005 applied to the
+existing databases). Emulator (Android 16) with two profiles: `@emutest` on A (created **before** federation) and `@emuonb` on B. `adb reverse`
+for 18090, 18091, 17890, 7891.
+
+| Check | Status | Evidence |
+|---|---|---|
+| Both servers active on all three core nodes | PASS | `/core/v1/domains/*` → active on 19001–19003 |
+| Existing account gets a global address with no re-registration | PASS | Settings on A: `@emutest:a.griip.test` |
+| Bot on A → app on B: lookup through the quorum, text and voice message | PASS | bot: "verified by 3 directory nodes, quorum"; B mirrored conversation `cf_M_mfu…` and shadow `griipbot9251:a.griip.test`; app chat list "🎤 Voice message (0:04)"; header `@griipbot9251:a.griip.test`, no call buttons (B has no LiveKit); voice played `0:03 / 0:04` from B |
+| App on B → bot on A | PASS | bot decrypted "Hello across servers" and the app's read receipt; the app showed the echo and **Read** |
+| No plaintext on either server | PASS | database + WAL and attachment stores of A and B searched for the texts and the voice audio: none |
+| **Acceptance on the device**, core node 3 stopped | PASS | New chat on B → `@emutest:a.griip.test` → sheet "Server a.griip.test: identity verified by 2 directory nodes"; `@emuonb` (B) → `@emutest` (A): delivered; switched to A: decrypted "Hi from server B", replied "Hi back from server A"; switched to B: reply decrypted, first message **Read** |
+| Core node 3 rejoins and catches up | PASS | replication cursors from both peers; both domains active on node 3 |
+| Cross-server call with real media | PASS (bots) | bot on A called bot on B by address: E2EE on both sides; ~2,420 audio frames and ~220 video frames (640×360) decoded each way through A's LiveKit; B's bot got its token via B → A |
+| Cross-server call in the Android app | NOT VERIFIED | the emulator has no microphone permission (granting it needs the owner) and the phone wasn't available for this step |
+| Physical phone in the federated run | NOT VERIFIED | the phone has the previous build; installing needs the owner's tap |
 
 ## 6. Visual review
 
@@ -335,6 +446,41 @@ cd tools/griip-bot && GRIIP_BOT_WRONG_KEY=1 npm run bot -- call <yourUsername> v
 ```
 
 Expected: the first alternates "Encryption problem" / "End-to-end encrypted"; the second shows "Verifying encryption…" throughout.
+
+Federation suites (§8.1):
+
+```bash
+cd server && npx vitest run test/federation_registry.test.ts test/federation_e2e.test.ts
+```
+
+Local federated network (§8.2): build the server, start three core nodes with `node dist/core/index.js` (`HOST`, `PORT`, `CORE_DATA_DIR`,
+`CORE_PEERS`, `CORE_ALLOW_HTTP=true`; read each node's key from `/core/v1/info` first), then each server with `FEDERATION_DOMAIN`,
+`FEDERATION_PUBLIC_URL`, `FEDERATION_CORE_NODES`, `FEDERATION_ALLOW_HTTP=true`. The bot takes a full address as the peer:
+
+```bash
+cd tools/griip-bot && GRIIP_SERVER=http://localhost:18090 GRIIP_BOT_ID=bot-identity-local.json npm run bot -- call someone:b.griip.test video 30
+```
+
+Local isolated instance (§7). Build the server, then start it with its own data directory and open registration, and run
+`livekit-server --config <file>` with matching keys (`node_ip: 127.0.0.1`, TCP 7891, UDP 7892, webhook to the local API):
+
+```bash
+cd server && npm run build
+```
+
+```bash
+cd server && DATA_DIR=/tmp/griip-local HOST=127.0.0.1 PORT=18090 REGISTRATION_MODE=open LIVEKIT_API_KEY=<key> LIVEKIT_API_SECRET=<secret of 32+ characters> LIVEKIT_PUBLIC_URL=ws://localhost:17890 LIVEKIT_API_URL=http://127.0.0.1:17890 node dist/index.js
+```
+
+Map the ports into each device with `adb reverse` (`ANDROID_SERVER_SETUP.md`), use `http://localhost:18090` in a debug build, and
+point the bot at the instance with its own identity file:
+
+```bash
+cd tools/griip-bot && GRIIP_SERVER=http://localhost:18090 GRIIP_BOT_ID=bot-identity-local.json GRIIP_BOT_SEND_VOICE=/path/clip.m4a GRIIP_BOT_VOICE_MS=3700 npm run bot -- chat <username> 600
+```
+
+A second identity (`GRIIP_BOT_ID=bot-identity-local2.json`) calling while the first rings exercises busy; the bot logs its call's
+`alerted`, `declined` and `ended (reason …)` events.
 
 Wrong-key E2EE check: call the bot from the phone while two bot devices answer, one of them with a wrong key:
 

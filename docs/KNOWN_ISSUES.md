@@ -147,6 +147,18 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
 - Cold start on a debug build is about 2 s on the test phone. The release (R8) build compiles but hasn't been run on a device.
 - ~~Call records are never pruned on the server.~~ Ended calls older than 90 days are pruned (2026-10-16, not yet deployed).
 
+- **Server profiles (2026-10-16):** only the active server is connected. Messages and calls for other servers on the phone wait on those
+  servers (messages ≤ 7 days) and arrive after switching back; there are no notifications for inactive profiles. Appearance and
+  behaviour settings are shared by all profiles. (Since federation, one account can already reach people on other federated servers.)
+- **Federation v1 (2026-10-16):** DMs, receipts, attachments, voice messages and 1:1 calls only; groups, channels, typing and presence stay
+  server-local; exact-address lookup only (no global search); no account migration between servers; no sealed sender; the host's media
+  server sees a remote callee's IP. Not deployed to production; the Docker variants of the core node and of federated backups weren't run.
+- **Voice messages (2026-10-16):** not offered inside threads (they'd go to the main conversation, like files); no waveform, speed control or
+  transcription. Recording on the phone hasn't been confirmed yet (`TESTING.md` §5f); receiving and playing were verified on the emulator.
+- **Call reachability (2026-10-16):** ring recovery, `alerted` and busy need this release's server (not deployed to production). Against the
+  current production server the app falls back to the old behaviour: `/alerted` returns 404 (ignored) and a busy device's decline is a plain decline.
+- A second incoming 1:1 call while the phone is already ringing is declined as busy (there's no call waiting).
+
 ## Operations
 - LiveKit warns that the host's UDP receive buffer is small (425 KB, recommended 5 MB). Raising `net.core.rmem_max` is a host-wide change and was left alone.
 - The VPS has no swap and about 3.6 GB of RAM available, shared with about 20 other containers.

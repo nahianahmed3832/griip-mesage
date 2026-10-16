@@ -121,7 +121,7 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 - **Findings:**
   - Instances are already independent: there is no central account service, the server URL is chosen at onboarding, and the media
     server is set per instance. Every test file starts its own instance.
-  - There is no federation and no relay failover.
+  - There is no federation and no relay failover. *(Superseded 2026-10-16: federation v1 implemented, see `FEDERATION_PROTOCOL.md`.)*
   - The main security gap is that group membership is server-asserted, as `SECURITY.md` §4 already stated.
 - **Recorded:** D-16 (proposed: independent instances, no federation or blockchain; verifiable membership through a separate
   protocol proposal), roadmap Tier 6 order, and `ARCHITECTURE.md` §8 link.

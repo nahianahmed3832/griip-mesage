@@ -219,7 +219,7 @@ Signed group state (MLS or a signed membership log) so clients don't trust serve
 3. A separate proposal for signed identity documents plus MLS or a signed membership log, as a new envelope version.
 4. Multi-process pub/sub only if load requires it.
 
-Federation and blockchains aren't planned.
+Federation and blockchains aren't planned. *(Superseded 2026-10-16: federation v1 is implemented, `FEDERATION_PROTOCOL.md`; no blockchain.)*
 
 ## Tier 7: secondary
 

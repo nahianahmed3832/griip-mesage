@@ -6,7 +6,7 @@ A native Android messaging and collaboration app for GriipBuddy teams, as an int
 - **Calls:** voice and video calls and Android screen sharing over a self-hosted LiveKit SFU.
 - **Storage:** history is kept on the device, and the relay keeps encrypted envelopes for at most 7 days.
 
-> Internal beta on a single server. Read [`docs/SECURITY.md`](docs/SECURITY.md) before using it for sensitive information.
+> Internal beta. Servers can federate (v1, not yet deployed). Read [`docs/SECURITY.md`](docs/SECURITY.md) and [`docs/SECURITY_AND_PRIVACY.md`](docs/SECURITY_AND_PRIVACY.md) before using it for sensitive information.
 
 | | |
 |---|---|
@@ -86,6 +86,11 @@ cd tools/griip-bot && npm run bot -- call <yourUsername> video 120
 - [Design system](docs/DESIGN_SYSTEM.md): how the supplied reference was translated
 - [Architecture](docs/ARCHITECTURE.md) and [Decisions](docs/DECISIONS.md)
 - [Security](docs/SECURITY.md) and [Retention](docs/RETENTION.md)
-- [Deployment](docs/DEPLOYMENT.md)
+- [Deployment](docs/DEPLOYMENT.md) (GriipBuddy production) and [Self-hosting](docs/SELF_HOSTING.md) (your own server)
+- [Connecting the app to a server](docs/ANDROID_SERVER_SETUP.md): server check, several servers on one phone
+- [Calling and call encryption](docs/CALLING_AND_E2EE.md), [Voice messages](docs/VOICE_MESSAGES.md), [Troubleshooting](docs/TROUBLESHOOTING.md)
+- Federation: [protocol](docs/FEDERATION_PROTOCOL.md), [global identities and discovery](docs/GLOBAL_IDENTITIES_AND_DISCOVERY.md),
+  [server lifecycle](docs/SERVER_LIFECYCLE.md), [security and privacy](docs/SECURITY_AND_PRIVACY.md), [audit and plan](docs/FEDERATION_GAP_ANALYSIS.md)
+- [Decision records](docs/decisions/README.md)
 - [Testing](docs/TESTING.md): what passed, failed or wasn't verified, with evidence
 - [Known issues](docs/KNOWN_ISSUES.md) and [Progress](docs/PROGRESS.md)
