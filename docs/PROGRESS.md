@@ -24,6 +24,15 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
 
+### T1.9 "Erase this device" revokes it first (2026-10-16)
+
+- **Defect:** erasing only logged out. The device stayed active on the account, so contacts kept encrypting to keys that no longer existed, and a failed logout was ignored silently.
+- **Change:**
+  - The erase confirmation now calls `DELETE /v1/devices/<own id>` first. The server revokes the device, drops its sessions and queued envelopes, and tells contacts to refresh keys.
+  - Only on success does it wipe.
+  - On failure, a second dialog says the server didn't confirm, explains what that means for contacts, and offers *Erase anyway* or *Cancel*. It never claims a revocation that didn't happen.
+- **Tests:** `server/test/device_erase.test.ts`: after self-revocation, a contact's recipient list has no devices for that person, the queue for the device is empty, and both the token and login are refused. The UI flow itself isn't device-tested.
+
 ### T1.2 Pinned identities enforced (2026-10-16)
 
 - **Defect:** certificates were verified against the identity key the server returned *now*. A relay that substituted a contact's key got future

@@ -126,7 +126,7 @@ Extend these, don't replace them:
 - **Risks:** existing audit rows lack a scope. Filter them by looking up the target id.
 - **Verification:** vitest (probe P2 scenario).
 
-### T1.9 "Erase this device" revokes the device on the server
+### T1.9 "Erase this device" revokes the device on the server. **Done 2026-10-16** (device check pending)
 - **Purpose:** after erasing, contacts keep encrypting to a device whose keys are gone.
 - **Modules:** `SecurityScreen` erase action, `GriipApp.eraseEverything`.
 - **Acceptance:** erase calls `DELETE /v1/devices/<own id>` before wiping. If offline, it warns and offers to erase anyway.

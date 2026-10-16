@@ -41,7 +41,7 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
   - ~~Open registration with no upload quotas on a shared VPS (P5, T1.6).~~ Fixed on the server 2026-10-16 (invite-only registration, streamed uploads with quotas, container CPU and process limits). **Not yet deployed**: testers need an app build with the invitation-code field (added 2026-10-16) before it goes live (`RELEASE_PLAN.md`).
   - ~~Presence is readable by anyone (P4, T1.7).~~ Fixed on the server 2026-10-16, **not yet deployed**.
   - ~~The activity feed leaks other branches' team and channel names (P2, T1.8).~~ Fixed on the server 2026-10-16, **not yet deployed**.
-  - Erasing a device doesn't revoke it (T1.9).
+  - ~~Erasing a device doesn't revoke it (T1.9).~~ Fixed 2026-10-16: it revokes first and asks before erasing if the server can't confirm. The device check is pending.
   - Deleted messages leave decrypted files on the device (T1.10).
   - Backlog and live deliveries interleave and duplicate (P6, T2.1).
   - Realtime frames can be dropped under load (T2.2).

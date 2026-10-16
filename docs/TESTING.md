@@ -42,6 +42,7 @@ Suites added in the 2026-10-16 feature pass. For each, the tests failed with the
 | `presence.test.ts` | 4 | T1.7 (2 fail without the fix) |
 | `activity_scope.test.ts` | 4 | T1.8 (3 fail without the fix) |
 | `interop_vectors.test.ts` | 1 | Shared Kotlin/Node crypto vectors (D22) |
+| `device_erase.test.ts` | 1 | T1.9: a self-revoked device leaves contacts' recipient lists, its queue is emptied, and its token and login are refused |
 | `identity_pinning.test.ts` | 4 | T1.2 against a relay that swaps a contact's identity and device keys (the reference client refuses to send, holds forged messages, and resumes only for the accepted key) |
 The 2026-10-16 audit also ran 7 probe scenarios against the API. All confirmed defects: see `FEATURE_INVENTORY.md`.
 

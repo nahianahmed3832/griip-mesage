@@ -300,6 +300,7 @@ fun SecurityScreen(nav: NavHostController) {
     var showKey by remember { mutableStateOf(false) }
     var revealConfirm by remember { mutableStateOf(false) }
     var eraseConfirm by remember { mutableStateOf(false) }
+    var unconfirmedRevoke by remember { mutableStateOf<String?>(null) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
         item { GriipTopBar("Security & recovery", onBack = { nav.popBackStack() }) }
         item {
@@ -357,12 +358,25 @@ fun SecurityScreen(nav: NavHostController) {
         onConfirm = {
             eraseConfirm = false
             scope.launch {
-                runCatching { container.api.post<OkRes>("/v1/auth/logout") }
-                (ctx.applicationContext as GriipApp).eraseEverything()
+                // Revoke this device first (T1.9): the server drops its sessions and queue, and contacts stop
+                // encrypting to keys that are about to be deleted. Erasing never pretends this happened.
+                val myDevice = container.session.session?.deviceId
+                val revoked = runCatching { container.api.delete<OkRes>("/v1/devices/$myDevice") }
+                if (myDevice != null && revoked.isSuccess) (ctx.applicationContext as GriipApp).eraseEverything()
+                else unconfirmedRevoke = revoked.exceptionOrNull()?.friendly() ?: "not signed in"
             }
         },
         onDismiss = { eraseConfirm = false }, destructive = true,
     )
+    unconfirmedRevoke?.let { reason ->
+        ConfirmDialog(
+            "Couldn't remove this device from your account",
+            "The server didn't confirm it ($reason). If you erase now, contacts may keep encrypting messages to this phone's keys until you remove it from another device under Profile → Devices.",
+            "Erase anyway",
+            onConfirm = { unconfirmedRevoke = null; (ctx.applicationContext as GriipApp).eraseEverything() },
+            onDismiss = { unconfirmedRevoke = null }, destructive = true,
+        )
+    }
 }
 
 // ───────────────────────────── Settings ─────────────────────────────

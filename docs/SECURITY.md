@@ -108,7 +108,7 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
 
 - The Room database is encrypted with **SQLCipher 4.12** (AES-256). Its 256-bit random passphrase is sealed by the Keystore key.
 - Downloaded and sent attachments are written to app-private storage (`filesDir/attachments`). They rely on Android
-  file-based encryption, not SQLCipher. "Sign out & erase" deletes the keys, the database and the attachments.
+  file-based encryption, not SQLCipher. "Sign out & erase" first revokes the device on the server (T1.9), so contacts stop encrypting to it, then deletes the keys, the database and the attachments. If the revocation can't be confirmed, the user is told and decides whether to erase anyway.
 - Plaintext of unsent messages lives only in the encrypted database's outbox table.
 
 ## 7. Call media
