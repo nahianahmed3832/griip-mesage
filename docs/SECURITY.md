@@ -91,9 +91,10 @@ Interop between the Kotlin and Node implementations was verified on a physical p
   - A legitimate re-registration (a lost phone without the recovery key) therefore needs every contact to accept the new key.
   - In a large channel, one member's change pauses sending there until the user accepts it, because the server requires
     every member device in the recipient set.
-- **Group membership is server-asserted.** The server decides who is a member of a channel. A malicious server could add a device
-  and receive future messages. Clients encrypt only to devices certified by members' identity keys, but they don't
-  independently verify the membership list. Fixing this needs MLS-style signed group state.
+- **Group membership is server-asserted.** The server decides who is a member of a group or channel. A malicious server could add
+  a member, with their own certified devices, and that member would receive future messages. Clients encrypt only to devices certified
+  by members' identity keys, and pinning stops fake devices for known users, but clients don't independently verify the membership
+  list. Fixing this needs MLS-style signed group state (`DECENTRALISATION_READINESS.md`, items 3–4).
 - **Deletion and editing are cooperative.** A modified client can ignore delete or edit requests.
 - **Read receipts and typing** are visible to conversation members. Typing and online status are visible to the server.
 - **Session tokens** are bearer tokens. With the debug build's `http://` mode (testing only) they are exposed on the network.

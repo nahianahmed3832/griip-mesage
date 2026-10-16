@@ -213,6 +213,14 @@ Extend these, don't replace them:
 
 Signed group state (MLS or a signed membership log) so clients don't trust server-asserted membership; signed identity documents; per-organisation server URL; pub/sub for more than one API process. **Dependency:** settle the long-term protocol first (Signal or MLS vs `griip-envelope-v1`, D-04).
 
+**Evaluated 2026-10-16** (`DECENTRALISATION_READINESS.md`): instances are already independent (no central account service, media server per instance), but not federated, and membership isn't client-verifiable. Proposed order:
+1. Member-list change lines in conversations (transparency, no protocol change).
+2. App account profiles, one per server.
+3. A separate proposal for signed identity documents plus MLS or a signed membership log, as a new envelope version.
+4. Multi-process pub/sub only if load requires it.
+
+Federation and blockchains aren't planned.
+
 ## Tier 7: secondary
 
 - ~~Prune `calls`, `call_participants` and `audit_log` with documented retention.~~ Done 2026-10-16 (90 / 365 days).

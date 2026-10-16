@@ -70,3 +70,10 @@
 - A department is a label that organises a branch's teams. It has no membership, roles or channels of its own, and grants no access.
 - Access comes only from org, branch, team and channel membership.
 - This matches the implemented schema and authorisation. Department-scoped channels would need their own membership model and are not planned.
+
+**D-16 (proposed, for owner confirmation): decentralisation means independent instances, not federation (2026-10-16, Phase 17).**
+- Each organisation can run its own instance and media server. Griip has no central account service.
+- Federation between instances, and any blockchain or global ledger, are not planned.
+- Client-verifiable group membership (MLS or a signed membership log) and signed identity documents come first, through a separate
+  proposal with a migration plan, an interoperability plan and a security review. `griip-envelope-v1` is not changed in place.
+- Evaluation: `DECENTRALISATION_READINESS.md`.

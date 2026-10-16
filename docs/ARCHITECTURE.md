@@ -113,7 +113,10 @@ Temporary data:
 
 ## 8. Path to independent relays
 
+Evaluated item by item in `DECENTRALISATION_READINESS.md` (2026-10-16).
+
 - The protocol is already server-agnostic: clients hold their keys and encrypt end to end, and a relay only routes ciphertext and checks signatures.
+  The exception is group membership, which the server asserts and clients don't verify.
 - The next steps would be:
   - Make the server URL per organisation (the app already stores it in the session).
   - Federate the user directory with signed identity documents.

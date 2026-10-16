@@ -29,6 +29,21 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T5.3 Late joiners get the call key** | ✅ code + JVM (device check pending) | See below |
 | **T4.4 Notification history and actions** | ✅ code + JVM (device check pending) | See below |
 | **Department editing** | ✅ server + app (not deployed; device check pending) | See below |
+| **Phase 17 decentralisation readiness** | ✅ evaluated (nothing implemented; D-16 proposed) | See below |
+
+### Phase 17: decentralisation readiness evaluated (2026-10-16)
+
+- **Deliverable:** `DECENTRALISATION_READINESS.md` covers the nine items in the brief, each with current evidence from the code,
+  the gap, a recommendation and a readiness rating.
+- **Findings:**
+  - Instances are already independent: there is no central account service, the server URL is chosen at onboarding, and the media
+    server is set per instance. Every test file starts its own instance.
+  - There is no federation and no relay failover.
+  - The main security gap is that group membership is server-asserted, as `SECURITY.md` §4 already stated.
+- **Recorded:** D-16 (proposed: independent instances, no federation or blockchain; verifiable membership through a separate
+  protocol proposal), roadmap Tier 6 order, and `ARCHITECTURE.md` §8 link.
+- **Nothing implemented; no protocol or production change.** Next dependency: owner confirmation of D-16. After that, the
+  member-list change lines are a safe app-only first step.
 
 ### Department editing (Tier 7, 2026-10-16)
 
