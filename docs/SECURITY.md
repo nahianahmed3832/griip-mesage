@@ -119,6 +119,9 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
   Every participant sets it as the LiveKit shared key (AES-GCM frame encryption with PBKDF2 key derivation, the SDK default).
   If E2EE is enabled and the key hasn't arrived after about 10 s, **the app refuses to join instead of downgrading**.
   The first key received for a call is kept, so a later `call_invite` for the same call can't replace it.
+  **Since T5.2 (2026-10-16), a key is accepted only from the call's creator**, in the call's own conversation: the app looks up the
+  call (`GET /v1/calls/:id`) and compares `createdBy` with the envelope's signed sender. Keys from other members are ignored and logged.
+  If the lookup fails for a reason other than 404, the queue item is redelivered and checked again; it is never accepted unchecked.
 - **Verified:** on the production SFU, a participant with the correct key decoded video and audio, and a participant with a wrong key
   decoded nothing (`TESTING.md` §4).
 - **Gaps:** the key is not rotated when participants leave or join. A removed member who still has the key could decrypt

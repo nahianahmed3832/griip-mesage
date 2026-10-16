@@ -164,7 +164,7 @@ Cancellation propagates. Database errors and bugs aren't acknowledged; network e
 |---|---|---|---|
 | Per-call 256-bit key, sent inside an encrypted `call_invite` control message, never through the server API | WORKING | Production SFU right-key / wrong-key test; phone vs wrong-key bot: 0 frames decoded (`TESTING.md` §4–5) | `MessageRepository.sendCallKey`, `CallManager.connect` |
 | Refuse to join when E2EE is on and no key arrives (no downgrade) | UNVERIFIED | Implemented (`waitForKey` throws after 10 s). No test | `CallManager.waitForKey` |
-| Key authenticity | PARTIALLY WORKING | "First key wins", but any conversation member can send a `call_invite` for someone else's call id. The id is broadcast in the ring event, so a member can race the caller and split the call. The key isn't checked against the call's creator | `MessageRepository.apply("call_invite")` |
+| Key authenticity | WORKING in code, NOT VERIFIED on a device | **T5.2 (2026-10-16):** a `call_invite` key is accepted only if its signed sender is the call's `createdBy` and it arrived in the call's conversation. Others are ignored. `CallKeyVerifierTest` (5 JVM tests). Not yet run against a racing second bot on the phone | `CallKeyVerifier`, `MessageRepository.apply("call_invite")` |
 | Settings consistency | PARTIALLY WORKING | The caller always uses E2EE. A callee who turned "media E2EE" off joins without a key and can't decode | `startCall`, `waitForKey` |
 | Key rotation when participants join or leave | MISSING | Decision D-06 gap | — |
 

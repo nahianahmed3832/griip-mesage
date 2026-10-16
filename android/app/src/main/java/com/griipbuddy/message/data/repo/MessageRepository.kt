@@ -10,6 +10,7 @@ import com.griipbuddy.message.crypto.ReceivedEnvelope
 import com.griipbuddy.message.data.api.AckReq
 import com.griipbuddy.message.data.api.ApiClient
 import com.griipbuddy.message.data.api.ApiException
+import com.griipbuddy.message.data.api.CallRes
 import com.griipbuddy.message.data.api.ConnState
 import com.griipbuddy.message.data.api.GriipJson
 import com.griipbuddy.message.data.api.OkRes
@@ -83,6 +84,13 @@ class MessageRepository(
     private val json = GriipJson
     private val files = AttachmentFiles(File(context.filesDir, "attachments"))
     private val pending = PendingControls(RoomPendingControlStore(db))
+    private val callKeys = CallKeyVerifier { id ->
+        try {
+            api.get<CallRes>("/v1/calls/$id").call
+        } catch (e: ApiException) {
+            if (e.status == 404) null else throw e // other failures: redelivered and checked again
+        }
+    }
     private val listOfStrings = ListSerializer(String.serializer())
     private val reactionsSer = MapSerializer(String.serializer(), ListSerializer(String.serializer()))
     private val attachmentsSer = ListSerializer(AttachmentRef.serializer())
@@ -583,7 +591,17 @@ class MessageRepository(
             }
             "call_invite" -> {
                 val callId = pl.callId ?: return
-                if (db.calls().putKeyIfAbsent(CallKeyEntity(callId, item.conversationId, pl.e2eeKey ?: return, item.senderUserId, System.currentTimeMillis())) == -1L) {
+                val key = pl.e2eeKey ?: return
+                if (db.calls().key(callId) != null) {
+                    Log.w(TAG, "ignoring second media key for an existing call")
+                    return
+                }
+                val verdict = callKeys.check(callId, item.conversationId, item.senderUserId)
+                if (verdict != CallKeyVerifier.Verdict.ACCEPT) {
+                    Log.w(TAG, "ignoring call key: $verdict") // T5.2: only the call's creator sets its key
+                    return
+                }
+                if (db.calls().putKeyIfAbsent(CallKeyEntity(callId, item.conversationId, key, item.senderUserId, System.currentTimeMillis())) == -1L) {
                     Log.w(TAG, "ignoring second media key for an existing call")
                     return
                 }

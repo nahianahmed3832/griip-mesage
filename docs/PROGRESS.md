@@ -23,6 +23,21 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T2.4 Android test harness** | ✅ foundation | See below. 25 JVM tests; device check blocked |
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
+| **T5.2 Call key authenticity** | ✅ code + JVM (device check pending) | See below |
+
+### T5.2 Call keys are accepted only from the call's creator (2026-10-16)
+
+- **Gap (D8):** the first `call_invite` key for a call id won, whoever sent it. The call id is broadcast in the ring event, so another
+  member of the conversation could send a key for someone else's call first and split or break the call.
+- **Fix:** `CallKeyVerifier` (app). Before storing a key, the app fetches the call (`GET /v1/calls/:id`) and requires:
+  - the envelope's signed sender is the call's `createdBy`;
+  - the key arrived in the call's own conversation.
+  Anything else is ignored and logged. A 404 means the call doesn't exist for this user, so the key is dropped. Any other failure leaves
+  the queue item unacknowledged, so it is checked again on redelivery; it is never accepted unchecked. The "first key wins" rule still applies.
+- **No server change, no change to `CallManager`** (which has another session's uncommitted call work) or to `griip-envelope-v1`.
+- **Tests:** `CallKeyVerifierTest` (5 JVM tests). Android **73/73**. The repository wiring itself isn't covered by a JVM test.
+- **NOT VERIFIED on a device:** the planned check (a second bot races a fake key at the phone; the call must still use the creator's key)
+  needs the phone. The test bot (`tools/griip-bot`) still accepts the first key it sees; it has uncommitted changes from another session, so I left it alone.
 
 ### Route audit and Tier 7 server hygiene (2026-10-16)
 

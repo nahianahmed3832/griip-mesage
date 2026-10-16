@@ -15,7 +15,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 | D5 | ~~Open registration and no per-user quotas~~ **Fixed in code 2026-10-16 (T1.6), not deployed** | `routes/auth.ts`, `routes/attachments.ts`, `compose.yaml` | High | T1.6 |
 | D6 | ~~`Hub.Conn.flushing` is declared but unused~~ **Fixed 2026-10-16 (T2.1):** it gates live pushes until the backlog is drained, and stops the empty-backlog acknowledgement loop | `server/src/hub.ts`, `ws.ts` | Medium | T2.1 |
 | D7 | ~~`RealtimeClient` drops frames with `tryEmit` into a bounded buffer~~ **Fixed 2026-10-16 (T2.2)**: `FrameInbox` | `FrameInbox.kt`, `RealtimeClient.kt` | Medium | T2.2 |
-| D8 | `call_invite` keys are accepted from any member (first wins) | `MessageRepository.apply` | Medium | T5.2 |
+| D8 | ~~`call_invite` keys are accepted from any member (first wins)~~ **Fixed in code 2026-10-16 (T5.2)**: only the call's creator. Device check pending | `MessageRepository.apply` | Medium | T5.2 |
 | D9 | ~~Invitations aren't re-checked against the creator's current rights~~ **Fixed 2026-10-16 (T3.1), not deployed** | `invites.ts`, `authz.ts` | Medium | T3.1 |
 | D10 | ~~Presence and last-seen are readable by anyone~~ **Fixed 2026-10-16 (T1.7), not deployed** | `routes/users.ts`, `authz.ts` | Medium | T1.7 |
 | D11 | ~~The activity feed filters by action type, not scope~~ **Fixed 2026-10-16 (T1.8), not deployed** | `routes/orgs.ts` | Medium | T1.8 |
