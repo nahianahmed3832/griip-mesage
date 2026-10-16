@@ -157,7 +157,7 @@ Extend these, don't replace them:
 - **Acceptance:** `exportSchema` JSON is committed, and the policy is explicit migrations only. A migration test template exists.
 - **Verification:** a Room `MigrationTestHelper` test (instrumented) or a schema-diff check.
 
-### T2.4 Android test harness (enabler)
+### T2.4 Android test harness (enabler). **Foundation done 2026-10-16** (crypto, interop and recovery-code tests; repository tests land with T1.2 and T1.4)
 - **Purpose:** there are no Android tests. Tier-1 Android fixes need them.
 - **Modules:** `app/src/test` (JUnit with coroutines-test), and small interfaces in front of `ApiClient` and the DAOs where needed. No new production dependency: JVM-test-only libraries.
 - **Acceptance:** CI-runnable `./gradlew :app:testDebugUnitTest` covers:

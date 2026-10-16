@@ -1,0 +1,47 @@
+{
+  "comment": "griip-envelope-v1 interop vectors. Test keys only. Verified by server/test/interop_vectors.test.ts and android EnvelopeInteropTest.",
+  "sender": {
+    "userId": "u_vector_sender",
+    "deviceId": "d_vector_sender",
+    "identitySeed": "2hWyobtNUeBsrd4YuYeTdCta6P5RY0k9WqtpE3k8lms=",
+    "identityKey": "JDIwylDAlyz8rruBCt0jZ4EZwmbszOwd1O2JeGXrW6E=",
+    "deviceSignSeed": "lLeS18CNbJYsGEYxwIEC3H7DCSmffIyw6VorCuP7DWc=",
+    "deviceSigningKey": "gssXwI5oVcaCpX/ORFo9vYJ+fWEdaq7qC4wuzFgeZuI=",
+    "deviceEncPrivate": "KCaaEHsKRK9D7EdfbV6d2l/6UjYd1hYJKRf9bJBZI0k=",
+    "deviceEncPublic": "PQHP+lj7wtEjopZ50kn+Ntt6NsMqTUyZJkzk1+vZ7Wc=",
+    "certificate": "98DaXdjgsRyJrKuCY5U1i2hqDwyKh5RpZDFHpm2DutWJqyQ0tET8y+RL0JsLygkwhDug09X1KT3adyO+gYTRCQ==",
+    "fingerprint": "08249 61982 05946 24846 05283 82200"
+  },
+  "recipient": {
+    "deviceId": "d_vector_recipient",
+    "encPrivate": "8E/TuQjubf5Cyzmsnw6cb+hNdbIbVr091XM1QmGKA10=",
+    "encPublic": "WGRozTFVx3If/4pcVQTYgPwz0EBhNChzIqFEohHjI2Y="
+  },
+  "authProof": {
+    "message": "griip-auth-v1\nlogin\nnonce-0123456789abcdef\ngssXwI5oVcaCpX/ORFo9vYJ+fWEdaq7qC4wuzFgeZuI=",
+    "signature": "QsdtQOqW4kf1ShKI7E1zxqYbg2RarYXNU2lbjGnlvXQeLOZrzZCxUBxBBAc59c3Kkv9HxTsJ2D/R0jthDHevDw=="
+  },
+  "aesGcm": {
+    "key": "0PwSUAgDhzc9ZQD8M+v5/Xx9HgF97yhJpFO3AwxM1Rg=",
+    "nonce": "Xi37tUthQxp3gpAC",
+    "aad": "Z3JpaXAtYWFk",
+    "plaintext": "QUVTLUdDTSB2ZWN0b3Ig4pyT",
+    "ciphertext": "t+Z4SQlaQPwcB2RWrL+L4uTr85TtFJXmmDSNOrlGi1qjng=="
+  },
+  "envelope": {
+    "header": {
+      "messageId": "m_vector_0001",
+      "conversationId": "c_vector",
+      "senderUserId": "u_vector_sender",
+      "senderDeviceId": "d_vector_sender",
+      "sentAt": 1792125196867,
+      "cls": "message"
+    },
+    "nonce": "rmbuFyf3y7KA8Ro4",
+    "ciphertext": "L9lOCIbh9BZPuKEmPnSsssh/I1+yfPB6iaqQcoTngmzZeqrNsLX1wiClNgUML3SuN4109k8lZy+2jNQqEU2lTF21ONz9MDHqwKAHTsegU8cZ",
+    "signature": "/YBI/wp0c/fjafCwVL5DWAEj9oM6r7amZWVJPdqirGgRPAEFxlBeqpJeetCMkYRhBWiA6x97d9MbiZ1+AB73Cw==",
+    "enc": "SPxXdhMVyB9bWjg+0S07a7CdQwDZW5ioXpUKHvU+wS8=",
+    "wrappedKey": "dSvxW0bXIIvzuXaD+g8Sz2dvEfrWwZJM5RcfI16/SDoZSE86XSRcNJbH88AOmblg",
+    "plaintext": "{\"type\":\"text\",\"text\":\"Hello from the Node reference client ✓\"}"
+  }
+}

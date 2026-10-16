@@ -12,7 +12,7 @@ This is the starting point for the feature-first phase. Every row was checked ag
 | **Audit probes:** 7 throwaway vitest scenarios that exercise suspected defects through the real API (results below as P1–P7) | **All 7 confirmed a defect.** The probe file was deleted after recording |
 | Android debug compile (`./gradlew :app:compileDebugKotlin`) | Pass |
 | Android release (R8) build | See `PROGRESS.md` |
-| Android automated tests | **None exist.** There is no `src/test` or `src/androidTest` |
+| Android automated tests | **Started 2026-10-16 (T2.4):** `./gradlew :app:testDebugUnitTest` runs 25 JVM tests (crypto interop with shared Node vectors, recovery code, attachment crypto, video sinks, frame-cryptor guard). No Room or UI tests yet |
 | Production | `GET https://msg.griipbuddy.cloud/healthz` → `ok:true, livekit:true`; unauthenticated `/v1/conversations` → 401. No SSH and no write was made |
 | Device, emulator, live calls | **Not run in this audit.** Device results quoted below come from `TESTING.md` (same day, earlier session) and are marked as such |
 

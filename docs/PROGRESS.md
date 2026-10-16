@@ -20,7 +20,24 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T1.6 Registration gating, quotas, limits** (P5) | ✅ server | See below. Android invite field pending; not deployed |
 | **T1.7 Presence privacy** (P4) | ✅ server | See below. Not deployed |
 | **T1.8 Activity feed scope** (P2) | ✅ server | See below. Not deployed |
+| **T2.4 Android test harness** | ✅ foundation | See below. 25 JVM tests; device check blocked |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
+
+### T2.4 Android unit-test harness (2026-10-16)
+
+- **Gap:** no Android tests at all (D21), and Kotlin/Node crypto interop was proved only by live runs (D22).
+- **Change:**
+  - `testImplementation(kotlinx-coroutines-test)` (test-only).
+  - `crypto/Bytes.kt` switched from `android.util.Base64` to `java.util.Base64`, which has existed since API 26 (minSdk). This is the only production change, and it lets the real crypto run on the JVM. Encoding is identical: standard alphabet, padded, no wrapping. Values already stored by the app decode unchanged.
+  - **Shared vectors:** `server/test/interop_vectors.test.ts` generates (on request) and always verifies `android/app/src/test/resources/griip-envelope-v1-vectors.json`.
+  - **New Kotlin tests:**
+    - `EnvelopeInteropTest`: the same vectors, plus a Kotlin seal-and-open round trip;
+    - `RecoveryCodeTest`;
+    - `AttachmentCryptoTest`.
+- **Results:** `./gradlew :app:testDebugUnitTest` gives **25/25** (11 new, 8 from the video fix, 6 from the E2EE investigation session's `FrameCryptorGuardTest`). `npm test` gives **65/65**. `assembleDebug` succeeds.
+- **Not done:**
+  - **Device check of the Base64 change is BLOCKED.** The phone refused the USB install because the on-screen install confirmation wasn't approved (`INSTALL_FAILED_ABORTED: User rejected permissions`).
+  - Key-directory, outbox and queue tests come with T1.2 and T1.4, which add the small interfaces they need.
 
 ### T1.8 Activity feed respects branch isolation (2026-10-16)
 

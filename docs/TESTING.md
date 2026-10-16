@@ -29,9 +29,19 @@ There was no second physical phone. Every two-party test used the phone plus the
 | Release (R8) build | NOT VERIFIED | Configured but not built in this session |
 | Android unit tests | PASS | `./gradlew :app:testDebugUnitTest` → `VideoSinkBindingTest` 8/8 (renderer lifetime, sink ordering, track switching, stop/start, release) |
 
-## 2. Backend (vitest: 36 tests, all PASS)
+## 2. Backend (vitest: 65 tests, all PASS on 2026-10-16)
 
-`cd server && npm test` → 4 files, 36 tests passed (32 originally, plus 4 for demotion to Guest added on 2026-10-16).
+`cd server && npm test` gives 9 files and 65 tests passed. Earlier results on this list were recorded on older builds (32, then 36).
+Suites added in the 2026-10-16 feature pass. For each, the tests failed with the fix removed, except where noted:
+
+| Suite | Tests | Covers |
+|---|---|---|
+| `orgs.test.ts` › demotion to guest | 4 | T1.1, plus non-org group retained |
+| `call_eviction.test.ts` | 8 | T1.3 (recording LiveKit stub; 7 of 8 fail without the fix) |
+| `registration_quotas.test.ts` | 12 | T1.6 invite gate and upload limits (new behaviour) |
+| `presence.test.ts` | 4 | T1.7 (2 fail without the fix) |
+| `activity_scope.test.ts` | 4 | T1.8 (3 fail without the fix) |
+| `interop_vectors.test.ts` | 1 | Shared Kotlin/Node crypto vectors (D22) |
 The 2026-10-16 audit also ran 7 probe scenarios against the API. All confirmed defects: see `FEATURE_INVENTORY.md`.
 
 | Area | Status | Covered by |
@@ -138,6 +148,22 @@ production SFU, with Griip Bot as the other participant. Debug builds log per-tr
 | End call cleanup | PASS | Both renderers released; peers saw the participant leave; server `ENDED` |
 | Crashes in these runs | PASS | `dumpsys activity exit-info`: only package-update restarts. No new `data_app_native_crash` entries |
 | **Android ↔ Android, two physical phones** | BLOCKED | Only one phone was available. Needs two testers on this build |
+
+## 6a. Android unit tests (JVM, T2.4 harness)
+
+Run with `cd android && ./gradlew :app:testDebugUnitTest` (JDK: Android Studio's JBR). They're plain JUnit 4 + `kotlinx-coroutines-test` tests,
+with no device or emulator. `crypto/Bytes.kt` uses `java.util.Base64`, so the real crypto code runs on the JVM.
+
+| Suite | Tests | Status | Covers |
+|---|---|---|---|
+| `crypto/EnvelopeInteropTest` | 6 | PASS | Node vectors: identity and device public keys, device certificate and auth proof match **byte for byte**; fingerprint equals the server's; AES-GCM equals Node's; a Node-sealed envelope opens and verifies; forged signature, wrong signing key and wrong device rejected; a Kotlin-sealed envelope opens for every recipient |
+| `crypto/RecoveryCodeTest` | 3 | PASS | Round trip for 200 random seeds; lowercase, space and no-dash input accepted; a typo or truncation is rejected |
+| `crypto/AttachmentCryptoTest` | 2 | PASS | Fresh key per file; a modified ciphertext fails the integrity check |
+| `ui/screens/calls/VideoSinkBindingTest` | 8 | PASS | Renderer lifetime and sink ordering (video fix) |
+
+Not yet covered: the key directory, outbox and queue processing. Each gets tests together with the change that needs them (T1.2, T1.4).
+**Device check of the Base64 change: BLOCKED.** The phone refused the USB install (`INSTALL_FAILED_ABORTED: User rejected permissions`,
+which needs the owner to confirm on screen).
 
 ## 6. Visual review
 

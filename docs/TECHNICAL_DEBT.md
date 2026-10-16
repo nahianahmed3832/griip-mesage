@@ -38,8 +38,8 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 
 | # | Debt | Severity |
 |---|---|---|
-| D21 | **No Android tests at all.** That covers unit tests, Room migration tests and UI tests. All Android behaviour is verified by hand on one phone | High (T2.4) |
-| D22 | No shared crypto test vectors between Kotlin and Node. Interop is proved only by live runs | Medium |
+| D21 | ~~No Android tests at all~~ **Partly fixed 2026-10-16 (T2.4):** JVM unit-test harness with crypto, interop and video-sink tests (25 tests). Still missing: repository tests (added with T1.2 and T1.4), Room migration tests and UI tests | High (T2.4) |
+| D22 | ~~No shared crypto test vectors between Kotlin and Node~~ **Fixed 2026-10-16:** `android/app/src/test/resources/griip-envelope-v1-vectors.json`, verified by both `server/test/interop_vectors.test.ts` and `EnvelopeInteropTest` | Medium |
 | D23 | Release (R8) build succeeds (`assembleRelease`, 64 MB unsigned) but has never been run on a device. Keep rules for LiveKit, BouncyCastle, SQLCipher and serialization exist but are unproven | Medium |
 | D24 | `TESTING.md` mixes device evidence from different builds. Screen share was verified before the teardown fix | Low |
 | D25 | The production smoke test (`test/e2e/prod-smoke.ts`) creates real accounts on production each run (four `e2e.*` accounts exist) | Low |
