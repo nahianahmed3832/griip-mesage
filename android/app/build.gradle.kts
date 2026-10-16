@@ -28,8 +28,8 @@ android {
         applicationId = "com.griipbuddy.Orbit"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-beta"
+        versionCode = 3
+        versionName = "0.1.2-beta"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"$defaultServer\"")
         manifestPlaceholders["appLabel"] = "@string/app_name"
