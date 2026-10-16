@@ -34,7 +34,7 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
 
 - **Fixed (server, not yet deployed):** demotion to Guest kept all channel access (P1).
 - **Open:**
-  - Pinned identity keys aren't enforced (T1.2).
+  - ~~Pinned identity keys aren't enforced (T1.2).~~ Enforced 2026-10-16: a changed key pauses messaging until the user accepts it. The device UI check is pending.
   - ~~Removed members stay in live calls (P3, T1.3).~~ Fixed on the server 2026-10-16, **not yet deployed** (`RELEASE_PLAN.md`).
   - Any local error while processing a delivery discards the message (T1.4).
   - Messages from a device revoked before delivery are lost (P7, T1.5).
@@ -59,7 +59,7 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
 
 ## Security gaps (see SECURITY.md §4)
 - There is no forward secrecy or post-compromise security for messages (custom `griip-envelope-v1`, not Signal or MLS).
-- Group membership is asserted by the server, and keys are trusted on first use. Users must compare safety numbers to detect a key-substitution attack.
+- Group membership is asserted by the server, and keys are trusted on first use: a substitution *before* first contact isn't detected. A *later* key change now pauses messaging with that person until the user reviews and accepts it (T1.2).
 - The call media key isn't rotated when participants join or leave.
 - Screen-share E2EE is confirmed (2026-10-16). A wrong-key participant decoded 0 screen-share frames while the correct-key one decoded 2,262 (`TESTING.md` §5a).
 - The debug APK allows `http://` servers, with a warning.

@@ -127,6 +127,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val replyTo by vm.replyTo.collectAsStateWithLifecycle()
     val editing by vm.editing.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
+    val changedMembers by vm.changedMembers.collectAsStateWithLifecycle()
+    val heldIncoming by vm.heldIncoming.collectAsStateWithLifecycle()
     var actionFor by remember { mutableStateOf<MessageEntity?>(null) }
     var infoFor by remember { mutableStateOf<MessageEntity?>(null) }
     var text by rememberSaveable { mutableStateOf("") }
@@ -200,11 +202,13 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             }
         }
         ConnectionBanner(conn, Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) { vm.c.realtime.reconnectNow() }
-        if (peerUser?.identityChanged == true) {
+        if (changedMembers.isNotEmpty()) {
+            val who = if (changedMembers.size == 1) "${changedMembers.first().displayName.ifEmpty { "A member" }}'s security key" else "${changedMembers.size} members' security keys"
+            val waiting = if (heldIncoming > 0) " $heldIncoming incoming message${if (heldIncoming == 1) " is" else "s are"} waiting." else ""
             StatusBanner(
-                "${peerUser.displayName}'s security key changed. Verify their safety number before sharing sensitive information.",
+                "$who changed. Messages to and from them are paused until you check the safety number.$waiting",
                 BannerKind.Warning, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Rounded.GppMaybe,
-                action = "Review", onAction = { nav.navigate(Routes.user(peerUser.id)) },
+                action = "Review", onAction = { nav.navigate(Routes.user(changedMembers.first().id)) },
             )
         }
         val activeCall = conv?.activeCallId

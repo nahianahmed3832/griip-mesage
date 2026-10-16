@@ -84,8 +84,12 @@ interface MessageDao {
     suspend fun setStatus(id: String, status: String, serverTs: Long?, error: String?)
 
     /** Never downgrade: only SENDING/SENT may advance to a later state through this call. */
-    @Query("UPDATE messages SET status = 'SENT', serverTs = :serverTs, sortTs = :serverTs, errorText = NULL WHERE id = :id AND status IN ('SENDING','FAILED')")
+    @Query("UPDATE messages SET status = 'SENT', serverTs = :serverTs, sortTs = :serverTs, errorText = NULL WHERE id = :id AND status IN ('SENDING','FAILED','HELD')")
     suspend fun markSent(id: String, serverTs: Long)
+
+    /** Messages paused by an identity change go back to "sending" once the user accepts the key (T1.2). */
+    @Query("UPDATE messages SET status = 'SENDING', errorText = NULL WHERE status = 'HELD'")
+    suspend fun resumeHeld()
 
     @Query("UPDATE messages SET status = 'DELIVERED' WHERE id = :id AND status IN ('SENDING','SENT')")
     suspend fun markDelivered(id: String)
@@ -124,6 +128,10 @@ interface OutboxDao {
 
     @Query("SELECT * FROM outbox WHERE messageId = :id")
     suspend fun get(id: String): OutboxEntity?
+
+    /** Sends paused by an identity change (T1.2) become due again. */
+    @Query("UPDATE outbox SET nextAttemptAt = :now, lastError = NULL WHERE lastError = :reason")
+    suspend fun resume(reason: String, now: Long)
 }
 
 @Dao
@@ -173,6 +181,21 @@ interface CallDao {
 }
 
 @Dao
+interface QuarantineDao {
+    @Upsert
+    suspend fun put(e: QuarantineEntity)
+
+    @Query("SELECT * FROM quarantine WHERE senderUserId = :userId ORDER BY queueId")
+    suspend fun bySender(userId: String): List<QuarantineEntity>
+
+    @Query("DELETE FROM quarantine WHERE queueId = :queueId")
+    suspend fun remove(queueId: Long)
+
+    @Query("SELECT COUNT(*) FROM quarantine WHERE conversationId = :conversationId")
+    fun observeCount(conversationId: String): Flow<Int>
+}
+
+@Dao
 interface KvDao {
     @Query("SELECT v FROM kv WHERE k = :k")
     suspend fun get(k: String): String?
@@ -182,7 +205,7 @@ interface KvDao {
 }
 
 @Database(
-    entities = [ConversationEntity::class, MessageEntity::class, OutboxEntity::class, UserEntity::class, CallLogEntity::class, CallKeyEntity::class, KvEntity::class],
+    entities = [ConversationEntity::class, MessageEntity::class, OutboxEntity::class, UserEntity::class, CallLogEntity::class, CallKeyEntity::class, KvEntity::class, QuarantineEntity::class],
     version = GriipDatabase.VERSION,
     exportSchema = true,
 )
@@ -193,13 +216,14 @@ abstract class GriipDatabase : RoomDatabase() {
     abstract fun users(): UserDao
     abstract fun calls(): CallDao
     abstract fun kv(): KvDao
+    abstract fun quarantine(): QuarantineDao
 
     companion object {
         /**
          * Schema version. Raising it needs a matching step in [Migrations] and the exported schema
          * committed under `app/schemas` (docs/DECISIONS.md D-13); `MigrationsTest` enforces both.
          */
-        const val VERSION = 1
+        const val VERSION = 2
 
         /**
          * The database file is encrypted with SQLCipher (AES-256) using a random passphrase that is

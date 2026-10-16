@@ -50,7 +50,7 @@ Extend these, don't replace them:
 - **Risks:** removes access people may have relied on. That's intended, but say so in release notes. Re-granting is manual.
 - **Verification:** new vitest cases through the real API: demote, check memberships, keys, posting and re-grant. Run the full suite.
 
-### T1.2 Enforce pinned identity keys (TOFU) on Android and in the reference client
+### T1.2 Enforce pinned identity keys (TOFU) on Android and in the reference client. **Done 2026-10-16** (owner decision: block, don't just warn; device check pending)
 - **Purpose:** today a relay that substitutes a user's identity key gets future messages encrypted to its devices, and its forged messages are accepted. There's only a DM-only warning. This contradicts `SECURITY.md` §3.
 - **Dependencies:** an owner decision. The recommendation is to **stop encrypting to, and accepting from,** a user whose identity changed until the local user accepts the new key, with a warning in every conversation type. Also T2.4, so it can be unit-tested.
 - **Modules:**

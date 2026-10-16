@@ -63,10 +63,15 @@ The server verifies the sender signature and checks that the recipient set equal
 If not, it returns `409 device_mismatch` and the client refreshes keys. The recipient verifies the signature against a device
 key whose certificate chains to the sender's identity key, opens the HPKE wrap, then decrypts and authenticates the content.
 
-> **Audit correction (2026-10-16):** "identity key" here means the key **the server currently returns**, not the
-> key pinned on first contact. A changed key sets a warning, which is shown only in DMs, but the app keeps encrypting to,
-> and accepting from, the new devices. So pinning does not yet protect against a malicious relay.
-> Tracked as `FEATURE_ROADMAP.md` T1.2 (`FEATURE_INVENTORY.md` §1).
+**Pinned identities are enforced (T1.2, 2026-10-16).** "Identity key" above means the key **pinned on first contact**,
+not whatever the server returns now (`KeyDirectory`; the reference client does the same).
+- If the server later presents a different identity key for a contact, that contact is *untrusted*:
+  - **sending** to any conversation they're in (DM, group or channel) is paused. Messages show "Paused: a security key changed", and nothing is encrypted to the new devices;
+  - **incoming** envelopes from them are **quarantined**: stored locally, acknowledged, and not displayed.
+- A banner in the conversation offers *Review*. Accepting pins the exact key whose safety number was shown, not a fresh
+  server answer, so a second swap is caught too. It then sends the paused messages and opens the quarantined ones.
+- If the server goes back to the pinned key, trust is restored automatically.
+- This replaces the audit's finding that pinning was warning-only.
 
 **Libraries:** BouncyCastle 1.79 (HPKE per RFC 9180, Ed25519 per RFC 8032), platform JCA AES-GCM on Android, and
 `@hpke/core` 1.9 plus Node `crypto` in the test client. **No primitive is implemented by us.** The *composition* is ours and
@@ -80,9 +85,12 @@ Interop between the Kotlin and Node implementations was verified on a physical p
   X25519 private key is stolen, every message ever wrapped to that device can be decrypted, provided the attacker also captured
   the ciphertext (the relay keeps it for at most 7 days). Signal's Double Ratchet and MLS fix this. Neither was integrated in
   this beta (`DECISIONS.md` D-04).
-- **Trust on first use.** The first identity key seen for a user is pinned. Later changes produce a warning banner
-  and a "safety number changed" state, but sending is not blocked. Users can compare safety numbers in person
-  (*Contact → Safety number*) and mark contacts as verified.
+- **Trust on first use.** The first identity key seen for a user is pinned, so a key substituted *before* first contact
+  isn't detected. Users can compare safety numbers in person (*Contact → Safety number*) and mark contacts as verified.
+  A later change pauses messaging with that contact until the user accepts the new key (§3).
+  - A legitimate re-registration (a lost phone without the recovery key) therefore needs every contact to accept the new key.
+  - In a large channel, one member's change pauses sending there until the user accepts it, because the server requires
+    every member device in the recipient set.
 - **Group membership is server-asserted.** The server decides who is a member of a channel. A malicious server could add a device
   and receive future messages. Clients encrypt only to devices certified by members' identity keys, but they don't
   independently verify the membership list. Fixing this needs MLS-style signed group state.

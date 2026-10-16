@@ -123,3 +123,16 @@ data class CallKeyEntity(
 
 @Entity(tableName = "kv")
 data class KvEntity(@PrimaryKey val k: String, val v: String)
+
+/**
+ * An incoming envelope from a contact whose identity key changed (T1.2). It was acknowledged to the
+ * relay only after being stored here, and is opened if the user accepts the new key.
+ */
+@Entity(tableName = "quarantine", indices = [Index("senderUserId"), Index("conversationId")])
+data class QuarantineEntity(
+    @PrimaryKey val queueId: Long,
+    val conversationId: String,
+    val senderUserId: String,
+    val itemJson: String,
+    val receivedAt: Long,
+)

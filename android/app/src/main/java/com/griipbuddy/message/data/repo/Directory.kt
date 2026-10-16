@@ -16,43 +16,104 @@ import com.griipbuddy.message.data.db.GriipDatabase
 import com.griipbuddy.message.data.db.UserEntity
 import java.util.concurrent.ConcurrentHashMap
 
+/** Where the directory gets public keys from; a fake replaces the API in unit tests. */
+interface KeySource {
+    suspend fun conversationKeys(conversationId: String): List<UserKeysDto>
+    suspend fun userKeys(userId: String): UserKeysDto?
+}
+
+/** Where pinned identity keys live (the `users` table); a fake replaces Room in unit tests. */
+interface PinStore {
+    suspend fun get(userId: String): UserEntity?
+    suspend fun upsert(u: UserEntity)
+}
+
+private class ApiKeySource(private val api: ApiClient) : KeySource {
+    override suspend fun conversationKeys(conversationId: String) = api.get<KeysRes>("/v1/conversations/$conversationId/devices").users
+    override suspend fun userKeys(userId: String) = api.post<UserIdsReq, KeysRes>("/v1/users/devices", UserIdsReq(listOf(userId))).users.firstOrNull()
+}
+
+private class RoomPinStore(private val db: GriipDatabase) : PinStore {
+    override suspend fun get(userId: String) = db.users().get(userId)
+    override suspend fun upsert(u: UserEntity) = db.users().upsert(u)
+}
+
+/** Sending is paused: these members' identity keys differ from the ones pinned on first contact. */
+class IdentityChangedException(val userIds: Set<String>) : Exception("identity key changed for ${userIds.size} member(s)")
+
+/** How to treat the sender of an incoming envelope. */
+sealed interface SenderKey {
+    class Trusted(val signingKey: ByteArray) : SenderKey
+
+    /** The sender's account now presents an identity key other than the pinned one: hold the message. */
+    data object IdentityChanged : SenderKey
+
+    /** No device with that id is certified by the sender's trusted identity key. */
+    data object Unknown : SenderKey
+}
+
 /**
- * Public-key directory with trust-on-first-use pinning. A device is only ever encrypted to, or
- * trusted as a sender, if its certificate verifies against the user's identity key. If a user's
- * identity key changes after it was pinned, the conversation shows a warning (docs/SECURITY.md §5).
+ * Public-key directory with trust-on-first-use pinning (docs/SECURITY.md §3, T1.2). The first
+ * identity key seen for a user is pinned. Devices are encrypted to, or trusted as senders, only if
+ * their certificate verifies against that *pinned* key. If the server later presents a different
+ * identity key, the user is untrusted: sending to any conversation they're in is paused
+ * ([IdentityChangedException]) and their messages are held ([SenderKey.IdentityChanged]) until the
+ * local user reviews and accepts the new key ([acceptIdentity]). A warning alone isn't enough: a
+ * relay that substitutes keys must not receive or forge anything.
  */
-class KeyDirectory(private val api: ApiClient, private val db: GriipDatabase) {
+class KeyDirectory(private val source: KeySource, private val pins: PinStore) {
+    constructor(api: ApiClient, db: GriipDatabase) : this(ApiKeySource(api), RoomPinStore(db))
+
     private data class Cached(val keys: UserKeysDto, val at: Long)
     private val cache = ConcurrentHashMap<String, Cached>()
     private val convCache = ConcurrentHashMap<String, Pair<List<UserKeysDto>, Long>>()
 
-    private fun validDevices(u: UserKeysDto) = u.devices.filter { d ->
-        Ed25519.verify(u.identityKey.unb64(), Canonical.deviceCert(u.identityKey, d.signingKey, d.encryptionKey).toByteArray(), d.certificate.unb64())
-    }
-
-    /** TOFU: pin the first identity key we see; flag (don't silently accept) any later change. */
-    private suspend fun pin(u: UserKeysDto) {
-        val existing = db.users().get(u.userId)
-        if (existing == null) {
-            db.users().upsert(UserEntity(u.userId, "", "", 0, null, pinnedIdentityKey = u.identityKey))
-        } else if (existing.pinnedIdentityKey == null) {
-            db.users().upsert(existing.copy(pinnedIdentityKey = u.identityKey))
-        } else if (existing.pinnedIdentityKey != u.identityKey && !existing.identityChanged) {
-            db.users().upsert(existing.copy(identityChanged = true, verified = false))
+    /** Pins on first contact; returns the identity key to trust, or null when it differs from the pinned key. */
+    private suspend fun trustedKey(u: UserKeysDto): String? {
+        val existing = pins.get(u.userId)
+        return when {
+            existing == null -> u.identityKey.also { pins.upsert(UserEntity(u.userId, "", "", 0, null, pinnedIdentityKey = u.identityKey)) }
+            existing.pinnedIdentityKey == null -> u.identityKey.also { pins.upsert(existing.copy(pinnedIdentityKey = u.identityKey)) }
+            existing.pinnedIdentityKey == u.identityKey -> u.identityKey.also {
+                // The server presents the pinned key again (e.g. it reverted): trust it, clear the warning.
+                if (existing.identityChanged) pins.upsert(existing.copy(identityChanged = false))
+            }
+            else -> null.also { if (!existing.identityChanged) pins.upsert(existing.copy(identityChanged = true, verified = false)) }
         }
     }
 
-    suspend fun conversationRecipients(conversationId: String, myDeviceId: String, force: Boolean): List<RecipientDevice> {
+    private fun certified(u: UserKeysDto, identityKey: String) = u.devices.filter { d ->
+        Ed25519.verify(identityKey.unb64(), Canonical.deviceCert(identityKey, d.signingKey, d.encryptionKey).toByteArray(), d.certificate.unb64())
+    }
+
+    private suspend fun conversationUsers(conversationId: String, force: Boolean): List<UserKeysDto> {
         val now = System.currentTimeMillis()
         val hit = convCache[conversationId]
-        val users = if (!force && hit != null && now - hit.second < 60_000) hit.first else {
-            api.get<KeysRes>("/v1/conversations/$conversationId/devices").users.also { list ->
-                convCache[conversationId] = list to now
-                list.forEach { cache[it.userId] = Cached(it, now); pin(it) }
-            }
+        if (!force && hit != null && now - hit.second < 60_000) return hit.first
+        return source.conversationKeys(conversationId).also { list ->
+            convCache[conversationId] = list to now
+            list.forEach { cache[it.userId] = Cached(it, now) }
         }
-        return users.flatMap { validDevices(it) }.filter { it.id != myDeviceId }.map { RecipientDevice(it.id, it.encryptionKey.unb64()) }
     }
+
+    /** Devices to encrypt a message to. Throws [IdentityChangedException] if any member is untrusted. */
+    suspend fun conversationRecipients(conversationId: String, myDeviceId: String, force: Boolean): List<RecipientDevice> {
+        val changed = LinkedHashSet<String>()
+        val out = ArrayList<RecipientDevice>()
+        for (u in conversationUsers(conversationId, force)) {
+            val key = trustedKey(u)
+            if (key == null) {
+                changed += u.userId
+                continue
+            }
+            certified(u, key).filter { it.id != myDeviceId }.forEach { out += RecipientDevice(it.id, it.encryptionKey.unb64()) }
+        }
+        if (changed.isNotEmpty()) throw IdentityChangedException(changed)
+        return out
+    }
+
+    /** Member ids of a conversation (cached for a minute), e.g. to show which of them changed keys. */
+    suspend fun conversationMemberIds(conversationId: String): List<String> = conversationUsers(conversationId, false).map { it.userId }
 
     fun invalidate(conversationId: String? = null) {
         if (conversationId == null) convCache.clear() else convCache.remove(conversationId)
@@ -63,14 +124,22 @@ class KeyDirectory(private val api: ApiClient, private val db: GriipDatabase) {
         convCache.clear()
     }
 
-    /** Signing key of a sender device, verified against the sender's identity key. */
-    suspend fun senderSigningKey(userId: String, deviceId: String): ByteArray? {
-        fun find(c: UserKeysDto?) = c?.let { validDevices(it).firstOrNull { d -> d.id == deviceId } }
-        find(cache[userId]?.keys)?.let { return it.signingKey.unb64() }
-        val fresh = api.post<UserIdsReq, KeysRes>("/v1/users/devices", UserIdsReq(listOf(userId))).users.firstOrNull() ?: return null
-        cache[userId] = Cached(fresh, System.currentTimeMillis())
-        pin(fresh)
-        return find(fresh)?.signingKey?.unb64()
+    /** Signing key of a sender device, if the device is certified by the sender's pinned identity. */
+    suspend fun senderKey(userId: String, deviceId: String): SenderKey {
+        val cached = cache[userId]?.keys?.takeIf { k -> k.devices.any { it.id == deviceId } }
+        val keys = cached ?: source.userKeys(userId)?.also { cache[userId] = Cached(it, System.currentTimeMillis()) } ?: return SenderKey.Unknown
+        val trusted = trustedKey(keys) ?: return SenderKey.IdentityChanged
+        return certified(keys, trusted).firstOrNull { it.id == deviceId }?.let { SenderKey.Trusted(it.signingKey.unb64()) } ?: SenderKey.Unknown
+    }
+
+    /**
+     * The local user compared [identityKey]'s safety number and accepts it as this contact's key. The
+     * reviewed key is pinned, not whatever the server returns next, so a second swap is caught too.
+     */
+    suspend fun acceptIdentity(userId: String, identityKey: String) {
+        val e = pins.get(userId) ?: UserEntity(userId, "", "", 0, null, null)
+        pins.upsert(e.copy(pinnedIdentityKey = identityKey, identityChanged = false, verified = false))
+        invalidateUser(userId)
     }
 }
 
@@ -98,9 +167,4 @@ class UserRepository(private val api: ApiClient, private val db: GriipDatabase) 
         db.users().get(userId)?.let { db.users().upsert(it.copy(verified = true)) }
     }
 
-    /** Accept a changed identity key after the user has re-verified it out of band. */
-    suspend fun acceptNewIdentity(userId: String) {
-        val u = fetch(userId)
-        db.users().get(userId)?.let { db.users().upsert(it.copy(pinnedIdentityKey = u.identityKey, identityChanged = false, verified = false)) }
-    }
 }

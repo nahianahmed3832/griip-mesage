@@ -38,6 +38,14 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     val users = c.db.users().observeAll().map { l -> l.associateBy { it.id } }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     val typing = combine(c.messages.typing, users) { t, u -> t[conversationId]?.keys?.filter { it != me }?.mapNotNull { u[it]?.displayName ?: "Someone" } ?: emptyList() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val memberIds = MutableStateFlow<List<String>>(emptyList())
+
+    /** Members whose security key changed: messages to and from them are paused until reviewed (T1.2). */
+    val changedMembers = combine(users, memberIds) { u, ids -> ids.mapNotNull { u[it] }.filter { it.identityChanged && it.id != me } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Incoming messages held because their sender's key changed. */
+    val heldIncoming = c.db.quarantine().observeCount(conversationId).stateIn(viewModelScope, SharingStarted.Eagerly, 0)
     val transfers = c.messages.transferProgress
     val connection = c.realtime.state
     val call = c.calls.state
@@ -48,6 +56,7 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
 
     init {
         viewModelScope.launch { c.conversations.refreshOne(conversationId) }
+        viewModelScope.launch { runCatching { memberIds.value = c.directory.conversationMemberIds(conversationId) } }
         viewModelScope.launch {
             val conv = c.db.conversations().get(conversationId)
             val ids = conv?.let { com.griipbuddy.message.data.repo.ConversationRepository.members(it).map { m -> m.id } }.orEmpty()

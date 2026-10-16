@@ -52,4 +52,7 @@ object MessageStatus {
     const val READ = "READ"
     const val FAILED = "FAILED"
     const val RECEIVED = "RECEIVED"
+
+    /** Not sent yet: a member's security key changed and the user hasn't reviewed it (T1.2). */
+    const val HELD = "HELD"
 }

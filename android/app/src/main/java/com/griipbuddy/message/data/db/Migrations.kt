@@ -11,7 +11,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  */
 object Migrations {
     /** fromVersion → statements that take the schema from `fromVersion` to `fromVersion + 1`. */
-    val steps: Map<Int, List<String>> = mapOf()
+    val steps: Map<Int, List<String>> = mapOf(
+        // v2 (T1.2): envelopes held because their sender's identity key changed.
+        1 to listOf(
+            "CREATE TABLE IF NOT EXISTS `quarantine` (`queueId` INTEGER NOT NULL, `conversationId` TEXT NOT NULL, `senderUserId` TEXT NOT NULL, " +
+                "`itemJson` TEXT NOT NULL, `receivedAt` INTEGER NOT NULL, PRIMARY KEY(`queueId`))",
+            "CREATE INDEX IF NOT EXISTS `index_quarantine_senderUserId` ON `quarantine` (`senderUserId`)",
+            "CREATE INDEX IF NOT EXISTS `index_quarantine_conversationId` ON `quarantine` (`conversationId`)",
+        ),
+    )
 
     fun all(): Array<Migration> = steps.map { (from, sql) ->
         object : Migration(from, from + 1) {

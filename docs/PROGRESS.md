@@ -14,7 +14,7 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | Audit probes P1–P7 against the real API | ✅ | All 7 suspected defects confirmed. The probe file was deleted after recording (results in the inventory) |
 | Baseline checks | ✅ | Server 32/32 tests, `tsc` clean; Android `compileDebugKotlin` and `assembleRelease` (R8, 64 MB unsigned) succeed. The release APK hasn't been run on a device. Production `/healthz` OK |
 | **T1.1 Demotion to Guest revokes access** (P1) | ✅ server | See below |
-| T1.2 Enforce pinned identity keys | ⏳ | Owner decision (2026-10-16 master prompt): **block** sending and receiving on an identity change until the user accepts. Needs T2.4 |
+| **T1.2 Enforce pinned identity keys** | ✅ (device check pending) | See below |
 | **T1.3 Evict removed members from live calls** (P3) | ✅ server | See below. Not deployed |
 | T1.4 Never discard messages on local failure | ⏳ | Needs T2.4 |
 | **T1.6 Registration gating, quotas, limits** (P5) | ✅ server | See below. Android invite field pending; not deployed |
@@ -23,6 +23,41 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T2.4 Android test harness** | ✅ foundation | See below. 25 JVM tests; device check blocked |
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
+
+### T1.2 Pinned identities enforced (2026-10-16)
+
+- **Defect:** certificates were verified against the identity key the server returned *now*. A relay that substituted a contact's key got future
+  messages encrypted to its devices, and its forged messages were accepted. Only a DM banner warned (D1).
+- **Owner decision:** block, don't just warn, until the user accepts the new key.
+- **Change (Android):**
+  - `KeyDirectory` pins on first contact, then trusts only devices certified by the pinned key. It now sits behind small `KeySource`/`PinStore` interfaces, so it's unit-testable.
+  - A changed key gives `IdentityChangedException` when sending (the whole conversation pauses, because the server requires every member device), or `SenderKey.IdentityChanged` when receiving.
+  - `MessageRepository`:
+    - paused sends stay in the outbox with status **HELD** ("Paused: a security key changed") instead of FAILED;
+    - envelopes from a changed sender are **quarantined**: new `quarantine` table, Room v2 with migration 1→2, acknowledged only after being stored locally;
+    - `acceptIdentity(userId, reviewedKey)` pins the reviewed key, resumes held sends and opens quarantined envelopes.
+  - **UI:** the conversation banner now covers DMs, groups and channels (members with a changed key, plus how many incoming messages are waiting), and held messages are marked. *I verified the new key* pins the key whose safety number is on screen.
+  - A server that returns to the pinned key restores trust automatically.
+- **Change (reference client and bot):**
+  - `GriipClient` pins too. Sending to a changed identity throws `IdentityChangedError`, and receiving holds the envelope.
+  - `acceptIdentity()` mirrors the app. Griip Bot inherits this (pins live for each bot process).
+- **Tests:**
+  - `KeyDirectoryTest`, 7 tests:
+    - first-contact pin;
+    - a substituted key pausing a 3-member conversation;
+    - a forged sender held;
+    - an uncertified device rejected;
+    - accepting resumes;
+    - a second swap after acceptance is caught;
+    - reverting clears the warning.
+  - `server/test/identity_pinning.test.ts`, 4 tests. The server's DB swaps Bob's identity and device keys for attacker keys with a valid certificate:
+    - Alice posts nothing (no queue rows);
+    - the attacker's message is held, not shown;
+    - acceptance opens it and resumes sending;
+    - a second swap is caught.
+  - `MigrationsTest` failed with v2 and no step (2 failures), and passes with the 1→2 step.
+  - Totals: Android **35/35**, server **69/69**, `assembleDebug` OK.
+- **Not verified on a device:** the banner, held status and accept flow need the phone, where USB installs need the owner's approval. Not reviewed visually.
 
 ### T2.3 Local database migration protection (2026-10-16)
 

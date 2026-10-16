@@ -472,7 +472,11 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
                     Text(combined, style = Griip.type.bodyMedium.copy(fontFamily = FontFamily.Monospace, letterSpacing = 1.sp), color = c.primaryDeep, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(12.dp))
                     if (local?.identityChanged == true) {
-                        PillButton("I verified the new key", { scope.launch { container.users.acceptNewIdentity(userId); container.users.markVerified(userId) } }, Modifier.fillMaxWidth(), height = 46.dp)
+                        PillButton("I verified the new key", {
+                            // Pin exactly the key whose safety number is shown, not whatever the server returns next.
+                            val shown = u.identityKey ?: return@PillButton
+                            scope.launch { container.messages.acceptIdentity(userId, shown); container.users.markVerified(userId) }
+                        }, Modifier.fillMaxWidth(), height = 46.dp)
                     } else if (local?.verified != true) {
                         PillButton("Mark as verified", { scope.launch { container.users.markVerified(userId) } }, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, height = 46.dp)
                     }

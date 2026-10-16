@@ -25,6 +25,7 @@ import com.griipbuddy.message.data.db.ConversationEntity
 import com.griipbuddy.message.data.db.GriipDatabase
 import com.griipbuddy.message.data.db.MessageEntity
 import com.griipbuddy.message.data.db.OutboxEntity
+import com.griipbuddy.message.data.db.QuarantineEntity
 import com.griipbuddy.message.data.model.AttachmentRef
 import com.griipbuddy.message.data.model.CallInfo
 import com.griipbuddy.message.data.model.MessageStatus
@@ -328,6 +329,12 @@ class MessageRepository(
                     if (item.visible) db.messages().setStatus(item.messageId, MessageStatus.FAILED, null, e.message)
                 }
                 return
+            } catch (e: IdentityChangedException) {
+                // Paused, not failed: resumes when the user accepts the new key (acceptIdentity), and
+                // is re-checked now and then in case the server goes back to the pinned key.
+                db.outbox().put(item.copy(nextAttemptAt = System.currentTimeMillis() + HELD_RECHECK_MS, lastError = HELD_REASON))
+                if (item.visible) db.messages().setStatus(item.messageId, MessageStatus.HELD, null, "Paused: a security key changed")
+                return
             } catch (e: Exception) {
                 Log.w(TAG, "send failed: ${e.javaClass.simpleName}")
                 db.outbox().remove(item.messageId)
@@ -372,6 +379,9 @@ class MessageRepository(
             } catch (e: ApiException) {
                 // Couldn't fetch keys etc. (transient) — leave unacknowledged; it will be redelivered.
                 Log.w(TAG, "deferring queue item: ${e.code}")
+            } catch (e: SenderIdentityChanged) {
+                quarantine(item)
+                acks += item.id
             } catch (e: EnvelopeException) {
                 recordUndecryptable(item, e.message ?: "")
                 acks += item.id
@@ -396,6 +406,8 @@ class MessageRepository(
             for (i in r.items) {
                 try {
                     handleItem(i); ids += i.id
+                } catch (e: SenderIdentityChanged) {
+                    quarantine(i); ids += i.id
                 } catch (e: EnvelopeException) {
                     recordUndecryptable(i, e.message ?: ""); ids += i.id
                 } catch (_: ApiException) {
@@ -421,8 +433,11 @@ class MessageRepository(
         val p = item.payload
         val existing = db.messages().get(item.messageId)
         if (existing != null && p.cls == "message") return // duplicate delivery
-        val signingKey = directory.senderSigningKey(item.senderUserId, item.senderDeviceId)
-            ?: throw EnvelopeException("unknown or uncertified sender device")
+        val signingKey = when (val k = directory.senderKey(item.senderUserId, item.senderDeviceId)) {
+            is SenderKey.Trusted -> k.signingKey
+            SenderKey.IdentityChanged -> throw SenderIdentityChanged()
+            SenderKey.Unknown -> throw EnvelopeException("unknown or uncertified sender device")
+        }
         val header = EnvelopeHeader(item.messageId, item.conversationId, item.senderUserId, item.senderDeviceId, p.sentAt ?: 0, p.cls ?: "message")
         val plain = crypto.open(ReceivedEnvelope(header, p.nonce!!, p.ciphertext!!, p.signature!!, p.enc!!, p.wrappedKey!!), signingKey, myDeviceId!!)
         val payload = json.decodeFromString(Payload.serializer(), String(plain))
@@ -528,6 +543,42 @@ class MessageRepository(
         )
     }
 
+    /** Kept locally, then acknowledged: opened later if the user accepts the sender's new key (T1.2). */
+    private suspend fun quarantine(item: QueueItem) {
+        db.quarantine().put(QuarantineEntity(item.id, item.conversationId, item.senderUserId, json.encodeToString(QueueItem.serializer(), item), System.currentTimeMillis()))
+    }
+
+    /**
+     * The user reviewed [identityKey] (the safety number they compared) and accepts it for [userId]:
+     * pin it, resume paused sends and open the messages held while the key was untrusted.
+     */
+    suspend fun acceptIdentity(userId: String, identityKey: String) {
+        directory.acceptIdentity(userId, identityKey)
+        db.messages().resumeHeld()
+        db.outbox().resume(HELD_REASON, System.currentTimeMillis())
+        kick()
+        processLock.withLock {
+            for (q in db.quarantine().bySender(userId)) {
+                val item = runCatching { json.decodeFromString(QueueItem.serializer(), q.itemJson) }.getOrNull()
+                if (item == null) {
+                    db.quarantine().remove(q.queueId)
+                    continue
+                }
+                try {
+                    handleItem(item)
+                    db.quarantine().remove(q.queueId)
+                } catch (_: SenderIdentityChanged) {
+                    // Still untrusted (the server presents yet another key): keep holding it.
+                } catch (_: ApiException) {
+                    // Keys unreachable right now: try again on the next acceptance or app start.
+                } catch (e: EnvelopeException) {
+                    recordUndecryptable(item, e.message ?: "")
+                    db.quarantine().remove(q.queueId)
+                }
+            }
+        }
+    }
+
     private suspend fun recordUndecryptable(item: QueueItem, reason: String) {
         if (item.payload.cls != "message") return
         db.messages().insertIgnore(
@@ -546,8 +597,14 @@ class MessageRepository(
     }
 
     companion object {
+        /** Outbox `lastError` marking a send paused by an identity change. */
+        private const val HELD_REASON = "identity_changed"
+        private const val HELD_RECHECK_MS = 6 * 3600_000L
         private const val TAG = "Messages"
         private const val MAX_ATTEMPTS = 6
         private val BACKOFF = listOf(2_000L, 5_000L, 15_000L, 30_000L, 60_000L, 120_000L)
     }
 }
+
+/** The sender's identity key changed and hasn't been accepted: hold the item instead of discarding it. */
+private class SenderIdentityChanged : Exception()

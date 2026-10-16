@@ -182,6 +182,12 @@ fun MessageBubble(
                     }
                 }
             }
+            if (m.status == MessageStatus.HELD) {
+                Text(
+                    m.errorText ?: "Paused: a security key changed", style = Griip.type.caption, color = c.warning,
+                    modifier = Modifier.padding(top = 3.dp, end = 4.dp),
+                )
+            }
             if (m.status == MessageStatus.FAILED) {
                 Text(
                     (m.errorText ?: "Not sent") + " · Tap to retry", style = Griip.type.caption, color = c.danger,
@@ -226,6 +232,7 @@ private fun StatusIcon(status: String, tint: Color) {
         MessageStatus.DELIVERED -> Icon(Icons.Rounded.DoneAll, "Delivered", tint = tint, modifier = Modifier.size(14.dp))
         MessageStatus.READ -> Icon(Icons.Rounded.DoneAll, "Read", tint = Color(0xFFFFF3B0), modifier = Modifier.size(14.dp))
         MessageStatus.FAILED -> Icon(Icons.Outlined.ErrorOutline, "Failed", tint = c.dangerSoft, modifier = Modifier.size(14.dp))
+        MessageStatus.HELD -> Icon(Icons.Outlined.Schedule, "Paused", tint = c.warning, modifier = Modifier.size(13.dp))
     }
 }
 

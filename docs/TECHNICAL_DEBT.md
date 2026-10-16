@@ -8,7 +8,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 
 | # | Debt | Where | Severity | Roadmap |
 |---|---|---|---|---|
-| D1 | The certificate check uses the server's current identity key, not the pinned one. `SECURITY.md` §3 overstates the protection | `android/.../data/repo/Directory.kt`, `test/support/griipClient.ts` | High | T1.2 |
+| D1 | ~~The certificate check uses the server's current identity key, not the pinned one~~ **Fixed 2026-10-16 (T1.2)** in the app and the reference client | `Directory.kt`, `griipClient.ts` | High | T1.2 |
 | D2 | Demotion to Guest relies on `revalidateChannelMemberships`, whose GUEST branch keeps everything. Branch and team rows also survive | `server/src/authz.ts`, `routes/orgs.ts` | High | T1.1 |
 | D3 | ~~No call eviction on membership change~~ **Fixed 2026-10-16 (T1.3), not deployed** | `server/src/routes/calls.ts`, `jobs.ts` | High | T1.3 |
 | D4 | The catch-all in `processQueue` acks after any exception | `MessageRepository.kt` | High | T1.4 |

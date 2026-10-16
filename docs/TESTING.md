@@ -42,6 +42,7 @@ Suites added in the 2026-10-16 feature pass. For each, the tests failed with the
 | `presence.test.ts` | 4 | T1.7 (2 fail without the fix) |
 | `activity_scope.test.ts` | 4 | T1.8 (3 fail without the fix) |
 | `interop_vectors.test.ts` | 1 | Shared Kotlin/Node crypto vectors (D22) |
+| `identity_pinning.test.ts` | 4 | T1.2 against a relay that swaps a contact's identity and device keys (the reference client refuses to send, holds forged messages, and resumes only for the accepted key) |
 The 2026-10-16 audit also ran 7 probe scenarios against the API. All confirmed defects: see `FEATURE_INVENTORY.md`.
 
 | Area | Status | Covered by |
@@ -160,7 +161,8 @@ with no device or emulator. `crypto/Bytes.kt` uses `java.util.Base64`, so the re
 | `crypto/RecoveryCodeTest` | 3 | PASS | Round trip for 200 random seeds; lowercase, space and no-dash input accepted; a typo or truncation is rejected |
 | `crypto/AttachmentCryptoTest` | 2 | PASS | Fresh key per file; a modified ciphertext fails the integrity check |
 | `ui/screens/calls/VideoSinkBindingTest` | 8 | PASS | Renderer lifetime and sink ordering (video fix) |
-| `data/db/MigrationsTest` | 3 | PASS | D-13: schema versions contiguous and equal to `GriipDatabase.VERSION`; each migration step gives the next exported schema and keeps sample rows (sqlite-jdbc) |
+| `data/db/MigrationsTest` | 3 | PASS | D-13: schema versions contiguous and equal to `GriipDatabase.VERSION`; each migration step gives the next exported schema and keeps sample rows (sqlite-jdbc). Proven to fail when v2 had no step |
+| `data/repo/KeyDirectoryTest` | 7 | PASS | T1.2 pinning: TOFU; a substituted key pauses sending to the whole conversation; a forged sender is held; an uncertified device is rejected; accepting the reviewed key resumes; a second swap is caught; reverting clears the warning |
 
 Not yet covered: the key directory, outbox and queue processing. Each gets tests together with the change that needs them (T1.2, T1.4).
 **Device check of the Base64 change: BLOCKED.** The phone refused the USB install (`INSTALL_FAILED_ABORTED: User rejected permissions`,

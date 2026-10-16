@@ -79,6 +79,13 @@ export interface DecryptedMessage {
   payload: any;
 }
 
+/** Sending or opening is paused: these users' identity keys differ from the ones pinned on first contact (T1.2). */
+export class IdentityChangedError extends Error {
+  constructor(public userIds: string[]) {
+    super(`identity key changed for ${userIds.join(", ")}`);
+  }
+}
+
 export class ApiFailure extends Error {
   constructor(
     public status: number,
@@ -94,6 +101,10 @@ export class GriipClient {
   enc = newX25519();
   userId = "";
   deviceId = "";
+  /** Identity keys pinned on first contact (T1.2). */
+  pins = new Map<string, string>();
+  /** Envelopes from senders whose identity changed, kept until acceptIdentity. */
+  held: any[] = [];
   token = "";
   ws: WebSocket | null = null;
   received: DecryptedMessage[] = [];
@@ -237,6 +248,13 @@ export class GriipClient {
         }
         ackIds.push(it.id);
       } catch (e) {
+        if (e instanceof IdentityChangedError) {
+          // Kept (like the app's quarantine) and acknowledged; opened if acceptIdentity is called.
+          if (!this.held.some((h) => h.id === it.id)) this.held.push(it); // the same item can arrive twice (P6)
+          this.events.push({ t: "identity_changed", userIds: e.userIds, item: it });
+          ackIds.push(it.id);
+          continue;
+        }
         this.events.push({ t: "decrypt_error", error: String(e), item: it });
         ackIds.push(it.id);
       }
@@ -286,6 +304,8 @@ export class GriipClient {
     const id = messageId ?? crypto.randomUUID();
     for (let attempt = 0; attempt < 2; attempt++) {
       const users = await this.conversationKeys(conversationId);
+      const changed = users.filter((u) => this.trustedKey(u) === null).map((u) => u.userId);
+      if (changed.length) throw new IdentityChangedError(changed); // never encrypt to a substituted key
       const devices = users.flatMap((u) => this.verifiedDevices(u)).filter((d) => d.id !== this.deviceId);
       const env = await this.encrypt(conversationId, payload, cls, devices, id);
       try {
@@ -297,17 +317,51 @@ export class GriipClient {
     }
   }
 
-  /** Only devices whose certificate verifies against the user's identity key are encrypted to. */
-  verifiedDevices(u: UserKeys): DeviceKeys[] {
-    return u.devices.filter((d) => verify(u.identityKey, canonical.deviceCert(u.identityKey, d.signingKey, d.encryptionKey), d.certificate));
+  /**
+   * Trust on first use, as the Android app does (T1.2): the first identity key seen for a user is
+   * pinned; a different key later is untrusted until acceptIdentity is called with it.
+   */
+  private trustedKey(u: UserKeys): string | null {
+    const pinned = this.pins.get(u.userId);
+    if (pinned === undefined) {
+      this.pins.set(u.userId, u.identityKey);
+      return u.identityKey;
+    }
+    return pinned === u.identityKey ? pinned : null;
   }
 
-  async decrypt(item: any): Promise<DecryptedMessage> {
+  /** Only devices whose certificate verifies against the user's *pinned* identity key are encrypted to. */
+  verifiedDevices(u: UserKeys): DeviceKeys[] {
+    const key = this.trustedKey(u);
+    if (key === null) return [];
+    return u.devices.filter((d) => verify(key, canonical.deviceCert(key, d.signingKey, d.encryptionKey), d.certificate));
+  }
+
+  /** Drop cached key lists, e.g. after a test changes keys on the server behind the client's back. */
+  clearKeyCache(): void {
+    this.keyCache.clear();
+  }
+
+  /** Accept `identityKey` (the one whose safety number was compared) for `userId`, then open held envelopes. */
+  async acceptIdentity(userId: string, identityKey: string): Promise<void> {
+    this.pins.set(userId, identityKey);
+    this.keyCache.delete(userId);
+    const mine = this.held.filter((it) => it.senderUserId === userId);
+    this.held = this.held.filter((it) => it.senderUserId !== userId);
+    for (const it of mine) {
+      const m = await this.decrypt(it);
+      if (!this.received.some((r) => r.messageId === m.messageId)) this.received.push(m);
+    }
+  }
+
+  async decrypt(item: any, refetched = false): Promise<DecryptedMessage> {
     const p = item.payload;
     const sender = await this.userKeys(item.senderUserId);
+    if (this.trustedKey(sender) === null) throw new IdentityChangedError([item.senderUserId]);
     const dev = this.verifiedDevices(sender).find((d) => d.id === item.senderDeviceId);
     if (!dev) {
       this.keyCache.delete(item.senderUserId);
+      if (!refetched) return this.decrypt(item, true); // keys may have changed since they were cached
       throw new Error("unknown or uncertified sender device");
     }
     const header = canonical.header({
@@ -318,7 +372,11 @@ export class GriipClient {
       sentAt: p.sentAt,
       cls: p.cls,
     });
-    if (!verify(dev.signingKey, `${header}\n${p.nonce}\n${p.ciphertext}`, p.signature)) throw new Error("bad signature");
+    if (!verify(dev.signingKey, `${header}\n${p.nonce}\n${p.ciphertext}`, p.signature)) {
+      this.keyCache.delete(item.senderUserId);
+      if (!refetched) return this.decrypt(item, true);
+      throw new Error("bad signature");
+    }
     const recipientKey = await suite.kem.deserializePrivateKey(this.enc.priv);
     const contentKey = Buffer.from(
       await suite.open({ recipientKey, enc: Buffer.from(p.enc, "base64"), info: HPKE_INFO }, Buffer.from(p.wrappedKey, "base64"), Buffer.from(`${item.messageId}\n${this.deviceId}`, "utf8")),
