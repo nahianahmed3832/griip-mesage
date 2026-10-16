@@ -16,6 +16,7 @@ import com.griipbuddy.message.voice.VoiceNote
 import com.griipbuddy.message.data.model.AttachmentRef
 import com.griipbuddy.message.di.AppContainer
 import com.griipbuddy.message.ui.friendly
+import com.griipbuddy.message.ui.media.MediaExport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -220,6 +221,42 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
         } catch (e: Exception) {
             error.value = "Couldn't read that file"
         }
+    }
+
+    /** Short confirmations ("Saved to Pictures/Orbit"); failures go to [error]. */
+    val notice = MutableStateFlow<String?>(null)
+
+    /** The decrypted file for the media viewer and for saving: downloads, checks and decrypts it first if needed. */
+    suspend fun mediaFile(ref: AttachmentRef): File = c.messages.downloadAttachment(ref)
+
+    /** Why a video can't play right now (a call has the speaker and microphone), or null. */
+    fun videoBlocked(): String? = if (inCall) "Videos can't play during a call." else null
+
+    fun pauseVoice() = c.voicePlayer.pause()
+
+    fun saveToGallery(ref: AttachmentRef) = viewModelScope.launch {
+        runCatching { MediaExport.saveToGallery(c.app, mediaFile(ref), ref.name, ref.mime) }
+            .onSuccess { folder -> notice.value = "Saved to $folder" }
+            .onFailure { error.value = saveFailure(it) }
+    }
+
+    fun saveToDocument(ref: AttachmentRef, target: Uri) = viewModelScope.launch {
+        runCatching { MediaExport.saveToDocument(c.app, mediaFile(ref), target) }
+            .onSuccess { notice.value = "Saved" }
+            .onFailure { error.value = saveFailure(it) }
+    }
+
+    fun share(ref: AttachmentRef, start: (Intent) -> Unit) = viewModelScope.launch {
+        runCatching { MediaExport.shareIntent(c.app, mediaFile(ref), ref.name, ref.mime) }
+            .onSuccess(start)
+            .onFailure { error.value = saveFailure(it) }
+    }
+
+    private fun saveFailure(e: Throwable): String = when (e) {
+        is com.griipbuddy.message.data.api.ApiException -> e.message
+        is java.io.IOException -> "Couldn't save: ${e.message ?: "the phone's storage refused the file"}"
+        is SecurityException -> "Couldn't save: storage permission is needed"
+        else -> "Couldn't save this file"
     }
 
     fun openAttachment(context: Context, ref: AttachmentRef) = viewModelScope.launch {

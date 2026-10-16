@@ -110,12 +110,16 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class AttachmentUploadRes(val id: String, val size: Long, val expiresAt: Long)
 
 // ───────── Orgs ─────────
+// slug defaults to "": servers before 2026-10-16 left it out of the invite preview, and requiring it made the app
+// reject a valid invite with "Unexpected server response" (physical-device test).
 @Serializable data class OrgDto(
-    val id: String, val name: String, val slug: String, val description: String? = null, val myRole: String? = null,
+    val id: String, val name: String, val slug: String = "", val description: String? = null, val myRole: String? = null,
     val memberCount: Int = 0, val createdAt: Long = 0,
 )
 @Serializable data class OrgsRes(val orgs: List<OrgDto>)
 @Serializable data class OrgRes(val org: OrgDto)
+/** `alreadyMember`: this person had already joined through the invite (a retry); the server used nothing up. */
+@Serializable data class AcceptInviteRes(val org: OrgDto, val alreadyMember: Boolean = false)
 @Serializable data class BranchDto(
     val id: String, val name: String, val description: String? = null, val location: String? = null, val myRole: String? = null,
     val canAccess: Boolean = false, val canManage: Boolean = false, val memberCount: Int = 0,
@@ -135,7 +139,8 @@ import kotlinx.serialization.json.JsonObject
     val org: OrgDto, val branches: List<BranchDto>, val departments: List<DepartmentDto>, val teams: List<TeamDto>,
     val stats: OrgStats, val permissions: OrgPermissions,
 )
-@Serializable data class CreateOrgReq(val name: String, val description: String? = null)
+/** [requestId]: one per create form, so a retry or double tap returns the same workspace (server ≥ 2026-10-16). */
+@Serializable data class CreateOrgReq(val name: String, val description: String? = null, val requestId: String? = null)
 @Serializable data class CreateBranchReq(val name: String, val description: String? = null, val location: String? = null)
 @Serializable data class CreateDepartmentReq(val name: String, val description: String? = null)
 @Serializable data class CreateTeamReq(val name: String, val description: String? = null, val branchId: String? = null, val departmentId: String? = null)

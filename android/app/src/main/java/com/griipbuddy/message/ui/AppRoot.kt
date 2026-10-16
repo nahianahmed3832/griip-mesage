@@ -1,5 +1,10 @@
 package com.griipbuddy.message.ui
 
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavBackStackEntry
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -130,14 +135,15 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
     }
 
     Column(Modifier.fillMaxSize()) {
+        val motion = rememberNavMotion()
         NavHost(
             nav,
             startDestination = Routes.CHATS,
             modifier = Modifier.weight(1f),
-            enterTransition = { if (initialState.destination.route in Routes.tabs && targetState.destination.route in Routes.tabs) fadeIn(tween(150)) else slideInHorizontally(tween(240)) { it / 5 } + fadeIn(tween(200)) },
-            exitTransition = { if (initialState.destination.route in Routes.tabs && targetState.destination.route in Routes.tabs) fadeOut(tween(120)) else fadeOut(tween(160)) },
-            popEnterTransition = { fadeIn(tween(200)) },
-            popExitTransition = { slideOutHorizontally(tween(220)) { it / 5 } + fadeOut(tween(180)) },
+            enterTransition = { motion.enter(this, forward = true) },
+            exitTransition = { motion.exit(this, forward = true) },
+            popEnterTransition = { motion.enter(this, forward = false) },
+            popExitTransition = { motion.exit(this, forward = false) },
         ) {
             composable(Routes.CHATS) { ChatsScreen(nav) }
             composable(Routes.HOME) { ChatsScreen(nav) }
@@ -186,3 +192,49 @@ fun NavHostController.switchTab(route: String) {
 private val noTransition: EnterTransition = EnterTransition.None
 @Suppress("unused")
 private val noExit: ExitTransition = ExitTransition.None
+
+/**
+ * Screen transitions. Tab to tab: a short fade-through (the tabs keep their state and scroll position, so nothing
+ * slides). Opening a screen: it slides in from the end edge while the previous one shifts slightly back; Back reverses
+ * that. Directions follow the layout direction (right-to-left languages mirror them). With the system's animations
+ * turned off (accessibility, or "Remove animations"), screens switch instantly.
+ */
+class NavMotion(private val animate: Boolean) {
+    private fun tabs(scope: AnimatedContentTransitionScope<NavBackStackEntry>) =
+        NavMotionRules.isTabSwitch(scope.initialState.destination.route, scope.targetState.destination.route)
+
+    fun enter(scope: AnimatedContentTransitionScope<NavBackStackEntry>, forward: Boolean): EnterTransition = when {
+        !animate -> EnterTransition.None
+        tabs(scope) -> fadeIn(tween(180, delayMillis = 60)) + scaleIn(tween(240, delayMillis = 60), initialScale = 0.985f)
+        forward -> scope.slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(260)) { it / 4 } + fadeIn(tween(200))
+        else -> scope.slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(260)) { it / 10 } + fadeIn(tween(220))
+    }
+
+    fun exit(scope: AnimatedContentTransitionScope<NavBackStackEntry>, forward: Boolean): ExitTransition = when {
+        !animate -> ExitTransition.None
+        tabs(scope) -> fadeOut(tween(90))
+        forward -> scope.slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(260)) { it / 10 } + fadeOut(tween(200))
+        else -> scope.slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(240)) { it / 4 } + fadeOut(tween(180))
+    }
+}
+
+/** Pure navigation-motion rules (unit-tested in `NavMotionTest`). */
+object NavMotionRules {
+    /** Switching between the bottom-bar tabs (Chats and its alias Home count as one tab). */
+    fun isTabSwitch(from: String?, to: String?): Boolean {
+        fun tab(r: String?) = if (r == Routes.HOME) Routes.CHATS else r
+        return tab(from) in Routes.tabs && tab(to) in Routes.tabs
+    }
+
+    /** Animations play unless the system animator scale is 0 ("Remove animations" / animations off). */
+    fun animationsEnabled(animatorScale: Float): Boolean = animatorScale > 0f
+}
+
+@Composable
+private fun rememberNavMotion(): NavMotion {
+    val ctx = LocalContext.current
+    return remember {
+        val scale = runCatching { android.provider.Settings.Global.getFloat(ctx.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) }.getOrDefault(1f)
+        NavMotion(NavMotionRules.animationsEnabled(scale))
+    }
+}

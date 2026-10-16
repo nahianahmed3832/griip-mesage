@@ -92,8 +92,10 @@ class WorkspaceViewModel(val c: AppContainer) : ViewModel() {
 
     fun refresh() = viewModelScope.launch {
         loading.value = true
-        if (orgs.value == null) c.orgs.cachedOrgs()?.let { orgs.value = it }
-        runCatching { c.orgs.orgs() }.onSuccess { list ->
+        if (orgs.value == null) c.orgs.cachedOrgs()?.let { orgs.value = WorkspaceList.normalize(it) }
+        runCatching { c.orgs.orgs() }.onSuccess { fetched ->
+            // Replaces (never appends to) the list: one entry per organisation id, in a stable order.
+            val list = WorkspaceList.normalize(fetched)
             orgs.value = list
             val sel = selectedOrg.value?.takeIf { s -> list.any { it.id == s } } ?: list.firstOrNull()?.id
             if (sel != selectedOrg.value) c.orgs.select(sel)
@@ -131,6 +133,7 @@ fun WorkspaceScreen(nav: NavHostController) {
     val channels by vm.channels.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
+    val selectedOrg by vm.selectedOrg.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(0) }
     var branchFilter by rememberSaveable { mutableStateOf<String?>(null) }
     var showSwitcher by remember { mutableStateOf(false) }
@@ -143,6 +146,10 @@ fun WorkspaceScreen(nav: NavHostController) {
             LargeHeader("Workspace", subtitle = d?.org?.name) {
                 if ((orgs?.size ?: 0) > 0) CircleIconButton(Icons.Outlined.SwapHoriz, "Switch organization", { showSwitcher = true })
             }
+        }
+        // More than one workspace: switch with one tap, like a server rail.
+        if ((orgs?.size ?: 0) > 1) item(key = "rail") {
+            WorkspaceRail(orgs.orEmpty(), d?.org?.id ?: selectedOrg, { vm.switchOrg(it) }, { nav.navigate(Routes.JOIN + "?code=") }, Modifier.padding(bottom = 6.dp))
         }
         error?.let { item { StatusBanner(it, BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp), action = "Retry", onAction = { vm.refresh() }) } }
         if (d == null) {
@@ -158,7 +165,7 @@ fun WorkspaceScreen(nav: NavHostController) {
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), shape = Shapes.hero) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    MarkTile(d.org.name, d.org.name.hashCode(), size = 56.dp)
+                    MarkTile(d.org.name, WorkspaceList.colorSeed(d.org), size = 56.dp)
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(d.org.name, style = Griip.type.title, color = c.textPrimary)
@@ -291,14 +298,8 @@ fun WorkspaceScreen(nav: NavHostController) {
         }
     }
 
-    if (showSwitcher) GlassSheet({ showSwitcher = false }, title = "Organizations") {
-        orgs.orEmpty().forEach { o ->
-            ListCard(
-                o.name, Modifier.padding(vertical = 4.dp), subtitle = "${o.memberCount} members",
-                leading = { MarkTile(o.name, o.name.hashCode(), size = 42.dp) }, trailing = { RoleBadge(o.myRole) },
-                selected = o.id == d?.org?.id, onClick = { vm.switchOrg(o.id); showSwitcher = false },
-            )
-        }
+    if (showSwitcher) GlassSheet({ showSwitcher = false }, title = "Workspaces") {
+        WorkspaceSwitcherList(orgs.orEmpty(), d?.org?.id) { id -> vm.switchOrg(id); showSwitcher = false }
         Spacer(Modifier.height(10.dp))
         PillButton("Join or create", { showSwitcher = false; nav.navigate(Routes.JOIN + "?code=") }, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, height = 50.dp)
     }

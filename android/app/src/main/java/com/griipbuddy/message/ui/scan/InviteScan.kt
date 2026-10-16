@@ -3,8 +3,11 @@ package com.griipbuddy.message.ui.scan
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
+import com.google.zxing.LuminanceSource
 import com.google.zxing.PlanarYUVLuminanceSource
+import com.google.zxing.RGBLuminanceSource
 import com.google.zxing.ReaderException
+import com.google.zxing.common.GlobalHistogramBinarizer
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeReader
 
@@ -17,6 +20,12 @@ object InviteCodes {
     private val LINK = Regex("""griip://invite/([A-Za-z0-9-]{1,40})""", RegexOption.IGNORE_CASE)
     private val BARE = Regex("""[A-Za-z0-9]{4}(-?[A-Za-z0-9]{4}){2,4}""")
 
+    /** A code inside longer text, e.g. the shared invite message pasted into the code field; never part of a web address. */
+    private val EMBEDDED = Regex("""(?<![A-Za-z0-9/.])[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}(?:-[A-Za-z0-9]{4}){0,2}(?![A-Za-z0-9/-])""")
+
+    /** The characters the server draws codes from (server `CODE_ALPHABET`): no I, L, O, 0 or 1, which look alike. */
+    const val ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
     /** The invite code in [scanned], formatted `XXXX-XXXX-XXXX`, or null if it isn't a Griip invite. */
     fun fromScan(scanned: String): String? {
         val text = scanned.trim()
@@ -24,6 +33,38 @@ object InviteCodes {
         val code = raw.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }
         if (code.length !in 12..20) return null
         return code.chunked(4).joinToString("-")
+    }
+
+    /**
+     * The code in pasted or typed text: the invite link, a whole code, or a dashed code inside a longer message
+     * ("Join … with invite code ABCD-EFGH-JK23"). Null when there isn't exactly one recognisable code.
+     */
+    fun extract(text: String): String? = fromScan(text) ?: EMBEDDED.findAll(text).map { it.value.uppercase() }.distinct().singleOrNull()?.let { fromScan(it) }
+
+    /** What the code field holds, checked before anything is sent to the server. */
+    sealed interface Typed {
+        /** Not enough characters yet: say nothing. */
+        data object Incomplete : Typed
+        /** Can't be a Griip code, with the reason to show. */
+        data class Invalid(val reason: String) : Typed
+        /** Well-formed: [code] is normalised (`XXXX-XXXX-XXXX`) and may be previewed. */
+        data class Ok(val code: String) : Typed
+    }
+
+    /**
+     * Normalises what was typed (case, spaces and dashes don't matter) without changing which code it is: characters
+     * outside [ALPHABET] are reported, not guessed (an O is not silently turned into a 0, which the server never uses).
+     */
+    fun check(input: String): Typed {
+        val chars = input.uppercase().filter { it.isLetterOrDigit() }
+        if (chars.isEmpty()) return Typed.Incomplete
+        val wrong = chars.filter { it !in ALPHABET }.toSet()
+        if (wrong.isNotEmpty()) {
+            return Typed.Invalid("Invite codes never contain ${wrong.sorted().joinToString(", ")}. Check the code with whoever sent it.")
+        }
+        if (chars.length < 12) return Typed.Incomplete
+        if (chars.length > 20 || chars.length % 4 != 0) return Typed.Invalid("That doesn't look like a whole invite code (XXXX-XXXX-XXXX).")
+        return Typed.Ok(chars.chunked(4).joinToString("-"))
     }
 }
 
@@ -36,5 +77,23 @@ object QrDecoder {
         QRCodeReader().decode(BinaryBitmap(HybridBinarizer(source)), hints).text
     } catch (_: ReaderException) {
         null // no code in this frame, or it couldn't be read
+    }
+
+    /**
+     * Decodes a QR code from a still image's ARGB pixels (a screenshot or photo picked from the gallery). Tries both
+     * binarizers and the inverted image (light-on-dark codes), since a picked image gets only one attempt.
+     */
+    fun decodeArgb(pixels: IntArray, width: Int, height: Int): String? {
+        val source: LuminanceSource = RGBLuminanceSource(width, height, pixels)
+        for (src in listOf(source, source.invert())) {
+            for (bin in listOf(HybridBinarizer(src), GlobalHistogramBinarizer(src))) {
+                try {
+                    return QRCodeReader().decode(BinaryBitmap(bin), hints).text
+                } catch (_: ReaderException) {
+                    // try the next way of reading it
+                }
+            }
+        }
+        return null
     }
 }

@@ -1,5 +1,6 @@
 package com.griipbuddy.message.data.repo
 
+import com.griipbuddy.message.data.api.AcceptInviteRes
 import com.griipbuddy.message.data.api.ActivityRes
 import com.griipbuddy.message.data.api.ApiClient
 import com.griipbuddy.message.data.api.ChannelRes
@@ -70,7 +71,8 @@ class OrgRepository(
     suspend fun cachedDetail(orgId: String): OrgDetailRes? =
         db.kv().get("cache.org.$orgId")?.let { runCatching { GriipJson.decodeFromString(OrgDetailRes.serializer(), it) }.getOrNull() }
 
-    suspend fun create(name: String, description: String?) = api.post<CreateOrgReq, OrgRes>("/v1/orgs", CreateOrgReq(name, description)).org
+    suspend fun create(name: String, description: String?, requestId: String? = null) =
+        api.post<CreateOrgReq, OrgRes>("/v1/orgs", CreateOrgReq(name, description, requestId)).org
     suspend fun rename(orgId: String, name: String, description: String?) =
         api.patch<CreateOrgReq, OrgRes>("/v1/orgs/$orgId", CreateOrgReq(name, description)).org
 
@@ -110,7 +112,7 @@ class OrgRepository(
     suspend fun invites(orgId: String) = api.get<InvitesRes>("/v1/orgs/$orgId/invites").invites
     suspend fun revokeInvite(id: String) = api.delete<OkRes>("/v1/invites/$id")
     suspend fun previewInvite(code: String) = api.post<CodeReq, InvitePreviewRes>("/v1/invites/preview", CodeReq(code))
-    suspend fun acceptInvite(code: String) = api.post<CodeReq, OrgRes>("/v1/invites/accept", CodeReq(code)).org.also { runCatching { conversations.refresh() } }
+    suspend fun acceptInvite(code: String) = api.post<CodeReq, AcceptInviteRes>("/v1/invites/accept", CodeReq(code)).also { runCatching { conversations.refresh() } }
 
     suspend fun channels(orgId: String, q: String = "") =
         api.get<ChannelsRes>("/v1/orgs/$orgId/channels" + if (q.isNotBlank()) "?q=${java.net.URLEncoder.encode(q, "UTF-8")}" else "").channels

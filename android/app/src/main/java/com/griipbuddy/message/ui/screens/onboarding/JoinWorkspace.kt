@@ -1,5 +1,8 @@
 package com.griipbuddy.message.ui.screens.onboarding
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Apartment
 import androidx.compose.material.icons.outlined.ConfirmationNumber
 import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Text
@@ -32,8 +36,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import com.griipbuddy.message.data.api.InvitePreviewRes
 import com.griipbuddy.message.ui.LocalContainer
@@ -50,13 +59,15 @@ import com.griipbuddy.message.ui.components.RoleBadge
 import com.griipbuddy.message.ui.components.SegmentedPills
 import com.griipbuddy.message.ui.components.StatusBanner
 import com.griipbuddy.message.ui.friendly
+import com.griipbuddy.message.ui.scan.InviteCodes
 import com.griipbuddy.message.ui.scan.InviteScanner
-import com.griipbuddy.message.ui.switchTab
+import com.griipbuddy.message.ui.scan.QrImageImport
 import com.griipbuddy.message.ui.theme.Griip
 import com.griipbuddy.message.ui.theme.Shapes
 import com.griipbuddy.message.ui.theme.Space
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 /** Join a workspace with an invite code, or create a new organisation (you become its owner). */
 @Composable
@@ -64,27 +75,61 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
     val c = Griip.colors
     val container = LocalContainer.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var code by rememberSaveable { mutableStateOf(initialCode ?: "") }
     var preview by remember { mutableStateOf<InvitePreviewRes?>(null) }
+    var checking by remember { mutableStateOf(false) }
     var orgName by rememberSaveable { mutableStateOf("") }
     var orgDesc by rememberSaveable { mutableStateOf("") }
+    // One id per create form: a retry or a second tap returns the workspace the first one made (server dedupes).
+    var createRequestId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
+    var existingOrg by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var info by remember { mutableStateOf<String?>(null) }
     var scanning by rememberSaveable { mutableStateOf(false) }
+    val typed = InviteCodes.check(code)
 
     LaunchedEffect(code) {
         preview = null
         error = null
-        val clean = code.filter { it.isLetterOrDigit() }
-        if (clean.length < 12) return@LaunchedEffect
+        info = null
+        val ok = InviteCodes.check(code) as? InviteCodes.Typed.Ok ?: return@LaunchedEffect
         delay(300)
-        runCatching { container.orgs.previewInvite(code) }.onSuccess { preview = it }.onFailure { error = it.friendly() }
+        checking = true
+        runCatching { container.orgs.previewInvite(ok.code) }
+            .onSuccess { preview = it }
+            .onFailure { error = InviteOutcome.message(it) }
+        checking = false
     }
 
     fun done(orgId: String) {
         scope.launch { container.orgs.select(orgId) }
-        nav.switchTab(Routes.WORKSPACE)
+        // Leave this screen for good. switchTab() restored the Workspace tab's saved back stack, which still had this
+        // screen on top, so a successful join or create looked like nothing happened, and people tapped again
+        // (physical-device report: five identical workspaces).
+        if (!nav.popBackStack(Routes.WORKSPACE, inclusive = false)) {
+            nav.popBackStack()
+            nav.navigate(Routes.WORKSPACE) {
+                popUpTo(nav.graph.findStartDestination().id)
+                launchSingleTop = true
+            }
+        }
+    }
+
+    // Gallery import: Android's photo picker (no storage permission); the image is decoded on the phone.
+    val pickQr = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            error = null
+            when (val r = QrImageImport.read(context, uri)) {
+                is QrImageImport.Result.Code -> code = r.code
+                QrImageImport.Result.NotInvite -> error = "That image has a QR code, but it isn't a Griip invite. Nothing was opened."
+                QrImageImport.Result.NoCode -> error = "No QR code found in that image. Try a sharper screenshot of the invite, or type the code."
+                QrImageImport.Result.Unreadable -> error = "Couldn't open that image."
+            }
+        }
     }
 
     if (scanning) {
@@ -100,12 +145,27 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
             Spacer(Modifier.height(20.dp))
             if (tab == 0) {
                 GriipTextField(
-                    code, { code = it.uppercase().take(20) }, "Invite code", placeholder = "XXXX-XXXX-XXXX", leadingIcon = Icons.Outlined.ConfirmationNumber,
-                    helper = "Ask an owner, admin, branch manager or team lead for a code.",
+                    code,
+                    { v ->
+                        // A pasted invite message or link becomes just its code; typing keeps what was typed.
+                        // Stored as typed and shown in capitals (rewriting the text itself fought the keyboard's own
+                        // editing); InviteCodes.check normalises it before anything is sent.
+                        code = (if (v.length > 24 || v.contains("://")) InviteCodes.extract(v) else null) ?: v.take(24)
+                    },
+                    "Invite code", placeholder = "XXXX-XXXX-XXXX", leadingIcon = Icons.Outlined.ConfirmationNumber,
+                    helper = if (checking) "Checking the code…" else "Ask an owner, admin, branch manager or team lead for a code. You can paste the whole invite message.",
+                    error = (typed as? InviteCodes.Typed.Invalid)?.reason,
+                    visualTransformation = { t -> TransformedText(AnnotatedString(t.text.uppercase()), OffsetMapping.Identity) },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
                 )
                 Spacer(Modifier.height(12.dp))
-                PillButton("Scan invite QR code", { scanning = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.QrCodeScanner, height = 50.dp)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PillButton("Scan QR code", { scanning = true }, Modifier.weight(1f), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.QrCodeScanner, height = 50.dp, showKnob = false)
+                    PillButton(
+                        "From Gallery", { pickQr.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        Modifier.weight(1f), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.PhotoLibrary, height = 50.dp, showKnob = false,
+                    )
+                }
                 preview?.let { p ->
                     Spacer(Modifier.height(16.dp))
                     GlassCard(Modifier.fillMaxWidth(), shape = Shapes.hero) {
@@ -140,21 +200,38 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
             }
             error?.let {
                 Spacer(Modifier.height(12.dp))
-                StatusBanner(it, BannerKind.Error, icon = Icons.Rounded.Warning)
+                val open = existingOrg
+                if (tab == 1 && open != null) StatusBanner(it, BannerKind.Warning, icon = Icons.Rounded.Warning, action = "Open it", onAction = { done(open) })
+                else StatusBanner(it, BannerKind.Error, icon = Icons.Rounded.Warning)
+            }
+            info?.let {
+                Spacer(Modifier.height(12.dp))
+                StatusBanner(it, BannerKind.Info)
             }
         }
         PillButton(
             if (tab == 0) "Join workspace" else "Create workspace",
             {
-                busy = true; error = null
+                if (busy) return@PillButton
+                busy = true; error = null; existingOrg = null
                 scope.launch {
-                    runCatching {
-                        if (tab == 0) container.orgs.acceptInvite(code) else container.orgs.create(orgName.trim(), orgDesc.trim().ifEmpty { null })
-                    }.onSuccess { done(it.id) }.onFailure { error = it.friendly() }
+                    if (tab == 0) {
+                        val ok = typed as? InviteCodes.Typed.Ok
+                        if (ok != null) runCatching { container.orgs.acceptInvite(ok.code) }
+                            .onSuccess { r -> if (r.alreadyMember) info = "You're already in ${r.org.name}."; done(r.org.id) }
+                            .onFailure { error = InviteOutcome.message(it) }
+                    } else {
+                        runCatching { container.orgs.create(orgName.trim(), orgDesc.trim().ifEmpty { null }, createRequestId) }
+                            .onSuccess { createRequestId = UUID.randomUUID().toString(); done(it.id) }
+                            .onFailure {
+                                existingOrg = InviteOutcome.existingOrg(it)
+                                error = it.friendly()
+                            }
+                    }
                     busy = false
                 }
             },
-            enabled = if (tab == 0) preview != null else orgName.isNotBlank(), loading = busy,
+            enabled = if (tab == 0) preview != null && typed is InviteCodes.Typed.Ok else orgName.isNotBlank(), loading = busy,
             modifier = Modifier.fillMaxWidth().padding(horizontal = Space.gutter).navigationBarsPadding().padding(bottom = 16.dp),
         )
     }

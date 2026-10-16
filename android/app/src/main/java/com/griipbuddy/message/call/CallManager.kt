@@ -21,6 +21,16 @@ import com.griipbuddy.message.data.repo.SessionRepository
 import com.griipbuddy.message.data.repo.SettingsStore
 import com.twilio.audioswitch.AudioDevice
 import io.livekit.android.LiveKit
+import io.livekit.android.AudioOptions
+import io.livekit.android.LiveKitOverrides
+import io.livekit.android.room.participant.ConnectionQuality
+import io.livekit.android.room.participant.VideoTrackPublishDefaults
+import io.livekit.android.room.track.LocalVideoTrackOptions
+import io.livekit.android.room.track.VideoCaptureParameter
+import io.livekit.android.room.track.VideoEncoding
+import io.livekit.android.room.track.VideoPreset169
+import livekit.org.webrtc.RtpParameters
+import livekit.org.webrtc.audio.JavaAudioDeviceModule
 import io.livekit.android.RoomOptions
 import io.livekit.android.e2ee.BaseKeyProvider
 import io.livekit.android.e2ee.E2EEOptions
@@ -83,6 +93,10 @@ data class CallUiState(
     val media: MediaFlow = MediaFlow.None,
     /** Redacted network path of the media, e.g. "udp · direct" or "tcp · direct"; null until known. */
     val path: String? = null,
+    /** Measured frame sizes, frame rates and bitrates, sent and received (the call's "Connection details"). */
+    val stats: CallMediaStats? = null,
+    /** LiveKit rates this phone's or the other person's connection poor or lost: video quality is reduced. */
+    val connectionWeak: Boolean = false,
 )
 
 /**
@@ -119,6 +133,10 @@ class CallManager(
     /** Calls this device already rang, answered, declined or ended: ring recovery never re-rings them. Bounded. */
     private val handled = LinkedHashSet<String>()
     private var mediaJob: Job? = null
+    /** The previous call's native teardown; a new call waits for it, so two rooms never hold the microphone and speaker at once. */
+    private var releaseJob: Job? = null
+    private var audioListener: ((List<AudioDevice>, AudioDevice?) -> Unit)? = null
+    private val sampler = VideoStatsSampler()
 
     /**
      * WebRTC's native library must be loaded before any LiveKit native object exists — including the
@@ -268,6 +286,8 @@ class CallManager(
 
     private suspend fun connect(callId: String, media: MediaGrant, key: String?, video: Boolean) {
         _state.update { it.copy(phase = if (it.phase == CallPhase.Outgoing) CallPhase.Outgoing else CallPhase.Connecting, callId = callId) }
+        // A call right after another: let the previous room finish releasing its audio device first.
+        releaseJob?.let { if (it.isActive) diag.log("waiting for the previous call's media to release") ; it.join() }
         val r = try {
             webrtcReady
             val e2ee = key?.let { k ->
@@ -275,7 +295,14 @@ class CallManager(
                 provider.setSharedKey(k, null)
                 E2EEOptions(keyProvider = provider)
             }
-            LiveKit.create(context.applicationContext, RoomOptions(adaptiveStream = true, dynacast = true, e2eeOptions = e2ee))
+            val hwAec = CallMediaPolicy.useHardwareEchoCanceller(settings.current.hardwareEchoCanceller)
+            diag.log(CallMediaPolicy.describeAudio(android.os.Build.MODEL, android.os.Build.VERSION.SDK_INT, JavaAudioDeviceModule.isBuiltInAcousticEchoCancelerSupported(), hwAec))
+            _state.update { it.copy(stats = CallMediaStats(echoCanceller = if (hwAec && JavaAudioDeviceModule.isBuiltInAcousticEchoCancelerSupported()) "phone (hardware)" else "Orbit (WebRTC AEC3)")) }
+            LiveKit.create(
+                context.applicationContext,
+                roomOptions(e2ee),
+                LiveKitOverrides(audioOptions = AudioOptions(javaAudioDeviceModuleCustomizer = { b -> b.setUseHardwareAcousticEchoCanceler(hwAec) })),
+            )
         } catch (t: Throwable) {
             // UnsatisfiedLinkError etc. are Errors, not Exceptions: never let media setup crash the app.
             Log.e(TAG, "media engine init failed: ${t.javaClass.simpleName}")
@@ -310,6 +337,7 @@ class CallManager(
         } catch (e: Throwable) {
             _state.update { it.copy(error = CallFailure.CAMERA) }
         }
+        watchAudioRoute(r)
         setSpeaker(_state.value.speakerOn)
         runCatching { api.post<CallRes>("/v1/calls/$callId/connected") }
         _state.update {
@@ -347,8 +375,100 @@ class CallManager(
                 val flow = monitor.sample(total)
                 if (flow != before.media || (path != null && path != before.path)) diag.log("media $flow via ${path ?: before.path ?: "unknown path"}")
                 _state.update { if (it.media == flow && (path == null || it.path == path)) it else it.copy(media = flow, path = path ?: it.path) }
+                val stats = runCatching { sampleStats(r) }.getOrNull()
+                if (room !== r) break
+                if (stats != null) {
+                    if (++ticks % 3 == 0) diag.log("stats send cam=${stats.sendingCamera?.describe()} screen=${stats.sendingScreen?.describe()} | recv video=${stats.receivingVideo?.describe()} screen=${stats.receivingScreen?.describe()} | route=${stats.audioRoute}")
+                    _state.update { it.copy(stats = stats.copy(echoCanceller = it.stats?.echoCanceller)) }
+                }
             }
         }
+    }
+
+    private var ticks = 0
+
+    /** Sender and receiver video numbers for the largest camera and screen streams, plus the current audio route. */
+    private suspend fun sampleStats(r: Room): CallMediaStats {
+        val now = System.currentTimeMillis()
+        val keys = HashSet<String>()
+        suspend fun video(t: Track?, key: String, outbound: Boolean): VideoStats? {
+            val report = t?.let { runCatching { it.getRTCStats() }.getOrNull() } ?: return null
+            keys += key
+            return sampler.sample(key, report.statsMap.values.map { it.type to it.members }, outbound, now)
+        }
+        var sendCam: VideoStats? = null
+        var sendScreen: VideoStats? = null
+        for ((pub, t) in r.localParticipant.videoTrackPublications) {
+            if (pub.muted) continue
+            when (pub.source) {
+                Track.Source.CAMERA -> sendCam = video(t, "out:" + pub.sid, true)
+                Track.Source.SCREEN_SHARE -> sendScreen = video(t, "out:" + pub.sid, true)
+                else -> {}
+            }
+        }
+        var recvVideo: VideoStats? = null
+        var recvScreen: VideoStats? = null
+        for (rp in r.remoteParticipants.values) for ((pub, t) in rp.videoTrackPublications) {
+            if (pub.muted || t == null) continue
+            val v = video(t, "in:" + pub.sid, false) ?: continue
+            if (pub.source == Track.Source.SCREEN_SHARE) { if (recvScreen == null) recvScreen = v } else if (recvVideo == null) recvVideo = v
+        }
+        sampler.forget(keys)
+        val route = r.audioSwitchHandler?.selectedAudioDevice?.let { audioRouteName(it) }
+        return CallMediaStats(sendCam, sendScreen, recvVideo, recvScreen, route)
+    }
+
+    private fun audioRouteName(d: AudioDevice): String = when (d) {
+        is AudioDevice.Speakerphone -> "speaker"
+        is AudioDevice.Earpiece -> "earpiece"
+        is AudioDevice.WiredHeadset -> "wired headset"
+        is AudioDevice.BluetoothHeadset -> "bluetooth"
+        else -> d.javaClass.simpleName
+    }
+
+    /**
+     * Keeps the speaker button true to the actual route, applies the wanted speaker setting once the device list is known
+     * (it can be empty right after joining), and logs route changes (device types only).
+     */
+    private fun watchAudioRoute(r: Room) {
+        val handler = r.audioSwitchHandler ?: return
+        audioListener?.let { runCatching { handler.unregisterAudioDeviceChangeListener(it) } }
+        var applied = handler.availableAudioDevices.isNotEmpty()
+        val listener: (List<AudioDevice>, AudioDevice?) -> Unit = { devices, selected ->
+            diag.log("audio route ${selected?.let(::audioRouteName)} of ${devices.joinToString { audioRouteName(it) }}")
+            if (room === r) {
+                if (!applied && devices.isNotEmpty()) {
+                    applied = true
+                    setSpeaker(_state.value.speakerOn)
+                } else if (selected != null) {
+                    _state.update { it.copy(speakerOn = selected is AudioDevice.Speakerphone) }
+                }
+            }
+        }
+        audioListener = listener
+        handler.registerAudioDeviceChangeListener(listener)
+    }
+
+    /** Room options per [CallMediaPolicy]: explicit camera settings, and screen share tuned for readable text. */
+    private fun roomOptions(e2ee: E2EEOptions?): RoomOptions {
+        val wm = context.getSystemService(android.view.WindowManager::class.java)
+        val (w, h) = if (android.os.Build.VERSION.SDK_INT >= 30) wm.maximumWindowMetrics.bounds.let { it.width() to it.height() }
+        else android.util.DisplayMetrics().also { @Suppress("DEPRECATION") wm.defaultDisplay.getRealMetrics(it) }.let { it.widthPixels to it.heightPixels }
+        val (long, short) = CallMediaPolicy.screenCaptureSize(w, h)
+        return RoomOptions(
+            adaptiveStream = true,
+            dynacast = true,
+            e2eeOptions = e2ee,
+            videoTrackCaptureDefaults = LocalVideoTrackOptions(captureParams = VideoCaptureParameter(CallMediaPolicy.CAMERA_WIDTH, CallMediaPolicy.CAMERA_HEIGHT, CallMediaPolicy.CAMERA_FPS)),
+            videoTrackPublishDefaults = VideoTrackPublishDefaults(videoEncoding = VideoPreset169.H720.encoding, simulcast = true),
+            // The SDK orients the capture to the screen: (long, short) on a landscape display, (short, long) on a portrait one.
+            screenShareTrackCaptureDefaults = LocalVideoTrackOptions(isScreencast = true, captureParams = VideoCaptureParameter(long, short, CallMediaPolicy.SCREEN_FPS)),
+            screenShareTrackPublishDefaults = VideoTrackPublishDefaults(
+                videoEncoding = VideoEncoding(CallMediaPolicy.SCREEN_MAX_BITRATE, CallMediaPolicy.SCREEN_FPS),
+                simulcast = false,
+                degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION,
+            ),
+        )
     }
 
     private fun onRoomEvent(ev: RoomEvent) {
@@ -388,6 +508,13 @@ class CallManager(
             is RoomEvent.TrackUnmuted -> trackChanged { it.trackMuted(trackKey(ev.participant, ev.publication), false) }
             // Only until the guard has replaced a cryptor's observer; afterwards states arrive through the guard.
             is RoomEvent.TrackE2EEStateEvent -> securityTracker?.let { onE2eeState(it, trackKey(ev.participant, ev.publication), ev.state) }
+            is RoomEvent.ConnectionQualityChanged -> {
+                val r = room
+                val qualities = listOfNotNull(r?.localParticipant?.connectionQuality) + r?.remoteParticipants?.values?.map { it.connectionQuality }.orEmpty()
+                val weak = qualities.any { it == ConnectionQuality.POOR || it == ConnectionQuality.LOST }
+                if (weak != _state.value.connectionWeak) diag.log("connection quality ${ev.quality} (weak=$weak)")
+                _state.update { it.copy(connectionWeak = weak) }
+            }
             else -> {}
         }
         refreshParticipants()
@@ -546,9 +673,12 @@ class CallManager(
         val guard = cryptorGuard
         cryptorGuard = null
         synchronized(securityLock) { securityTracker = null }
+        val listener = audioListener
+        audioListener = null
         CallService.stop(context)
         if (r != null) {
-            scope.launch(Dispatchers.Main) {
+            listener?.let { l -> runCatching { r.audioSwitchHandler?.unregisterAudioDeviceChangeListener(l) } }
+            releaseJob = scope.launch(Dispatchers.Main) {
                 delay(600)
                 runCatching { guard?.sweep(r) }
                 runCatching { r.disconnect() }

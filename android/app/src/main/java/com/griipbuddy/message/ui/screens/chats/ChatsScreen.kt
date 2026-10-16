@@ -121,6 +121,12 @@ fun ChatsScreen(nav: NavHostController) {
                 }
             }
             item { ConnectionBanner(conn, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) { container.realtime.reconnectNow() } }
+            item {
+                // Blocked or silenced notifications are the first thing to fix: shown here, at most one at a time.
+                val settings by container.settings.state.collectAsStateWithLifecycle()
+                val problems = com.griipbuddy.message.ui.screens.home.rememberNotificationProblems(settings)
+                com.griipbuddy.message.ui.screens.home.NotificationProblems(problems, Modifier.padding(horizontal = Space.gutter), onlySevere = true, max = 1)
+            }
             if (liveCall != null) item {
                 val title = ConversationRepository.title(liveCall, me).let { if (liveCall.type == "CHANNEL") "#$it" else it }
                 StatusBanner(

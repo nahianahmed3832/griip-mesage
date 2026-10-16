@@ -1,5 +1,17 @@
 package com.griipbuddy.message.ui.screens.conversation
 
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
+import com.griipbuddy.message.ui.media.CreateDocumentFor
+import com.griipbuddy.message.ui.media.MediaAction
+import com.griipbuddy.message.ui.media.MediaGallery
+import com.griipbuddy.message.ui.media.MediaViewer
+import com.griipbuddy.message.data.model.AttachmentRef
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Share
+import android.widget.Toast
+import android.os.Build
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Description
@@ -152,12 +164,37 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     var actionFor by remember { mutableStateOf<MessageEntity?>(null) }
     var infoFor by remember { mutableStateOf<MessageEntity?>(null) }
     var text by rememberSaveable { mutableStateOf("") }
+    // Swipe-to-reply and the menu's "Reply" put the cursor in the composer, showing the keyboard.
+    val composerFocus = remember { FocusRequester() }
+    val focusComposer: () -> Unit = { runCatching { composerFocus.requestFocus() } }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboard.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let { vm.attach(ctx, it) } }
     val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { vm.attach(ctx, it) } }
     var attachSheet by remember { mutableStateOf(false) }
+    // Photos and videos open in the in-app viewer; other files are opened explicitly with another app.
+    var viewerFor by rememberSaveable { mutableStateOf<String?>(null) }
+    var saveTarget by remember { mutableStateOf<AttachmentRef?>(null) }
+    val notice by vm.notice.collectAsStateWithLifecycle()
+    LaunchedEffect(notice) { notice?.let { Toast.makeText(ctx, it, Toast.LENGTH_SHORT).show(); vm.notice.value = null } }
+    val saveDocument = rememberLauncherForActivityResult(CreateDocumentFor()) { uri -> val ref = saveTarget; if (uri != null && ref != null) vm.saveToDocument(ref, uri) }
+    val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        val ref = saveTarget
+        if (ok && ref != null) vm.saveToGallery(ref) else if (!ok) vm.error.value = "Saving to the gallery needs storage access on this Android version."
+    }
+    val onMedia: (MediaAction, AttachmentRef) -> Unit = { action, ref ->
+        saveTarget = ref
+        when (action) {
+            MediaAction.SaveToGallery ->
+                if (MediaGallery.needsStoragePermission(Build.VERSION.SDK_INT) &&
+                    ContextCompat.checkSelfPermission(ctx, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                ) storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) else vm.saveToGallery(ref)
+            MediaAction.SaveToFiles -> saveDocument.launch(MediaGallery.safeName(ref.name, ref.mime) to ref.mime)
+            MediaAction.Share -> vm.share(ref) { intent -> runCatching { ctx.startActivity(intent) } }
+        }
+    }
+    val openAttachment: (AttachmentRef) -> Unit = { ref -> if (MediaGallery.kindOf(ref) != null) viewerFor = ref.id else vm.openAttachment(ctx, ref) }
     val showJump by remember { derivedStateOf { listState.firstVisibleItemIndex > 4 } }
     val permission = com.griipbuddy.message.ui.screens.calls.rememberCallPermission()
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -305,8 +342,11 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     val first = older == null || older.senderUserId != m.senderUserId || m.sortTs - older.sortTs > 5 * 60_000 || older.kind == "call" || !TimeFmt.sameDay(older.sortTs, m.sortTs)
                     val lastInRun = newer == null || newer.senderUserId != m.senderUserId || newer.sortTs - m.sortTs > 5 * 60_000 || newer.kind == "call"
                     val reply = m.replyToId?.let { byId[it] }
+                    // Same rule as the long-press menu's "Reply": a posted text/attachment message where you may post.
+                    val canSwipeReply = conv?.canPost != false && !m.deleted && m.kind == "text"
                     Column {
                         if (older == null || !TimeFmt.sameDay(older.sortTs, m.sortTs)) DayDivider(m.sortTs)
+                        SwipeToReply(canSwipeReply, onReply = { vm.replyTo.value = m; vm.editing.value = null; focusComposer() }) {
                         MessageBubble(
                             BubbleModel(
                                 m, users[m.senderUserId], showSender = first, showAvatar = lastInRun, firstInGroup = first, reply = reply,
@@ -320,7 +360,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                             localFile = { vm.c.messages.localAttachment(it) },
                             onLongPress = { if (m.kind != "call") actionFor = m },
                             onReact = { vm.react(m, it) },
-                            onOpenAttachment = { vm.openAttachment(ctx, it) },
+                            onOpenAttachment = openAttachment,
                             onOpenThread = { nav.navigate(Routes.conversation(conversationId, m.id)) },
                             onRetry = { vm.retry(m) },
                             onReplyClick = { id -> val idx = messages.indexOfFirst { it.id == id }; if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) } },
@@ -328,6 +368,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                             onVoiceToggle = { ref -> vm.toggleVoice(m.id, ref) },
                             onVoiceSeek = { ref, pos -> vm.seekVoice(m.id, ref, pos) },
                         )
+                        }
                     }
                 }
                 if (threadRoot != null) {
@@ -336,7 +377,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                             root?.let { r ->
                                 MessageBubble(
                                     BubbleModel(r, users[r.senderUserId], true, true, true, null, null, vm.c.messages.reactions(r), vm.c.messages.attachments(r), 0, isGroup),
-                                    me, null, { vm.c.messages.localAttachment(it) }, { actionFor = r }, { vm.react(r, it) }, { vm.openAttachment(ctx, it) }, null, { vm.retry(r) }, {},
+                                    me, null, { vm.c.messages.localAttachment(it) }, { actionFor = r }, { vm.react(r, it) }, openAttachment, null, { vm.retry(r) }, {},
                                     voice = voicePlayer,
                                     onVoiceToggle = { ref -> vm.toggleVoice(r.id, ref) },
                                     onVoiceSeek = { ref, pos -> vm.seekVoice(r.id, ref, pos) },
@@ -400,6 +441,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 onSendVoice = vm::sendVoice,
                 onToggleDraft = vm::toggleDraftPlayback,
                 onSeekDraft = vm::seekDraft,
+                focus = composerFocus,
             )
         }
     }
@@ -418,7 +460,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 }
             }
             if (!m.deleted && m.kind == "text") {
-                if (interactive) MenuRow(Icons.AutoMirrored.Rounded.Reply, "Reply", onClick = { vm.replyTo.value = m; vm.editing.value = null; actionFor = null }, trailing = null)
+                if (interactive) MenuRow(Icons.AutoMirrored.Rounded.Reply, "Reply", onClick = { vm.replyTo.value = m; vm.editing.value = null; actionFor = null; focusComposer() }, trailing = null)
                 if (interactive && threadRoot == null) MenuRow(Icons.Outlined.Forum, "Reply in thread", onClick = { actionFor = null; nav.navigate(Routes.conversation(conversationId, m.id)) }, trailing = null)
                 if (m.text.isNotEmpty()) MenuRow(Icons.Outlined.ContentCopy, "Copy text", onClick = {
                     scope.launch { clipboard.setClipEntry(ClipData.newPlainText("message", m.text).toClipEntry()) }
@@ -429,10 +471,30 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 }, trailing = null)
                 if (interactive) MenuRow(Icons.Outlined.PushPin, if (m.pinned) "Unpin" else "Pin for everyone", tint = c.peach, tintBg = c.peachSoft, onClick = { vm.pin(m); actionFor = null }, trailing = null)
             }
+            // Saving and sharing are explicit actions; tapping a photo only opens the viewer.
+            val file = if (!m.deleted) vm.c.messages.attachments(m).firstOrNull { it.id != "pending" && !VoiceNote.isVoice(it) } else null
+            if (file != null) {
+                if (MediaGallery.kindOf(file) != null) MenuRow(Icons.Outlined.Download, "Save to Gallery", onClick = { actionFor = null; onMedia(MediaAction.SaveToGallery, file) }, trailing = null)
+                MenuRow(Icons.Outlined.FolderOpen, "Save to Files", onClick = { actionFor = null; onMedia(MediaAction.SaveToFiles, file) }, trailing = null)
+                MenuRow(Icons.Outlined.Share, "Share…", onClick = { actionFor = null; onMedia(MediaAction.Share, file) }, trailing = null)
+            }
             if (m.status == MessageStatus.FAILED) MenuRow(Icons.Outlined.Refresh, "Retry sending", onClick = { vm.retry(m); actionFor = null }, trailing = null)
             if (m.outgoing) MenuRow(Icons.Outlined.Info, "Message info", tint = c.lavender, tintBg = c.lavenderSoft, onClick = { infoFor = m; actionFor = null }, trailing = null)
             if (interactive && m.outgoing && !m.deleted) MenuRow(Icons.Outlined.DeleteOutline, "Delete for everyone", tint = c.danger, tintBg = c.dangerSoft, onClick = { vm.delete(m); actionFor = null }, trailing = null)
         }
+    }
+    viewerFor?.let { id ->
+        val media = remember(messages, root) { MediaGallery.items(messages + listOfNotNull(root)) { vm.c.messages.attachments(it) } }
+        MediaViewer(
+            items = media, startAttachmentId = id,
+            senderName = { item -> if (item.outgoing) "You" else users[item.senderUserId]?.displayName ?: "Someone" },
+            load = vm::mediaFile,
+            progress = { transfers[it] },
+            canPlayVideo = vm::videoBlocked,
+            onPlay = vm::pauseVoice,
+            onAction = { action, item -> onMedia(action, item.ref) },
+            onDismiss = { viewerFor = null },
+        )
     }
     infoFor?.let { m ->
         GlassSheet({ infoFor = null }, title = "Message info") {
@@ -513,6 +575,7 @@ private fun Composer(
     onSendVoice: () -> Unit,
     onToggleDraft: () -> Unit,
     onSeekDraft: (Long) -> Unit,
+    focus: FocusRequester? = null,
 ) {
     val c = Griip.colors
     when (val d = voice.draft) {
@@ -553,7 +616,7 @@ private fun Composer(
                     BasicTextField(
                         value = text, onValueChange = onText, textStyle = Griip.type.body.copy(color = c.textPrimary), cursorBrush = SolidColor(c.primary), maxLines = 6,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder },
+                        modifier = Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier).semantics { contentDescription = placeholder },
                     )
                 }
                 Spacer(Modifier.width(6.dp))

@@ -14,6 +14,12 @@ data class Settings(
     val readReceipts: Boolean,
     val typingIndicators: Boolean,
     val mediaE2ee: Boolean,
+    /**
+     * Calls: use the phone maker's built-in echo canceller instead of WebRTC's own (AEC3). Off by default: LiveKit
+     * otherwise switches WebRTC's canceller off on Android 10+ and relies on the hardware one, whose quality varies
+     * by phone (physical-device report 2026-10-16: the other person heard their own voice).
+     */
+    val hardwareEchoCanceller: Boolean = false,
 )
 
 /**
@@ -38,6 +44,7 @@ class SettingsStore(
         readReceipts = prefs.getBoolean("readReceipts", true),
         typingIndicators = prefs.getBoolean("typingIndicators", true),
         mediaE2ee = prefs.getBoolean("mediaE2ee", true),
+        hardwareEchoCanceller = prefs.getBoolean("hardwareEchoCanceller", false),
     )
 
     fun update(f: (Settings) -> Settings) {
@@ -50,6 +57,7 @@ class SettingsStore(
             .putBoolean("readReceipts", n.readReceipts)
             .putBoolean("typingIndicators", n.typingIndicators)
             .putBoolean("mediaE2ee", n.mediaE2ee)
+            .putBoolean("hardwareEchoCanceller", n.hardwareEchoCanceller)
             .apply()
         _state.value = read()
     }

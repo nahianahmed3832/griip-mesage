@@ -32,6 +32,16 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -138,33 +148,48 @@ fun CallOverlay() {
     }
     BackHandler(enabled = s.phase != CallPhase.Idle && !minimized && s.phase != CallPhase.Incoming) { minimized = true }
     LaunchedEffect(s.phase) { if (s.phase == CallPhase.Incoming) minimized = false }
+    var details by remember { mutableStateOf(false) }
+    // Over video and shared screens the controls hide after a few seconds (tap to bring them back), so they don't sit on
+    // top of what the other person shows. Without video they always stay.
+    var chromeVisible by remember { mutableStateOf(true) }
+    var lastTouch by remember { mutableLongStateOf(0L) }
 
     if (minimized && s.phase != CallPhase.Incoming) {
         Box(Modifier.fillMaxSize()) { MiniCallBar(s, onExpand = { minimized = false }, onEnd = { calls.hangup() }) }
         return
     }
 
+    val remote = s.participants.filter { !it.isLocal }
+    val local = s.participants.firstOrNull { it.isLocal }
+    val screen = s.participants.firstOrNull { it.screen != null && !it.isLocal }
+    val hasVideo = s.phase == CallPhase.Connected && (screen != null || remote.any { it.camera != null })
+    val autoHide = CallChrome.autoHides(hasVideo, s.phase, menuOpen = details || explainShare || s.error != null)
+    LaunchedEffect(autoHide, lastTouch) {
+        if (!autoHide) { chromeVisible = true; return@LaunchedEffect }
+        delay(CallChrome.HIDE_AFTER_MS)
+        chromeVisible = false
+    }
+    val showChrome = chromeVisible || !autoHide
     Box(
         Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(StageTop, StageBottom)))
-            .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {},
+            .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
+                chromeVisible = !showChrome || !autoHide
+                lastTouch = System.currentTimeMillis()
+            },
     ) {
-        val remote = s.participants.filter { !it.isLocal }
-        val local = s.participants.firstOrNull { it.isLocal }
-        val screen = s.participants.firstOrNull { it.screen != null && !it.isLocal }
-        val hasVideo = s.phase == CallPhase.Connected && (screen != null || remote.any { it.camera != null })
         when {
             hasVideo && (screen != null || remote.size == 1) -> {
                 val main = screen ?: remote.first()
                 VideoTile(main.screen ?: main.camera, Modifier.fillMaxSize(), fit = screen != null)
-                if (screen != null) {
+                if (screen != null && showChrome) {
                     Text(
                         "${screen.name} is sharing their screen", style = Griip.type.label, color = Color.White,
-                        modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 70.dp).clip(Shapes.pill).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(SafeTop).padding(top = 70.dp).clip(Shapes.pill).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 12.dp, vertical = 6.dp),
                     )
                 }
             }
             s.phase == CallPhase.Connected && remote.size > 1 -> {
-                LazyVerticalGrid(GridCells.Fixed(2), Modifier.fillMaxSize().statusBarsPadding().padding(top = 96.dp, bottom = 190.dp, start = 10.dp, end = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyVerticalGrid(GridCells.Fixed(2), Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 64.dp, bottom = 150.dp, start = 10.dp, end = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(s.participants, key = { it.identity }) { p -> ParticipantTile(p, Modifier.aspectRatio(0.8f)) }
                 }
             }
@@ -173,27 +198,46 @@ fun CallOverlay() {
         val gridLayout = s.phase == CallPhase.Connected && remote.size > 1 && !(hasVideo && screen != null)
         // Floating self-preview only in 1:1 / screen-share layouts; the grid already has a "You" tile.
         if (local?.camera != null && !gridLayout) {
-            VideoTile(local.camera, Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 80.dp, end = 16.dp).size(110.dp, 150.dp).clip(Shapes.tile).border(2.dp, Color.White.copy(alpha = 0.7f), Shapes.tile), mirror = true)
+            VideoTile(local.camera, Modifier.align(Alignment.TopEnd).windowInsetsPadding(SafeTop).padding(top = if (showChrome) 68.dp else 16.dp, end = 16.dp).size(110.dp, 150.dp).clip(Shapes.tile).border(2.dp, Color.White.copy(alpha = 0.7f), Shapes.tile), mirror = true)
         }
 
         // Scrims keep the status line and controls readable over video.
-        if (hasVideo) {
+        if (hasVideo && showChrome) {
             Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(140.dp).background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent))))
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(240.dp).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))))
         }
         // Top status
-        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (s.phase != CallPhase.Incoming) {
-                Box(Modifier.size(42.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f)).pressable({ minimized = true }, onClickLabel = "Minimize call"), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.CloseFullscreen, "Minimize call", tint = Color.White, modifier = Modifier.size(20.dp))
+        if (showChrome) Column(Modifier.fillMaxWidth().windowInsetsPadding(SafeTop).padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (s.phase != CallPhase.Incoming) {
+                    Box(Modifier.size(48.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f)).pressable({ minimized = true }, onClickLabel = "Minimize call"), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.CloseFullscreen, "Minimize call", tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
+                    if (s.phase == CallPhase.Connected || s.phase == CallPhase.Reconnecting) {
+                        Spacer(Modifier.width(8.dp))
+                        Box(Modifier.size(48.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f)).pressable({ details = !details }, onClickLabel = "Connection details"), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.NetworkCheck, "Connection details", tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
+                    }
                 }
+                Spacer(Modifier.weight(1f))
+                SecurityPill(s)
             }
-            Spacer(Modifier.weight(1f))
-            SecurityPill(s)
+            if (s.connectionWeak && s.phase == CallPhase.Connected) {
+                Text(
+                    "Weak connection: video quality is reduced", style = Griip.type.caption, color = Color.White,
+                    modifier = Modifier.padding(top = 8.dp).clip(Shapes.pill).background(Griip.colors.warning.copy(alpha = 0.85f)).padding(horizontal = 12.dp, vertical = 5.dp),
+                )
+            }
+            if (details) ConnectionDetails(s, Modifier.padding(top = 10.dp)) { details = false }
         }
 
-        // Bottom: share indicator + controls
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        // Bottom: share indicator + controls, kept clear of the navigation bar, gesture area and cutouts.
+        AnimatedVisibility(
+            showChrome, enter = fadeIn(tween(160)), exit = fadeOut(tween(220)),
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsPadding(SafeBottom),
+        ) {
+        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             s.error?.let {
                 Text(it, style = Griip.type.label, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.padding(bottom = 10.dp).clip(Shapes.tile).background(Griip.colors.danger.copy(alpha = 0.85f)).pressable({ calls.clearError() }).padding(horizontal = 14.dp, vertical = 8.dp))
             }
@@ -215,7 +259,8 @@ fun CallOverlay() {
                 }
             } else if (s.phase != CallPhase.Ended) {
                 Row(
-                    Modifier.fillMaxWidth().clip(Shapes.hero).background(Color.Black.copy(alpha = 0.35f)).padding(vertical = 14.dp, horizontal = 4.dp),
+                    // Capped width: in landscape the controls stay a compact group instead of spreading across the screen.
+                    Modifier.widthIn(max = 520.dp).fillMaxWidth().clip(Shapes.hero).background(Color.Black.copy(alpha = 0.35f)).padding(vertical = 12.dp, horizontal = 4.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
                     CallControlButton(if (s.micOn) Icons.Rounded.Mic else Icons.Rounded.MicOff, if (s.micOn) "Mute" else "Unmute", { calls.toggleMic() }, active = !s.micOn)
@@ -230,6 +275,7 @@ fun CallOverlay() {
                     CallControlButton(Icons.Rounded.CallEnd, "End", { calls.hangup() }, danger = true)
                 }
             }
+        }
         }
     }
     if (explainShare) ConfirmDialog(
@@ -412,5 +458,44 @@ private fun BoxScope.MiniCallBar(s: CallUiState, onExpand: () -> Unit, onEnd: ()
         Box(Modifier.size(40.dp).clip(CircleShape).background(Color(0xFFD93A2E)).pressable(onEnd, onClickLabel = "End call"), contentAlignment = Alignment.Center) {
             Icon(Icons.Rounded.CallEnd, "End call", tint = Color.White, modifier = Modifier.size(18.dp))
         }
+    }
+}
+
+private val SafeTop: WindowInsets @Composable get() = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+private val SafeBottom: WindowInsets @Composable get() = WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
+
+/** When the call controls hide themselves (unit-tested in `CallChromeTest`). */
+object CallChrome {
+    const val HIDE_AFTER_MS = 4000L
+
+    /**
+     * Only over video in a connected call, and never while a menu, a prompt or an error is up: on a voice call, while
+     * ringing or connecting, the controls are the whole screen and must stay.
+     */
+    fun autoHides(hasVideo: Boolean, phase: CallPhase, menuOpen: Boolean): Boolean = hasVideo && phase == CallPhase.Connected && !menuOpen
+}
+
+/** Measured numbers for the call, to check quality on real phones (both sides can open it and compare). */
+@Composable
+private fun ConnectionDetails(s: CallUiState, modifier: Modifier, onClose: () -> Unit) {
+    val st = s.stats
+    Column(
+        modifier.fillMaxWidth().widthIn(max = 520.dp).clip(Shapes.tile).background(Color.Black.copy(alpha = 0.72f)).pressable(onClose, onClickLabel = "Close connection details").padding(14.dp),
+    ) {
+        Text("Connection details", style = Griip.type.label, color = Color.White)
+        Spacer(Modifier.height(6.dp))
+        @Composable fun line(label: String, value: String?) {
+            Row(Modifier.padding(vertical = 2.dp)) {
+                Text(label, style = Griip.type.caption, color = Color.White.copy(alpha = 0.65f), modifier = Modifier.width(118.dp))
+                Text(value ?: "—", style = Griip.type.caption, color = Color.White)
+            }
+        }
+        line("Network path", s.path)
+        line("Audio route", st?.audioRoute)
+        line("Echo cancelling", st?.echoCanceller)
+        line("Sending camera", st?.sendingCamera?.describe())
+        if (st?.sendingScreen != null) line("Sending screen", st.sendingScreen.describe())
+        line("Receiving video", st?.receivingVideo?.describe())
+        if (st?.receivingScreen != null) line("Receiving screen", st.receivingScreen.describe())
     }
 }

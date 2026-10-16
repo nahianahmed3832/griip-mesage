@@ -1,6 +1,5 @@
 package com.griipbuddy.message.ui.screens.conversation
 
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -21,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
@@ -32,6 +32,8 @@ import androidx.compose.material.icons.rounded.Done
 import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.GppMaybe
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -63,12 +65,13 @@ import com.griipbuddy.message.data.model.MessageStatus
 import com.griipbuddy.message.ui.TimeFmt
 import com.griipbuddy.message.ui.components.Avatar
 import com.griipbuddy.message.ui.components.pressable
+import com.griipbuddy.message.ui.media.MediaExport
+import com.griipbuddy.message.ui.media.MediaGallery
+import com.griipbuddy.message.ui.media.MediaKind
 import com.griipbuddy.message.ui.theme.Griip
 import com.griipbuddy.message.ui.theme.Shapes
 import com.griipbuddy.message.voice.VoiceNote
 import com.griipbuddy.message.voice.VoicePlayer
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.File
 
 data class BubbleModel(
@@ -266,40 +269,55 @@ private fun senderColor(i: Int): Color = com.griipbuddy.message.ui.theme.AvatarG
 @Composable
 private fun AttachmentView(a: AttachmentRef, out: Boolean, transfer: Float?, local: File?, onOpen: (AttachmentRef) -> Unit) {
     val c = Griip.colors
-    val isImage = a.mime.startsWith("image/")
+    val kind = MediaGallery.kindOf(a)
+    // Thumbnails: photos decoded at bubble size with their EXIF rotation, videos as their first frame.
     val bitmap by produceState<ImageBitmap?>(null, local?.path) {
-        value = if (isImage && local != null) withContext(Dispatchers.IO) {
-            runCatching {
-                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(local.path, opts)
-                var sample = 1
-                while (opts.outWidth / sample > 1080) sample *= 2
-                BitmapFactory.decodeFile(local.path, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
-            }.getOrNull()
-        } else null
+        value = when {
+            local == null -> null
+            kind == MediaKind.Image -> MediaExport.decode(local, 1080)?.asImageBitmap()
+            kind == MediaKind.Video -> MediaExport.videoFrame(local, 720)?.asImageBitmap()
+            else -> null
+        }
     }
     val bmp = bitmap
     if (bmp != null) {
-        Image(
-            bmp, a.name, contentScale = ContentScale.Crop,
-            modifier = Modifier.widthIn(max = 260.dp).heightIn(max = 300.dp).clip(Shapes.tile).pressable({ onOpen(a) }),
-        )
+        Box(Modifier.widthIn(max = 260.dp).heightIn(max = 300.dp).clip(Shapes.tile).pressable({ onOpen(a) }, onClickLabel = if (kind == MediaKind.Video) "Play video" else "View photo")) {
+            Image(bmp, a.name, contentScale = ContentScale.Crop)
+            if (kind == MediaKind.Video) {
+                Box(Modifier.align(Alignment.Center).size(52.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(32.dp))
+                }
+            }
+        }
         return
+    }
+    val label = when (kind) {
+        MediaKind.Image -> "Photo"
+        MediaKind.Video -> "Video"
+        null -> null
     }
     Row(
         Modifier.widthIn(min = 200.dp, max = 270.dp).clip(Shapes.small).background(if (out) c.primary.copy(alpha = 0.10f) else c.surfaceVariant)
-            .pressable(if (a.id != "pending") ({ onOpen(a) }) else null).padding(10.dp),
+            .pressable(if (a.id != "pending") ({ onOpen(a) }) else null, onClickLabel = if (kind != null) "Open ${label!!.lowercase()}" else "Open file").padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(40.dp).clip(Shapes.small).background(c.surface), contentAlignment = Alignment.Center) {
             if (transfer != null) CircularProgressIndicator(progress = { transfer }, modifier = Modifier.size(26.dp), color = c.primary, strokeWidth = 3.dp)
-            else Icon(if (local == null && a.id != "pending") Icons.Rounded.Download else Icons.AutoMirrored.Rounded.InsertDriveFile, if (local == null && a.id != "pending") "Download" else null, tint = c.primary)
+            else Icon(
+                when {
+                    local == null && a.id != "pending" -> Icons.Rounded.Download
+                    kind == MediaKind.Video -> Icons.Rounded.Videocam
+                    kind == MediaKind.Image -> Icons.Rounded.Image
+                    else -> Icons.AutoMirrored.Rounded.InsertDriveFile
+                },
+                if (local == null && a.id != "pending") "Download" else null, tint = c.primary,
+            )
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(a.name, style = Griip.type.bodyMedium, color = if (out) c.onBubbleOutgoing else c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(label ?: a.name, style = Griip.type.bodyMedium, color = if (out) c.onBubbleOutgoing else c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                humanSize(a.size) + if (transfer != null) " · ${(transfer * 100).toInt()}%" else if (isImage && local == null) " · tap to load" else "",
+                humanSize(a.size) + if (transfer != null) " · ${(transfer * 100).toInt()}%" else if (kind != null && local == null) " · tap to view" else "",
                 style = Griip.type.caption, color = if (out) c.bubbleOutgoingMeta else c.textSecondary,
             )
         }

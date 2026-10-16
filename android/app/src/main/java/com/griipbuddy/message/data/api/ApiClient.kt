@@ -163,6 +163,9 @@ class ApiClient(
             return try {
                 json.decodeFromString(de, text.ifEmpty { "{}" })
             } catch (e: Exception) {
+                // Which model field didn't match (never the response body): the invite defect was a missing "slug".
+                val field = Regex("Field '([A-Za-z0-9_]+)'").find(e.message.orEmpty())?.groupValues?.get(1)
+                if (com.griipbuddy.message.BuildConfig.DEBUG) runCatching { android.util.Log.w("ApiClient", "decode failed: ${de.descriptor.serialName} ${e.javaClass.simpleName} field=${field ?: "?"}") }
                 throw ApiException(code, "decode", "Unexpected server response")
             }
         }

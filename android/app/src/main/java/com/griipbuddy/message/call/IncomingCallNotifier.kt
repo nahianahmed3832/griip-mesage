@@ -1,5 +1,6 @@
 package com.griipbuddy.message.call
 
+import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -44,6 +45,9 @@ object IncomingCallNotifier {
             .addAction(0, "Answer", open)
             .setColor(0xFF1FB5A6.toInt())
             .build()
+        // Ring until answered, declined or timed out: a notification sound otherwise plays once and stops, which on
+        // the test phones left most of a 45-second ring silent. Volume, silent and vibrate modes still apply.
+        n.flags = n.flags or Notification.FLAG_INSISTENT
         runCatching { context.getSystemService(NotificationManager::class.java).notify(ID, n) }
     }
 

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.PhoneMissed
 import androidx.compose.material.icons.outlined.PhonelinkSetup
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.SyncAlt
 import androidx.compose.material.icons.outlined.VerifiedUser
@@ -194,6 +195,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsSections(
             })
         }
     }
+    item {
+        // What Android or the phone maker has silenced or blocked, with a link to fix each one.
+        val problems = com.griipbuddy.message.ui.screens.home.rememberNotificationProblems(settings)
+        if (problems.isNotEmpty()) com.griipbuddy.message.ui.screens.home.NotificationProblems(problems, Modifier.padding(horizontal = Space.gutter, vertical = 6.dp))
+    }
     item { SectionHeader("Privacy", Modifier.padding(top = 18.dp, bottom = 6.dp)) }
     item {
         GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
@@ -209,6 +215,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsSections(
                 subtitle = if (settings.mediaE2ee) "On: calls won't join without the key. The call screen says \"End-to-end encrypted\" only once media has actually decrypted."
                 else "Off: media is protected in transit only",
                 trailing = { GriipSwitch(settings.mediaE2ee, { v -> update { it.copy(mediaE2ee = v) } }) },
+            )
+            MenuRow(
+                Icons.Outlined.GraphicEq, "Use the phone's echo canceller",
+                subtitle = if (settings.hardwareEchoCanceller) "On: this phone's built-in echo cancellation. Turn off if people you call hear their own voice."
+                else "Off (recommended): Orbit's own echo cancellation, the same on every phone. Applies from the next call.",
+                trailing = { GriipSwitch(settings.hardwareEchoCanceller, { v -> update { it.copy(hardwareEchoCanceller = v) } }) },
             )
         }
     }
