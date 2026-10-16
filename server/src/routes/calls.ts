@@ -58,6 +58,96 @@ export async function endCallRow(ctx: AppContext, c: CallRow, reason: string): P
   await ctx.livekit?.deleteRoom(c.room_name);
 }
 
+/**
+ * Whether a device may be in a conversation's call: the user is still a member, the device is
+ * theirs and not revoked, and the account isn't disabled.
+ */
+export function callAdmission(ctx: AppContext, conversationId: string): (userId: string, deviceId: string) => boolean {
+  const member = ctx.db.prepare("SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?");
+  const device = ctx.db.prepare(
+    "SELECT d.revoked_at, u.disabled_at FROM devices d JOIN users u ON u.id = d.user_id WHERE d.id = ? AND d.user_id = ?",
+  );
+  return (userId, deviceId) => {
+    if (!member.get(conversationId, userId)) return false;
+    const d = device.get(deviceId, userId) as { revoked_at: number | null; disabled_at: number | null } | undefined;
+    return !!d && !d.revoked_at && !d.disabled_at;
+  };
+}
+
+/**
+ * Removes everyone no longer admitted to a live call (see `callAdmission`) from the LiveKit room
+ * and from call state, tells their devices the call ended for them, and updates or ends the call
+ * for the rest. Participants are found both in LiveKit (which also catches someone reconnecting
+ * with a token issued before their removal) and in `call_participants`.
+ * If LiveKit can't be reached the database is still corrected and a warning logged; the cleanup
+ * job runs this again every interval, so the removal is retried rather than lost.
+ * Returns the number of devices evicted.
+ */
+export async function evictFromCall(ctx: AppContext, c: CallRow): Promise<number> {
+  const admitted = callAdmission(ctx, c.conversation_id);
+  const identities = new Set((ctx.livekit && (await ctx.livekit.participantIdentities(c.room_name))) || []);
+  const rows = ctx.db.prepare("SELECT user_id, device_id FROM call_participants WHERE call_id = ? AND left_at IS NULL").all(c.id) as {
+    user_id: string;
+    device_id: string;
+  }[];
+  for (const r of rows) identities.add(`${r.user_id}.${r.device_id}`);
+  const evicted = new Map<string, string[]>(); // userId → evicted device ids
+  let devices = 0;
+  for (const identity of identities) {
+    const [userId, deviceId] = identity.split(".");
+    if (!userId || !deviceId || admitted(userId, deviceId)) continue;
+    const outcome = ctx.livekit ? await ctx.livekit.removeParticipant(c.room_name, identity) : "absent";
+    if (outcome === "error") ctx.log.warn({ callId: c.id }, "call eviction: LiveKit unreachable, the cleanup job will retry");
+    ctx.db.prepare("UPDATE call_participants SET left_at = ? WHERE call_id = ? AND device_id = ? AND left_at IS NULL").run(now(), c.id, deviceId);
+    evicted.set(userId, [...(evicted.get(userId) ?? []), deviceId]);
+    devices++;
+  }
+  if (devices === 0) return 0;
+  const cur = loadCall(ctx, c.id)!;
+  const removed = { t: "call", event: "ended", call: { ...callView(ctx, cur), endReason: "removed" } };
+  for (const [u, deviceIds] of evicted) {
+    // A former member stops ringing on every device; a revoked device alone must not end the call
+    // on the same person's other, still-admitted device.
+    if (!ctx.authz.isMember(c.conversation_id, u)) ctx.hub.sendToUser(u, removed);
+    else for (const d of deviceIds) ctx.hub.sendToDevice(d, removed);
+  }
+  if (cur.state === "ENDED") return devices;
+  const remainingUsers = (
+    ctx.db.prepare("SELECT COUNT(DISTINCT user_id) n FROM call_participants WHERE call_id = ? AND left_at IS NULL").get(c.id) as { n: number }
+  ).n;
+  const isDm = ctx.authz.conversation(c.conversation_id)?.type === "DM";
+  if (remainingUsers === 0) await endCallRow(ctx, cur, "empty");
+  else if (isDm && cur.state === "ACTIVE" && remainingUsers < 2) await endCallRow(ctx, cur, "hangup");
+  else broadcastCall(ctx, cur, "updated");
+  return devices;
+}
+
+/** After a membership change: evict `userId` from live calls of the conversations they were removed from. */
+export async function evictRemovedMember(ctx: AppContext, userId: string, conversationIds: Iterable<string>): Promise<number> {
+  let n = 0;
+  for (const convId of new Set(conversationIds)) {
+    if (ctx.authz.isMember(convId, userId)) continue; // re-granted in the same change
+    const live = ctx.db.prepare("SELECT * FROM calls WHERE conversation_id = ? AND state != 'ENDED'").all(convId) as CallRow[];
+    for (const c of live) n += await evictFromCall(ctx, c);
+  }
+  return n;
+}
+
+/** After a device is revoked or an account disabled: evict it from every live call it could be in. */
+export async function evictUserDevicesFromCalls(ctx: AppContext, userId: string): Promise<number> {
+  const live = ctx.db
+    .prepare(
+      `SELECT DISTINCT c.* FROM calls c
+       WHERE c.state != 'ENDED' AND (
+         c.conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = ?)
+         OR c.id IN (SELECT call_id FROM call_participants WHERE user_id = ? AND left_at IS NULL))`,
+    )
+    .all(userId, userId) as CallRow[];
+  let n = 0;
+  for (const c of live) n += await evictFromCall(ctx, c);
+  return n;
+}
+
 export default async function callRoutes(app: FastifyInstance, ctx: AppContext) {
   const auth = { preHandler: requireAuth(ctx) };
   const { db, authz } = ctx;
@@ -222,7 +312,11 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
     if (!c) return { ok: true };
     const identity = event.participant?.identity ?? "";
     const [pUser, pDevice] = identity.split(".");
-    if (event.event === "participant_joined" && pUser && pDevice) {
+    if (event.event === "participant_joined" && pUser && pDevice && !callAdmission(ctx, c.conversation_id)(pUser, pDevice)) {
+      // Joined with a token issued before they were removed (tokens live 10 minutes): send them out again.
+      await ctx.livekit.removeParticipant(roomName, identity);
+      ctx.hub.sendToDevice(pDevice, { t: "call", event: "ended", call: { ...callView(ctx, c), endReason: "removed" } });
+    } else if (event.event === "participant_joined" && pUser && pDevice) {
       db.prepare(
         "INSERT INTO call_participants (call_id, user_id, device_id, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT(call_id, device_id) DO UPDATE SET left_at = NULL, joined_at = excluded.joined_at",
       ).run(c.id, pUser, pDevice, now());

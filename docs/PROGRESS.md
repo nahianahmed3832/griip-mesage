@@ -15,10 +15,45 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | Baseline checks | ✅ | Server 32/32 tests, `tsc` clean; Android `compileDebugKotlin` and `assembleRelease` (R8, 64 MB unsigned) succeed. The release APK hasn't been run on a device. Production `/healthz` OK |
 | **T1.1 Demotion to Guest revokes access** (P1) | ✅ server | See below |
 | T1.2 Enforce pinned identity keys | ⏳ | Owner decision (2026-10-16 master prompt): **block** sending and receiving on an identity change until the user accepts. Needs T2.4 |
-| T1.3 Evict removed members from live calls | ⏳ | Next server task |
+| **T1.3 Evict removed members from live calls** (P3) | ✅ server | See below. Not deployed |
 | T1.4 Never discard messages on local failure | ⏳ | Needs T2.4 |
 | T1.6 Registration gating and quotas | ⏳ | Owner decision (2026-10-16): **invite-only registration** for the internal beta |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
+
+### T1.3 Evict removed members from live calls (2026-10-16)
+
+- **Defect (probe P3):** removing someone from a conversation, or from the org, branch or team that gives them a channel, left them in its LiveKit room. They kept sending and receiving media.
+- **Cause:** none of the membership-removal paths touched calls. `SECURITY.md` §7 claimed they did.
+- **Change (`server/src`):**
+  - `routes/calls.ts`:
+    - `callAdmission` (member, own non-revoked device, account not disabled);
+    - `evictFromCall`: removes non-admitted identities found in LiveKit *or* in `call_participants`, marks them left, sends `ended` with `endReason: "removed"` to the removed person's devices (only the revoked device when the person stays a member), then updates the call or ends it when empty;
+    - `evictRemovedMember` and `evictUserDevicesFromCalls`.
+  - **Called from:**
+    - conversation member removal and leave;
+    - org role change, including demotion to Guest;
+    - org removal and leave;
+    - branch and team removal (also covers team moves);
+    - device revocation.
+  - The LiveKit `participant_joined` webhook ejects a non-admitted identity at once. That covers someone rejoining with a pre-removal token, which stays valid for up to 10 minutes.
+  - `jobs.ts` runs eviction over every live call each cleanup interval. This repairs removals missed while LiveKit was down and catches accounts disabled through the admin CLI (a separate process). It also gained an in-flight guard (D19).
+  - `livekit.ts` lists identities, reports a removal as removed, absent or error, and bounds each LiveKit call to 5 s.
+- **Tests:** `server/test/call_eviction.test.ts` has 8 tests against a recording LiveKit stub:
+  - group removal, with a removal notice, 404 on join and connected, and others staying in the call;
+  - team, branch, Guest-demotion and org-leave paths in one org;
+  - an unrelated call left untouched;
+  - nothing removed when membership doesn't shrink;
+  - the last member's removal ending the call;
+  - device revocation;
+  - LiveKit unreachable, then repaired by cleanup;
+  - a webhook rejoin;
+  - a CLI-disabled account.
+- **Results:** with the fix, `npm test` gives **44/44** and `tsc` is clean. With the `server/src` changes stashed, **7 of 8 fail**. The one that passes is the "nobody removed" negative test.
+- **Not done:**
+  - **Not deployed** (`RELEASE_PLAN.md`).
+  - A production check with Griip Bot is part of the release smoke test.
+  - The media key isn't rotated after a removal (T5.4). The removed person can't get SFU packets once ejected, but could decrypt any they had captured.
+- **Security:** closes P3 and D3 once deployed. The Android app needs no change: it already tears down on an `ended` event for its current call.
 
 ### T1.1 Demotion to Guest (2026-10-16)
 

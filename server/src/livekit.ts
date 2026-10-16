@@ -46,27 +46,47 @@ export class LiveKitService {
 
   /** Distinct Griip user ids currently connected to a room, or null if LiveKit is unreachable. */
   async participantUsers(room: string): Promise<Set<string> | null> {
+    const ids = await this.participantIdentities(room);
+    return ids && new Set(ids.map((i) => i.split(".")[0]));
+  }
+
+  /** LiveKit identities (`<userId>.<deviceId>`) in a room; [] for a missing room, null if LiveKit is unreachable. */
+  async participantIdentities(room: string): Promise<string[] | null> {
     try {
-      const list = await this.rooms.listParticipants(room);
-      return new Set(list.map((p) => p.identity.split(".")[0]));
+      const list = await withTimeout(this.rooms.listParticipants(room));
+      return list.map((p) => p.identity);
     } catch (e) {
-      // A room that was never created / already closed reports "not found": that's empty.
-      const err = e as { status?: number; code?: string; message?: string };
-      const msg = String(err?.message ?? e).toLowerCase();
-      if (err?.status === 404 || err?.code === "not_found" || msg.includes("not found") || msg.includes("does not exist")) return new Set();
-      return null;
+      return isNotFound(e) ? [] : null;
     }
   }
 
-  async removeParticipant(room: string, identity: string): Promise<void> {
+  /** "absent" when the participant or room is already gone; "error" when LiveKit could not be reached. */
+  async removeParticipant(room: string, identity: string): Promise<"removed" | "absent" | "error"> {
     try {
-      await this.rooms.removeParticipant(room, identity);
-    } catch {
-      /* not in room */
+      await withTimeout(this.rooms.removeParticipant(room, identity));
+      return "removed";
+    } catch (e) {
+      return isNotFound(e) ? "absent" : "error";
     }
   }
 
   async receiveWebhook(body: string, auth: string | undefined): Promise<WebhookEvent> {
     return this.receiver.receive(body, auth);
   }
+}
+
+/** A room or participant that doesn't exist (never created, already closed or already left). */
+function isNotFound(e: unknown): boolean {
+  const err = e as { status?: number; code?: string; message?: string };
+  const msg = String(err?.message ?? e).toLowerCase();
+  return err?.status === 404 || err?.code === "not_found" || msg.includes("not found") || msg.includes("does not exist");
+}
+
+/** Bounds a LiveKit API call so an unreachable media server can't stall a request or the cleanup job. */
+function withTimeout<T>(p: Promise<T>, ms = 5000): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("LiveKit request timed out")), ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
 }

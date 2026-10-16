@@ -15,6 +15,7 @@ Production runs Compose project `griip-internal-messaging` in `/opt/griip-intern
 | Change | Commit | Server files | Schema change | Status |
 |---|---|---|---|---|
 | T1.1 Demotion to Guest revokes branch, team and channel access | see `git log -- server/src/authz.ts` | `authz.ts` (`demoteToGuest`), `routes/orgs.ts` (role change notifies removed conversations) | none | **Pending approval.** Tests: 36/36 + tsc clean (2026-10-16) |
+| T1.3 Evict removed members from live calls; cleanup in-flight guard | see `git log -- server/src/routes/calls.ts` | `routes/calls.ts` (`evictFromCall`, webhook check), `livekit.ts` (identities, removal outcome, 5 s timeouts), `jobs.ts` (reconciliation pass, in-flight guard), `routes/orgs.ts`, `routes/conversations.ts`, `routes/auth.ts` (call sites) | none | **Pending approval.** Tests: 44/44 + tsc clean. Smoke test after deploy: start a group call with Griip Bot and the phone, remove the bot from the group, confirm the bot's room is closed within seconds |
 
 Later tasks append rows here as they land.
 

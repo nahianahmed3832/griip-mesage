@@ -35,7 +35,7 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
 - **Fixed (server, not yet deployed):** demotion to Guest kept all channel access (P1).
 - **Open:**
   - Pinned identity keys aren't enforced (T1.2).
-  - Removed members stay in live calls (P3, T1.3).
+  - ~~Removed members stay in live calls (P3, T1.3).~~ Fixed on the server 2026-10-16, **not yet deployed** (`RELEASE_PLAN.md`).
   - Any local error while processing a delivery discards the message (T1.4).
   - Messages from a device revoked before delivery are lost (P7, T1.5).
   - Open registration with no upload quotas on a shared VPS (P5, T1.6).

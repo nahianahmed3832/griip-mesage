@@ -4,6 +4,7 @@ import type { ConversationRow } from "../authz.js";
 import { type AppContext, me, parse, requireAuth, zText } from "../context.js";
 import { badRequest, conflict, forbidden, newId, notFound, now } from "../util.js";
 import { userSummary } from "./auth.js";
+import { evictRemovedMember } from "./calls.js";
 import { notifyConversation } from "./orgs.js";
 import { deviceDirectory } from "./users.js";
 
@@ -227,6 +228,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
     }
     if (c.org_id) ctx.audit({ actorId: actor, orgId: c.org_id, action: actor === p.userId ? "channel.leave" : "channel.member.remove", target: `${c.id}:${p.userId}` });
     notifyConversation(ctx, c.id, [p.userId]);
+    await evictRemovedMember(ctx, p.userId, [c.id]);
     return { ok: true };
   });
 }

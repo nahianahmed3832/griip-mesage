@@ -10,7 +10,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 |---|---|---|---|---|
 | D1 | The certificate check uses the server's current identity key, not the pinned one. `SECURITY.md` §3 overstates the protection | `android/.../data/repo/Directory.kt`, `test/support/griipClient.ts` | High | T1.2 |
 | D2 | Demotion to Guest relies on `revalidateChannelMemberships`, whose GUEST branch keeps everything. Branch and team rows also survive | `server/src/authz.ts`, `routes/orgs.ts` | High | T1.1 |
-| D3 | No call eviction on membership change. `SECURITY.md` §7 describes an eviction that doesn't exist | `server/src/routes/*` | High | T1.3 |
+| D3 | ~~No call eviction on membership change~~ **Fixed 2026-10-16 (T1.3), not deployed** | `server/src/routes/calls.ts`, `jobs.ts` | High | T1.3 |
 | D4 | The catch-all in `processQueue` acks after any exception | `MessageRepository.kt` | High | T1.4 |
 | D5 | Open registration and no per-user quotas on a relay that shares a VPS with production apps | `routes/auth.ts`, `routes/attachments.ts`, `compose.yaml` | High | T1.6 |
 | D6 | `Hub.Conn.flushing` is declared but unused. Live pushes and the backlog interleave | `server/src/hub.ts` | Medium | T2.1 |
@@ -31,7 +31,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 | D16 | `calls`, `call_participants` and `audit_log` are never pruned | `jobs.ts` | Low |
 | D17 | No `PRAGMA secure_delete`. Deleted ciphertext lingers in free pages and the WAL | `db.ts` | Low |
 | D18 | Decrypted attachment files survive message deletion | `MessageRepository` | Medium (T1.10) |
-| D19 | `setInterval` cleanup can overlap itself if LiveKit calls are slow (no in-flight guard) | `jobs.ts` | Low |
+| D19 | ~~`setInterval` cleanup can overlap itself~~ **Fixed 2026-10-16** with T1.3: in-flight guard, and LiveKit calls time out after 5 s | `jobs.ts`, `livekit.ts` | Low |
 | D20 | `lastTyping` map in `ws.ts` grows without bound | `ws.ts` | Low |
 
 ## Testing and verification

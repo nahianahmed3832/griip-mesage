@@ -4,6 +4,7 @@ import { z } from "zod";
 import { type AppContext, bearer, me, parse, requireAuth, zKey, zName, zSig } from "../context.js";
 import { canonical, isValidPublicKey, keyFingerprint, verifyEd25519 } from "../crypto.js";
 import { ApiError, badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex, unauthorized } from "../util.js";
+import { evictUserDevicesFromCalls } from "./calls.js";
 
 const USERNAME = /^[a-z0-9](?:[a-z0-9._]{1,22})[a-z0-9]$/;
 const CHALLENGE_TTL_MS = 2 * 60 * 1000;
@@ -309,6 +310,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
     ctx.audit({ actorId: userId, action: "device.revoke", target: id, detail: id === deviceId ? "self" : null });
     ctx.hub.disconnectDevice(id, "device revoked");
     notifyKeyChange(ctx, userId);
+    await evictUserDevicesFromCalls(ctx, userId);
     return { ok: true };
   });
 

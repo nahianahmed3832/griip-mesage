@@ -4,6 +4,7 @@ import type { BranchRow, ConversationRow, OrgRole, TeamRow } from "../authz.js";
 import { type AppContext, me, parse, requireAuth, zName, zText } from "../context.js";
 import { badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex } from "../util.js";
 import { userSummary } from "./auth.js";
+import { evictRemovedMember } from "./calls.js";
 import { conversationView } from "./conversations.js";
 
 const zOptText = zText.nullable().optional();
@@ -399,6 +400,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     // The person's devices drop the channels; members refresh them. Envelopes still addressed to
     // the person's devices are refused by the recipient-set check (409 device_mismatch).
     for (const c of removedFrom) notifyConversation(ctx, c, [p.userId]);
+    await evictRemovedMember(ctx, p.userId, removedFrom);
     return { ok: true };
   });
 
@@ -428,6 +430,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     notifyOrg(ctx, p.orgId);
     for (const c of affected) notifyConversation(ctx, c, [p.userId]);
     ctx.hub.sendToUser(p.userId, { t: "org.updated", orgId: p.orgId });
+    await evictRemovedMember(ctx, p.userId, affected);
     return { ok: true };
   });
 
@@ -494,6 +497,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     ctx.audit({ actorId: actor, orgId, action: `${kind}.member.${role ? "set" : "remove"}`, target: `${scopeId}:${target}`, detail: role });
     notifyOrg(ctx, orgId);
     for (const c of removedFrom) notifyConversation(ctx, c, [target]);
+    await evictRemovedMember(ctx, target, removedFrom);
     return { ok: true };
   };
 

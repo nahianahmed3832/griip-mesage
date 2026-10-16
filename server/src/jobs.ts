@@ -1,6 +1,6 @@
 import type { AppContext } from "./context.js";
 import { purgeExpiredAttachments } from "./routes/attachments.js";
-import { broadcastCall, type CallRow, endCallRow, loadCall } from "./routes/calls.js";
+import { broadcastCall, type CallRow, endCallRow, evictFromCall, loadCall } from "./routes/calls.js";
 import { now } from "./util.js";
 
 export interface CleanupResult {
@@ -11,6 +11,7 @@ export interface CleanupResult {
   pairing: number;
   attachments: number;
   callsTimedOut: number;
+  callEvictions: number;
 }
 
 /**
@@ -28,7 +29,14 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     pairing: db.prepare("DELETE FROM pairing_requests WHERE expires_at <= ?").run(t).changes,
     attachments: purgeExpiredAttachments(ctx),
     callsTimedOut: 0,
+    callEvictions: 0,
   };
+  // Call membership: anyone no longer admitted (removed from the conversation, revoked device,
+  // disabled account) is removed from the room. This repairs evictions missed while LiveKit was
+  // unreachable, rejoins with a token issued before removal, and `admin disable` from the CLI process.
+  for (const c of db.prepare("SELECT * FROM calls WHERE state != 'ENDED'").all() as CallRow[]) {
+    r.callEvictions += await evictFromCall(ctx, c);
+  }
   // Reconcile live calls with LiveKit (authoritative participant list) once they are past the
   // ring window: unanswered 1:1 calls become "missed", empty rooms are closed.
   const live = db
@@ -61,13 +69,19 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
 }
 
 export function startJobs(ctx: AppContext): () => void {
+  let running = false; // a slow LiveKit can make one run outlast the interval; never overlap runs
   const timer = setInterval(() => {
+    if (running) return;
+    running = true;
     runCleanup(ctx)
       .then((r) => {
         const total = Object.values(r).reduce((a, b) => a + b, 0);
         if (total > 0) ctx.log.info({ cleanup: r }, "retention cleanup");
       })
-      .catch((e) => ctx.log.error({ err: e }, "cleanup failed"));
+      .catch((e) => ctx.log.error({ err: e }, "cleanup failed"))
+      .finally(() => {
+        running = false;
+      });
   }, ctx.config.cleanupIntervalSeconds * 1000);
   timer.unref();
   return () => clearInterval(timer);

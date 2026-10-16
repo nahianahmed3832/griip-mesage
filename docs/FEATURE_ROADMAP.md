@@ -66,7 +66,7 @@ Extend these, don't replace them:
 - **Risks:** a legitimate re-registration (lost phone without the recovery key) blocks messaging until someone accepts. The UX must make that one tap with a clear warning.
 - **Verification:** JVM tests for `KeyDirectory` with a fake API (needs T2.4), plus reference-client tests with a substituted key served by a test harness override.
 
-### T1.3 Evict removed members from live calls (P3)
+### T1.3 Evict removed members from live calls (P3). **Done 2026-10-16 (server; not deployed)**
 - **Purpose:** someone removed from a conversation, org, branch or team stays in its LiveKit room. `SECURITY.md` §7 claims the opposite.
 - **Dependencies:** none (server only). Key rotation is T5.4.
 - **Modules:** `routes/conversations.ts` (remove member), the `routes/orgs.ts` revalidation paths, `routes/calls.ts` (helper), `livekit.ts`, tests.

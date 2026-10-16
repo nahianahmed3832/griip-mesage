@@ -115,8 +115,14 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
   decoded nothing (`TESTING.md` §4).
 - **Gaps:** the key is not rotated when participants leave or join. A removed member who still has the key could decrypt
   media *if* they could also obtain the SFU-forwarded packets.
-  **Audit correction (2026-10-16):** the server does **not** yet remove them from the room when their membership ends
-  (probe P3). Tracked as `FEATURE_ROADMAP.md` T1.3.
+  **Removal from calls (T1.3, implemented 2026-10-16, not yet deployed):**
+  - When someone loses membership of a conversation (removed, leaves, removed from the org, branch or team, or demoted
+    to Guest), the server removes all their devices from that conversation's live LiveKit room. It also does this when one of
+    their devices is revoked or their account is disabled. The person's devices are told the call ended (`endReason: "removed"`).
+  - `join` and `connected` return 404 for them.
+  - Their LiveKit token can stay valid for up to 10 minutes, and LiveKit can't revoke it. A rejoin with that token is ejected as soon as
+    LiveKit's webhook arrives, and in any case by the 60 s reconciliation job, which also repairs removals LiveKit missed while unreachable.
+  - Until deployed, production still has the audit's finding (probe P3).
   The key is per call and is deleted from the device 24 h after the call ends.
 - LiveKit tokens are JWTs scoped to one room, valid for 10 minutes, and issued only to conversation members.
 
