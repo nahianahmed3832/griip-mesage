@@ -112,6 +112,8 @@ export class GriipClient {
   events: any[] = [];
   private keyCache = new Map<string, UserKeys>();
   private waiters: (() => void)[] = [];
+  /** Settles when the last frame received so far has been handled. */
+  private frames: Promise<void> = Promise.resolve();
   autoAck = true;
 
   constructor(
@@ -194,8 +196,18 @@ export class GriipClient {
           resolved = true;
           resolve();
         }
-        if (msg.t === "queue") await this.handleQueue(msg.items, !!msg.backlog);
-        this.notify();
+        // One consumer in arrival order, like the app (FrameInbox + processLock). Handled concurrently, a later
+        // frame's decryption can finish first and `received` no longer reflects the order the server delivered.
+        const previous = this.frames;
+        let release!: () => void;
+        this.frames = new Promise<void>((r) => (release = r));
+        await previous;
+        try {
+          if (msg.t === "queue") await this.handleQueue(msg.items, !!msg.backlog);
+          this.notify();
+        } finally {
+          release();
+        }
       });
       ws.on("error", (e) => {
         if (!resolved) reject(e);
