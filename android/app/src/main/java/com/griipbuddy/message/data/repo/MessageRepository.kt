@@ -139,7 +139,7 @@ class MessageRepository(
     }
 
     fun observeMessages(cid: String, limit: Int): Flow<List<MessageEntity>> = db.messages().observeLatest(cid, limit)
-    fun observeThread(root: String) = db.messages().observeThread(root)
+    fun observeThread(cid: String, root: String) = db.messages().observeThread(cid, root)
     fun observeThreadCounts(cid: String) = db.messages().observeThreadCounts(cid)
     fun observePinned(cid: String) = db.messages().observePinned(cid)
     fun observeMessage(id: String) = db.messages().observe(id)
@@ -189,8 +189,16 @@ class MessageRepository(
         kick()
     }
 
+    /**
+     * Where the user can't post (announcement channels for non-managers, archived scopes), the server
+     * refuses every envelope, controls included. Changing the message locally would show a reaction,
+     * pin, edit or deletion that nobody else sees.
+     */
+    private suspend fun canSendIn(cid: String) = db.conversations().get(cid)?.canPost != false
+
     suspend fun react(m: MessageEntity, emoji: String) {
         val me = myUserId ?: return
+        if (!canSendIn(m.conversationId)) return
         val current = reactions(m)
         val add = current[emoji]?.contains(me) != true
         applyReaction(db.messages().get(m.id) ?: return, me, emoji, add) // fresh row: `m` may be stale
@@ -198,13 +206,13 @@ class MessageRepository(
     }
 
     suspend fun edit(m: MessageEntity, newText: String) {
-        if (!m.outgoing) return
+        if (!m.outgoing || !canSendIn(m.conversationId)) return
         db.messages().upsert(m.copy(text = newText, editedAt = System.currentTimeMillis()))
         sendControl(m.conversationId, Payload(type = "edit", target = m.id, text = newText))
     }
 
     suspend fun delete(m: MessageEntity) {
-        if (!m.outgoing) return
+        if (!m.outgoing || !canSendIn(m.conversationId)) return
         files.deleteFor(m.id, attachments(m)) // the decrypted copies go too (T1.10)
         db.messages().upsert(m.copy(deleted = true, text = "", attachmentsJson = "[]"))
         sendControl(m.conversationId, Payload(type = "delete", target = m.id))
@@ -212,6 +220,7 @@ class MessageRepository(
     }
 
     suspend fun setPinned(m: MessageEntity, pinned: Boolean) {
+        if (!canSendIn(m.conversationId)) return
         db.messages().upsert(m.copy(pinned = pinned))
         sendControl(m.conversationId, Payload(type = "pin", target = m.id, pinned = pinned))
     }

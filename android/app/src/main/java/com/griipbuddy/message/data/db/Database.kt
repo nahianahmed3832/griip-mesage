@@ -56,8 +56,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :cid AND threadRootId IS NULL ORDER BY sortTs DESC LIMIT :limit")
     fun observeLatest(cid: String, limit: Int): Flow<List<MessageEntity>>
 
-    @Query("SELECT * FROM messages WHERE threadRootId = :root ORDER BY sortTs ASC")
-    fun observeThread(root: String): Flow<List<MessageEntity>>
+    /** Scoped to the root's conversation: a reply claiming a root in another conversation never shows in it. */
+    @Query("SELECT * FROM messages WHERE conversationId = :cid AND threadRootId = :root ORDER BY sortTs ASC")
+    fun observeThread(cid: String, root: String): Flow<List<MessageEntity>>
 
     @Query("SELECT threadRootId AS root, COUNT(*) AS n FROM messages WHERE conversationId = :cid AND threadRootId IS NOT NULL AND deleted = 0 GROUP BY threadRootId")
     fun observeThreadCounts(cid: String): Flow<List<ThreadCount>>

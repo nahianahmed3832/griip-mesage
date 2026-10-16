@@ -24,6 +24,24 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
 | **T5.2 Call key authenticity** | ✅ code + JVM (device check pending) | See below |
+| **Phase 14 collaboration check** | ✅ 2 fixes + wire-format tests (device check pending) | See below |
+
+### Phase 14: collaboration features checked; two fixes (2026-10-16)
+
+- **Review** of replies, threads, mentions, reactions, edits, deletions, pins and read receipts, from the composer to `apply`.
+- **Fixed, thread injection:** the thread view selected every message naming the root, from any conversation. A member of one
+  conversation could make messages appear in the thread of a message in another. `MessageDao.observeThread` now takes the
+  conversation id. Room validates the query at compile time; there's no DAO test (D36).
+- **Fixed, local-only actions:** in announcement channels (for non-managers) and archived scopes, the server refuses every envelope,
+  controls included. The app still applied reactions, pins, edits and deletes locally, then silently dropped the refused control, so
+  only this phone saw them. The repository now refuses them where `canPost` is false, and the message sheet hides them.
+  Read receipts were already skipped there.
+- **Wire format:** `griip-payload-v1-vectors.json` holds every payload type as the bot and reference client send it.
+  `PayloadVectorsTest` (3 tests) decodes each and requires the same JSON back. Renaming `replyTo` in the vectors failed 2 of 3 tests.
+  Unknown types and fields from newer clients still decode (they'd otherwise become "couldn't decrypt" placeholders).
+- **Server contract test:** `messaging.test` now checks that members' reactions and pins are refused in announcement channels while
+  the manager's pin is accepted. Server **82/82**, Android **76/76**.
+- **Not done:** in-app QR scanning and an indexed local search (FTS) are separate tasks. **NOT VERIFIED on a device.**
 
 ### T5.2 Call keys are accepted only from the call's creator (2026-10-16)
 

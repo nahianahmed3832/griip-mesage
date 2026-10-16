@@ -1,0 +1,20 @@
+{
+  "about": "Decrypted griip-envelope-v1 payloads, exactly as the Node reference client and tools/griip-bot send them. The field names are wire format: renaming one breaks other clients. PayloadVectorsTest decodes each and re-encodes it to the same JSON.",
+  "payloads": [
+    { "name": "text", "json": { "type": "text", "text": "Hello team" } },
+    { "name": "reply", "json": { "type": "text", "text": "Agreed", "replyTo": "m-1" } },
+    { "name": "thread reply with mentions", "json": { "type": "text", "text": "@Sam can you check?", "threadRoot": "m-1", "mentions": ["u-sam"] } },
+    { "name": "attachment", "json": { "type": "text", "text": "", "attachments": [ { "id": "att-1", "name": "plan.pdf", "mime": "application/pdf", "size": 1234, "key": "a2V5", "nonce": "bm9uY2U", "sha256": "abcd" } ] } },
+    { "name": "edit", "json": { "type": "edit", "target": "m-1", "text": "Hello team (edited)" } },
+    { "name": "delete", "json": { "type": "delete", "target": "m-1" } },
+    { "name": "reaction add", "json": { "type": "reaction", "target": "m-1", "emoji": "👍", "add": true } },
+    { "name": "reaction remove", "json": { "type": "reaction", "target": "m-1", "emoji": "👍", "add": false } },
+    { "name": "pin", "json": { "type": "pin", "target": "m-1", "pinned": true } },
+    { "name": "read receipt", "json": { "type": "read", "upTo": 1760600000000 } },
+    { "name": "call invite", "json": { "type": "call_invite", "callId": "call-1", "video": true, "e2eeKey": "a2V5a2V5" } }
+  ],
+  "forwardCompatible": [
+    { "name": "unknown type from a newer client", "json": { "type": "poll", "question": "Lunch?", "options": ["Yes", "No"] } },
+    { "name": "unknown extra field", "json": { "type": "text", "text": "hi", "formatting": [ { "bold": [0, 2] } ] } }
+  ]
+}

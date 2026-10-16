@@ -153,6 +153,23 @@ describe("announcement channels", () => {
     const view = (await staff.req("GET", `/v1/conversations/${ch.id}`)).conversation;
     expect(view.canPost).toBe(false);
   });
+
+  it("refuses members' controls too (reactions, pins), so the app must not offer them", async () => {
+    const boss = await h.client("boss2");
+    const staff = await h.client("staff2");
+    const org = (await boss.req("POST", "/v1/orgs", { name: "Acme" })).org;
+    const code = (await boss.req("POST", `/v1/orgs/${org.id}/invites`, { role: "MEMBER" })).invite.code;
+    await staff.req("POST", "/v1/invites/accept", { code });
+    const ch = (await boss.req("POST", `/v1/orgs/${org.id}/channels`, { name: "news", scope: "ORG", kind: "ANNOUNCEMENT" })).channel;
+    const post = await boss.send(ch.id, { type: "text", text: "Office closed Monday" });
+    // The server can't read the payload type, so it refuses every envelope from a non-poster.
+    for (const payload of [{ type: "reaction", target: post.messageId, emoji: "👍", add: true }, { type: "pin", target: post.messageId, pinned: true }]) {
+      const env = await staff.encrypt(ch.id, payload, "control", []);
+      await expectStatus(staff.req("POST", "/v1/messages", env), 403);
+    }
+    const ok = await boss.send(ch.id, { type: "pin", target: post.messageId, pinned: true }, "control");
+    expect(ok.messageId).toBeTruthy();
+  });
 });
 
 describe("retention", () => {

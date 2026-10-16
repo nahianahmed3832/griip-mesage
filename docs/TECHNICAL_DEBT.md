@@ -63,3 +63,4 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 | D33 | `routes/orgs.ts` (760 lines) mixes structure, membership, invites, channels and activity | Low |
 | D34 | String-built JSON frames on Android (`"""{"t":"ack",…}"""`) instead of serializers | Low |
 | D35 | `ApiClient` is a concrete class used directly by repositories, which makes them hard to test. Introduce an interface or fake only where tests need one | Low (T2.4) |
+| D36 | No tests run Room DAO queries: Room on the JVM needs Robolectric or instrumented tests. Queries are checked only at compile time (for example the thread scoping fixed in Phase 14) | Low (T2.4) |

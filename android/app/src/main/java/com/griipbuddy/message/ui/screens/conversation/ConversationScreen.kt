@@ -321,8 +321,10 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     }
 
     actionFor?.let { m ->
+        // Where the user can't post, the server refuses reactions, pins, edits and deletes too.
+        val interactive = conv?.canPost != false
         GlassSheet({ actionFor = null }) {
-            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            if (interactive) Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 QUICK_REACTIONS.forEach { e ->
                     Box(
                         Modifier.size(46.dp).clip(CircleShape).background(c.glass).border(1.dp, c.glassBorder, CircleShape).pressable({ vm.react(m, e); actionFor = null })
@@ -332,20 +334,20 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 }
             }
             if (!m.deleted && m.kind == "text") {
-                MenuRow(Icons.AutoMirrored.Rounded.Reply, "Reply", onClick = { vm.replyTo.value = m; vm.editing.value = null; actionFor = null }, trailing = null)
-                if (threadRoot == null) MenuRow(Icons.Outlined.Forum, "Reply in thread", onClick = { actionFor = null; nav.navigate(Routes.conversation(conversationId, m.id)) }, trailing = null)
+                if (interactive) MenuRow(Icons.AutoMirrored.Rounded.Reply, "Reply", onClick = { vm.replyTo.value = m; vm.editing.value = null; actionFor = null }, trailing = null)
+                if (interactive && threadRoot == null) MenuRow(Icons.Outlined.Forum, "Reply in thread", onClick = { actionFor = null; nav.navigate(Routes.conversation(conversationId, m.id)) }, trailing = null)
                 if (m.text.isNotEmpty()) MenuRow(Icons.Outlined.ContentCopy, "Copy text", onClick = {
                     scope.launch { clipboard.setClipEntry(ClipData.newPlainText("message", m.text).toClipEntry()) }
                     actionFor = null
                 }, trailing = null)
-                if (m.outgoing && m.status != MessageStatus.FAILED && m.status != MessageStatus.SENDING) MenuRow(Icons.Outlined.Edit, "Edit", onClick = {
+                if (interactive && m.outgoing && m.status != MessageStatus.FAILED && m.status != MessageStatus.SENDING) MenuRow(Icons.Outlined.Edit, "Edit", onClick = {
                     vm.editing.value = m; vm.replyTo.value = null; text = m.text; actionFor = null
                 }, trailing = null)
-                MenuRow(Icons.Outlined.PushPin, if (m.pinned) "Unpin" else "Pin for everyone", tint = c.peach, tintBg = c.peachSoft, onClick = { vm.pin(m); actionFor = null }, trailing = null)
+                if (interactive) MenuRow(Icons.Outlined.PushPin, if (m.pinned) "Unpin" else "Pin for everyone", tint = c.peach, tintBg = c.peachSoft, onClick = { vm.pin(m); actionFor = null }, trailing = null)
             }
             if (m.status == MessageStatus.FAILED) MenuRow(Icons.Outlined.Refresh, "Retry sending", onClick = { vm.retry(m); actionFor = null }, trailing = null)
             if (m.outgoing) MenuRow(Icons.Outlined.Info, "Message info", tint = c.lavender, tintBg = c.lavenderSoft, onClick = { infoFor = m; actionFor = null }, trailing = null)
-            if (m.outgoing && !m.deleted) MenuRow(Icons.Outlined.DeleteOutline, "Delete for everyone", tint = c.danger, tintBg = c.dangerSoft, onClick = { vm.delete(m); actionFor = null }, trailing = null)
+            if (interactive && m.outgoing && !m.deleted) MenuRow(Icons.Outlined.DeleteOutline, "Delete for everyone", tint = c.danger, tintBg = c.dangerSoft, onClick = { vm.delete(m); actionFor = null }, trailing = null)
         }
     }
     infoFor?.let { m ->

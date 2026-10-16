@@ -30,7 +30,7 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     private val limit = MutableStateFlow(60)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val messages = (if (threadRoot != null) c.messages.observeThread(threadRoot).map { it.reversed() } else limit.flatMapLatest { c.messages.observeMessages(conversationId, it) })
+    val messages = (if (threadRoot != null) c.messages.observeThread(conversationId, threadRoot).map { it.reversed() } else limit.flatMapLatest { c.messages.observeMessages(conversationId, it) })
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val rootMessage = (threadRoot?.let { c.messages.observeMessage(it) } ?: flowOf(null)).stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val threadCounts = c.messages.observeThreadCounts(conversationId).map { l -> l.associate { it.root to it.n } }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
