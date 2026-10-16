@@ -68,7 +68,7 @@ This is the starting point for the feature-first phase. Every row was checked ag
 | Org channels (public, private, announcement; only managers post in announcement channels) | WORKING | `orgs.test`, `messaging.test` | `POST /v1/orgs/:id/channels`, `authz.canPost` |
 | Multi-device fan-out (sender's other devices get a copy) | WORKING | `messaging.test` | `routes/messages.ts` |
 | Idempotent resubmission | WORKING | `messaging.test` | `submitted_messages` |
-| Delivery order and de-duplication | **Server fixed 2026-10-16 (not deployed)**; app part next | T2.1: a socket gets no live pushes until its backlog is fully sent, so new items join the next batch in queue order. `backlog:true` acknowledgements no longer trigger a flush once the backlog has drained. That had looped forever on empty batches and re-sent unacknowledged live items (the duplicates). `ordering.test.ts` (P6 with 105 + live; burst), fails without the fix | `hub.ts`, `ws.ts` |
+| Delivery order and de-duplication | **WORKING (server not deployed; app JVM-tested)** | T2.1, server: no live push until the backlog has drained, and no empty-backlog loop (`ordering.test.ts`). App: edits, deletions, reactions and pins whose target hasn't arrived are held in `pending_controls` (Room v4) and replayed in order when it arrives. Held controls are unique by id, capped at 200 per conversation and expire after 7 days. Targets must be in the same conversation (T3.4). `PendingControlsTest` (5) | `hub.ts`, `ws.ts`, `PendingControls.kt`, `MessageRepository.apply` |
 | Client never loses a message on local errors | **WORKING (JVM-tested)**. Was BROKEN | T1.4 (2026-10-16): `QueueProcessor` acknowledges only:
 - committed items;
 - quarantined items (identity change);

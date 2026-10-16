@@ -199,6 +199,30 @@ interface QuarantineDao {
 }
 
 @Dao
+interface PendingControlDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(e: PendingControlEntity): Long
+
+    @Query("SELECT * FROM pending_controls WHERE conversationId = :conversationId AND targetId = :targetId")
+    suspend fun forTarget(conversationId: String, targetId: String): List<PendingControlEntity>
+
+    @Query("DELETE FROM pending_controls WHERE id IN (:ids)")
+    suspend fun delete(ids: List<String>)
+
+    @Query("SELECT COUNT(*) FROM pending_controls WHERE conversationId = :conversationId")
+    suspend fun countIn(conversationId: String): Int
+
+    @Query(
+        "DELETE FROM pending_controls WHERE conversationId = :conversationId AND id NOT IN " +
+            "(SELECT id FROM pending_controls WHERE conversationId = :conversationId ORDER BY serverTs DESC, id DESC LIMIT :keep)",
+    )
+    suspend fun deleteOldestIn(conversationId: String, keep: Int)
+
+    @Query("DELETE FROM pending_controls WHERE expiresAt <= :now")
+    suspend fun deleteExpired(now: Long)
+}
+
+@Dao
 interface KvDao {
     @Query("SELECT v FROM kv WHERE k = :k")
     suspend fun get(k: String): String?
@@ -208,7 +232,7 @@ interface KvDao {
 }
 
 @Database(
-    entities = [ConversationEntity::class, MessageEntity::class, OutboxEntity::class, UserEntity::class, CallLogEntity::class, CallKeyEntity::class, KvEntity::class, QuarantineEntity::class],
+    entities = [ConversationEntity::class, MessageEntity::class, OutboxEntity::class, UserEntity::class, CallLogEntity::class, CallKeyEntity::class, KvEntity::class, QuarantineEntity::class, PendingControlEntity::class],
     version = GriipDatabase.VERSION,
     exportSchema = true,
 )
@@ -220,13 +244,14 @@ abstract class GriipDatabase : RoomDatabase() {
     abstract fun calls(): CallDao
     abstract fun kv(): KvDao
     abstract fun quarantine(): QuarantineDao
+    abstract fun pendingControls(): PendingControlDao
 
     companion object {
         /**
          * Schema version. Raising it needs a matching step in [Migrations] and the exported schema
          * committed under `app/schemas` (docs/DECISIONS.md D-13); `MigrationsTest` enforces both.
          */
-        const val VERSION = 3
+        const val VERSION = 4
 
         /**
          * The database file is encrypted with SQLCipher (AES-256) using a random passphrase that is

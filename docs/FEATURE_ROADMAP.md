@@ -139,7 +139,7 @@ Extend these, don't replace them:
 
 ## Tier 2: core messaging and reliability
 
-### T2.1 Ordered, de-duplicated delivery (P6)
+### T2.1 Ordered, de-duplicated delivery (P6). **Done 2026-10-16** (server not deployed)
 - **Purpose:** live pushes overtake the backlog and are delivered twice. Edits, reactions and deletes whose target is in a later batch are lost.
 - **Modules:**
   - Server: `hub.ts` (don't push live items to a connection until its backlog has drained; use the unused `flushing` flag).
@@ -185,7 +185,7 @@ Extend these, don't replace them:
 | T3.1 Invites re-checked against the creator's current rights | An invite from someone who lost manage rights stops working (or is revoked automatically) | `findInvite`, role and member removal paths | vitest |
 | T3.2 Archived branch or team semantics | Decide whether archiving freezes channels (read-only) and stops new members; enforce on the server | `authz.ts`, `orgs.ts` | vitest |
 | T3.3 Admin `disable` disconnects live sockets | The CLI marks the user, and the API process closes sockets (poll `disabled_at` in the cleanup job) | `admin.ts`, `jobs.ts` | vitest |
-| T3.4 Control-message scope checks | Reactions and pins only apply to targets in the same conversation | `MessageRepository.apply` | JVM test |
+| T3.4 Control-message scope checks. **Done 2026-10-16** (with T2.1) | Reactions and pins only apply to targets in the same conversation | `MessageRepository.apply` | JVM test |
 | T3.5 Departments (only if the product needs them) | Department membership and channels, or document that departments group teams only | schema migration 002 | vitest |
 
 ## Tier 4: core collaboration

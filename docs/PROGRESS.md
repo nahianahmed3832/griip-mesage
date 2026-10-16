@@ -24,6 +24,24 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
 
+### T2.1 (app) Controls that arrive before their target, and T3.4 scope checks (2026-10-16)
+
+- **Defect:** an edit, deletion, reaction or pin whose target message hadn't arrived yet was dropped, and acknowledged, so it was lost for good. A reaction could also be applied to a message in a *different* conversation (T3.4).
+- **Change:**
+  - `PendingControls`, with a Room-backed store (`pending_controls` table, **Room v4**, migration 3→4), holds such controls.
+  - Each held control is unique by its own message id, capped at 200 per conversation (oldest dropped first), and expires with the relay's 7-day retention.
+  - When the target message is stored, its held controls are replayed in server order.
+  - Every control now resolves its target only within its own conversation. A target in another conversation is ignored, and a missing one is held.
+  - Expired holds are purged at start-up.
+- **Tests:** `PendingControlsTest` has 5 tests:
+  - replay in original order;
+  - a redelivered control is held once;
+  - only the same conversation's controls replay;
+  - the per-conversation bound;
+  - expiry.
+
+  `MigrationsTest` covers 1→2→3→4 with sample rows. Android **53/53**.
+
 ### T2.1 (server) Ordered, exactly-once delivery (2026-10-16)
 
 - **Defect (probe P6):** with 105 items queued, a new message was pushed live before items 101–105 and then delivered again in the next backlog batch.

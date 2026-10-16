@@ -14,6 +14,7 @@ import com.griipbuddy.message.data.api.ConnState
 import com.griipbuddy.message.data.api.GriipJson
 import com.griipbuddy.message.data.api.OkRes
 import com.griipbuddy.message.data.api.QueueItem
+import com.griipbuddy.message.data.api.QueuePayload
 import com.griipbuddy.message.data.api.QueueRes
 import com.griipbuddy.message.data.api.RealtimeClient
 import com.griipbuddy.message.data.api.RealtimeFrame
@@ -79,6 +80,7 @@ class MessageRepository(
 ) {
     private val json = GriipJson
     private val files = AttachmentFiles(File(context.filesDir, "attachments"))
+    private val pending = PendingControls(RoomPendingControlStore(db))
     private val listOfStrings = ListSerializer(String.serializer())
     private val reactionsSer = MapSerializer(String.serializer(), ListSerializer(String.serializer()))
     private val attachmentsSer = ListSerializer(AttachmentRef.serializer())
@@ -181,7 +183,7 @@ class MessageRepository(
         val me = myUserId ?: return
         val current = reactions(m)
         val add = current[emoji]?.contains(me) != true
-        applyReaction(m.id, me, emoji, add)
+        applyReaction(db.messages().get(m.id) ?: return, me, emoji, add) // fresh row: `m` may be stale
         sendControl(m.conversationId, Payload(type = "reaction", target = m.id, emoji = emoji, add = add))
     }
 
@@ -401,6 +403,7 @@ class MessageRepository(
      * cause). Called at start-up; whatever still fails stays set aside.
      */
     private suspend fun retrySetAside() = processLock.withLock {
+        pending.purgeExpired()
         for (q in db.quarantine().setAside()) {
             val item = runCatching { json.decodeFromString(QueueItem.serializer(), q.itemJson) }.getOrNull() ?: continue
             if (runCatching { handleItem(item) }.isSuccess) db.quarantine().remove(q.queueId)
@@ -458,6 +461,7 @@ class MessageRepository(
                     status = if (mine) MessageStatus.SENT else MessageStatus.RECEIVED,
                 )
                 if (db.messages().insertIgnore(m) == -1L) return
+                replayPending(item.conversationId, item.messageId, conv, me)
                 val viewing = appState.foreground.value && appState.viewingConversation.value == item.conversationId
                 val mention = !mine && (me in pl.mentions.orEmpty())
                 val unread = if (!mine && !viewing) 1 else 0
@@ -473,24 +477,27 @@ class MessageRepository(
                 }
             }
             "edit" -> {
-                val t = db.messages().get(pl.target ?: return) ?: return
+                val t = target(pl, item, serverTs) ?: return
                 if (t.senderUserId == item.senderUserId && !t.deleted) {
                     db.messages().upsert(t.copy(text = pl.text.orEmpty(), editedAt = serverTs))
                     if (db.conversations().get(t.conversationId)?.lastMessageId == t.id) refreshPreview(t.conversationId)
                 }
             }
             "delete" -> {
-                val t = db.messages().get(pl.target ?: return) ?: return
+                val t = target(pl, item, serverTs) ?: return
                 if (t.senderUserId == item.senderUserId) {
                     files.deleteFor(t.id, attachments(t))
                     db.messages().upsert(t.copy(deleted = true, text = "", attachmentsJson = "[]"))
                     refreshPreview(t.conversationId)
                 }
             }
-            "reaction" -> applyReaction(pl.target ?: return, item.senderUserId, pl.emoji ?: return, pl.add != false)
+            "reaction" -> {
+                val emoji = pl.emoji ?: return
+                applyReaction(target(pl, item, serverTs) ?: return, item.senderUserId, emoji, pl.add != false)
+            }
             "pin" -> {
-                val t = db.messages().get(pl.target ?: return) ?: return
-                if (t.conversationId == item.conversationId) db.messages().upsert(t.copy(pinned = pl.pinned == true))
+                val t = target(pl, item, serverTs) ?: return
+                db.messages().upsert(t.copy(pinned = pl.pinned == true))
             }
             "read" -> {
                 val upTo = pl.upTo ?: return
@@ -522,8 +529,30 @@ class MessageRepository(
         }
     }
 
-    private suspend fun applyReaction(target: String, userId: String, emoji: String, add: Boolean) {
-        val t = db.messages().get(target) ?: return
+    /**
+     * The message a control refers to, only if it's in the control's own conversation (T3.4). A target
+     * that hasn't arrived yet holds the control until it does (T2.1); one in another conversation is ignored.
+     */
+    private suspend fun target(pl: Payload, item: QueueItem, serverTs: Long): MessageEntity? {
+        val id = pl.target ?: return null
+        val t = db.messages().get(id)
+        if (t == null) {
+            pending.hold(item.messageId, item.conversationId, id, item.senderUserId, json.encodeToString(Payload.serializer(), pl), serverTs)
+            return null
+        }
+        return t.takeIf { it.conversationId == item.conversationId }
+    }
+
+    /** Applies, in their original order, the controls that arrived before this message. */
+    private suspend fun replayPending(conversationId: String, messageId: String, conv: ConversationEntity?, me: String) {
+        for (c in pending.takeFor(conversationId, messageId)) {
+            val pl = runCatching { json.decodeFromString(Payload.serializer(), c.payloadJson) }.getOrNull() ?: continue
+            val item = QueueItem(0, "envelope", c.conversationId, c.id, c.senderUserId, "", c.serverTs, c.expiresAt, QueuePayload(cls = "control", serverTs = c.serverTs))
+            apply(pl, item, conv, c.senderUserId == me, c.serverTs)
+        }
+    }
+
+    private suspend fun applyReaction(t: MessageEntity, userId: String, emoji: String, add: Boolean) {
         val map = reactions(t).toMutableMap()
         val set = map[emoji].orEmpty().toMutableList()
         if (add) { if (userId !in set) set += userId } else set.remove(userId)

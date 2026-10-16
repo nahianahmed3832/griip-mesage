@@ -21,6 +21,13 @@ object Migrations {
         ),
         // v3 (T1.4): items set aside after repeated processing failures share the table, with a reason.
         2 to listOf("ALTER TABLE `quarantine` ADD COLUMN `reason` TEXT"),
+        // v4 (T2.1): edits, deletions, reactions and pins waiting for their target message.
+        3 to listOf(
+            "CREATE TABLE IF NOT EXISTS `pending_controls` (`id` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `targetId` TEXT NOT NULL, " +
+                "`senderUserId` TEXT NOT NULL, `payloadJson` TEXT NOT NULL, `serverTs` INTEGER NOT NULL, `receivedAt` INTEGER NOT NULL, " +
+                "`expiresAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            "CREATE INDEX IF NOT EXISTS `index_pending_controls_conversationId_targetId` ON `pending_controls` (`conversationId`, `targetId`)",
+        ),
     )
 
     fun all(): Array<Migration> = steps.map { (from, sql) ->

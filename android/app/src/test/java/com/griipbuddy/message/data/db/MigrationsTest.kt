@@ -96,6 +96,11 @@ private object Fixtures {
     fun insert(c: Connection, version: Int): Map<String, Int> {
         val s = c.createStatement()
         when (version) {
+            3 -> {
+                val base = insert(c, 2)
+                s.execute("UPDATE quarantine SET reason = 'failed: SQLiteException' WHERE queueId = 7")
+                return base
+            }
             2 -> {
                 val base = insert(c, 1)
                 s.execute("INSERT INTO quarantine (queueId, conversationId, senderUserId, itemJson, receivedAt) VALUES (7, 'c1', 'u1', '{}', 1)")

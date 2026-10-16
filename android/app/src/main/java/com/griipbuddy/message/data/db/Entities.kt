@@ -138,3 +138,16 @@ data class QuarantineEntity(
     /** null: held for an identity change (T1.2). Otherwise why it was set aside after repeated failures (T1.4). */
     val reason: String? = null,
 )
+
+/** A control message (edit, delete, reaction, pin) that arrived before its target message (T2.1). */
+@Entity(tableName = "pending_controls", indices = [Index(value = ["conversationId", "targetId"])])
+data class PendingControlEntity(
+    @PrimaryKey val id: String,
+    val conversationId: String,
+    val targetId: String,
+    val senderUserId: String,
+    val payloadJson: String,
+    val serverTs: Long,
+    val receivedAt: Long,
+    val expiresAt: Long,
+)
