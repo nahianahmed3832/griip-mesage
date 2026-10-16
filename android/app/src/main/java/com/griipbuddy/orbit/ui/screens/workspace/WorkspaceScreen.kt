@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddBusiness
+import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Apartment
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.Groups
@@ -294,6 +295,20 @@ fun WorkspaceScreen(nav: NavHostController) {
                         onClick = if (branch.canManage) ({ sheet = "dept:" + dep.id }) else null,
                     )
                 }
+                // Owner only, at the very end of Manage: far from switching workspaces, so a tap there can't reach it.
+                if (DeleteWorkspaceRules.visible(d.org.myRole)) {
+                    item {
+                        Text("Danger zone", style = Griip.type.section, color = c.danger, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 10.dp))
+                    }
+                    item {
+                        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), contentPadding = PaddingValues(6.dp)) {
+                            MenuRow(
+                                Icons.Outlined.DeleteForever, "Delete workspace", subtitle = "Not available yet in this beta",
+                                tint = c.danger, tintBg = c.dangerSoft, onClick = { sheet = "delete" },
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -309,6 +324,7 @@ fun WorkspaceScreen(nav: NavHostController) {
             "department" -> CreateDepartmentSheet(det, { sheet = null }) { vm.refresh() }
             "team" -> CreateTeamSheet(det, branchFilter, { sheet = null }) { vm.refresh() }
             "channel" -> CreateChannelSheet(det, branchFilter, { sheet = null }) { id -> vm.refresh(); nav.navigate(Routes.conversation(id)) }
+            "delete" -> if (DeleteWorkspaceRules.visible(det.org.myRole)) DeleteWorkspaceSheet(det) { sheet = null }
             else -> sheet?.removePrefix("dept:")?.takeIf { sheet!!.startsWith("dept:") }?.let { id ->
                 det.departments.firstOrNull { it.id == id }?.let { dep -> EditDepartmentSheet(det, dep, { sheet = null }) { vm.refresh() } }
             }
