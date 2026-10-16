@@ -26,6 +26,23 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T5.2 Call key authenticity** | ✅ code + JVM (device check pending) | See below |
 | **Phase 14 collaboration check** | ✅ 2 fixes + wire-format tests (device check pending) | See below |
 | **T4.2 In-app invite QR scanner** | ✅ code + JVM (device check pending) | See below |
+| **T5.3 Late joiners get the call key** | ✅ code + JVM (device check pending) | See below |
+
+### T5.3 Late joiners and new devices get the call key (2026-10-16)
+
+- **Gap:** the media key was sent once, when the call started, to the devices that existed then. Someone joining a running group
+  call from a device that missed it, or from a newly linked device, waited 10 s and was refused.
+- **Fix (app only, no `CallManager` change):**
+  - `MessageRepository.callKey`, which `CallManager.waitForKey` polls, now asks for a missing key: after 1.5 s without it, it sends
+    a `call_key_request` control to the call's conversation, then repeats at most every 5 s (`CallKeyRequests`).
+  - On receiving a request, **only the call's creator** answers: its device holds the key it created, checks the call is live with
+    the server, and re-sends the same key as a `call_invite`. Answers are paced per call. Devices that already hold the key ignore
+    the re-send (first key wins), so nothing rings again. T5.2 still applies, because the re-send comes from the creator.
+- **Limits:** if none of the creator's devices is online, the joiner is still refused after 10 s. The key isn't rotated when people
+  leave (T5.4). The test bot doesn't answer requests.
+- **Tests:** `CallKeyRequestsTest` (4: grace period, pacing over a 10 s wait, per-call answer pacing, bounded state). The payload
+  vectors include `call_key_request`. Android **85/85**.
+- **NOT VERIFIED on a device:** needs two Android devices or a newly linked device joining a running call.
 
 ### T4.2 In-app invite QR scanner (2026-10-16)
 

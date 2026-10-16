@@ -203,7 +203,7 @@ Extend these, don't replace them:
 |---|---|---|---|
 | T5.1 TURN on 443/TLS | Calls connect from networks that allow only 443 | Infra decision: LiveKit embedded TURN with a cert on its own subdomain, or coturn. A firewall change | Production test from a restricted network |
 | T5.2 Call key authenticity — **done in code 2026-10-16; device race test pending** | Accept a `call_invite` key only from the call's creator (`call.createdBy` from the server or ring event). Reject others | — | JVM + bot (a second bot races a fake key) |
-| T5.3 Late joiners and new devices get the key | A participant re-sends the current key, encrypted, to a joining device on request (`call_key_request` control) | T5.2 | bot |
+| T5.3 Late joiners and new devices get the key — **done in code 2026-10-16 (creator re-sends); device check pending** | A participant re-sends the current key, encrypted, to a joining device on request (`call_key_request` control) | T5.2 | bot |
 | T5.4 Key rotation on membership change | New key distributed when someone leaves or is removed. LiveKit key index ratchet | T1.3, T5.2 | bot wrong-key test after removal |
 | T5.5 Screen share on the fixed build, plus a wrong-key test | Close the UNVERIFIED rows in inventory §9 | phone + bot | device |
 | T5.6 Busy and declined UX | A busy callee auto-declines with a "busy" reason | — | vitest + device |

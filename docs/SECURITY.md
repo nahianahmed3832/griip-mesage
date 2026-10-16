@@ -128,6 +128,10 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
   **Since T5.2 (2026-10-16), a key is accepted only from the call's creator**, in the call's own conversation: the app looks up the
   call (`GET /v1/calls/:id`) and compares `createdBy` with the envelope's signed sender. Keys from other members are ignored and logged.
   If the lookup fails for a reason other than 404, the queue item is redelivered and checked again; it is never accepted unchecked.
+- **Late joiners (T5.3):** a device that has no key for a call it is joining sends a `call_key_request` control in the call's
+  conversation. Only the call's creator answers, re-sending the same key inside a `call_invite` to the conversation's current
+  member devices, the same audience the server admits to the call. Requests and answers are paced (1.5 s grace, then at most
+  every 5 s per call), and ended calls are never answered.
 - **Verified:** on the production SFU, a participant with the correct key decoded video and audio, and a participant with a wrong key
   decoded nothing (`TESTING.md` §4).
 - **Gaps:** the key is not rotated when participants leave or join. A removed member who still has the key could decrypt

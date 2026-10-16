@@ -84,6 +84,7 @@ class MessageRepository(
     private val json = GriipJson
     private val files = AttachmentFiles(File(context.filesDir, "attachments"))
     private val pending = PendingControls(RoomPendingControlStore(db))
+    private val keyRequests = CallKeyRequests()
     private val callKeys = CallKeyVerifier { id ->
         try {
             api.get<CallRes>("/v1/calls/$id").call
@@ -249,7 +250,21 @@ class MessageRepository(
         sendControl(cid, Payload(type = "call_invite", callId = callId, video = video, e2eeKey = key))
     }
 
-    suspend fun callKey(callId: String): String? = db.calls().key(callId)?.key
+    /**
+     * This call's media key, if it has arrived. While it's missing, the call's creator is asked to
+     * re-send it (T5.3): a device that joins after the call started never received the original.
+     */
+    suspend fun callKey(callId: String): String? {
+        db.calls().key(callId)?.let { return it.key }
+        if (keyRequests.shouldRequest(callId)) scope.launch { runCatching { requestCallKey(callId) } }
+        return null
+    }
+
+    private suspend fun requestCallKey(callId: String) {
+        val call = api.get<CallRes>("/v1/calls/$callId").call
+        if (call.state == "ENDED") return
+        sendControl(call.conversationId, Payload(type = "call_key_request", callId = callId))
+    }
 
     /** Clear unread and (DMs/groups) send an encrypted read receipt. */
     suspend fun markConversationRead(cid: String) {
@@ -597,6 +612,15 @@ class MessageRepository(
                         db.messages().upsert(m.copy(readByJson = json.encodeToString(listOfStrings, r), status = MessageStatus.READ))
                     }
                 }
+            }
+            "call_key_request" -> {
+                // Only the call's creator answers, in the call's own conversation, while the call is live (T5.3).
+                val callId = pl.callId ?: return
+                val k = db.calls().key(callId) ?: return
+                if (k.fromUserId != me || k.conversationId != item.conversationId || !keyRequests.shouldAnswer(callId)) return
+                val call = runCatching { api.get<CallRes>("/v1/calls/$callId").call }.getOrNull() ?: return // the joiner asks again
+                if (call.state == "ENDED" || call.createdBy != me) return
+                sendControl(item.conversationId, Payload(type = "call_invite", callId = callId, video = call.video, e2eeKey = k.key))
             }
             "call_invite" -> {
                 val callId = pl.callId ?: return

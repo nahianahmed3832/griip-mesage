@@ -11,7 +11,8 @@
     { "name": "reaction remove", "json": { "type": "reaction", "target": "m-1", "emoji": "👍", "add": false } },
     { "name": "pin", "json": { "type": "pin", "target": "m-1", "pinned": true } },
     { "name": "read receipt", "json": { "type": "read", "upTo": 1760600000000 } },
-    { "name": "call invite", "json": { "type": "call_invite", "callId": "call-1", "video": true, "e2eeKey": "a2V5a2V5" } }
+    { "name": "call invite", "json": { "type": "call_invite", "callId": "call-1", "video": true, "e2eeKey": "a2V5a2V5" } },
+    { "name": "call key request", "json": { "type": "call_key_request", "callId": "call-1" } }
   ],
   "forwardCompatible": [
     { "name": "unknown type from a newer client", "json": { "type": "poll", "question": "Lunch?", "options": ["Yes", "No"] } },
