@@ -31,6 +31,19 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **Department editing** | ✅ server + app (not deployed; device check pending) | See below |
 | **Phase 17 decentralisation readiness** | ✅ evaluated (nothing implemented; D-16 proposed) | See below |
 | **E2EE badge needs decryption evidence (wrong-key fix)** | ✅ code + JVM + phone | See below |
+| **Android UI/UX redesign** | ✅ code + JVM + phone screenshots (uncommitted) | See below |
+
+### Android UI/UX redesign (2026-10-16, uncommitted, awaiting review)
+
+- **Brief:** a polished, consistent messaging UI inspired by WhatsApp and Telegram usability, with no backend or crypto
+  changes and no fake features.
+- **Done:** a new design system (emerald on neutral, flat surfaces) and Chats / Calls / Workspace / Settings navigation. The
+  Home dashboard was removed and its actions moved. New chat list, Calls tab, conversation, composer with an attachment
+  sheet, merged Settings, and search scope and loading. Details and known gaps are in `UI_REDESIGN.md`.
+- **Files:** `ui/` only (23 changed, 1 removed, 2 added, plus 2 test files) and docs.
+- **Tests:** Android **118/118** (8 new), lint no errors, debug and release builds succeed. Phone screenshots in both themes
+  and a live call check, the call showing "End-to-end encrypted" only after media decrypted.
+- **Not committed** (the brief asks for approval first). Not deployed (app-only).
 
 ### E2EE badge no longer shows "encrypted" for a wrong-key peer (2026-10-16)
 

@@ -11,22 +11,22 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.rounded.Chat
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Workspaces
-import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Workspaces
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -38,15 +38,15 @@ import androidx.navigation.compose.rememberNavController
 import com.griipbuddy.message.call.CallPhase
 import com.griipbuddy.message.data.repo.SessionState
 import com.griipbuddy.message.di.AppContainer
-import com.griipbuddy.message.ui.components.GlassBottomBar
-import com.griipbuddy.message.ui.components.GradientCanvas
+import com.griipbuddy.message.ui.components.AppBackground
+import com.griipbuddy.message.ui.components.GriipNavigationBar
 import com.griipbuddy.message.ui.components.NavItem
 import com.griipbuddy.message.ui.screens.calls.CallOverlay
+import com.griipbuddy.message.ui.screens.calls.CallsScreen
 import com.griipbuddy.message.ui.screens.chats.ChatsScreen
 import com.griipbuddy.message.ui.screens.chats.NewChatScreen
 import com.griipbuddy.message.ui.screens.conversation.ConversationInfoScreen
 import com.griipbuddy.message.ui.screens.conversation.ConversationScreen
-import com.griipbuddy.message.ui.screens.home.HomeScreen
 import com.griipbuddy.message.ui.screens.home.SearchScreen
 import com.griipbuddy.message.ui.screens.onboarding.JoinWorkspaceScreen
 import com.griipbuddy.message.ui.screens.onboarding.OnboardingFlow
@@ -65,15 +65,19 @@ import com.griipbuddy.message.ui.screens.workspace.WorkspaceScreen
 val LocalContainer = staticCompositionLocalOf<AppContainer> { error("no container") }
 
 object Routes {
+    /** Kept for old deep links and back stacks: it now opens the chat list. */
     const val HOME = "home"
     const val CHATS = "chats"
+    const val CALLS = "calls"
     const val WORKSPACE = "workspace"
+    /** The Settings tab (profile, account, privacy, appearance, notifications, calls, about). */
     const val PROFILE = "profile"
     const val JOIN = "join"
     const val NEW_CHAT = "newchat"
     const val SEARCH = "search"
     const val DEVICES = "devices"
     const val SECURITY = "security"
+    /** Kept for older links; the settings now live on the Settings tab. */
     const val SETTINGS = "settings"
     fun conversation(id: String, thread: String? = null) = "conversation/$id" + (thread?.let { "?thread=$it" } ?: "")
     fun info(id: String) = "conversation/$id/info"
@@ -82,7 +86,7 @@ object Routes {
     fun invites(orgId: String) = "invites/$orgId"
     fun activity(orgId: String) = "activity/$orgId"
     fun user(id: String) = "user/$id"
-    val tabs = setOf(HOME, CHATS, WORKSPACE, PROFILE)
+    val tabs = setOf(CHATS, CALLS, WORKSPACE, PROFILE)
 }
 
 @Composable
@@ -90,7 +94,7 @@ fun AppRoot(container: AppContainer, pendingConversation: String?, pendingInvite
     CompositionLocalProvider(LocalContainer provides container) {
         val session by container.session.state.collectAsStateWithLifecycle()
         val call by container.calls.state.collectAsStateWithLifecycle()
-        GradientCanvas {
+        AppBackground {
             when (val s = session) {
                 is SessionState.SignedOut -> OnboardingFlow(pendingInvite)
                 is SessionState.Revoked -> RevokedScreen(s.reason)
@@ -122,17 +126,19 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
         NavHost(
             nav,
-            startDestination = Routes.HOME,
-            enterTransition = { if (initialState.destination.route in Routes.tabs && targetState.destination.route in Routes.tabs) fadeIn(tween(180)) else slideInHorizontally(tween(260)) { it / 4 } + fadeIn(tween(220)) },
-            exitTransition = { if (initialState.destination.route in Routes.tabs && targetState.destination.route in Routes.tabs) fadeOut(tween(150)) else fadeOut(tween(180)) },
-            popEnterTransition = { fadeIn(tween(220)) },
-            popExitTransition = { slideOutHorizontally(tween(240)) { it / 4 } + fadeOut(tween(200)) },
+            startDestination = Routes.CHATS,
+            modifier = Modifier.weight(1f),
+            enterTransition = { if (initialState.destination.route in Routes.tabs && targetState.destination.route in Routes.tabs) fadeIn(tween(150)) else slideInHorizontally(tween(240)) { it / 5 } + fadeIn(tween(200)) },
+            exitTransition = { if (initialState.destination.route in Routes.tabs && targetState.destination.route in Routes.tabs) fadeOut(tween(120)) else fadeOut(tween(160)) },
+            popEnterTransition = { fadeIn(tween(200)) },
+            popExitTransition = { slideOutHorizontally(tween(220)) { it / 5 } + fadeOut(tween(180)) },
         ) {
-            composable(Routes.HOME) { HomeScreen(nav) }
             composable(Routes.CHATS) { ChatsScreen(nav) }
+            composable(Routes.HOME) { ChatsScreen(nav) }
+            composable(Routes.CALLS) { CallsScreen(nav) }
             composable(Routes.WORKSPACE) { WorkspaceScreen(nav) }
             composable(Routes.PROFILE) { ProfileScreen(nav) }
             composable(Routes.JOIN + "?code={code}") { JoinWorkspaceScreen(nav, it.arguments?.getString("code")) }
@@ -149,17 +155,16 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             composable(Routes.SECURITY) { SecurityScreen(nav) }
             composable(Routes.SETTINGS) { SettingsScreen(nav) }
         }
-        if (route in Routes.tabs) {
-            GlassBottomBar(
+        if (route in Routes.tabs || route == Routes.HOME) {
+            GriipNavigationBar(
                 items = listOf(
-                    NavItem(Routes.HOME, "Home", Icons.Outlined.Home, Icons.Rounded.Home),
                     NavItem(Routes.CHATS, "Chats", Icons.AutoMirrored.Outlined.Chat, Icons.AutoMirrored.Rounded.Chat, badge = unread),
+                    NavItem(Routes.CALLS, "Calls", Icons.Outlined.Call, Icons.Rounded.Call),
                     NavItem(Routes.WORKSPACE, "Workspace", Icons.Outlined.Workspaces, Icons.Rounded.Workspaces),
-                    NavItem(Routes.PROFILE, "Profile", Icons.Outlined.Person, Icons.Rounded.Person),
+                    NavItem(Routes.PROFILE, "Settings", Icons.Outlined.Settings, Icons.Rounded.Settings),
                 ),
-                selectedRoute = route,
+                selectedRoute = if (route == Routes.HOME) Routes.CHATS else route,
                 onSelect = { item -> nav.switchTab(item.route) },
-                modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
     }

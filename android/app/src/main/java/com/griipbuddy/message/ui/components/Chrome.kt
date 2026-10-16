@@ -1,9 +1,6 @@
 package com.griipbuddy.message.ui.components
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -15,41 +12,39 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.griipbuddy.message.ui.theme.Griip
-import com.griipbuddy.message.ui.theme.Motion
 import com.griipbuddy.message.ui.theme.Shapes
 import com.griipbuddy.message.ui.theme.Space
 
-/** Centred-title header: frosted back circle, title (+subtitle), contextual actions (reference). */
+/** Compact top app bar for pushed screens: back, left-aligned title (+subtitle), contextual actions. */
 @Composable
 fun GriipTopBar(
     title: String,
@@ -59,19 +54,23 @@ fun GriipTopBar(
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val c = Griip.colors
-    Box(modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp).height(56.dp)) {
-        Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
-            if (onBack != null) CircleIconButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack)
+    Row(
+        modifier.fillMaxWidth().background(c.background).statusBarsPadding().height(64.dp).padding(start = if (onBack != null) 4.dp else Space.gutter, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onBack != null) {
+            CircleIconButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack)
+            Spacer(Modifier.width(4.dp))
         }
-        Column(Modifier.align(Alignment.Center).padding(horizontal = 104.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(title, style = Griip.type.title, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-            if (subtitle != null) Text(subtitle, style = Griip.type.caption, color = c.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = Griip.type.title, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
+            if (subtitle != null) Text(subtitle, style = Griip.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, content = actions)
+        Row(verticalAlignment = Alignment.CenterVertically, content = actions)
     }
 }
 
-/** Large left-aligned header for tab roots (Chats, Workspace, Profile). */
+/** Top app bar for tab roots (Chats, Calls, Workspace, Settings): compact title, trailing actions. */
 @Composable
 fun LargeHeader(
     title: String,
@@ -81,12 +80,12 @@ fun LargeHeader(
 ) {
     val c = Griip.colors
     Row(
-        modifier.fillMaxWidth().statusBarsPadding().padding(start = Space.gutter, end = 12.dp, top = 12.dp, bottom = 8.dp),
+        modifier.fillMaxWidth().background(c.background).statusBarsPadding().height(64.dp).padding(start = Space.gutter, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            if (subtitle != null) Text(subtitle, style = Griip.type.bodySmall, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(title, style = Griip.type.headline.copy(fontWeight = FontWeight.ExtraBold), color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, style = Griip.type.headline.copy(fontWeight = FontWeight.Bold), color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
+            if (subtitle != null) Text(subtitle, style = Griip.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Row(verticalAlignment = Alignment.CenterVertically, content = trailing)
     }
@@ -94,37 +93,31 @@ fun LargeHeader(
 
 data class NavItem(val route: String, val label: String, val icon: ImageVector, val selectedIcon: ImageVector, val badge: Int = 0)
 
-/** Floating glass bottom navigation with four destinations (reference). */
+/** Docked bottom navigation: surface bar, top divider, emerald indicator behind the selected icon. */
 @Composable
-fun GlassBottomBar(items: List<NavItem>, selectedRoute: String?, onSelect: (NavItem) -> Unit, modifier: Modifier = Modifier) {
+fun GriipNavigationBar(items: List<NavItem>, selectedRoute: String?, onSelect: (NavItem) -> Unit, modifier: Modifier = Modifier) {
     val c = Griip.colors
-    Box(modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Row(
-            Modifier.fillMaxWidth().height(68.dp)
-                .shadow(18.dp, Shapes.hero, ambientColor = c.shadow, spotColor = c.shadow)
-                .clip(Shapes.hero)
-                .background(c.glassStrong)
-                .border(1.dp, c.glassBorder, Shapes.hero)
-                .padding(horizontal = 6.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    Column(modifier.fillMaxWidth()) {
+        HorizontalDivider(thickness = 1.dp, color = c.border)
+        NavigationBar(containerColor = c.surface, tonalElevation = 0.dp) {
             items.forEach { item ->
                 val sel = item.route == selectedRoute
-                val fg by animateColorAsState(if (sel) c.primary else c.textTertiary, Motion.quick(), label = "nav")
-                Column(
-                    Modifier.weight(1f).clip(Shapes.tile).pressable({ onSelect(item) }, role = Role.Tab).semantics { selected = sel; contentDescription = item.label }.padding(vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Box {
-                        Icon(if (sel) item.selectedIcon else item.icon, null, tint = fg, modifier = Modifier.size(24.dp))
-                        if (item.badge > 0) {
-                            CountBadge(item.badge, Modifier.align(Alignment.TopEnd).padding(start = 18.dp).height(16.dp))
-                        }
-                    }
-                    Spacer(Modifier.height(3.dp))
-                    Text(item.label, style = Griip.type.caption.copy(fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Medium), color = fg, maxLines = 1)
-                }
+                NavigationBarItem(
+                    selected = sel,
+                    onClick = { onSelect(item) },
+                    icon = {
+                        BadgedBox(badge = {
+                            if (item.badge > 0) Badge(containerColor = c.primary, contentColor = c.onAction) {
+                                Text(if (item.badge > 99) "99+" else "${item.badge}", style = Griip.type.caption.copy(fontWeight = FontWeight.Bold))
+                            }
+                        }) { Icon(if (sel) item.selectedIcon else item.icon, contentDescription = null) }
+                    },
+                    label = { Text(item.label, style = Griip.type.label.copy(fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Medium), maxLines = 1) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = c.primaryDeep, selectedTextColor = c.textPrimary, indicatorColor = c.navIndicator,
+                        unselectedIconColor = c.textSecondary, unselectedTextColor = c.textSecondary,
+                    ),
+                )
             }
         }
     }
@@ -142,17 +135,18 @@ fun ConfirmDialog(
     val c = Griip.colors
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = c.glassStrong.copy(alpha = 1f),
+        containerColor = c.surface,
         shape = Shapes.hero,
         title = { Text(title, style = Griip.type.title, color = c.textPrimary) },
         text = { Text(text, style = Griip.type.bodySmall, color = c.textSecondary) },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text(confirmLabel, style = Griip.type.button, color = if (destructive) c.danger else c.primaryDeep) }
+            TextButton(onClick = onConfirm) { Text(confirmLabel, style = Griip.type.button, color = if (destructive) c.danger else c.primary) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", style = Griip.type.button, color = c.textSecondary) } },
     )
 }
 
+/** Modal bottom sheet on the surface colour, with a drag handle and an optional title. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GlassSheet(
@@ -166,16 +160,16 @@ fun GlassSheet(
         onDismissRequest = onDismiss,
         sheetState = state,
         shape = Shapes.sheet,
-        containerColor = if (c.isDark) Color(0xFF16272A) else Color(0xFFFAFDFC),
+        containerColor = c.surface,
         scrimColor = c.scrim,
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         dragHandle = {
-            Box(Modifier.padding(top = 10.dp, bottom = 6.dp).width(40.dp).height(5.dp).clip(Shapes.pill).background(c.textTertiary.copy(alpha = 0.4f)))
+            Box(Modifier.padding(top = 10.dp, bottom = 8.dp).width(36.dp).height(4.dp).clip(Shapes.pill).background(c.textTertiary.copy(alpha = 0.45f)))
         },
     ) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = Space.gutter).padding(bottom = 16.dp)) {
             if (title != null) {
-                Text(title, style = Griip.type.title, color = c.textPrimary, modifier = Modifier.padding(bottom = 12.dp))
+                Text(title, style = Griip.type.title, color = c.textPrimary, modifier = Modifier.padding(bottom = 12.dp).semantics { heading() })
             }
             content()
         }

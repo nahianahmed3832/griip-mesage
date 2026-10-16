@@ -71,7 +71,7 @@ fun HeroBubbleArt(modifier: Modifier = Modifier, animate: Boolean = true) {
             }
             // shadow
             translate(left = w * 0.015f, top = h * 0.025f) { drawPath(bubble, c.primaryDeep.copy(alpha = 0.18f)) }
-            drawPath(bubble, Brush.linearGradient(listOf(Color.White, Color(0xFFF2FBF9), Color(0xFFCDEDE8)), start = Offset(left, top), end = Offset(left + bw, top + bh * 1.2f)))
+            drawPath(bubble, Brush.linearGradient(listOf(Color.White, Color(0xFFEDF7F1), Color(0xFFCFE9DA)), start = Offset(left, top), end = Offset(left + bw, top + bh * 1.2f)))
             // gloss
             drawRoundRect(
                 Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0f)), startY = top, endY = top + bh * 0.5f),

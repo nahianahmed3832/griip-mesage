@@ -55,6 +55,7 @@ import androidx.compose.ui.platform.toClipEntry
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -92,6 +93,7 @@ import com.griipbuddy.message.ui.components.MenuRow
 import com.griipbuddy.message.ui.components.PillButton
 import com.griipbuddy.message.ui.components.PillChip
 import com.griipbuddy.message.ui.components.SectionHeader
+import com.griipbuddy.message.ui.components.SegmentedPills
 import com.griipbuddy.message.ui.components.StatusBanner
 import com.griipbuddy.message.ui.components.TagPill
 import com.griipbuddy.message.ui.friendly
@@ -102,6 +104,7 @@ import com.griipbuddy.message.ui.theme.Space
 import com.griipbuddy.message.ui.theme.ThemeMode
 import kotlinx.coroutines.launch
 
+/** The Settings tab: profile, then account, appearance, notifications, privacy, calls, server and about. */
 @Composable
 fun ProfileScreen(nav: NavHostController) {
     val container = LocalContainer.current
@@ -109,56 +112,28 @@ fun ProfileScreen(nav: NavHostController) {
     val session = container.session.session
     val me by container.db.users().observe(session?.userId ?: "").collectAsStateWithLifecycle(null)
     val settings by container.settings.state.collectAsStateWithLifecycle()
-    val callLog by container.db.calls().observeLog().collectAsStateWithLifecycle(emptyList())
     val scope = rememberCoroutineScope()
     var edit by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { session?.userId?.let { runCatching { container.users.fetch(it) } } }
     val name = me?.displayName?.takeIf { it.isNotEmpty() } ?: session?.displayName ?: ""
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
-        item { LargeHeader("Profile", subtitle = "Account & settings") { CircleIconButton(Icons.Outlined.Settings, "Settings", { nav.navigate(Routes.SETTINGS) }) } }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        item { LargeHeader("Settings") }
         item {
-            GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), shape = Shapes.hero, onClick = { edit = true }) {
+            GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), onClick = { edit = true }, contentPadding = PaddingValues(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(name, me?.avatarColor ?: 0, size = 68.dp, online = true)
-                    Spacer(Modifier.width(16.dp))
+                    Avatar(name, me?.avatarColor ?: 0, size = 60.dp)
+                    Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(name, style = Griip.type.headline, color = c.textPrimary)
-                        Text("@${session?.username}", style = Griip.type.bodySmall, color = c.textSecondary)
-                        me?.statusText?.let { Text(it, style = Griip.type.caption, color = c.textTertiary) }
+                        Text(name, style = Griip.type.title, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("@${session?.username}", style = Griip.type.bodySmall, color = c.textSecondary, maxLines = 1)
+                        me?.statusText?.let { Text(it, style = Griip.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
-                    CircleIconButton(Icons.Outlined.Edit, "Edit profile", { edit = true }, size = 38.dp)
+                    CircleIconButton(Icons.Outlined.Edit, "Edit profile", { edit = true }, tint = c.primary)
                 }
             }
         }
-        item {
-            GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), contentPadding = PaddingValues(6.dp)) {
-                MenuRow(Icons.Outlined.Devices, "Devices", subtitle = "Linked phones, link a new device, revoke", onClick = { nav.navigate(Routes.DEVICES) })
-                MenuRow(Icons.Outlined.Security, "Security & recovery", subtitle = "Recovery key, safety number, encryption details", tint = c.lavender, tintBg = c.lavenderSoft, onClick = { nav.navigate(Routes.SECURITY) })
-                MenuRow(Icons.Outlined.Notifications, "Notifications", subtitle = if (settings.notifications) "On" else "Off", tint = c.peach, tintBg = c.peachSoft, trailing = {
-                    GriipSwitch(settings.notifications, { v -> container.settings.update { it.copy(notifications = v) } })
-                })
-                MenuRow(Icons.Outlined.DarkMode, "Appearance", subtitle = settings.theme.name.lowercase().replaceFirstChar { it.uppercase() }, onClick = { nav.navigate(Routes.SETTINGS) })
-                MenuRow(Icons.Outlined.Info, "About Griip Message", subtitle = "v${BuildConfig.VERSION_NAME} · internal beta", tint = c.textSecondary, tintBg = c.hairline, onClick = { nav.navigate(Routes.SECURITY) })
-            }
-        }
-        item { SectionHeader("Recent calls", Modifier.padding(top = 10.dp, bottom = 6.dp)) }
-        if (callLog.isEmpty()) item { Text("No calls yet.", style = Griip.type.bodySmall, color = c.textTertiary, modifier = Modifier.padding(horizontal = Space.gutter)) }
-        items(callLog.take(8), key = { it.callId }) { e ->
-            val missed = !e.outgoing && e.answeredAt == null
-            ListCard(
-                e.peerName ?: "Call", Modifier.padding(horizontal = Space.gutter, vertical = 4.dp),
-                subtitle = "${if (e.video) "Video" else "Voice"} · ${TimeFmt.listStamp(e.startedAt)}" + (e.endedAt?.let { end -> e.answeredAt?.let { " · " + TimeFmt.duration((end - it) / 1000) } } ?: ""),
-                leading = {
-                    IconTile(
-                        if (missed) Icons.Outlined.PhoneMissed else if (e.outgoing) Icons.Outlined.CallMade else Icons.Outlined.CallReceived,
-                        if (missed) c.danger else c.primary, if (missed) c.dangerSoft else c.primarySoft, size = 40.dp,
-                    )
-                },
-                trailing = { if (e.video) androidx.compose.material3.Icon(Icons.Outlined.Videocam, null, tint = c.textTertiary) },
-                onClick = { nav.navigate(Routes.conversation(e.conversationId)) },
-            )
-        }
+        settingsSections(nav, container, settings, c)
     }
     if (edit) EditProfileSheet(name, me?.statusText, me?.avatarColor ?: 0, { edit = false }) { dn, st, col ->
         scope.launch {
@@ -167,6 +142,69 @@ fun ProfileScreen(nav: NavHostController) {
                 container.session.updateDisplayName(dn)
             }
             edit = false
+        }
+    }
+}
+
+/** The settings groups, shared by the Settings tab and the older pushed Settings route. Every control persists. */
+private fun androidx.compose.foundation.lazy.LazyListScope.settingsSections(
+    nav: NavHostController,
+    container: com.griipbuddy.message.di.AppContainer,
+    settings: com.griipbuddy.message.data.repo.Settings,
+    c: com.griipbuddy.message.ui.theme.GriipColors,
+) {
+    fun update(block: (com.griipbuddy.message.data.repo.Settings) -> com.griipbuddy.message.data.repo.Settings) = container.settings.update(block)
+    item { SectionHeader("Account", Modifier.padding(top = 14.dp, bottom = 6.dp)) }
+    item {
+        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
+            MenuRow(Icons.Outlined.Security, "Security & recovery", subtitle = "Recovery key, safety numbers, what is encrypted", onClick = { nav.navigate(Routes.SECURITY) })
+            MenuRow(Icons.Outlined.Devices, "Devices", subtitle = "Linked phones, link a new device, revoke", onClick = { nav.navigate(Routes.DEVICES) })
+        }
+    }
+    item { SectionHeader("Appearance", Modifier.padding(top = 18.dp, bottom = 8.dp)) }
+    item {
+        SegmentedPills(
+            ThemeMode.entries.map { m -> if (m == ThemeMode.SYSTEM) "System" else m.name.lowercase().replaceFirstChar { it.uppercase() } },
+            ThemeMode.entries.indexOf(settings.theme),
+            { i -> update { it.copy(theme = ThemeMode.entries[i]) } },
+            Modifier.padding(horizontal = Space.gutter),
+        )
+    }
+    item { SectionHeader("Notifications", Modifier.padding(top = 18.dp, bottom = 6.dp)) }
+    item {
+        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
+            MenuRow(Icons.Outlined.Notifications, "Message notifications", subtitle = "Shown privately on the lock screen", trailing = { GriipSwitch(settings.notifications, { v -> update { it.copy(notifications = v) } }) })
+            MenuRow(Icons.Outlined.SyncAlt, "Stay connected in background", subtitle = "Receive messages and calls without push services. Uses more battery.", trailing = {
+                GriipSwitch(settings.backgroundConnection, { v -> update { it.copy(backgroundConnection = v) } })
+            })
+        }
+    }
+    item { SectionHeader("Privacy", Modifier.padding(top = 18.dp, bottom = 6.dp)) }
+    item {
+        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
+            MenuRow(Icons.Outlined.DoneAll, "Send read receipts", subtitle = "Direct messages and groups of up to 20", trailing = { GriipSwitch(settings.readReceipts, { v -> update { it.copy(readReceipts = v) } }) })
+            MenuRow(Icons.Outlined.Keyboard, "Show when I'm typing", trailing = { GriipSwitch(settings.typingIndicators, { v -> update { it.copy(typingIndicators = v) } }) })
+        }
+    }
+    item { SectionHeader("Calls", Modifier.padding(top = 18.dp, bottom = 6.dp)) }
+    item {
+        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
+            MenuRow(
+                Icons.Outlined.Shield, "End-to-end encrypt call media",
+                subtitle = if (settings.mediaE2ee) "On: calls won't join without the key. The call screen says \"End-to-end encrypted\" only once media has actually decrypted."
+                else "Off: media is protected in transit only",
+                trailing = { GriipSwitch(settings.mediaE2ee, { v -> update { it.copy(mediaE2ee = v) } }) },
+            )
+        }
+    }
+    item { SectionHeader("Server and about", Modifier.padding(top = 18.dp, bottom = 6.dp)) }
+    item {
+        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
+            MenuRow(Icons.Outlined.Dns, container.session.serverUrl, subtitle = "Signed in to this relay. Changing servers needs a new account.", tint = c.textSecondary, tintBg = c.surfaceVariant, trailing = null)
+            MenuRow(Icons.Outlined.Info, "About Griip Message", subtitle = "Version ${BuildConfig.VERSION_NAME} · internal beta · how your data is protected", tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.SECURITY) })
+        }
+        if (container.session.serverUrl.startsWith("http://")) {
+            StatusBanner("Unencrypted connection to the server (internal testing). Message content stays end-to-end encrypted; metadata and session tokens don't.", BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 8.dp), icon = Icons.Rounded.GppMaybe)
         }
     }
 }
@@ -224,10 +262,10 @@ fun DevicesScreen(nav: NavHostController) {
         item { SectionHeader("Signed-in devices", Modifier.padding(top = 10.dp, bottom = 6.dp)) }
         items(devices.orEmpty(), key = { it.id }) { d ->
             ListCard(
-                d.name, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp),
+                d.name, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                 subtitle = (if (d.revokedAt != null) "Removed ${TimeFmt.listStamp(d.revokedAt)}" else "Added ${TimeFmt.listStamp(d.createdAt)} · last seen ${TimeFmt.relative(d.lastSeenAt)}") +
                     "\nKey ${Fingerprint.of(d.signingKey.unb64()).take(17)}…",
-                leading = { IconTile(Icons.Outlined.Devices, if (d.revokedAt == null) c.primary else c.textTertiary, if (d.revokedAt == null) c.primarySoft else c.hairline, size = 42.dp) },
+                leading = { IconTile(Icons.Outlined.Devices, if (d.revokedAt == null) c.primary else c.textTertiary, if (d.revokedAt == null) c.primarySoft else c.surfaceVariant, size = 42.dp) },
                 trailing = {
                     when {
                         d.current -> TagPill("This device", c.primaryDeep, c.primarySoft)
@@ -381,50 +419,16 @@ fun SecurityScreen(nav: NavHostController) {
 
 // ───────────────────────────── Settings ─────────────────────────────
 
+/** Older pushed route to the settings; same sections as the Settings tab. */
 @Composable
 fun SettingsScreen(nav: NavHostController) {
     val container = LocalContainer.current
     val c = Griip.colors
     val settings by container.settings.state.collectAsStateWithLifecycle()
-    var showServer by remember { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
         item { GriipTopBar("Settings", onBack = { nav.popBackStack() }) }
-        item { SectionHeader("Appearance", Modifier.padding(top = 6.dp, bottom = 6.dp)) }
-        item {
-            ChipRow {
-                ThemeMode.entries.forEach { m -> PillChip(m.name.lowercase().replaceFirstChar { it.uppercase() }, settings.theme == m, { container.settings.update { it.copy(theme = m) } }) }
-            }
-        }
-        item { SectionHeader("Messaging", Modifier.padding(top = 14.dp, bottom = 6.dp)) }
-        item {
-            GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(6.dp)) {
-                MenuRow(Icons.Outlined.Notifications, "Message notifications", trailing = { GriipSwitch(settings.notifications, { v -> container.settings.update { it.copy(notifications = v) } }) })
-                MenuRow(Icons.Outlined.SyncAlt, "Stay connected in background", subtitle = "Receive messages & calls without push services. Uses more battery.", trailing = {
-                    GriipSwitch(settings.backgroundConnection, { v -> container.settings.update { it.copy(backgroundConnection = v) } })
-                })
-                MenuRow(Icons.Outlined.DoneAll, "Send read receipts", subtitle = "Direct messages and small groups", trailing = { GriipSwitch(settings.readReceipts, { v -> container.settings.update { it.copy(readReceipts = v) } }) })
-                MenuRow(Icons.Outlined.Keyboard, "Show when I'm typing", trailing = { GriipSwitch(settings.typingIndicators, { v -> container.settings.update { it.copy(typingIndicators = v) } }) })
-            }
-        }
-        item { SectionHeader("Calls", Modifier.padding(top = 14.dp, bottom = 6.dp)) }
-        item {
-            GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(6.dp)) {
-                MenuRow(Icons.Outlined.Shield, "End-to-end encrypt call media", subtitle = if (settings.mediaE2ee) "On — calls refuse to join without the key" else "Off — media protected in transit only", trailing = {
-                    GriipSwitch(settings.mediaE2ee, { v -> container.settings.update { it.copy(mediaE2ee = v) } })
-                })
-            }
-        }
-        item { SectionHeader("Server", Modifier.padding(top = 14.dp, bottom = 6.dp)) }
-        item {
-            GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(6.dp)) {
-                MenuRow(Icons.Outlined.Dns, container.session.serverUrl, subtitle = "Signed in to this relay. Changing servers requires a new account.", tint = c.textSecondary, tintBg = c.hairline, trailing = null)
-            }
-            if (container.session.serverUrl.startsWith("http://")) {
-                StatusBanner("Unencrypted connection to the server (internal testing). Message content remains end-to-end encrypted; metadata and session tokens are not.", BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 8.dp), icon = Icons.Rounded.GppMaybe)
-            }
-        }
+        settingsSections(nav, container, settings, c)
     }
-    if (showServer) ServerSheet { showServer = false }
 }
 
 // ───────────────────────────── Contact profile ─────────────────────────────

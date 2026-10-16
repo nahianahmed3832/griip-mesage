@@ -138,9 +138,9 @@ fun WorkspaceScreen(nav: NavHostController) {
     LaunchedEffect(Unit) { vm.refresh() }
 
     val d = detail
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
-            LargeHeader("Workspace", subtitle = d?.org?.name ?: "Organizations, branches & teams") {
+            LargeHeader("Workspace", subtitle = d?.org?.name) {
                 if ((orgs?.size ?: 0) > 0) CircleIconButton(Icons.Outlined.SwapHoriz, "Switch organization", { showSwitcher = true })
             }
         }
@@ -149,7 +149,7 @@ fun WorkspaceScreen(nav: NavHostController) {
             item {
                 if (loading && orgs == null) ShimmerList(4)
                 else EmptyState(
-                    Icons.Outlined.Workspaces, "No workspace yet", "Join GriipBuddy with an invite code from your manager, or create a new organization.",
+                    Icons.Outlined.Workspaces, "No workspace yet", "Join your organization with an invite code from your manager, or create a new one.",
                     action = "Join or create", onAction = { nav.navigate(Routes.JOIN + "?code=") },
                 )
             }
@@ -196,12 +196,12 @@ fun WorkspaceScreen(nav: NavHostController) {
                     val branch = d.branches.firstOrNull { it.id == t.branchId }?.name
                     val dept = d.departments.firstOrNull { it.id == t.departmentId }?.name
                     ListCard(
-                        t.name, Modifier.padding(horizontal = Space.gutter, vertical = 5.dp),
+                        t.name, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                         subtitle = t.description ?: listOfNotNull(branch, dept).joinToString(" · "),
                         leading = { MarkTile(t.name, t.name.hashCode(), size = 50.dp) },
                         meta = {
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                TagPill("${t.memberCount} members", c.textSecondary, c.hairline)
+                                TagPill("${t.memberCount} members", c.textSecondary, c.surfaceVariant)
                                 if (t.crossBranch) TagPill("Cross-branch", c.lavender, c.lavenderSoft) else branch?.let { TagPill(it, c.primaryDeep, c.primarySoft) }
                                 t.myRole?.let { RoleBadge(it) }
                             }
@@ -224,13 +224,13 @@ fun WorkspaceScreen(nav: NavHostController) {
                         else -> c.primary to c.primarySoft
                     }
                     ListCard(
-                        "#${ch.name}", Modifier.padding(horizontal = Space.gutter, vertical = 5.dp),
+                        "#${ch.name}", Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                         subtitle = ch.topic ?: ch.scopeName,
                         leading = { IconTile(channelIcon(ch.kind), fg, bg, size = 46.dp) },
                         meta = {
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                TagPill(ch.scopeName ?: ch.scope?.lowercase() ?: "", c.textSecondary, c.hairline)
-                                TagPill("${ch.memberCount}", c.textSecondary, c.hairline, icon = Icons.Outlined.Groups)
+                                TagPill(ch.scopeName ?: ch.scope?.lowercase() ?: "", c.textSecondary, c.surfaceVariant)
+                                TagPill("${ch.memberCount}", c.textSecondary, c.surfaceVariant, icon = Icons.Outlined.Groups)
                                 if (ch.activeCall != null) TagPill("Live call", c.success, c.successSoft)
                             }
                         },
@@ -259,7 +259,7 @@ fun WorkspaceScreen(nav: NavHostController) {
                             MenuRow(Icons.Outlined.Groups, "New team", onClick = { sheet = "team" })
                         }
                         if (d.permissions.canCreateChannels) MenuRow(Icons.Outlined.PostAdd, "New channel", onClick = { sheet = "channel" })
-                        MenuRow(Icons.Outlined.Workspaces, "Join or create another workspace", tint = c.textSecondary, tintBg = c.hairline, onClick = { nav.navigate(Routes.JOIN + "?code=") })
+                        MenuRow(Icons.Outlined.Workspaces, "Join or create another workspace", tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.JOIN + "?code=") })
                     }
                 }
                 item {
@@ -267,7 +267,7 @@ fun WorkspaceScreen(nav: NavHostController) {
                 }
                 items(d.branches, key = { "b" + it.id }) { b ->
                     ListCard(
-                        b.name, Modifier.padding(horizontal = Space.gutter, vertical = 5.dp),
+                        b.name, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                         subtitle = listOfNotNull(b.location, "${b.memberCount} members", "${d.departments.count { it.branchId == b.id }} departments").joinToString(" · "),
                         leading = { MarkTile(b.name, b.name.hashCode() + 3, size = 46.dp) },
                         trailing = { if (b.myRole != null) RoleBadge(b.myRole) else if (!b.canAccess) Icon(Icons.Rounded.Lock, "No access", tint = c.textTertiary) },
@@ -280,7 +280,7 @@ fun WorkspaceScreen(nav: NavHostController) {
                 items(depts, key = { "d" + it.id }) { dep ->
                     val branch = d.branches.first { it.id == dep.branchId }
                     ListCard(
-                        dep.name, Modifier.padding(horizontal = Space.gutter, vertical = 5.dp),
+                        dep.name, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                         subtitle = listOfNotNull(branch.name, "${d.teams.count { it.departmentId == dep.id }} teams", dep.description).joinToString(" · "),
                         leading = { IconTile(Icons.Outlined.Apartment, c.lavender, c.lavenderSoft, size = 42.dp) },
                         trailing = { if (branch.canManage) ArrowKnob() },

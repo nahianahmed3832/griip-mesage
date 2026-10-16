@@ -4,7 +4,15 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-/** Colour tokens. Values documented in docs/DESIGN_SYSTEM.md §3.1–3.2 (sampled from the reference). */
+/**
+ * Colour tokens (docs/DESIGN_SYSTEM.md, docs/UI_REDESIGN.md).
+ *
+ * 2026-10-16 redesign: one restrained emerald accent on neutral surfaces, flat backgrounds and borders
+ * instead of glass and shadows. Older token names are kept so every screen moves to the new language
+ * together: `glass*` are now solid surfaces, `canvas*` the flat app background, `hero*`/`action*` solid
+ * emerald. Lavender and peach are muted semantic tints (groups, announcements/pins), not decoration.
+ * Text on `actionStart` (buttons, send) meets 4.5:1 in both themes.
+ */
 @Immutable
 data class GriipColors(
     val isDark: Boolean,
@@ -37,100 +45,143 @@ data class GriipColors(
     val scrim: Color,
     val bubbleIncoming: Color,
     val callStage: Color,
-    /** Teal fills that carry white text/icons (buttons, outgoing bubbles, selected pills). Deeper in dark mode for contrast. */
+    /** Emerald fills that carry [onAction] text/icons (buttons, send, selected states). */
     val actionStart: Color,
     val actionEnd: Color,
     val heroStart: Color,
     val heroMid: Color,
     val heroEnd: Color,
+    /** App background behind lists and screens. */
+    val background: Color,
+    /** Cards, sheets, bars and incoming bubbles. */
+    val surface: Color,
+    /** Search fields, inputs, chips and pressed rows. */
+    val surfaceVariant: Color,
+    /** 1 dp borders and dividers. */
+    val border: Color,
+    val onAction: Color,
+    val bubbleOutgoing: Color,
+    val onBubbleOutgoing: Color,
+    val bubbleOutgoingMeta: Color,
+    /** Read-receipt ticks on outgoing bubbles. */
+    val readReceipt: Color,
+    /** Selected bottom-navigation pill. */
+    val navIndicator: Color,
 )
+
+private val EmeraldLight = Color(0xFF087F56)
+private val EmeraldDark = Color(0xFF3CC48F)
 
 val LightColors = GriipColors(
     isDark = false,
-    primary = Color(0xFF1FB5A6),
-    primaryBright = Color(0xFF34C8C2),
-    primaryDeep = Color(0xFF12897F),
-    primarySoft = Color(0xFFD6F3EF),
+    primary = EmeraldLight,
+    primaryBright = Color(0xFF12A170),
+    primaryDeep = Color(0xFF06633F),
+    primarySoft = Color(0xFFE1F3EA),
     onPrimary = Color.White,
-    lavender = Color(0xFF8E7CE0),
-    lavenderSoft = Color(0xFFEEE8FB),
-    peach = Color(0xFFF08A62),
-    peachSoft = Color(0xFFFFE6DA),
-    danger = Color(0xFFE5604D),
-    dangerSoft = Color(0xFFFDE3DE),
-    warning = Color(0xFFE19B2C),
-    warningSoft = Color(0xFFFDF0D9),
-    success = Color(0xFF22B07D),
-    successSoft = Color(0xFFDDF4EA),
-    canvasTop = Color(0xFFE6F6F3),
-    canvasMid = Color(0xFFF8FBFA),
-    canvasBottom = Color(0xFFFDEEE6),
-    glass = Color.White.copy(alpha = 0.72f),
-    glassStrong = Color.White.copy(alpha = 0.92f),
-    glassBorder = Color.White.copy(alpha = 0.95f),
-    hairline = Color(0xFF13221F).copy(alpha = 0.07f),
-    textPrimary = Color(0xFF13221F),
-    textSecondary = Color(0xFF5A6B67),
-    textTertiary = Color(0xFF94A19D),
-    shadow = Color(0xFF0E5E57).copy(alpha = 0.14f),
-    scrim = Color(0xFF0B1B1D).copy(alpha = 0.40f),
-    bubbleIncoming = Color.White.copy(alpha = 0.86f),
-    callStage = Color(0xFF0E2A2B),
-    actionStart = Color(0xFF34C8C2),
-    actionEnd = Color(0xFF1FB5A6),
-    heroStart = Color(0xFF34C8C2),
-    heroMid = Color(0xFF1FB5A6),
-    heroEnd = Color(0xFF12897F),
+    lavender = Color(0xFF55629F),
+    lavenderSoft = Color(0xFFE9EBF5),
+    peach = Color(0xFFA9601C),
+    peachSoft = Color(0xFFF7ECDF),
+    danger = Color(0xFFC6372B),
+    dangerSoft = Color(0xFFFBE7E4),
+    warning = Color(0xFF9C6510),
+    warningSoft = Color(0xFFFBF1DE),
+    success = Color(0xFF0E8A5A),
+    successSoft = Color(0xFFE0F3E9),
+    canvasTop = Color(0xFFF6F7F6),
+    canvasMid = Color(0xFFF6F7F6),
+    canvasBottom = Color(0xFFF6F7F6),
+    glass = Color.White,
+    glassStrong = Color.White,
+    glassBorder = Color(0xFFE1E6E3),
+    hairline = Color(0xFF111715).copy(alpha = 0.07f),
+    textPrimary = Color(0xFF111715),
+    textSecondary = Color(0xFF4D5853),
+    textTertiary = Color(0xFF6F7B76),
+    shadow = Color.Black.copy(alpha = 0.06f),
+    scrim = Color.Black.copy(alpha = 0.40f),
+    bubbleIncoming = Color.White,
+    callStage = Color(0xFF0F1513),
+    actionStart = EmeraldLight,
+    actionEnd = EmeraldLight,
+    heroStart = EmeraldLight,
+    heroMid = EmeraldLight,
+    heroEnd = Color(0xFF06633F),
+    background = Color(0xFFF6F7F6),
+    surface = Color.White,
+    surfaceVariant = Color(0xFFEEF1EF),
+    border = Color(0xFFE1E6E3),
+    onAction = Color.White,
+    bubbleOutgoing = Color(0xFFDCF2E6),
+    onBubbleOutgoing = Color(0xFF0E1A15),
+    bubbleOutgoingMeta = Color(0xFF4A6B5C),
+    readReceipt = Color(0xFF0B8FD9),
+    navIndicator = Color(0xFFDCF0E5),
 )
 
 val DarkColors = GriipColors(
     isDark = true,
-    primary = Color(0xFF3DD3C2),
-    primaryBright = Color(0xFF4FE0D6),
-    primaryDeep = Color(0xFF7FE6DA),
-    primarySoft = Color(0xFF16413D),
-    onPrimary = Color(0xFF052523),
-    lavender = Color(0xFFAFA2F0),
-    lavenderSoft = Color(0xFF2B2745),
-    peach = Color(0xFFFFA684),
-    peachSoft = Color(0xFF41291F),
-    danger = Color(0xFFFF7A66),
-    dangerSoft = Color(0xFF452420),
-    warning = Color(0xFFF2B851),
-    warningSoft = Color(0xFF3E3218),
-    success = Color(0xFF4AD39E),
-    successSoft = Color(0xFF173A2E),
-    canvasTop = Color(0xFF0B1B1D),
-    canvasMid = Color(0xFF0E1719),
-    canvasBottom = Color(0xFF1C1517),
-    glass = Color(0xFF1B2E31).copy(alpha = 0.72f),
-    glassStrong = Color(0xFF1F3336).copy(alpha = 0.95f),
-    glassBorder = Color.White.copy(alpha = 0.08f),
+    primary = EmeraldDark,
+    primaryBright = Color(0xFF4FD6A0),
+    primaryDeep = Color(0xFF72DDB2),
+    primarySoft = Color(0xFF133B2B),
+    onPrimary = Color(0xFF03241A),
+    lavender = Color(0xFF9BA6E3),
+    lavenderSoft = Color(0xFF232741),
+    peach = Color(0xFFE0A160),
+    peachSoft = Color(0xFF3A2A1B),
+    danger = Color(0xFFF0796D),
+    dangerSoft = Color(0xFF3E1F1C),
+    warning = Color(0xFFE6B45A),
+    warningSoft = Color(0xFF392D17),
+    success = Color(0xFF4ED39D),
+    successSoft = Color(0xFF13372A),
+    canvasTop = Color(0xFF0D1110),
+    canvasMid = Color(0xFF0D1110),
+    canvasBottom = Color(0xFF0D1110),
+    glass = Color(0xFF151A18),
+    glassStrong = Color(0xFF1B211F),
+    glassBorder = Color(0xFF2A322F),
     hairline = Color.White.copy(alpha = 0.08f),
-    textPrimary = Color(0xFFE9F3F1),
-    textSecondary = Color(0xFFA3B6B2),
-    textTertiary = Color(0xFF6E817D),
-    shadow = Color.Black.copy(alpha = 0.35f),
+    textPrimary = Color(0xFFE7ECEA),
+    textSecondary = Color(0xFFA9B4B0),
+    textTertiary = Color(0xFF85908C),
+    shadow = Color.Black.copy(alpha = 0.30f),
     scrim = Color.Black.copy(alpha = 0.55f),
-    bubbleIncoming = Color(0xFF223538).copy(alpha = 0.92f),
-    callStage = Color(0xFF071314),
-    actionStart = Color(0xFF1FA89D),
-    actionEnd = Color(0xFF13857C),
-    heroStart = Color(0xFF1C9A90),
-    heroMid = Color(0xFF147A72),
-    heroEnd = Color(0xFF0D5B55),
+    bubbleIncoming = Color(0xFF1C2220),
+    callStage = Color(0xFF090C0B),
+    actionStart = Color(0xFF17865D),
+    actionEnd = Color(0xFF17865D),
+    heroStart = Color(0xFF17865D),
+    heroMid = Color(0xFF17865D),
+    heroEnd = Color(0xFF0F6646),
+    background = Color(0xFF0D1110),
+    surface = Color(0xFF151A18),
+    surfaceVariant = Color(0xFF1F2623),
+    border = Color(0xFF2A322F),
+    onAction = Color.White,
+    bubbleOutgoing = Color(0xFF15513A),
+    onBubbleOutgoing = Color(0xFFEAF6F0),
+    bubbleOutgoingMeta = Color(0xFFA7CDBB),
+    readReceipt = Color(0xFF6CC7FF),
+    navIndicator = Color(0xFF173E2E),
 )
 
 val LocalGriipColors = staticCompositionLocalOf { LightColors }
 
-/** Deterministic avatar gradients (teal, lavender, peach, mint, sky families). */
-val AvatarGradients = listOf(
-    Color(0xFF4FD6CE) to Color(0xFF1FA597),
-    Color(0xFFB3A4F2) to Color(0xFF7C68D6),
-    Color(0xFFFFB997) to Color(0xFFF07F5C),
-    Color(0xFF8FE3B8) to Color(0xFF2FB47F),
-    Color(0xFF8CCFF5) to Color(0xFF3F9BD8),
-    Color(0xFFF7C66B) to Color(0xFFE29A2A),
-    Color(0xFFF59AB8) to Color(0xFFD9577F),
-    Color(0xFF7FD0D9) to Color(0xFF2F8FA0),
+/**
+ * Avatar colours: muted solid tones (pairs kept for older call sites; both entries are the same colour).
+ * White initials meet 4.5:1 on every entry.
+ */
+private val AvatarTones = listOf(
+    Color(0xFF2B7A6B), // teal
+    Color(0xFF5363AE), // indigo
+    Color(0xFFA35F1E), // amber
+    Color(0xFF3A7F4E), // green
+    Color(0xFF2E70A1), // blue
+    Color(0xFFAA4A6C), // rose
+    Color(0xFF7652A8), // violet
+    Color(0xFF52666F), // slate
 )
+val AvatarGradients = AvatarTones.map { it to it }

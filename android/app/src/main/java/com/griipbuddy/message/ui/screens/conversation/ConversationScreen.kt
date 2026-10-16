@@ -1,5 +1,16 @@
 package com.griipbuddy.message.ui.screens.conversation
 
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.semantics.heading
 import android.content.ClipData
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -136,6 +147,9 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboard.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let { vm.attach(ctx, it) } }
+    val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { vm.attach(ctx, it) } }
+    var attachSheet by remember { mutableStateOf(false) }
+    val showJump by remember { derivedStateOf { listState.firstVisibleItemIndex > 4 } }
     val permission = com.griipbuddy.message.ui.screens.calls.rememberCallPermission()
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -182,25 +196,28 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
 
     Column(Modifier.fillMaxSize().imePadding()) {
         // Header
-        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().background(c.surface).statusBarsPadding().height(64.dp).padding(start = 4.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             CircleIconButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", { nav.popBackStack() })
-            Spacer(Modifier.width(6.dp))
             Row(
-                Modifier.weight(1f).clip(Shapes.tile).pressable({ nav.navigate(Routes.info(conversationId)) }, onClickLabel = "Conversation info").padding(4.dp),
+                Modifier.weight(1f).clip(Shapes.small).pressable({ nav.navigate(Routes.info(conversationId)) }, onClickLabel = "Open conversation info").padding(vertical = 6.dp, horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                conv?.let { ConversationAvatar(it, me, size = 42.dp, online = peerUser?.online) }
+                conv?.let { ConversationAvatar(it, me, size = 40.dp, online = peerUser?.online) }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(if (conv?.type == "CHANNEL") "#$title" else title, style = Griip.type.titleSmall, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(subtitle, style = Griip.type.caption, color = if (typing.isNotEmpty() || peerUser?.online == true) c.primaryDeep else c.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(subtitle, style = Griip.type.caption, color = if (typing.isNotEmpty() || peerUser?.online == true) c.primary else c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             if (threadRoot == null && conv?.removed != true) {
-                CircleIconButton(Icons.Rounded.Call, "Voice call", { permission(false) { vm.startCall(false) } }, tint = c.primaryDeep, enabled = call.phase == CallPhase.Idle)
-                CircleIconButton(Icons.Rounded.Videocam, "Video call", { permission(true) { vm.startCall(true) } }, tint = c.primaryDeep, enabled = call.phase == CallPhase.Idle)
+                CircleIconButton(Icons.Rounded.Videocam, "Video call", { permission(true) { vm.startCall(true) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
+                CircleIconButton(Icons.Rounded.Call, "Voice call", { permission(false) { vm.startCall(false) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
             }
         }
+        HorizontalDivider(thickness = 1.dp, color = c.border)
         ConnectionBanner(conn, Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) { vm.c.realtime.reconnectNow() }
         if (changedMembers.isNotEmpty()) {
             val who = if (changedMembers.size == 1) "${changedMembers.first().displayName.ifEmpty { "A member" }}'s security key" else "${changedMembers.size} members' security keys"
@@ -220,14 +237,15 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         }
         if (pinned.isNotEmpty() && threadRoot == null) {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(Shapes.tile).background(c.glassStrong).border(1.dp, c.glassBorder, Shapes.tile)
-                    .pressable({ nav.navigate(Routes.info(conversationId)) }).padding(horizontal = 12.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().background(c.surface)
+                    .pressable({ nav.navigate(Routes.info(conversationId)) }, onClickLabel = "Show pinned messages").padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Outlined.PushPin, null, tint = c.peach, modifier = Modifier.size(16.dp))
+                Icon(Icons.Outlined.PushPin, null, tint = c.primary, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("${pinned.size} pinned · ${pinned.first().text.ifEmpty { "Attachment" }}", style = Griip.type.label, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            HorizontalDivider(thickness = 1.dp, color = c.border)
         }
 
         // Messages
@@ -282,6 +300,13 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     }
                 }
             }
+            if (showJump) {
+                SmallFloatingActionButton(
+                    onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                    containerColor = c.surface, contentColor = c.primary,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp).semantics { contentDescription = "Jump to latest message" },
+                ) { Icon(Icons.Rounded.KeyboardArrowDown, null) }
+            }
         }
 
         // Typing
@@ -291,7 +316,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         error?.let { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), action = "OK", onAction = { vm.error.value = null }) }
         if (conv != null && !conv!!.canPost) {
             Row(
-                Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp).clip(Shapes.tile).background(c.glassStrong).padding(14.dp),
+                Modifier.fillMaxWidth().background(c.surface).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(if (conv?.kind == "ANNOUNCEMENT") Icons.Outlined.Campaign else Icons.Rounded.Lock, null, tint = c.textTertiary)
@@ -313,7 +338,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 replyLabel = replyTo?.let { "Replying to ${if (it.outgoing) "yourself" else users[it.senderUserId]?.displayName ?: ""}" to it.text.ifEmpty { "📎 Attachment" } }
                     ?: editing?.let { "Editing message" to it.text },
                 onCancelContext = { vm.replyTo.value = null; vm.editing.value = null; if (editing != null) text = "" },
-                onAttach = { picker.launch("*/*") },
+                onAttach = { attachSheet = true },
                 onSend = { vm.send(text); text = "" },
                 placeholder = if (threadRoot != null) "Reply in thread…" else if (conv?.type == "CHANNEL") "Message #$title" else "Message",
             )
@@ -327,7 +352,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             if (interactive) Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 QUICK_REACTIONS.forEach { e ->
                     Box(
-                        Modifier.size(46.dp).clip(CircleShape).background(c.glass).border(1.dp, c.glassBorder, CircleShape).pressable({ vm.react(m, e); actionFor = null })
+                        Modifier.size(46.dp).clip(CircleShape).background(c.surfaceVariant).pressable({ vm.react(m, e); actionFor = null })
                             .semantics { contentDescription = "React $e" },
                         contentAlignment = Alignment.Center,
                     ) { Text(e, fontSize = 22.sp) }
@@ -362,6 +387,18 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             InfoLine("Encryption", "griip-envelope-v1 · signed by this device")
         }
     }
+    if (attachSheet) {
+        GlassSheet({ attachSheet = false }, title = "Send") {
+            MenuRow(
+                Icons.Outlined.Image, "Photo or video", subtitle = "Encrypted on this phone before upload · up to 25 MB",
+                onClick = { attachSheet = false; mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }, trailing = null,
+            )
+            MenuRow(
+                Icons.Outlined.Description, "File", subtitle = "Any document · up to 25 MB",
+                onClick = { attachSheet = false; picker.launch("*/*") }, trailing = null,
+            )
+        }
+    }
 }
 
 @Composable
@@ -379,7 +416,7 @@ private fun DayDivider(t: Long) {
     Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
         Text(
             TimeFmt.dayHeader(t), style = Griip.type.caption, color = c.textSecondary,
-            modifier = Modifier.clip(Shapes.pill).background(c.glassStrong).border(1.dp, c.glassBorder, Shapes.pill).padding(horizontal = 12.dp, vertical = 4.dp),
+            modifier = Modifier.clip(Shapes.pill).background(c.surface).border(1.dp, c.border, Shapes.pill).padding(horizontal = 12.dp, vertical = 4.dp).semantics { heading() },
         )
     }
 }
@@ -390,13 +427,13 @@ private fun TypingRow(names: List<String>) {
     val t = rememberInfiniteTransition(label = "typing")
     val a by t.animateFloat(0.3f, 1f, infiniteRepeatable(tween(600), RepeatMode.Reverse), label = "dots")
     Row(Modifier.padding(start = 20.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.clip(Shapes.pill).background(c.glassStrong).padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(Modifier.clip(Shapes.pill).background(c.surface).padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             repeat(3) { i -> Box(Modifier.size(6.dp).clip(CircleShape).background(c.primary.copy(alpha = if (i == 1) a else 1.3f - a))) }
         }
         Spacer(Modifier.width(8.dp))
         Text(
             if (names.size == 1) "${names[0]} is typing" else "${names.size} people are typing",
-            style = Griip.type.caption, color = c.textTertiary,
+            style = Griip.type.caption, color = c.textSecondary,
         )
     }
 }
@@ -412,50 +449,46 @@ private fun Composer(
     placeholder: String,
 ) {
     val c = Griip.colors
-    Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
-        replyLabel?.let { (label, preview) ->
-            Row(
-                Modifier.fillMaxWidth().padding(bottom = 6.dp).clip(Shapes.tile).background(c.primarySoft.copy(alpha = 0.8f)).padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.width(3.dp).height(30.dp).clip(Shapes.pill).background(c.primary))
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(label, style = Griip.type.caption.copy(fontWeight = FontWeight.Bold), color = c.primaryDeep)
-                    Text(preview, style = Griip.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Column(Modifier.fillMaxWidth().background(c.surface)) {
+        HorizontalDivider(thickness = 1.dp, color = c.border)
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp)) {
+            replyLabel?.let { (label, preview) ->
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 6.dp).height(IntrinsicSize.Min).clip(Shapes.small).background(c.surfaceVariant),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.width(3.dp).fillMaxHeight().background(c.primary))
+                    Column(Modifier.weight(1f).padding(start = 10.dp, top = 6.dp, bottom = 6.dp)) {
+                        Text(label, style = Griip.type.caption.copy(fontWeight = FontWeight.Bold), color = c.primaryDeep)
+                        Text(preview, style = Griip.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    CircleIconButton(Icons.Rounded.Close, "Cancel", onCancelContext, size = 36.dp, tint = c.textSecondary)
                 }
-                CircleIconButton(Icons.Rounded.Close, "Cancel", onCancelContext, size = 32.dp)
             }
-        }
-        Row(verticalAlignment = Alignment.Bottom) {
-            Row(
-                Modifier.weight(1f).heightIn(min = 52.dp)
-                    .shadow(8.dp, Shapes.hero, ambientColor = c.shadow, spotColor = c.shadow)
-                    .clip(Shapes.hero).background(c.glassStrong).border(1.dp, c.glassBorder, Shapes.hero)
-                    .padding(start = 4.dp, end = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ComposerIcon(Icons.Outlined.AttachFile, "Attach a file", onAttach)
-                Box(Modifier.weight(1f).padding(vertical = 14.dp)) {
-                    if (text.isEmpty()) Text(placeholder, style = Griip.type.body, color = c.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.Bottom) {
+                ComposerIcon(Icons.Outlined.AttachFile, "Attach a photo, video or file", onAttach)
+                Box(
+                    Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).background(c.surfaceVariant)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    if (text.isEmpty()) Text(placeholder, style = Griip.type.body, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     BasicTextField(
                         value = text, onValueChange = onText, textStyle = Griip.type.body.copy(color = c.textPrimary), cursorBrush = SolidColor(c.primary), maxLines = 6,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                         modifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder },
                     )
                 }
+                Spacer(Modifier.width(6.dp))
+                val enabled = text.isNotBlank()
+                Box(
+                    Modifier.size(48.dp).clip(CircleShape)
+                        .background(if (enabled) c.actionStart else c.surfaceVariant)
+                        .pressable(if (enabled) onSend else null, onClickLabel = "Send")
+                        .semantics { contentDescription = "Send message" },
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.AutoMirrored.Rounded.Send, null, tint = if (enabled) c.onAction else c.textTertiary, modifier = Modifier.size(22.dp)) }
             }
-            Spacer(Modifier.width(8.dp))
-            val enabled = text.isNotBlank()
-            Box(
-                Modifier.size(52.dp)
-                    .shadow(if (enabled) 10.dp else 0.dp, CircleShape, ambientColor = c.primary.copy(alpha = 0.45f), spotColor = c.primary.copy(alpha = 0.45f))
-                    .clip(CircleShape)
-                    .background(if (enabled) Brush.linearGradient(listOf(c.actionStart, c.actionEnd)) else Brush.linearGradient(listOf(c.glassStrong, c.glassStrong)))
-                    .pressable(if (enabled) onSend else null, onClickLabel = "Send")
-                    .semantics { contentDescription = "Send message" },
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.AutoMirrored.Rounded.Send, null, tint = if (enabled) Color.White else c.textTertiary, modifier = Modifier.size(22.dp)) }
         }
     }
 }
@@ -463,7 +496,7 @@ private fun Composer(
 @Composable
 private fun ComposerIcon(icon: ImageVector, label: String, onClick: () -> Unit) {
     val c = Griip.colors
-    Box(Modifier.size(44.dp).clip(CircleShape).pressable(onClick, onClickLabel = label).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
-        Icon(icon, null, tint = c.textSecondary, modifier = Modifier.size(22.dp))
+    Box(Modifier.size(48.dp).clip(CircleShape).pressable(onClick, onClickLabel = label).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = c.textSecondary, modifier = Modifier.size(24.dp))
     }
 }

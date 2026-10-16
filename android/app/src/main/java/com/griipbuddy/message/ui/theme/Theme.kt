@@ -25,23 +25,25 @@ fun GriipTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Un
         ThemeMode.DARK -> true
     }
     val c = if (dark) DarkColors else LightColors
-    // Material3 is used only for low-level widgets (text fields, dialogs, menus); every screen-level
-    // surface comes from the Griip components so the reference's glass language stays consistent.
+    // Material 3 supplies low-level widgets (text fields, dialogs, menus, switches, sheets); its scheme is
+    // derived from the same tokens so they match the Griip components.
     val scheme = if (dark) {
         darkColorScheme(
             primary = c.primary, onPrimary = c.onPrimary, primaryContainer = c.primarySoft, onPrimaryContainer = c.primaryDeep,
             secondary = c.lavender, tertiary = c.peach, error = c.danger,
-            background = c.canvasMid, onBackground = c.textPrimary, surface = c.glassStrong, onSurface = c.textPrimary,
-            surfaceVariant = c.glass, onSurfaceVariant = c.textSecondary, outline = c.hairline, outlineVariant = c.hairline,
-            surfaceContainer = c.canvasMid, surfaceContainerHigh = c.glassStrong, surfaceContainerHighest = c.glassStrong,
+            background = c.background, onBackground = c.textPrimary, surface = c.surface, onSurface = c.textPrimary,
+            surfaceVariant = c.surfaceVariant, onSurfaceVariant = c.textSecondary, outline = c.border, outlineVariant = c.border,
+            surfaceContainerLowest = c.background, surfaceContainerLow = c.surface, surfaceContainer = c.surface,
+            surfaceContainerHigh = c.glassStrong, surfaceContainerHighest = c.surfaceVariant,
         )
     } else {
         lightColorScheme(
             primary = c.primary, onPrimary = c.onPrimary, primaryContainer = c.primarySoft, onPrimaryContainer = c.primaryDeep,
             secondary = c.lavender, tertiary = c.peach, error = c.danger,
-            background = c.canvasMid, onBackground = c.textPrimary, surface = c.canvasMid, onSurface = c.textPrimary,
-            surfaceVariant = c.primarySoft, onSurfaceVariant = c.textSecondary, outline = c.hairline, outlineVariant = c.hairline,
-            surfaceContainer = c.canvasMid, surfaceContainerHigh = c.canvasMid, surfaceContainerHighest = c.canvasMid,
+            background = c.background, onBackground = c.textPrimary, surface = c.surface, onSurface = c.textPrimary,
+            surfaceVariant = c.surfaceVariant, onSurfaceVariant = c.textSecondary, outline = c.border, outlineVariant = c.border,
+            surfaceContainerLowest = c.surface, surfaceContainerLow = c.surface, surfaceContainer = c.surface,
+            surfaceContainerHigh = c.surface, surfaceContainerHighest = c.surfaceVariant,
         )
     }
     CompositionLocalProvider(LocalGriipColors provides c, LocalGriipType provides GriipTypography) {

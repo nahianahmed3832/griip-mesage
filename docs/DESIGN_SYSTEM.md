@@ -1,5 +1,9 @@
 # Griip Message — Design System
 
+> **2026-10-16 redesign:** the glass, gradient and teal/lavender/peach language below was replaced by a flat emerald-on-neutral
+> system (tokens in `ui/theme/Color.kt`, components in `ui/components`). See `UI_REDESIGN.md` for the current system. The rest
+> of this file is the original rationale, kept for history.
+
 ## 1. Reference analysed
 
 One reference was supplied: a six-screen mobile concept for a dental-care app ("Healthy Smile / Happy Life").

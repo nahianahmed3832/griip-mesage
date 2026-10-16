@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,8 +42,6 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -84,8 +84,8 @@ data class BubbleModel(
 )
 
 /**
- * Message bubble: outgoing = teal gradient (the reference's primary pill), incoming = frosted glass.
- * Tail corner on the sender side of the first bubble in a run.
+ * Message bubble: outgoing = soft emerald, incoming = plain surface; no shadows, borders or gradients.
+ * A smaller corner on the sender side marks the first bubble in a run.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -108,14 +108,14 @@ fun MessageBubble(
         CallChip(m, out)
         return
     }
-    val r = 20.dp
-    val tail = 6.dp
+    val r = Shapes.bubble
+    val tail = Shapes.bubbleTail
     val shape = if (out) RoundedCornerShape(r, if (b.firstInGroup) tail else r, r, r) else RoundedCornerShape(if (b.firstInGroup) tail else r, r, r, r)
-    val fg = if (out) Color.White else c.textPrimary
-    val sub = if (out) Color.White.copy(alpha = 0.78f) else c.textTertiary
+    val fg = if (out) c.onBubbleOutgoing else c.textPrimary
+    val sub = if (out) c.bubbleOutgoingMeta else c.textSecondary
 
     Row(
-        Modifier.fillMaxWidth().padding(start = if (out) 56.dp else 12.dp, end = if (out) 12.dp else 48.dp, top = if (b.firstInGroup) 6.dp else 1.dp),
+        Modifier.fillMaxWidth().padding(start = if (out) 56.dp else 10.dp, end = if (out) 10.dp else 48.dp, top = if (b.firstInGroup) 8.dp else 2.dp),
         horizontalArrangement = if (out) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Bottom,
     ) {
@@ -126,32 +126,34 @@ fun MessageBubble(
         }
         Column(horizontalAlignment = if (out) Alignment.End else Alignment.Start) {
             val bg = when {
-                m.kind == "undecryptable" -> Modifier.background(c.dangerSoft)
-                m.deleted -> Modifier.background(c.glass)
-                out -> Modifier.background(Brush.linearGradient(listOf(c.actionStart, c.actionEnd)))
-                else -> Modifier.background(c.bubbleIncoming)
+                m.kind == "undecryptable" -> c.dangerSoft
+                m.deleted -> c.surfaceVariant
+                out -> c.bubbleOutgoing
+                else -> c.bubbleIncoming
             }
             Column(
                 Modifier
-                    .widthIn(max = 300.dp)
-                    .shadow(if (out) 6.dp else 3.dp, shape, ambientColor = if (out) c.primary.copy(alpha = 0.35f) else c.shadow, spotColor = if (out) c.primary.copy(alpha = 0.35f) else c.shadow)
+                    .widthIn(max = 310.dp)
                     .clip(shape)
-                    .then(bg)
-                    .then(if (!out) Modifier.border(1.dp, c.glassBorder, shape) else Modifier)
-                    .combinedClickable(onClick = { if (m.status == MessageStatus.FAILED) onRetry() }, onLongClick = onLongPress)
-                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                    .background(bg)
+                    .combinedClickable(onClick = { if (m.status == MessageStatus.FAILED) onRetry() }, onLongClick = onLongPress, onLongClickLabel = "Message actions")
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
             ) {
                 if (b.showSender && !out && b.isGroupConv) {
                     Text(b.sender?.displayName ?: "Unknown", style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = senderColor(b.sender?.avatarColor ?: 0), maxLines = 1)
                     Spacer(Modifier.height(2.dp))
                 }
                 if (b.reply != null) {
-                    Column(
-                        Modifier.padding(bottom = 6.dp).clip(Shapes.small).background(if (out) Color.White.copy(alpha = 0.18f) else c.primarySoft.copy(alpha = 0.7f))
-                            .pressable({ onReplyClick(b.reply.id) }).padding(horizontal = 10.dp, vertical = 6.dp),
+                    Row(
+                        Modifier.padding(bottom = 6.dp).height(IntrinsicSize.Min).clip(Shapes.small)
+                            .background(if (out) c.primary.copy(alpha = 0.10f) else c.surfaceVariant)
+                            .pressable({ onReplyClick(b.reply.id) }, onClickLabel = "Go to quoted message"),
                     ) {
-                        Text(b.replySender ?: "", style = Griip.type.caption.copy(fontWeight = FontWeight.Bold), color = if (out) Color.White else c.primaryDeep, maxLines = 1)
-                        Text(if (b.reply.deleted) "Deleted message" else b.reply.text.ifEmpty { "📎 Attachment" }, style = Griip.type.caption, color = if (out) Color.White.copy(alpha = 0.85f) else c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Box(Modifier.width(3.dp).fillMaxHeight().background(c.primary))
+                        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                            Text(b.replySender ?: "", style = Griip.type.caption.copy(fontWeight = FontWeight.Bold), color = c.primaryDeep, maxLines = 1)
+                            Text(if (b.reply.deleted) "Deleted message" else b.reply.text.ifEmpty { "📎 Attachment" }, style = Griip.type.caption, color = if (out) c.bubbleOutgoingMeta else c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
                 when {
@@ -160,7 +162,7 @@ fun MessageBubble(
                         Spacer(Modifier.width(6.dp))
                         Text(m.text, style = Griip.type.bodySmall, color = c.danger)
                     }
-                    m.deleted -> Text("This message was deleted", style = Griip.type.bodySmall.copy(fontStyle = FontStyle.Italic), color = c.textTertiary)
+                    m.deleted -> Text("This message was deleted", style = Griip.type.bodySmall.copy(fontStyle = FontStyle.Italic), color = c.textSecondary)
                     else -> {
                         b.attachments.forEach { a ->
                             AttachmentView(a, out, transfer, localFile(a), onOpenAttachment)
@@ -199,7 +201,7 @@ fun MessageBubble(
                     b.reactions.forEach { (emoji, users) ->
                         val mine = me in users
                         Row(
-                            Modifier.clip(Shapes.pill).background(if (mine) c.primarySoft else c.glassStrong).border(1.dp, if (mine) c.primary.copy(alpha = 0.5f) else c.glassBorder, Shapes.pill)
+                            Modifier.clip(Shapes.pill).background(if (mine) c.primarySoft else c.surface).border(1.dp, if (mine) c.primary.copy(alpha = 0.5f) else c.border, Shapes.pill)
                                 .pressable({ onReact(emoji) }).padding(horizontal = 8.dp, vertical = 3.dp)
                                 .semantics { contentDescription = "$emoji reaction, ${users.size}" },
                             verticalAlignment = Alignment.CenterVertically,
@@ -215,7 +217,7 @@ fun MessageBubble(
             }
             if (b.threadCount > 0 && onOpenThread != null) {
                 Text(
-                    "${b.threadCount} ${if (b.threadCount == 1) "reply" else "replies"} →", style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = c.primaryDeep,
+                    "${b.threadCount} ${if (b.threadCount == 1) "reply" else "replies"} →", style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = c.primary,
                     modifier = Modifier.padding(top = 4.dp).clip(Shapes.pill).pressable(onOpenThread).padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
@@ -229,9 +231,9 @@ private fun StatusIcon(status: String, tint: Color) {
     when (status) {
         MessageStatus.SENDING -> Icon(Icons.Outlined.Schedule, "Sending", tint = tint, modifier = Modifier.size(13.dp))
         MessageStatus.SENT -> Icon(Icons.Rounded.Done, "Sent", tint = tint, modifier = Modifier.size(14.dp))
-        MessageStatus.DELIVERED -> Icon(Icons.Rounded.DoneAll, "Delivered", tint = tint, modifier = Modifier.size(14.dp))
-        MessageStatus.READ -> Icon(Icons.Rounded.DoneAll, "Read", tint = Color(0xFFFFF3B0), modifier = Modifier.size(14.dp))
-        MessageStatus.FAILED -> Icon(Icons.Outlined.ErrorOutline, "Failed", tint = c.dangerSoft, modifier = Modifier.size(14.dp))
+        MessageStatus.DELIVERED -> Icon(Icons.Rounded.DoneAll, "Delivered", tint = tint, modifier = Modifier.size(15.dp))
+        MessageStatus.READ -> Icon(Icons.Rounded.DoneAll, "Read", tint = c.readReceipt, modifier = Modifier.size(15.dp))
+        MessageStatus.FAILED -> Icon(Icons.Outlined.ErrorOutline, "Failed", tint = c.danger, modifier = Modifier.size(14.dp))
         MessageStatus.HELD -> Icon(Icons.Outlined.Schedule, "Paused", tint = c.warning, modifier = Modifier.size(13.dp))
     }
 }
@@ -244,7 +246,7 @@ private fun richText(text: String, out: Boolean): AnnotatedString {
         var last = 0
         for (mt in mention.findAll(text)) {
             append(text.substring(last, mt.range.first))
-            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = if (out) Color.White else c.primaryDeep, background = if (out) Color.White.copy(alpha = 0.18f) else c.primarySoft)) { append(mt.value) }
+            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = c.primaryDeep)) { append(mt.value) }
             last = mt.range.last + 1
         }
         append(text.substring(last))
@@ -277,20 +279,20 @@ private fun AttachmentView(a: AttachmentRef, out: Boolean, transfer: Float?, loc
         return
     }
     Row(
-        Modifier.widthIn(min = 200.dp, max = 270.dp).clip(Shapes.tile).background(if (out) Color.White.copy(alpha = 0.18f) else c.primarySoft.copy(alpha = 0.6f))
+        Modifier.widthIn(min = 200.dp, max = 270.dp).clip(Shapes.small).background(if (out) c.primary.copy(alpha = 0.10f) else c.surfaceVariant)
             .pressable(if (a.id != "pending") ({ onOpen(a) }) else null).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(40.dp).clip(Shapes.small).background(if (out) Color.White.copy(alpha = 0.25f) else c.glassStrong), contentAlignment = Alignment.Center) {
-            if (transfer != null) CircularProgressIndicator(progress = { transfer }, modifier = Modifier.size(26.dp), color = if (out) Color.White else c.primary, strokeWidth = 3.dp)
-            else Icon(if (local == null && a.id != "pending") Icons.Rounded.Download else Icons.AutoMirrored.Rounded.InsertDriveFile, null, tint = if (out) Color.White else c.primary)
+        Box(Modifier.size(40.dp).clip(Shapes.small).background(c.surface), contentAlignment = Alignment.Center) {
+            if (transfer != null) CircularProgressIndicator(progress = { transfer }, modifier = Modifier.size(26.dp), color = c.primary, strokeWidth = 3.dp)
+            else Icon(if (local == null && a.id != "pending") Icons.Rounded.Download else Icons.AutoMirrored.Rounded.InsertDriveFile, if (local == null && a.id != "pending") "Download" else null, tint = c.primary)
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(a.name, style = Griip.type.bodyMedium, color = if (out) Color.White else c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(a.name, style = Griip.type.bodyMedium, color = if (out) c.onBubbleOutgoing else c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 humanSize(a.size) + if (transfer != null) " · ${(transfer * 100).toInt()}%" else if (isImage && local == null) " · tap to load" else "",
-                style = Griip.type.caption, color = if (out) Color.White.copy(alpha = 0.8f) else c.textTertiary,
+                style = Griip.type.caption, color = if (out) c.bubbleOutgoingMeta else c.textSecondary,
             )
         }
     }
@@ -305,9 +307,9 @@ fun humanSize(b: Long): String = when {
 @Composable
 private fun CallChip(m: MessageEntity, out: Boolean) {
     val c = Griip.colors
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.Center) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.Center) {
         Row(
-            Modifier.clip(Shapes.pill).background(c.glassStrong).border(1.dp, c.glassBorder, Shapes.pill).padding(horizontal = 14.dp, vertical = 7.dp),
+            Modifier.clip(Shapes.pill).background(c.surface).border(1.dp, c.border, Shapes.pill).padding(horizontal = 12.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(if (m.text.startsWith("Video")) Icons.Rounded.Videocam else Icons.Rounded.Call, null, tint = c.primary, modifier = Modifier.size(16.dp))

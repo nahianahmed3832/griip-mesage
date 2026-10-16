@@ -226,6 +226,18 @@ publishing lock (an ordering fix). On the final build only the valid path (V4) w
   every call.
 - The four "FATAL EXCEPTION" lines in R2 and V3 came from the `uiautomator` tool (two dumps overlapping), not from the app.
 
+## 5e. UI redesign on the phone (2026-10-16, uncommitted build)
+
+`adb install -r` (app data kept). Navigation was driven by `tools/device/tap.sh`, with screenshots from `screencap`.
+
+| Check | Result |
+|---|---|
+| Tabs: Chats, Calls, Workspace, Settings (dark, then light) | PASS. Docked bar, active indicator, unread badge, FABs; rows aligned to a 16 dp gutter |
+| Conversation (dark and light) | PASS. Header, call actions, date chip, call entries, jump-to-latest, composer. **Text bubbles not seen** (no text history on the phone) |
+| Theme switch (Settings → Light, then back to System) | PASS. Applied immediately and persisted |
+| Incoming and connected voice call from Griip Bot | PASS. Neutral "Verifying encryption…" before media; "End-to-end encrypted" once connected; the bot decoded 2,230 frames, 864 audible |
+| TalkBack, font scaling, rotation | NOT VERIFIED |
+
 ## 6a. Android unit tests (JVM, T2.4 harness)
 
 Run with `cd android && ./gradlew :app:testDebugUnitTest` (JDK: Android Studio's JBR). They're plain JUnit 4 + `kotlinx-coroutines-test` tests,
@@ -255,9 +267,11 @@ with no device or emulator. `crypto/Bytes.kt` uses `java.util.Base64`, so the re
 | `notify/NotificationHistoryTest` | 4 | PASS | T4.4: last few lines per conversation, cleared on read or erase, bounded |
 | `data/api/ScopeRequestsTest` | 3 | PASS | Clearing a team's department or a description sends an explicit JSON null |
 | `call/FrameCryptorGuardTest` | 8 | PASS | Frame-cryptor abort mitigation (see §1) |
+| `ui/screens/chats/ChatPreviewTest` | 4 | PASS | Chat-list second line: typing beats draft beats last message; sender naming; empty and channel-topic fallbacks |
+| `ui/screens/calls/CallLogTextTest` | 4 | PASS | Calls tab: missed vs not answered, durations only for answered calls |
 | `call/MediaSecurityTrackerTest` | 16 | PASS | D-17: verified only with OK/KEY_RATCHETED from every live track (at least one remote); a silent wrong-key peer stays unverified; missing key shows a problem and recovers; key changes leave nothing stale; removed tracks and participants are forgotten and their late callbacks ignored; muted tracks need no proof; a new call starts fresh; SDK default `failureTolerance` is still -1. **8 of 16 fail with the old rule** |
 
-**Totals (2026-10-16):** 110/110 (the frame-cryptor guard's tests are committed since b97c09c). Earlier on 2026-10-16: 92 in the working tree, 86 committed. The outbox and the repository's receive wiring still have no JVM tests (D35, D36).
+**Totals (2026-10-16):** 118/118 with the UI redesign's tests (110/110 before it; the frame-cryptor guard's tests are committed since b97c09c). Earlier on 2026-10-16: 92 in the working tree, 86 committed. The outbox and the repository's receive wiring still have no JVM tests (D35, D36).
 **Device check of the Base64 change: BLOCKED.** The phone refused the USB install (`INSTALL_FAILED_ABORTED: User rejected permissions`,
 which needs the owner to confirm on screen).
 

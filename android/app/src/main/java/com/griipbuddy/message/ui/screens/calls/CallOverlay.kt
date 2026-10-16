@@ -118,8 +118,8 @@ fun rememberCallPermission(): (video: Boolean, onGranted: () -> Unit) -> Unit {
     }
 }
 
-private val StageTop = Color(0xFF123A3B)
-private val StageBottom = Color(0xFF061314)
+private val StageTop = Color(0xFF101614)
+private val StageBottom = Color(0xFF101614)
 
 @Composable
 fun CallOverlay() {
@@ -175,6 +175,11 @@ fun CallOverlay() {
             VideoTile(local.camera, Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 80.dp, end = 16.dp).size(110.dp, 150.dp).clip(Shapes.tile).border(2.dp, Color.White.copy(alpha = 0.7f), Shapes.tile), mirror = true)
         }
 
+        // Scrims keep the status line and controls readable over video.
+        if (hasVideo) {
+            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(140.dp).background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent))))
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(240.dp).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))))
+        }
         // Top status
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (s.phase != CallPhase.Incoming) {
@@ -205,11 +210,11 @@ fun CallOverlay() {
             if (s.phase == CallPhase.Incoming) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 24.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     CallControlButton(Icons.Rounded.CallEnd, "Decline", { calls.decline() }, danger = true)
-                    CallControlButton(if (s.video) Icons.Rounded.Videocam else Icons.Rounded.Call, "Accept", { permission(s.video) { scope.launch { calls.accept() } } }, active = true)
+                    CallControlButton(if (s.video) Icons.Rounded.Videocam else Icons.Rounded.Call, "Accept", { permission(s.video) { scope.launch { calls.accept() } } }, positive = true)
                 }
             } else if (s.phase != CallPhase.Ended) {
                 Row(
-                    Modifier.fillMaxWidth().clip(Shapes.hero).background(Color.White.copy(alpha = 0.10f)).border(1.dp, Color.White.copy(alpha = 0.14f), Shapes.hero).padding(vertical = 14.dp, horizontal = 6.dp),
+                    Modifier.fillMaxWidth().clip(Shapes.hero).background(Color.Black.copy(alpha = 0.35f)).padding(vertical = 14.dp, horizontal = 4.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
                     CallControlButton(if (s.micOn) Icons.Rounded.Mic else Icons.Rounded.MicOff, if (s.micOn) "Mute" else "Unmute", { calls.toggleMic() }, active = !s.micOn)
@@ -373,7 +378,7 @@ private fun BoxScope.MiniCallBar(s: CallUiState, onExpand: () -> Unit, onEnd: ()
     LaunchedEffect(s.connectedAt) { while (true) { now = System.currentTimeMillis(); delay(1000) } }
     Row(
         Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 6.dp)
-            .clip(Shapes.pill).background(Brush.horizontalGradient(listOf(c.heroStart, c.heroEnd))).pressable(onExpand, onClickLabel = "Return to call")
+            .clip(Shapes.pill).background(c.actionStart).pressable(onExpand, onClickLabel = "Return to call")
             .padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -383,7 +388,7 @@ private fun BoxScope.MiniCallBar(s: CallUiState, onExpand: () -> Unit, onEnd: ()
             "${s.title} · ${s.connectedAt?.let { TimeFmt.duration((now - it) / 1000) } ?: "connecting"}" + if (s.screenSharing) " · sharing" else "",
             style = Griip.type.label, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
         )
-        Box(Modifier.size(34.dp).clip(CircleShape).background(c.danger).pressable(onEnd, onClickLabel = "End call"), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(40.dp).clip(CircleShape).background(Color(0xFFD93A2E)).pressable(onEnd, onClickLabel = "End call"), contentAlignment = Alignment.Center) {
             Icon(Icons.Rounded.CallEnd, "End call", tint = Color.White, modifier = Modifier.size(18.dp))
         }
     }

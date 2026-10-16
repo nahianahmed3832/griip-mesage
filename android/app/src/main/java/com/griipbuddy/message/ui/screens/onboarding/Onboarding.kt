@@ -143,9 +143,9 @@ private fun WelcomeScreen(onStart: () -> Unit, onRestore: () -> Unit, onLink: ()
             Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Already have an account? ", style = Griip.type.bodySmall, color = c.textSecondary)
-                Text("Restore", style = Griip.type.bodySmall.copy(fontWeight = FontWeight.Bold), color = c.primaryDeep, modifier = Modifier.clip(Shapes.pill).pressable(onRestore).padding(4.dp))
+                Text("Restore", style = Griip.type.bodySmall.copy(fontWeight = FontWeight.Bold), color = c.primary, modifier = Modifier.clip(Shapes.pill).pressable(onRestore).padding(horizontal = 6.dp, vertical = 12.dp))
                 Text(" · ", style = Griip.type.bodySmall, color = c.textTertiary)
-                Text("Link device", style = Griip.type.bodySmall.copy(fontWeight = FontWeight.Bold), color = c.primaryDeep, modifier = Modifier.clip(Shapes.pill).pressable(onLink).padding(4.dp))
+                Text("Link device", style = Griip.type.bodySmall.copy(fontWeight = FontWeight.Bold), color = c.primary, modifier = Modifier.clip(Shapes.pill).pressable(onLink).padding(horizontal = 6.dp, vertical = 12.dp))
             }
             Spacer(Modifier.height(14.dp))
             PageDots(slides.size, pager.currentPage)

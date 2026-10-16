@@ -14,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.griipbuddy.message.ui.components.BannerKind
+import com.griipbuddy.message.ui.components.StatusBanner
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,28 +56,40 @@ fun SearchScreen(nav: NavHostController) {
     var q by rememberSaveable { mutableStateOf("") }
     var people by remember { mutableStateOf<List<UserDto>>(emptyList()) }
     var messages by remember { mutableStateOf<List<MessageEntity>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+    var peopleFailed by remember { mutableStateOf(false) }
     val convs by container.conversations.observeAll().collectAsStateWithLifecycle(emptyList())
     val scope = rememberCoroutineScope()
     LaunchedEffect(q) {
-        if (q.isBlank()) { people = emptyList(); messages = emptyList(); return@LaunchedEffect }
+        if (q.isBlank()) { people = emptyList(); messages = emptyList(); searching = false; return@LaunchedEffect }
+        searching = true
         delay(250)
         messages = container.messages.search(q.trim())
-        people = runCatching { container.users.search(q.trim()) }.getOrDefault(emptyList())
+        val found = runCatching { container.users.search(q.trim()) }
+        peopleFailed = found.isFailure
+        people = found.getOrDefault(emptyList())
+        searching = false
     }
     val convMatches = if (q.isBlank()) emptyList() else convs.filter { ConversationRepository.title(it, me).contains(q.trim(), ignoreCase = true) }
 
     Column(Modifier.fillMaxSize().imePadding()) {
         GriipTopBar("Search", onBack = { nav.popBackStack() })
         SearchPill(q, { q = it }, "People, chats or message text", Modifier.padding(horizontal = Space.gutter, vertical = 6.dp))
+        Text(
+            "People in your organizations, or anyone by exact @username. Message text is searched in this phone's history only.",
+            style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(horizontal = Space.gutter + 4.dp, vertical = 2.dp),
+        )
+        if (searching) androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), color = c.primary, trackColor = c.surfaceVariant)
+        if (peopleFailed && !searching) StatusBanner("Couldn't search people right now. Chats and messages on this phone are still searched.", BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp))
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp, top = 8.dp)) {
-            if (q.isNotBlank() && convMatches.isEmpty() && people.isEmpty() && messages.isEmpty()) {
+            if (q.isNotBlank() && !searching && convMatches.isEmpty() && people.isEmpty() && messages.isEmpty()) {
                 item { EmptyState(Icons.Outlined.SearchOff, "No results", "Message search covers the history stored on this device.") }
             }
             if (convMatches.isNotEmpty()) item { SectionHeader("Conversations", Modifier.padding(vertical = 8.dp)) }
             items(convMatches.take(8), key = { "c" + it.id }) { conv ->
                 ListCard(
                     ConversationRepository.title(conv, me).let { if (conv.type == "CHANNEL") "#$it" else it },
-                    Modifier.padding(horizontal = Space.gutter, vertical = 5.dp),
+                    Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                     subtitle = conv.scopeName ?: conv.topic,
                     leading = { ConversationAvatar(conv, me, size = 44.dp) },
                     trailing = { ArrowKnob() },
@@ -85,7 +99,7 @@ fun SearchScreen(nav: NavHostController) {
             if (people.isNotEmpty()) item { SectionHeader("People", Modifier.padding(vertical = 8.dp)) }
             items(people, key = { "p" + it.id }) { u ->
                 ListCard(
-                    u.displayName, Modifier.padding(horizontal = Space.gutter, vertical = 5.dp), subtitle = "@${u.username}",
+                    u.displayName, Modifier.padding(horizontal = 8.dp, vertical = 1.dp), subtitle = "@${u.username}",
                     leading = { Avatar(u.displayName, u.avatarColor, size = 44.dp, online = u.online) },
                     trailing = { ArrowKnob(contentDescription = "Message ${u.displayName}") },
                     onClick = { scope.launch { runCatching { container.conversations.openDm(u.id) }.onSuccess { nav.navigate(Routes.conversation(it.id)) } } },
@@ -96,7 +110,7 @@ fun SearchScreen(nav: NavHostController) {
                 val conv = convs.firstOrNull { it.id == m.conversationId }
                 ListCard(
                     conv?.let { ConversationRepository.title(it, me) } ?: "Conversation",
-                    Modifier.padding(horizontal = Space.gutter, vertical = 5.dp),
+                    Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                     subtitle = m.text,
                     leading = conv?.let { cv -> { ConversationAvatar(cv, me, size = 44.dp) } },
                     trailing = { Text(TimeFmt.listStamp(m.sortTs), style = Griip.type.caption, color = c.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis) },

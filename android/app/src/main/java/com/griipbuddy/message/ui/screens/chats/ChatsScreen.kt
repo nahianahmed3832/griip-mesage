@@ -1,6 +1,18 @@
 package com.griipbuddy.message.ui.screens.chats
 
-import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.NotificationsOff
+import androidx.compose.material.icons.outlined.MarkChatRead
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.ExtendedFloatingActionButton
+import com.griipbuddy.message.data.db.ConversationEntity
+import com.griipbuddy.message.call.CallPhase
+import com.griipbuddy.message.ui.components.GlassSheet
+import com.griipbuddy.message.ui.components.MenuRow
+import com.griipbuddy.message.ui.components.ShimmerList
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -68,14 +81,20 @@ import kotlinx.coroutines.launch
 @Composable
 fun ChatsScreen(nav: NavHostController) {
     val container = LocalContainer.current
+    val c = Griip.colors
     val me = container.session.session?.userId
     val convs by container.conversations.observeAll().collectAsStateWithLifecycle(emptyList())
     val users by container.db.users().observeAll().collectAsStateWithLifecycle(emptyList())
     val typing by container.messages.typing.collectAsStateWithLifecycle()
     val conn by container.realtime.state.collectAsStateWithLifecycle()
-    var filter by rememberSaveable { mutableStateOf(0) }
+    val call by container.calls.state.collectAsStateWithLifecycle()
+    var filter by rememberSaveable { mutableIntStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
-    LaunchedEffect(Unit) { runCatching { container.conversations.refresh() } }
+    var actionsFor by remember { mutableStateOf<ConversationEntity?>(null) }
+    var refreshing by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+    val permission = com.griipbuddy.message.ui.screens.calls.rememberCallPermission()
+    LaunchedEffect(Unit) { runCatching { container.conversations.refresh() }; refreshing = false }
 
     val filters = listOf("All", "Unread", "Direct", "Groups", "Channels")
     val shown = convs.filter {
@@ -88,39 +107,95 @@ fun ChatsScreen(nav: NavHostController) {
         }
     }.filter { query.isBlank() || ConversationRepository.title(it, me).contains(query, ignoreCase = true) }
     val online = users.associate { it.id to it.online }
+    val liveCall = if (call.phase == CallPhase.Idle) convs.firstOrNull { it.activeCallId != null } else null
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
-        item {
-            LargeHeader("Chats", subtitle = "Messages & channels") {
-                CircleIconButton(Icons.Outlined.GroupAdd, "New group", { nav.navigate(Routes.NEW_CHAT + "?mode=group") })
-                CircleIconButton(Icons.Outlined.EditNote, "New message", { nav.navigate(Routes.NEW_CHAT + "?mode=dm") })
-            }
-        }
-        item { ConnectionBanner(conn, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) { container.realtime.reconnectNow() } }
-        item { SearchPill(query, { query = it }, "Search conversations", Modifier.padding(horizontal = Space.gutter, vertical = 8.dp)) }
-        item {
-            ChipRow {
-                filters.forEachIndexed { i, f ->
-                    PillChip(f, filter == i, { filter = i }, count = if (i == 1) convs.count { it.unreadCount > 0 } else null)
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
+            item {
+                LargeHeader("Chats") {
+                    CircleIconButton(Icons.Rounded.Search, "Search people, chats and messages", { nav.navigate(Routes.SEARCH) })
+                    CircleIconButton(Icons.Outlined.GroupAdd, "New group", { nav.navigate(Routes.NEW_CHAT + "?mode=group") })
                 }
             }
-            Spacer(Modifier.height(8.dp))
-        }
-        if (shown.isEmpty()) {
+            item { ConnectionBanner(conn, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) { container.realtime.reconnectNow() } }
+            if (liveCall != null) item {
+                val title = ConversationRepository.title(liveCall, me).let { if (liveCall.type == "CHANNEL") "#$it" else it }
+                StatusBanner(
+                    "${if (liveCall.activeCallVideo) "Video" else "Voice"} call in progress · $title", BannerKind.Success,
+                    Modifier.padding(horizontal = Space.gutter, vertical = 4.dp), icon = Icons.Rounded.Call, action = "Join",
+                    onAction = { permission(liveCall.activeCallVideo) { scope.launch { container.calls.join(liveCall.id, liveCall.activeCallId!!, liveCall.activeCallVideo) } } },
+                )
+            }
+            item { SearchPill(query, { query = it }, "Filter chats by name", Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
             item {
-                EmptyState(
-                    Icons.Outlined.ChatBubbleOutline,
-                    if (convs.isEmpty()) "No conversations yet" else "Nothing here",
-                    if (convs.isEmpty()) "Message a colleague or join your team's channels from the Workspace tab." else "Try another filter.",
-                    action = if (convs.isEmpty()) "New message" else null,
-                    onAction = { nav.navigate(Routes.NEW_CHAT + "?mode=dm") },
+                ChipRow {
+                    filters.forEachIndexed { i, f ->
+                        PillChip(f, filter == i, { filter = i }, count = if (i == 1) convs.count { it.unreadCount > 0 } else null)
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+            }
+            if (refreshing && convs.isEmpty()) item { ShimmerList(6, Modifier.padding(top = 8.dp)) }
+            else if (shown.isEmpty()) {
+                item {
+                    EmptyState(
+                        Icons.Outlined.ChatBubbleOutline,
+                        when {
+                            convs.isEmpty() -> "No conversations yet"
+                            query.isNotBlank() -> "No chats named \"${query.trim()}\""
+                            else -> "Nothing here"
+                        },
+                        when {
+                            convs.isEmpty() -> "Message a colleague, or join your team's channels from the Workspace tab."
+                            query.isNotBlank() -> "Search also finds people and message text."
+                            else -> "Try another filter."
+                        },
+                        action = when {
+                            convs.isEmpty() -> "New message"
+                            query.isNotBlank() -> "Search everywhere"
+                            else -> null
+                        },
+                        onAction = { if (convs.isEmpty()) nav.navigate(Routes.NEW_CHAT + "?mode=dm") else nav.navigate(Routes.SEARCH) },
+                    )
+                }
+            }
+            items(shown, key = { it.id }) { conv ->
+                val peer = ConversationRepository.peer(conv, me)
+                val names = typing[conv.id]?.keys?.mapNotNull { id -> users.firstOrNull { it.id == id }?.displayName } ?: emptyList()
+                ConversationRow(
+                    conv, me, names, peer?.let { online[it.id] },
+                    onClick = { nav.navigate(Routes.conversation(conv.id)) },
+                    onLongClick = { actionsFor = conv },
+                    modifier = Modifier.animateItem(),
                 )
             }
         }
-        items(shown, key = { it.id }) { conv ->
-            val peer = ConversationRepository.peer(conv, me)
-            val names = typing[conv.id]?.keys?.mapNotNull { id -> users.firstOrNull { it.id == id }?.displayName } ?: emptyList()
-            ConversationRow(conv, me, names, peer?.let { online[it.id] }, { nav.navigate(Routes.conversation(conv.id)) }, Modifier.padding(horizontal = Space.gutter, vertical = 5.dp).animateContentSize())
+        ExtendedFloatingActionButton(
+            onClick = { nav.navigate(Routes.NEW_CHAT + "?mode=dm") },
+            icon = { Icon(Icons.Outlined.EditNote, null) },
+            text = { Text("New chat", style = Griip.type.button) },
+            containerColor = c.actionStart, contentColor = c.onAction,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(Space.gutter),
+        )
+    }
+
+    actionsFor?.let { conv ->
+        val title = ConversationRepository.title(conv, me).let { if (conv.type == "CHANNEL") "#$it" else it }
+        GlassSheet({ actionsFor = null }, title = title) {
+            MenuRow(
+                if (conv.muted) Icons.Outlined.NotificationsActive else Icons.Outlined.NotificationsOff,
+                if (conv.muted) "Unmute notifications" else "Mute notifications",
+                subtitle = if (conv.muted) null else "You'll still get notified when someone @mentions you",
+                onClick = { scope.launch { container.conversations.setMuted(conv.id, !conv.muted) }; actionsFor = null }, trailing = null,
+            )
+            if (conv.unreadCount > 0) MenuRow(
+                Icons.Outlined.MarkChatRead, "Mark as read", subtitle = "Only on this device; no read receipt is sent",
+                onClick = { scope.launch { container.conversations.markRead(conv.id) }; container.notifier.clear(conv.id); actionsFor = null }, trailing = null,
+            )
+            MenuRow(
+                Icons.Outlined.Info, if (conv.type == "DM") "Contact info" else if (conv.type == "GROUP") "Group info" else "Channel info",
+                onClick = { actionsFor = null; nav.navigate(Routes.info(conv.id)) }, trailing = null,
+            )
         }
     }
 }
@@ -178,6 +253,13 @@ fun NewChatScreen(nav: NavHostController, mode: String?) {
             Spacer(Modifier.height(12.dp))
         }
         SearchPill(q, { q = it }, "Search by name or @username", Modifier.padding(horizontal = Space.gutter, vertical = 4.dp))
+        if (!group && !call) {
+            ListCard(
+                "New group", Modifier.padding(horizontal = 8.dp, vertical = 4.dp), subtitle = "Pick people to add",
+                leading = { com.griipbuddy.message.ui.components.IconTile(Icons.Rounded.Groups, c.lavender, c.lavenderSoft, size = 44.dp) },
+                onClick = { nav.navigate(Routes.NEW_CHAT + "?mode=group") { popUpTo(Routes.NEW_CHAT + "?mode={mode}") { inclusive = true } } },
+            )
+        }
         if (group && picked.isNotEmpty()) {
             ChipRow { picked.forEach { u -> PillChip(u.displayName, true, { picked.remove(u) }) } }
         }
@@ -190,13 +272,13 @@ fun NewChatScreen(nav: NavHostController, mode: String?) {
             items(list, key = { it.id }) { u ->
                 val sel = picked.any { it.id == u.id }
                 ListCard(
-                    u.displayName, Modifier.padding(horizontal = Space.gutter, vertical = 5.dp),
+                    u.displayName, Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                     subtitle = "@${u.username}" + (u.title?.let { " · $it" } ?: ""),
                     leading = { Avatar(u.displayName, u.avatarColor, size = 44.dp, online = u.online) },
                     trailing = {
                         when {
                             group && sel -> TagPill("Added", c.primaryDeep, c.primarySoft, icon = Icons.Rounded.Check)
-                            group -> TagPill("Add", c.textSecondary, c.hairline)
+                            group -> TagPill("Add", c.textSecondary, c.surfaceVariant)
                             call -> Icon(Icons.Rounded.Call, "Call", tint = c.primary)
                             else -> ArrowKnob()
                         }

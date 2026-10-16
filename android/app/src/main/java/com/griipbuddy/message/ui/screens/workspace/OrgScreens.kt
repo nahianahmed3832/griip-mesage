@@ -163,7 +163,7 @@ fun TeamScreen(nav: NavHostController, orgId: String, teamId: String) {
         if (channels.isEmpty()) item { Text("No team channels yet.", style = Griip.type.bodySmall, color = c.textTertiary, modifier = Modifier.padding(horizontal = Space.gutter)) }
         items(channels, key = { "c" + it.id }) { ch ->
             ListCard(
-                "#${ch.name}", Modifier.padding(horizontal = Space.gutter, vertical = 4.dp), subtitle = ch.topic,
+                "#${ch.name}", Modifier.padding(horizontal = 8.dp, vertical = 1.dp), subtitle = ch.topic,
                 leading = { IconTile(channelIcon(ch.kind), c.primary, c.primarySoft, size = 42.dp) },
                 trailing = {
                     if (ch.activeCall != null) TagPill("Live", c.success, c.successSoft, icon = Icons.Rounded.Call)
@@ -177,7 +177,7 @@ fun TeamScreen(nav: NavHostController, orgId: String, teamId: String) {
         items(members.orEmpty(), key = { it.id }) { u ->
             var menu by remember { mutableStateOf(false) }
             ListCard(
-                u.displayName + if (u.id == me) " (you)" else "", Modifier.padding(horizontal = Space.gutter, vertical = 4.dp), subtitle = "@${u.username}",
+                u.displayName + if (u.id == me) " (you)" else "", Modifier.padding(horizontal = 8.dp, vertical = 1.dp), subtitle = "@${u.username}",
                 leading = { Avatar(u.displayName, u.avatarColor, size = 44.dp, online = u.online) },
                 trailing = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -252,14 +252,14 @@ fun MembersScreen(nav: NavHostController, orgId: String) {
         items(shown, key = { it.id }) { u ->
             val branchNames = u.branches.mapNotNull { b -> detail?.branches?.firstOrNull { it.id == b.id }?.name }
             ListCard(
-                u.displayName, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp),
+                u.displayName, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                 subtitle = "@${u.username}" + (u.title?.let { " · $it" } ?: ""),
                 leading = { Avatar(u.displayName, u.avatarColor, size = 46.dp, online = u.online) },
                 meta = {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         RoleBadge(u.orgRole)
                         branchNames.take(2).forEach { TagPill(it, c.primaryDeep, c.primarySoft, icon = Icons.Outlined.Apartment) }
-                        if (u.teams.isNotEmpty()) TagPill("${u.teams.size} team${if (u.teams.size > 1) "s" else ""}", c.textSecondary, c.hairline, icon = Icons.Outlined.Groups)
+                        if (u.teams.isNotEmpty()) TagPill("${u.teams.size} team${if (u.teams.size > 1) "s" else ""}", c.textSecondary, c.surfaceVariant, icon = Icons.Outlined.Groups)
                     }
                 },
                 trailing = { ArrowKnob() },
@@ -427,9 +427,9 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
         items(invites.orEmpty(), key = { it.id }) { inv ->
             val scopeName = listOfNotNull(d?.branches?.firstOrNull { it.id == inv.branchId }?.name, d?.teams?.firstOrNull { it.id == inv.teamId }?.name).joinToString(" · ").ifEmpty { "Organization" }
             ListCard(
-                "…${inv.hint} · ${inv.role.lowercase()}", Modifier.padding(horizontal = Space.gutter, vertical = 4.dp),
+                "…${inv.hint} · ${inv.role.lowercase()}", Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                 subtitle = "$scopeName · ${inv.uses}/${inv.maxUses} used · " + if (inv.revokedAt != null) "revoked" else if (!inv.active) "expired" else "expires ${TimeFmt.listStamp(inv.expiresAt)}",
-                leading = { IconTile(Icons.AutoMirrored.Outlined.Login, if (inv.active) c.primary else c.textTertiary, if (inv.active) c.primarySoft else c.hairline, size = 42.dp) },
+                leading = { IconTile(Icons.AutoMirrored.Outlined.Login, if (inv.active) c.primary else c.textTertiary, if (inv.active) c.primarySoft else c.surfaceVariant, size = 42.dp) },
                 trailing = {
                     if (inv.active) PillButton("Revoke", { scope.launch { runCatching { container.orgs.revokeInvite(inv.id) }.onFailure { error = it.friendly() }; reload++ } }, tone = ButtonTone.Glass, showKnob = false, height = 36.dp)
                 },
@@ -478,7 +478,7 @@ fun ActivityScreen(nav: NavHostController, orgId: String) {
         items(list.orEmpty(), key = { it.id }) { a ->
             val (icon, label) = describe(a)
             ListCard(
-                label, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp),
+                label, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                 subtitle = "${a.actorName ?: "Someone"} · ${TimeFmt.relative(a.at)}",
                 leading = { IconTile(icon, c.primary, c.primarySoft, size = 40.dp) },
             )

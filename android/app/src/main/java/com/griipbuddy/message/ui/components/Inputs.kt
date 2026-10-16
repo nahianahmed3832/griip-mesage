@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.griipbuddy.message.ui.theme.Griip
@@ -53,6 +54,7 @@ import com.griipbuddy.message.ui.theme.Shapes
 import com.griipbuddy.message.ui.theme.Space
 
 /** Filter pill: neutral glass, filled teal when selected (reference: All / General / Cosmetic). */
+/** Filter chip: selected = soft emerald with emerald text; unselected = outlined surface. */
 @Composable
 fun PillChip(
     text: String,
@@ -63,30 +65,29 @@ fun PillChip(
     count: Int? = null,
 ) {
     val c = Griip.colors
-    val bg by animateColorAsState(if (selected) c.actionEnd else c.glassStrong, Motion.quick(), label = "chipBg")
-    val fg by animateColorAsState(if (selected) Color.White else c.textSecondary, Motion.quick(), label = "chipFg")
+    val bg by animateColorAsState(if (selected) c.navIndicator else c.surface, Motion.quick(), label = "chipBg")
+    val fg by animateColorAsState(if (selected) c.primaryDeep else c.textSecondary, Motion.quick(), label = "chipFg")
     Row(
         modifier
             .heightIn(min = 36.dp)
-            .shadow(if (selected) 8.dp else 3.dp, Shapes.pill, ambientColor = if (selected) c.primary.copy(alpha = 0.4f) else c.shadow, spotColor = if (selected) c.primary.copy(alpha = 0.4f) else c.shadow)
             .clip(Shapes.pill)
             .background(bg)
-            .border(1.dp, if (selected) Color.Transparent else c.glassBorder, Shapes.pill)
+            .border(1.dp, if (selected) Color.Transparent else c.border, Shapes.pill)
             .pressable(onClick, role = Role.Tab)
             .semantics { this.selected = selected }
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
             Icon(icon, null, tint = fg, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
         }
-        Text(text, style = Griip.type.label, color = fg, maxLines = 1)
+        Text(text, style = Griip.type.label.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium), color = fg, maxLines = 1)
         if (count != null && count > 0) {
             Spacer(Modifier.width(6.dp))
             Box(
-                Modifier.clip(Shapes.pill).background(if (selected) Color.White.copy(alpha = 0.25f) else c.primarySoft).padding(horizontal = 6.dp, vertical = 1.dp),
-            ) { Text(if (count > 99) "99+" else "$count", style = Griip.type.caption, color = if (selected) Color.White else c.primaryDeep) }
+                Modifier.clip(Shapes.pill).background(if (selected) c.primary else c.surfaceVariant).padding(horizontal = 6.dp, vertical = 1.dp),
+            ) { Text(if (count > 99) "99+" else "$count", style = Griip.type.caption, color = if (selected) c.onPrimary else c.textSecondary) }
         }
     }
 }
@@ -99,44 +100,42 @@ fun ChipRow(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     ) { content() }
 }
 
-/** Segmented tabs with a sliding teal thumb (reference: Overview / History / Analysis). */
+/** Segmented control: neutral track, surface thumb, emerald label on the selected segment. */
 @Composable
 fun SegmentedPills(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val c = Griip.colors
     BoxWithConstraints(
         modifier
             .fillMaxWidth()
-            .height(46.dp)
-            .shadow(4.dp, Shapes.pill, ambientColor = c.shadow, spotColor = c.shadow)
+            .height(44.dp)
             .clip(Shapes.pill)
-            .background(c.glass)
-            .border(1.dp, c.glassBorder, Shapes.pill)
-            .padding(4.dp),
+            .background(c.surfaceVariant)
+            .padding(3.dp),
     ) {
         val segment = maxWidth / options.size
         val offset by animateDpAsState(segment * selectedIndex, Motion.standard(), label = "thumb")
         Box(
-            Modifier.offset(x = offset).width(segment).fillMaxHeight()
-                .shadow(6.dp, Shapes.pill, ambientColor = c.primary.copy(alpha = 0.4f), spotColor = c.primary.copy(alpha = 0.4f))
+            Modifier.offset { androidx.compose.ui.unit.IntOffset(offset.roundToPx(), 0) }.width(segment).fillMaxHeight()
                 .clip(Shapes.pill)
-                .background(Brush.horizontalGradient(listOf(c.actionStart, c.actionEnd))),
+                .background(c.surface)
+                .border(1.dp, c.border, Shapes.pill),
         )
         Row(Modifier.fillMaxWidth().fillMaxHeight()) {
             options.forEachIndexed { i, label ->
                 val sel = i == selectedIndex
-                val fg by animateColorAsState(if (sel) Color.White else c.textSecondary, Motion.quick(), label = "segFg")
+                val fg by animateColorAsState(if (sel) c.primaryDeep else c.textSecondary, Motion.quick(), label = "segFg")
                 Box(
                     Modifier.weight(1f).fillMaxHeight().clip(Shapes.pill)
                         .pressable({ onSelect(i) }, role = Role.Tab)
                         .semantics { selected = sel },
                     contentAlignment = Alignment.Center,
-                ) { Text(label, style = Griip.type.label, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                ) { Text(label, style = Griip.type.label.copy(fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Medium), color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
     }
 }
 
-/** Frosted search pill with optional trailing action (reference: "Search treatment, doctor…"). */
+/** Filled search field with clear button and optional trailing action. */
 @Composable
 fun SearchPill(
     value: String,
@@ -149,36 +148,34 @@ fun SearchPill(
     Row(
         modifier
             .fillMaxWidth()
-            .height(52.dp)
-            .shadow(6.dp, Shapes.pill, ambientColor = c.shadow, spotColor = c.shadow)
+            .height(48.dp)
             .clip(Shapes.pill)
-            .background(c.glassStrong)
-            .border(1.dp, c.glassBorder, Shapes.pill)
-            .padding(start = 18.dp, end = 6.dp),
+            .background(c.surfaceVariant)
+            .padding(start = 16.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Rounded.Search, null, tint = c.textTertiary, modifier = Modifier.size(20.dp))
+        Icon(Icons.Rounded.Search, null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(10.dp))
         Box(Modifier.weight(1f)) {
-            if (value.isEmpty()) Text(placeholder, style = Griip.type.bodySmall, color = c.textTertiary, maxLines = 1)
+            if (value.isEmpty()) Text(placeholder, style = Griip.type.bodyMedium.copy(fontWeight = FontWeight.Normal), color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
                 singleLine = true,
-                textStyle = Griip.type.bodyMedium.copy(color = c.textPrimary),
+                textStyle = Griip.type.bodyMedium.copy(color = c.textPrimary, fontWeight = FontWeight.Normal),
                 cursorBrush = SolidColor(c.primary),
                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder },
             )
         }
         if (value.isNotEmpty()) {
-            Box(Modifier.size(40.dp).clip(CircleShape).pressable({ onValueChange("") }, onClickLabel = "Clear search"), contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.Close, "Clear search", tint = c.textTertiary, modifier = Modifier.size(18.dp))
+            Box(Modifier.size(44.dp).clip(CircleShape).pressable({ onValueChange("") }, onClickLabel = "Clear search"), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Close, "Clear search", tint = c.textSecondary, modifier = Modifier.size(18.dp))
             }
         } else if (trailing != null) trailing()
     }
 }
 
-/** Glass text field with label, helper/error text and optional leading icon. */
+/** Outlined text field with label above, helper/error text below and optional leading icon. */
 @Composable
 fun GriipTextField(
     value: String,
@@ -204,16 +201,15 @@ fun GriipTextField(
         Row(
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 54.dp)
-                .shadow(4.dp, Shapes.tile, ambientColor = c.shadow, spotColor = c.shadow)
+                .heightIn(min = 52.dp)
                 .clip(Shapes.tile)
-                .background(c.glassStrong)
-                .border(if (error != null) 1.5.dp else 1.dp, if (error != null) c.danger else c.glassBorder, Shapes.tile)
+                .background(c.surface)
+                .border(if (error != null) 1.5.dp else 1.dp, if (error != null) c.danger else c.border, Shapes.tile)
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = if (singleLine) Alignment.CenterVertically else Alignment.Top,
         ) {
             if (leadingIcon != null) {
-                Icon(leadingIcon, null, tint = c.primary, modifier = Modifier.size(20.dp))
+                Icon(leadingIcon, null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
             }
             if (prefix != null) Text(prefix, style = Griip.type.body, color = c.textTertiary)
@@ -240,28 +236,25 @@ fun GriipTextField(
         }
         val support = error ?: helper
         if (support != null) {
-            Text(support, style = Griip.type.caption, color = if (error != null) c.danger else c.textTertiary, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
+            Text(support, style = Griip.type.caption, color = if (error != null) c.danger else c.textSecondary, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
         }
     }
 }
 
-/** Teal toggle matching the reference's "Reminders" switch. */
+/** Material switch in the Griip colours (accessible toggle semantics). */
 @Composable
 fun GriipSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val c = Griip.colors
-    val track by animateColorAsState(if (checked) c.primary else c.hairline.copy(alpha = 0.18f), Motion.quick(), label = "track")
-    val x by animateDpAsState(if (checked) 22.dp else 2.dp, Motion.quick(), label = "knob")
-    Box(
-        modifier
-            .size(width = 48.dp, height = 28.dp)
-            .clip(Shapes.pill)
-            .background(track)
-            .pressable(if (enabled) ({ onCheckedChange(!checked) }) else null, role = Role.Switch)
-            .semantics { selected = checked },
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Box(Modifier.offset(x = x).size(24.dp).shadow(3.dp, CircleShape).clip(CircleShape).background(Color.White))
-    }
+    androidx.compose.material3.Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        modifier = modifier,
+        enabled = enabled,
+        colors = androidx.compose.material3.SwitchDefaults.colors(
+            checkedThumbColor = c.onAction, checkedTrackColor = c.actionStart, checkedBorderColor = c.actionStart,
+            uncheckedThumbColor = c.textSecondary, uncheckedTrackColor = c.surfaceVariant, uncheckedBorderColor = c.border,
+        ),
+    )
 }
 
 val FieldPadding = PaddingValues(horizontal = Space.gutter)

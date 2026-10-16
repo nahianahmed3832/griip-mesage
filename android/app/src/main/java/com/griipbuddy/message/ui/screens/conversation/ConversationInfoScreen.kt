@@ -100,7 +100,7 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
                             TagPill(cv.kind?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "", c.primaryDeep, c.primarySoft)
                             cv.scopeName?.let { TagPill(it, c.lavender, c.lavenderSoft) }
                         }
-                        TagPill("${cv.memberCount} members", c.textSecondary, c.hairline)
+                        TagPill("${cv.memberCount} members", c.textSecondary, c.surfaceVariant)
                         if (cv.archived) TagPill("Archived", c.warning, c.warningSoft)
                     }
                 }
@@ -135,7 +135,7 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
             item { SectionHeader("Pinned messages", Modifier.padding(top = 12.dp, bottom = 6.dp)) }
             items(pinned, key = { "pin" + it.id }) { m ->
                 ListCard(
-                    m.text.ifEmpty { "📎 Attachment" }, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp),
+                    m.text.ifEmpty { "📎 Attachment" }, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                     subtitle = (if (m.outgoing) "You · " else "") + TimeFmt.listStamp(m.sortTs),
                     leading = { com.griipbuddy.message.ui.components.IconTile(Icons.Outlined.PushPin, c.peach, c.peachSoft, size = 38.dp) },
                     onClick = { nav.popBackStack() },
@@ -146,7 +146,7 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
         items(members, key = { it.id }) { u ->
             var menu by remember { mutableStateOf(false) }
             ListCard(
-                if (u.id == me) "${u.displayName} (you)" else u.displayName, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp),
+                if (u.id == me) "${u.displayName} (you)" else u.displayName, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                 subtitle = "@${u.username}",
                 leading = { Avatar(u.displayName, u.avatarColor, size = 44.dp, online = u.online) },
                 trailing = {

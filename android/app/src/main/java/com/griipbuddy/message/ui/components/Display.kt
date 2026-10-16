@@ -41,6 +41,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.heading
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,7 +65,7 @@ fun initialsOf(name: String): String {
     }
 }
 
-/** Circle avatar: initials on a deterministic gradient, white ring, optional presence dot. */
+/** Circle avatar: white initials on a deterministic solid colour; optional presence dot. [ring] is kept for older call sites. */
 @Composable
 fun Avatar(
     name: String,
@@ -69,50 +73,40 @@ fun Avatar(
     modifier: Modifier = Modifier,
     size: Dp = 48.dp,
     online: Boolean? = null,
-    ring: Boolean = true,
+    @Suppress("UNUSED_PARAMETER") ring: Boolean = true,
 ) {
     val c = Griip.colors
-    val (a, b) = AvatarGradients[((colorIndex % AvatarGradients.size) + AvatarGradients.size) % AvatarGradients.size]
+    val (a, _) = AvatarGradients[((colorIndex % AvatarGradients.size) + AvatarGradients.size) % AvatarGradients.size]
     Box(modifier.size(size).semantics(mergeDescendants = true) { contentDescription = "$name avatar" }) {
-        Box(
-            Modifier.size(size)
-                .shadow(if (ring) 6.dp else 0.dp, CircleShape, ambientColor = c.shadow, spotColor = c.shadow)
-                .clip(CircleShape)
-                .background(Brush.linearGradient(listOf(a, b)))
-                .then(if (ring) Modifier.border(2.dp, Color.White.copy(alpha = if (c.isDark) 0.25f else 0.95f), CircleShape) else Modifier),
-            contentAlignment = Alignment.Center,
-        ) {
+        Box(Modifier.size(size).clip(CircleShape).background(a), contentAlignment = Alignment.Center) {
             Text(
                 initialsOf(name),
                 color = Color.White,
-                style = Griip.type.titleSmall.copy(fontSize = (size.value * 0.36f).sp, fontWeight = FontWeight.Bold),
+                style = Griip.type.titleSmall.copy(fontSize = (size.value * 0.36f).sp, fontWeight = FontWeight.SemiBold),
                 maxLines = 1,
             )
         }
-        if (online != null) {
-            val dot = (size.value * 0.26f).coerceIn(10f, 16f).dp
+        if (online == true) {
+            val dot = (size.value * 0.26f).coerceIn(10f, 14f).dp
             Box(
-                Modifier.align(Alignment.BottomEnd).size(dot).clip(CircleShape)
-                    .background(if (online) c.success else c.textTertiary)
-                    .border(2.dp, if (c.isDark) c.canvasMid else Color.White, CircleShape),
+                Modifier.align(Alignment.BottomEnd).size(dot).clip(CircleShape).background(c.success)
+                    .border(2.dp, c.surface, CircleShape)
+                    .semantics { contentDescription = "Online" },
             )
         }
     }
 }
 
-/** Rounded-square mark for orgs, branches, teams and channels. */
+/** Rounded-square mark for orgs, branches and teams (people are circles; places are squares). */
 @Composable
 fun MarkTile(label: String, colorIndex: Int, modifier: Modifier = Modifier, size: Dp = 48.dp) {
-    val (a, b) = AvatarGradients[((colorIndex % AvatarGradients.size) + AvatarGradients.size) % AvatarGradients.size]
-    Box(
-        modifier.size(size).clip(Shapes.iconTile).background(Brush.linearGradient(listOf(a, b))),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(initialsOf(label), color = Color.White, style = Griip.type.titleSmall.copy(fontSize = (size.value * 0.34f).sp, fontWeight = FontWeight.Bold))
+    val (a, _) = AvatarGradients[((colorIndex % AvatarGradients.size) + AvatarGradients.size) % AvatarGradients.size]
+    Box(modifier.size(size).clip(Shapes.iconTile).background(a), contentAlignment = Alignment.Center) {
+        Text(initialsOf(label), color = Color.White, style = Griip.type.titleSmall.copy(fontSize = (size.value * 0.34f).sp, fontWeight = FontWeight.SemiBold))
     }
 }
 
-/** Tinted rounded tile holding a line icon (reference quick-action tiles). */
+/** Tinted rounded tile holding a line icon (channels, groups, settings rows). */
 @Composable
 fun IconTile(icon: ImageVector, tint: Color, background: Color, modifier: Modifier = Modifier, size: Dp = 44.dp) {
     Box(modifier.size(size).clip(Shapes.iconTile).background(background), contentAlignment = Alignment.Center) {
@@ -120,17 +114,18 @@ fun IconTile(icon: ImageVector, tint: Color, background: Color, modifier: Modifi
     }
 }
 
+/** Section label above a list or settings group. */
 @Composable
 fun SectionHeader(title: String, modifier: Modifier = Modifier, action: String? = null, onAction: (() -> Unit)? = null) {
     val c = Griip.colors
     Row(modifier.fillMaxWidth().padding(horizontal = Space.gutter), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = Griip.type.section, color = c.textPrimary, modifier = Modifier.weight(1f))
+        Text(title, style = Griip.type.section, color = c.textSecondary, modifier = Modifier.weight(1f).semantics { heading() })
         if (action != null && onAction != null) {
             Text(
                 action,
-                style = Griip.type.label,
-                color = c.primaryDeep,
-                modifier = Modifier.clip(Shapes.pill).pressable(onAction).padding(horizontal = 8.dp, vertical = 6.dp),
+                style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold),
+                color = c.primary,
+                modifier = Modifier.clip(Shapes.pill).pressable(onAction).padding(horizontal = 10.dp, vertical = 8.dp),
             )
         }
     }
@@ -141,9 +136,10 @@ fun CountBadge(count: Int, modifier: Modifier = Modifier, muted: Boolean = false
     if (count <= 0) return
     val c = Griip.colors
     Box(
-        modifier.height(20.dp).clip(Shapes.pill).background(if (muted) c.textTertiary else c.actionEnd).padding(horizontal = 7.dp),
+        modifier.height(20.dp).clip(Shapes.pill).background(if (muted) c.textTertiary else c.primary).padding(horizontal = 6.dp)
+            .semantics { contentDescription = "$count unread" },
         contentAlignment = Alignment.Center,
-    ) { Text(if (count > 99) "99+" else "$count", style = Griip.type.caption.copy(fontWeight = FontWeight.Bold), color = Color.White) }
+    ) { Text(if (count > 99) "99+" else "$count", style = Griip.type.caption.copy(fontWeight = FontWeight.Bold), color = if (muted) c.surface else c.onPrimary) }
 }
 
 @Composable
@@ -169,7 +165,7 @@ fun RoleBadge(role: String?, modifier: Modifier = Modifier) {
         "ADMIN" -> c.lavender to c.lavenderSoft
         "MANAGER", "LEAD" -> c.primaryDeep to c.primarySoft
         "GUEST" -> c.warning to c.warningSoft
-        else -> c.textSecondary to c.hairline
+        else -> c.textSecondary to c.surfaceVariant
     }
     val label = when (role.uppercase()) {
         "MANAGER" -> "Branch manager"
@@ -179,44 +175,29 @@ fun RoleBadge(role: String?, modifier: Modifier = Modifier) {
     TagPill(label, fg, bg, modifier)
 }
 
-/** Ring gauge (reference "Dental Health Score 85%"). */
-@Composable
-fun RingProgress(progress: Float, modifier: Modifier = Modifier, size: Dp = 76.dp, stroke: Dp = 8.dp, label: String) {
-    val c = Griip.colors
-    val p by animateFloatAsState(progress.coerceIn(0f, 1f), tween(700), label = "ring")
-    Box(modifier.size(size).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(size)) {
-            val sw = stroke.toPx()
-            val arc = Size(this.size.width - sw, this.size.height - sw)
-            val tl = Offset(sw / 2, sw / 2)
-            drawArc(c.primarySoft, 0f, 360f, false, tl, arc, style = Stroke(sw))
-            drawArc(Brush.sweepGradient(listOf(c.primaryBright, c.primary, c.primaryDeep, c.primaryBright)), -90f, 360f * p, false, tl, arc, style = Stroke(sw, cap = StrokeCap.Round))
-        }
-        Text(label, style = Griip.type.titleSmall, color = c.textPrimary)
-    }
-}
-
 @Composable
 fun SlimProgress(progress: Float, modifier: Modifier = Modifier, color: Color = Griip.colors.primary) {
     val c = Griip.colors
     val p by animateFloatAsState(progress.coerceIn(0f, 1f), tween(400), label = "bar")
-    Box(modifier.fillMaxWidth().height(6.dp).clip(Shapes.pill).background(c.primarySoft)) {
-        Box(Modifier.fillMaxWidth(p).height(6.dp).clip(Shapes.pill).background(Brush.horizontalGradient(listOf(c.primaryBright, color))))
+    Box(modifier.fillMaxWidth().height(4.dp).clip(Shapes.pill).background(c.surfaceVariant)) {
+        Box(Modifier.fillMaxWidth(p).height(4.dp).clip(Shapes.pill).background(color))
     }
 }
 
-/** Three-up stat tile (reference: Cavities / Plaque / Gum Health). */
+/** Compact stat: value over label, no container of its own (it sits inside a card). */
 @Composable
 fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
     val c = Griip.colors
-    GlassCard(modifier, shape = Shapes.tile, elevation = 6.dp, contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 14.dp, horizontal = 10.dp)) {
-        Text(label, style = Griip.type.caption, color = c.textTertiary, maxLines = 1, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-        Spacer(Modifier.height(4.dp))
-        Text(value, style = Griip.type.headline, color = c.textPrimary, maxLines = 1, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+    Column(modifier.clip(Shapes.small).background(c.surfaceVariant).padding(vertical = 10.dp, horizontal = 8.dp).semantics(mergeDescendants = true) {}) {
+        Text(value, style = Griip.type.title, color = c.textPrimary, maxLines = 1, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        Text(label, style = Griip.type.caption, color = c.textSecondary, maxLines = 1, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
     }
 }
 
-/** Card row: leading visual, title, subtitle, trailing slot (reference Treatments list). */
+/**
+ * A flat list row: leading visual, title, subtitle, optional meta line, trailing slot. Tappable rows get a
+ * ripple; [selected] tints the row. (Historical name: it used to be a floating card.)
+ */
 @Composable
 fun ListCard(
     title: String,
@@ -227,34 +208,43 @@ fun ListCard(
     meta: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     selected: Boolean = false,
+    /** Replaces the plain [subtitle] text, e.g. with an icon and a coloured status line. */
+    subtitleContent: (@Composable () -> Unit)? = null,
 ) {
     val c = Griip.colors
-    GlassCard(modifier.fillMaxWidth(), onClick = onClick, selected = selected, contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (leading != null) {
-                leading()
-                Spacer(Modifier.width(14.dp))
+    Row(
+        modifier.fillMaxWidth().heightIn(min = 56.dp).clip(Shapes.tile)
+            .background(if (selected) c.primarySoft else Color.Transparent)
+            .pressable(onClick)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (leading != null) {
+            leading()
+            Spacer(Modifier.width(14.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(title, style = Griip.type.titleSmall, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitleContent != null) {
+                Spacer(Modifier.height(1.dp))
+                subtitleContent()
+            } else if (subtitle != null) {
+                Spacer(Modifier.height(1.dp))
+                Text(subtitle, style = Griip.type.bodySmall, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
-            Column(Modifier.weight(1f)) {
-                Text(title, style = Griip.type.titleSmall, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (subtitle != null) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(subtitle, style = Griip.type.bodySmall, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-                if (meta != null) {
-                    Spacer(Modifier.height(6.dp))
-                    meta()
-                }
+            if (meta != null) {
+                Spacer(Modifier.height(6.dp))
+                meta()
             }
-            if (trailing != null) {
-                Spacer(Modifier.width(10.dp))
-                trailing()
-            }
+        }
+        if (trailing != null) {
+            Spacer(Modifier.width(10.dp))
+            trailing()
         }
     }
 }
 
-/** Settings/menu row (reference "My Profile" list): tinted icon, label, chevron/switch/value. */
+/** Settings/menu row: tinted icon, label (+subtitle), chevron/switch/value. */
 @Composable
 fun MenuRow(
     icon: ImageVector,
@@ -268,16 +258,19 @@ fun MenuRow(
 ) {
     val c = Griip.colors
     Row(
-        modifier.fillMaxWidth().clip(Shapes.tile).pressable(onClick).padding(horizontal = 10.dp, vertical = 10.dp),
+        modifier.fillMaxWidth().heightIn(min = 56.dp).clip(Shapes.small).pressable(onClick).padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconTile(icon, tint, tintBg, size = 38.dp)
+        IconTile(icon, tint, tintBg, size = 36.dp)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = Griip.type.bodyMedium, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (subtitle != null) Text(subtitle, style = Griip.type.caption, color = c.textTertiary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(title, style = Griip.type.bodyMedium.copy(fontSize = 15.sp), color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null) Text(subtitle, style = Griip.type.caption, color = c.textSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
-        if (trailing != null) trailing()
+        if (trailing != null) {
+            Spacer(Modifier.width(8.dp))
+            trailing()
+        }
     }
 }
 
@@ -293,21 +286,22 @@ fun StatusBanner(text: String, kind: BannerKind, modifier: Modifier = Modifier, 
         BannerKind.Success -> c.success to c.successSoft
     }
     Row(
-        modifier.fillMaxWidth().clip(Shapes.tile).background(bg.copy(alpha = 0.92f)).padding(horizontal = 14.dp, vertical = 10.dp),
+        modifier.fillMaxWidth().clip(Shapes.tile).background(bg).padding(horizontal = 14.dp, vertical = 10.dp)
+            .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
             Icon(icon, null, tint = fg, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(10.dp))
         }
-        Text(text, style = Griip.type.label, color = fg, modifier = Modifier.weight(1f))
+        Text(text, style = Griip.type.label, color = if (kind == BannerKind.Info) c.textPrimary else fg, modifier = Modifier.weight(1f))
         if (action != null && onAction != null) {
-            Text(action, style = Griip.type.label.copy(fontWeight = FontWeight.Bold), color = fg, modifier = Modifier.clip(Shapes.pill).pressable(onAction).padding(horizontal = 8.dp, vertical = 4.dp))
+            Text(action, style = Griip.type.label.copy(fontWeight = FontWeight.Bold), color = fg, modifier = Modifier.clip(Shapes.pill).pressable(onAction).padding(horizontal = 10.dp, vertical = 8.dp))
         }
     }
 }
 
-/** Illustrated empty/error state: soft orb with icon, title, hint, optional action. */
+/** Empty/error state: icon in a soft circle, title, hint, optional action. */
 @Composable
 fun EmptyState(
     icon: ImageVector,
@@ -319,15 +313,9 @@ fun EmptyState(
     tint: Color = Griip.colors.primary,
 ) {
     val c = Griip.colors
-    Column(modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(120.dp), contentAlignment = Alignment.Center) {
-            Box(Modifier.size(120.dp).clip(CircleShape).background(Brush.radialGradient(listOf(tint.copy(alpha = 0.22f), Color.Transparent))))
-            Box(
-                Modifier.size(76.dp).shadow(14.dp, CircleShape, ambientColor = tint.copy(alpha = 0.4f), spotColor = tint.copy(alpha = 0.4f)).clip(CircleShape)
-                    .background(Brush.linearGradient(if (c.isDark) listOf(c.glassStrong, c.primarySoft) else listOf(Color.White, c.primarySoft)))
-                    .border(1.dp, if (c.isDark) c.glassBorder else Color.White, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) { Icon(icon, null, tint = tint, modifier = Modifier.size(34.dp)) }
+    Column(modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(72.dp).clip(CircleShape).background(c.primarySoft), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = tint, modifier = Modifier.size(32.dp))
         }
         Spacer(Modifier.height(16.dp))
         Text(title, style = Griip.type.title, color = c.textPrimary, textAlign = TextAlign.Center)
@@ -335,36 +323,34 @@ fun EmptyState(
         Text(message, style = Griip.type.bodySmall, color = c.textSecondary, textAlign = TextAlign.Center)
         if (action != null && onAction != null) {
             Spacer(Modifier.height(20.dp))
-            PillButton(action, onAction, Modifier.fillMaxWidth(0.8f), height = 50.dp)
+            PillButton(action, onAction)
         }
     }
 }
 
-/** Glass shimmer placeholder for loading lists. */
+/** Loading placeholder: a softly pulsing block. */
 @Composable
 fun ShimmerBlock(modifier: Modifier = Modifier, shape: androidx.compose.ui.graphics.Shape = Shapes.card) {
     val c = Griip.colors
     val t = rememberInfiniteTransition(label = "shimmer")
-    val x by t.animateFloat(-1f, 2f, infiniteRepeatable(tween(1300, easing = LinearEasing), RepeatMode.Restart), label = "x")
-    Box(
-        modifier.clip(shape).background(c.glass).drawWithContent {
-            drawContent()
-            val w = size.width
-            drawRect(
-                Brush.linearGradient(
-                    listOf(Color.Transparent, Color.White.copy(alpha = if (c.isDark) 0.06f else 0.55f), Color.Transparent),
-                    start = Offset(w * x - w * 0.4f, 0f),
-                    end = Offset(w * x + w * 0.4f, size.height),
-                ),
-            )
-        },
-    )
+    val a by t.animateFloat(0.55f, 1f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse), label = "a")
+    Box(modifier.clip(shape).background(c.surfaceVariant.copy(alpha = a)))
 }
 
 @Composable
 fun ShimmerList(count: Int = 5, modifier: Modifier = Modifier) {
-    Column(modifier.padding(horizontal = Space.gutter), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        repeat(count) { ShimmerBlock(Modifier.fillMaxWidth().height(76.dp)) }
+    Column(modifier.padding(horizontal = Space.gutter).semantics { contentDescription = "Loading" }, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        repeat(count) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ShimmerBlock(Modifier.size(48.dp), CircleShape)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    ShimmerBlock(Modifier.fillMaxWidth(0.55f).height(14.dp), Shapes.small)
+                    Spacer(Modifier.height(8.dp))
+                    ShimmerBlock(Modifier.fillMaxWidth(0.85f).height(12.dp), Shapes.small)
+                }
+            }
+        }
     }
 }
 
