@@ -164,6 +164,7 @@ with no device or emulator. `crypto/Bytes.kt` uses `java.util.Base64`, so the re
 | `ui/screens/calls/VideoSinkBindingTest` | 8 | PASS | Renderer lifetime and sink ordering (video fix) |
 | `data/db/MigrationsTest` | 3 | PASS | D-13: schema versions contiguous and equal to `GriipDatabase.VERSION`; each migration step gives the next exported schema and keeps sample rows (sqlite-jdbc). Proven to fail when v2 had no step |
 | `data/api/RegisterReqTest` | 2 | PASS | T1.6: `inviteCode` is sent when entered and omitted when blank |
+| `data/repo/AttachmentFilesTest` | 3 | PASS | T1.10: a message's decrypted files are deleted with it; names from messages can't reach outside `filesDir/attachments` |
 | `data/repo/KeyDirectoryTest` | 7 | PASS | T1.2 pinning: TOFU; a substituted key pauses sending to the whole conversation; a forged sender is held; an uncertified device is rejected; accepting the reviewed key resumes; a second swap is caught; reverting clears the warning |
 
 Not yet covered: the key directory, outbox and queue processing. Each gets tests together with the change that needs them (T1.2, T1.4).

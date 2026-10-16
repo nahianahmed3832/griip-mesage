@@ -78,6 +78,7 @@ class MessageRepository(
     private val notify: (Notice) -> Unit,
 ) {
     private val json = GriipJson
+    private val files = AttachmentFiles(File(context.filesDir, "attachments"))
     private val listOfStrings = ListSerializer(String.serializer())
     private val reactionsSer = MapSerializer(String.serializer(), ListSerializer(String.serializer()))
     private val attachmentsSer = ListSerializer(AttachmentRef.serializer())
@@ -191,6 +192,7 @@ class MessageRepository(
 
     suspend fun delete(m: MessageEntity) {
         if (!m.outgoing) return
+        files.deleteFor(m.id, attachments(m)) // the decrypted copies go too (T1.10)
         db.messages().upsert(m.copy(deleted = true, text = "", attachmentsJson = "[]"))
         sendControl(m.conversationId, Payload(type = "delete", target = m.id))
         refreshPreview(m.conversationId)
@@ -243,8 +245,8 @@ class MessageRepository(
         val s = session.session ?: return
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
-        val local = File(attachmentDir(), "$id-${safeName(name)}").apply { writeBytes(bytes) }
-        val placeholder = AttachmentRef("pending", name, mime, bytes.size.toLong(), "", "", local.name)
+        val local = files.fileFor(id, name).apply { writeBytes(bytes) }
+        val placeholder = AttachmentRef(AttachmentFiles.PENDING, name, mime, bytes.size.toLong(), "", "", local.name)
         db.messages().upsert(
             MessageEntity(id, cid, s.userId, s.deviceId, true, "text", caption, attachmentsJson = json.encodeToString(attachmentsSer, listOf(placeholder)), sentAt = now, sortTs = now, status = MessageStatus.SENDING),
         )
@@ -254,7 +256,7 @@ class MessageRepository(
             _transfer.update { it + (id to 0f) }
             val up = api.upload("/v1/attachments?conversationId=$cid", enc.bytes) { p -> _transfer.update { it + (id to p) } }
             val ref = AttachmentRef(up.id, name, mime, bytes.size.toLong(), enc.key, enc.nonce, enc.sha256)
-            File(attachmentDir(), "$id-${safeName(name)}").renameTo(File(attachmentDir(), "${up.id}-${safeName(name)}"))
+            files.fileFor(id, name).renameTo(files.fileFor(up.id, name))
             sendText(cid, caption, attachments = listOf(ref), presetId = id)
         } catch (e: ApiException) {
             db.messages().setStatus(id, MessageStatus.FAILED, null, e.message)
@@ -264,7 +266,7 @@ class MessageRepository(
     }
 
     fun localAttachment(ref: AttachmentRef): File? =
-        File(attachmentDir(), "${ref.id}-${safeName(ref.name)}").takeIf { it.exists() } ?: File(attachmentDir(), ref.sha256).takeIf { ref.id == "pending" && it.exists() }
+        files.fileFor(ref.id, ref.name).takeIf { it.exists() } ?: files.child(ref.sha256)?.takeIf { ref.id == AttachmentFiles.PENDING && it.exists() }
 
     suspend fun downloadAttachment(ref: AttachmentRef): File {
         localAttachment(ref)?.let { return it }
@@ -272,14 +274,12 @@ class MessageRepository(
         try {
             val ct = api.download("/v1/attachments/${ref.id}") { p -> _transfer.update { it + (ref.id to p) } }
             val plain = AttachmentCrypto.decrypt(ct, ref.key, ref.nonce, ref.sha256)
-            return File(attachmentDir(), "${ref.id}-${safeName(ref.name)}").apply { writeBytes(plain) }
+            return files.fileFor(ref.id, ref.name).apply { writeBytes(plain) }
         } finally {
             _transfer.update { it - ref.id }
         }
     }
 
-    private fun attachmentDir() = File(context.filesDir, "attachments").apply { mkdirs() }
-    private fun safeName(n: String) = n.replace(Regex("[^A-Za-z0-9._-]"), "_").take(80)
 
     // ─────────────────────────── Outbox ───────────────────────────
 
@@ -483,6 +483,7 @@ class MessageRepository(
             "delete" -> {
                 val t = db.messages().get(pl.target ?: return) ?: return
                 if (t.senderUserId == item.senderUserId) {
+                    files.deleteFor(t.id, attachments(t))
                     db.messages().upsert(t.copy(deleted = true, text = "", attachmentsJson = "[]"))
                     refreshPreview(t.conversationId)
                 }

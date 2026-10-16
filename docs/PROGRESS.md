@@ -24,6 +24,20 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
 
+### T1.10 Deleting a message deletes its decrypted files (2026-10-16)
+
+- **Defect:** deleting a message cleared its attachment list, but the decrypted file in `filesDir/attachments` stayed until the whole device was erased (D18).
+- **Change:**
+  - New `AttachmentFiles` owns the attachment folder. Deleting your own message, and applying a sender's authorised remote `delete`, now removes that message's local files: downloaded or sent, and a pending upload's file.
+  - **Found while doing this:** attachment ids and names come from other people's decrypted messages, and the old code built paths from the raw id. All names are now reduced to safe characters, and every path must resolve directly inside the folder. File names for real server ids and upload UUIDs are unchanged.
+  - The app has no conversation-delete path, so there's nothing to clean up there yet.
+- **Tests:** `AttachmentFilesTest` has 3 tests:
+  - the right files are deleted and unrelated ones kept;
+  - traversal attempts (`../griip.db`, absolute paths, `..`) touch nothing outside the folder;
+  - existing names are preserved.
+
+  Android unit tests: **40/40**.
+
 ### T1.9 "Erase this device" revokes it first (2026-10-16)
 
 - **Defect:** erasing only logged out. The device stayed active on the account, so contacts kept encrypting to keys that no longer existed, and a failed logout was ignored silently.

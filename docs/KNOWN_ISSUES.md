@@ -42,7 +42,7 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
   - ~~Presence is readable by anyone (P4, T1.7).~~ Fixed on the server 2026-10-16, **not yet deployed**.
   - ~~The activity feed leaks other branches' team and channel names (P2, T1.8).~~ Fixed on the server 2026-10-16, **not yet deployed**.
   - ~~Erasing a device doesn't revoke it (T1.9).~~ Fixed 2026-10-16: it revokes first and asks before erasing if the server can't confirm. The device check is pending.
-  - Deleted messages leave decrypted files on the device (T1.10).
+  - ~~Deleted messages leave decrypted files on the device (T1.10).~~ Fixed 2026-10-16.
   - Backlog and live deliveries interleave and duplicate (P6, T2.1).
   - Realtime frames can be dropped under load (T2.2).
 - The release (R8) build compiles but has never been run on a device.

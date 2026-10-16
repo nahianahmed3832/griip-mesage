@@ -30,7 +30,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 | D15 | Attachments are buffered fully in memory. **Server side fixed 2026-10-16** (uploads stream to disk, T1.6). The client (`ByteArray` read and download) remains, see T2.6 | `ApiClient.kt`, `ConversationViewModel.attach` | Medium |
 | D16 | `calls`, `call_participants` and `audit_log` are never pruned | `jobs.ts` | Low |
 | D17 | No `PRAGMA secure_delete`. Deleted ciphertext lingers in free pages and the WAL | `db.ts` | Low |
-| D18 | Decrypted attachment files survive message deletion | `MessageRepository` | Medium (T1.10) |
+| D18 | ~~Decrypted attachment files survive message deletion~~ **Fixed 2026-10-16 (T1.10)** | `AttachmentFiles.kt`, `MessageRepository` | Medium (T1.10) |
 | D19 | ~~`setInterval` cleanup can overlap itself~~ **Fixed 2026-10-16** with T1.3: in-flight guard, and LiveKit calls time out after 5 s | `jobs.ts`, `livekit.ts` | Low |
 | D20 | `lastTyping` map in `ws.ts` grows without bound | `ws.ts` | Low |
 

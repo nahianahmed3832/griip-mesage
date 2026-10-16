@@ -132,7 +132,7 @@ Extend these, don't replace them:
 - **Acceptance:** erase calls `DELETE /v1/devices/<own id>` before wiping. If offline, it warns and offers to erase anyway.
 - **Verification:** reference-client check of the device list, plus a device run.
 
-### T1.10 Deleting a message deletes its local decrypted file
+### T1.10 Deleting a message deletes its local decrypted file. **Done 2026-10-16**
 - **Modules:** `MessageRepository.delete` and `apply("delete")`.
 - **Acceptance:** the file in `filesDir/attachments` is removed on local or remote delete. The conversation-delete path does the same.
 - **Verification:** JVM test with a temp dir (T2.4).
