@@ -128,11 +128,13 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     fun sendVoice() {
         c.voicePlayer.stop { it == draftKey }
         val clip = voiceDraft.take() ?: return
+        val replyId = replyTo.value?.id
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { clip.file.inputStream() }.use {
-                    c.messages.sendAttachment(conversationId, VoiceNote.fileName(System.currentTimeMillis()), VoiceNote.MIME, it, "", voiceDurationMs = clip.durationMs)
+                    c.messages.sendAttachment(conversationId, VoiceNote.fileName(System.currentTimeMillis()), VoiceNote.MIME, it, "", voiceDurationMs = clip.durationMs, replyTo = replyId)
                 }
+                replyTo.value = ReplyTarget.afterSend(replyTo.value, replyId, success = true)
             } catch (e: Exception) {
                 error.value = "Couldn't send the voice message"
             } finally {
@@ -191,22 +193,35 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
         if (c.appState.viewingConversation.value == conversationId) c.appState.viewingConversation.value = null
     }
 
+    /** Text to put back in the composer after a send that failed before the message was stored (nothing is lost). */
+    val restoreText = MutableStateFlow<String?>(null)
+
     fun send(text: String) {
         val t = text.trim()
         if (t.isEmpty()) return
+        // Captured at the tap: a swipe to another message while this one is being stored can't change what it replies to.
         val ed = editing.value
+        val replyId = replyTo.value?.id
         viewModelScope.launch {
-            runCatching {
-                // Resolved from the loaded member list; if it hasn't loaded yet the repository resolves it itself.
+            val ok = runCatching {
+                // Resolved from the loaded member list; if it hasn't loaded yet the repository resolves it from what it knows.
                 val resolved = if (mentionMembers.value.isNotEmpty()) mentionsIn(t) else null
                 if (ed != null) c.messages.edit(ed, t, resolved)
-                else c.messages.sendText(conversationId, t, replyTo = replyTo.value?.id, threadRoot = threadRoot, mentions = resolved)
-            }.onFailure { error.value = it.friendly() }
-            replyTo.value = null
-            editing.value = null
-            c.conversations.setDraft(conversationId, null)
-            c.messages.setTyping(conversationId, false)
+                else c.messages.sendText(conversationId, t, replyTo = replyId, threadRoot = threadRoot, mentions = resolved)
+            }.onFailure { error.value = it.friendly(); restoreText.value = t }.isSuccess
+            // The message is stored with its reply (retries resend it from there), so the composer's target can go.
+            replyTo.value = ReplyTarget.afterSend(replyTo.value, replyId, ok)
+            if (ok) {
+                if (editing.value?.id == ed?.id) editing.value = null
+                c.conversations.setDraft(conversationId, null)
+                c.messages.setTyping(conversationId, false)
+            }
         }
+    }
+
+    /** Keeps the reply target in step with the conversation (dropped if that message is deleted). */
+    fun refreshReplyTarget(latest: MessageEntity?) {
+        replyTo.value = ReplyTarget.refreshed(replyTo.value, conversationId, latest)
     }
 
     fun typingChanged(text: String) {

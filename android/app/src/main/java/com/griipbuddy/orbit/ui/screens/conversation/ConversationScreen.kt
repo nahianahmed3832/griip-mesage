@@ -172,6 +172,9 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val text = field.text
     fun setText(t: String) { field = TextFieldValue(t, TextRange(t.length)) }
     val mentionMembers by vm.mentionMembers.collectAsStateWithLifecycle()
+    // A send that failed before the message was stored gives its text back (only into an empty composer).
+    val restore by vm.restoreText.collectAsStateWithLifecycle()
+    LaunchedEffect(restore) { restore?.let { if (field.text.isEmpty()) setText(it); vm.restoreText.value = null } }
     val canMentionAll by vm.canMentionAll.collectAsStateWithLifecycle()
     // Swipe-to-reply and the menu's "Reply" put the cursor in the composer, showing the keyboard.
     val composerFocus = remember { FocusRequester() }
@@ -232,6 +235,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             if (text.isEmpty() && editing == null) conv?.draft?.let { setText(it) }
         }
     }
+    // The reply target follows its message: dropped if it's deleted, refreshed if it's edited.
+    LaunchedEffect(messages, replyTo?.id) { replyTo?.let { t -> vm.refreshReplyTarget(messages.firstOrNull { it.id == t.id }) } }
     LaunchedEffect(messages.firstOrNull()?.id) {
         if (messages.isNotEmpty()) {
             if (listState.firstVisibleItemIndex <= 2) listState.animateScrollToItem(0)

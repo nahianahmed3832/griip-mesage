@@ -201,7 +201,8 @@ class MessageRepository(
         if (!text.contains('@')) return MentionSet.NONE
         val conv = db.conversations().get(cid) ?: return MentionSet.NONE
         if (conv.type == "DM") return MentionSet.NONE
-        val members = conversations.mentionMembers(cid)
+        // What the phone already knows (no network wait while the composer still shows the message being sent).
+        val members = conversations.knownMentionMembers(cid)
         return MentionRules.resolve(text, members, conversations.mentionAll.value[cid] == true, myUserId)
     }
 
@@ -321,7 +322,7 @@ class MessageRepository(
      * it (T2.6). The local copy is the retry source until the upload succeeds. A voice message passes
      * [voiceDurationMs] and travels as an ordinary encrypted attachment marked as voice.
      */
-    suspend fun sendAttachment(cid: String, name: String, mime: String, input: java.io.InputStream, caption: String, voiceDurationMs: Long? = null) {
+    suspend fun sendAttachment(cid: String, name: String, mime: String, input: java.io.InputStream, caption: String, voiceDurationMs: Long? = null, replyTo: String? = null) {
         val s = session.session ?: return
         val id = UUID.randomUUID().toString()
         val local = files.fileFor(id, name)
@@ -347,7 +348,7 @@ class MessageRepository(
         val voice = voiceDurationMs?.let { true }
         val placeholder = AttachmentRef(AttachmentFiles.PENDING, name, mime, local.length(), "", "", local.name, voice, voiceDurationMs)
         db.messages().upsert(
-            MessageEntity(id, cid, s.userId, s.deviceId, true, "text", caption, attachmentsJson = json.encodeToString(attachmentsSer, listOf(placeholder)), sentAt = now, sortTs = now, status = MessageStatus.SENDING),
+            MessageEntity(id, cid, s.userId, s.deviceId, true, "text", caption, replyToId = replyTo, attachmentsJson = json.encodeToString(attachmentsSer, listOf(placeholder)), sentAt = now, sortTs = now, status = MessageStatus.SENDING),
         )
         db.conversations().bumpPreview(cid, id, VoiceNote.label(listOf(placeholder)) ?: "📎 $name", now, "You", 0, 0)
         uploadAttachment(id, cid, placeholder, local, caption)
@@ -366,7 +367,7 @@ class MessageRepository(
             val up = TransferRetry.run { api.uploadFile("/v1/attachments?conversationId=$cid", enc) { p -> _transfer.update { it + (id to p) } } }
             val ref = AttachmentRef(up.id, name, pending.mime, local.length(), meta.key, meta.nonce, meta.sha256, pending.voice, pending.durationMs)
             local.renameTo(files.fileFor(up.id, name))
-            sendText(cid, caption, attachments = listOf(ref), presetId = id)
+            sendText(cid, caption, replyTo = db.messages().get(id)?.replyToId, attachments = listOf(ref), presetId = id)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e // left SENDING; marked interrupted at the next start (failInterruptedUploads)
         } catch (e: ApiException) {

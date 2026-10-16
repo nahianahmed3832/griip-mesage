@@ -89,7 +89,15 @@ class ConversationRepository(
      */
     suspend fun mentionMembers(id: String): List<com.griipbuddy.orbit.data.model.MentionMember> {
         val remote = runCatching { members(id) }.getOrNull()
-        if (remote != null) return remote.map { com.griipbuddy.orbit.data.model.MentionMember(it.id, it.username, it.displayName) }
+        if (remote != null) return remote.map { com.griipbuddy.orbit.data.model.MentionMember(it.id, it.username, it.displayName) }.also { memberCache[id] = it }
+        return knownMentionMembers(id)
+    }
+
+    private val memberCache = java.util.concurrent.ConcurrentHashMap<String, List<com.griipbuddy.orbit.data.model.MentionMember>>()
+
+    /** The members already known on this phone (last full list fetched, else the ones stored with the conversation): no network. */
+    suspend fun knownMentionMembers(id: String): List<com.griipbuddy.orbit.data.model.MentionMember> {
+        memberCache[id]?.let { return it }
         val conv = db.conversations().get(id) ?: return emptyList()
         return ConversationRepository.members(conv).map { com.griipbuddy.orbit.data.model.MentionMember(it.id, it.username, it.displayName) }
     }
