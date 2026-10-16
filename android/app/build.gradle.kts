@@ -32,6 +32,7 @@ android {
         versionName = "0.1.0-beta"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"$defaultServer\"")
+        manifestPlaceholders["appLabel"] = "@string/app_name"
         vectorDrawables.useSupportLibrary = true
         // Ship only ABIs modern phones/emulators use (drops legacy mips/armeabi/x86 from dependencies).
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
@@ -40,6 +41,12 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
+            // -Porbit.sideBySide=true: a debug build that installs beside the Play app (com.griipbuddy.Orbit.test,
+            // "Orbit Test") instead of clashing with its signature. Off by default, so testing APKs are unchanged.
+            if (project.findProperty("orbit.sideBySide") == "true") {
+                applicationIdSuffix = ".test"
+                manifestPlaceholders["appLabel"] = "Orbit Test"
+            }
         }
         release {
             isMinifyEnabled = true

@@ -3,6 +3,7 @@
  *
  *   npm run bot -- chat   <peerUsername> [seconds]          DM the peer, echo every message back
  *   npm run bot -- call   <peerUsername> [voice|video] [s]  ring the peer, exchange E2EE media
+ *   npm run bot -- call   <user1,user2,…> [voice|video] [s]  start a group call with them (they `answer`)
  *   npm run bot -- answer [seconds]                          wait for the peer to call, answer
  * <peerUsername> may be a full address (name:server) for someone on another federated server.
  *
@@ -20,6 +21,11 @@
  *   GRIIP_BOT_CHURN_MS=n     every n ms unpublish and republish those tone tracks (remote unpublish on the peer).
  *   GRIIP_BOT_END_FIRST=1    at the deadline, end the call through the API and keep sending media for 5 s,
  *                            so the peer tears its room down while frames are still arriving.
+ * Group calls (answer mode; several bots can answer the same group call):
+ *   GRIIP_BOT_ANSWER_DELAY_MS=n  join n ms after the ring (staggered joins)
+ *   GRIIP_BOT_AUDIO_ONLY=1       join a video call without a camera (a mixed audio/video call)
+ *   GRIIP_BOT_STAY_S=n           leave after n seconds (default 600); a group call is left, never ended for everyone
+ *   GRIIP_BOT_CAM_TOGGLE_S=n     turn the camera off and on every n seconds (unpublish / republish)
  * Voice messages (docs/VOICE_MESSAGES.md):
  *   GRIIP_BOT_SEND_VOICE=<file.m4a>  in chat mode, also send this clip as an encrypted voice message (same
  *                            format as the app: AES-256-GCM, ciphertext ‖ tag, SHA-256 of the ciphertext).
@@ -179,8 +185,15 @@ async function chat(peerName: string, seconds: number) {
       void (async () => {
         try {
           const keyMsg = await bot.waitFor(() => bot.received.find((x) => x.payload.type === "call_invite" && x.payload.callId === ring.call.id), 15000);
+          const delay = Number(process.env.GRIIP_BOT_ANSWER_DELAY_MS ?? 0);
+          if (delay > 0) {
+            log(`⏳ joining in ${delay} ms`);
+            await new Promise((r) => setTimeout(r, delay));
+          }
           const join = await bot.req("POST", `/v1/calls/${ring.call.id}/join`);
-          await runMedia(bot, ring.call.id, join.media, keyMsg.payload.e2eeKey, ring.call.video, 600);
+          const video = ring.call.video && process.env.GRIIP_BOT_AUDIO_ONLY !== "1";
+          const group = ring.call.conversationType && ring.call.conversationType !== "DM";
+          await runMedia(bot, ring.call.id, join.media, keyMsg.payload.e2eeKey, video, Number(process.env.GRIIP_BOT_STAY_S ?? 600), !!group);
         } catch (e) {
           log("✗ answer failed:", String(e));
         }
@@ -208,7 +221,27 @@ function startMedia(room: Room, video: boolean) {
   const publishTone = (i: number) => room.localParticipant!.publishTrack(LocalAudioTrack.createAudioTrack(`bot-tone-${i}`, extra[i]), new TrackPublishOptions({ source: TrackSource.SOURCE_UNKNOWN }));
   const toneSids: (string | undefined)[] = [];
   extra.forEach((_, i) => pubs.push(publishTone(i).then((p) => { toneSids[i] = p.sid; })));
-  if (video) pubs.push(room.localParticipant!.publishTrack(LocalVideoTrack.createVideoTrack("bot-cam", vsrc), new TrackPublishOptions({ source: TrackSource.SOURCE_CAMERA })));
+  const publishCam = () => room.localParticipant!.publishTrack(LocalVideoTrack.createVideoTrack("bot-cam", vsrc), new TrackPublishOptions({ source: TrackSource.SOURCE_CAMERA }));
+  let camSid: string | undefined;
+  if (video) pubs.push(publishCam().then((p) => { camSid = p.sid; }));
+  // GRIIP_BOT_CAM_TOGGLE_S=n: camera off for n seconds, on for n seconds, and so on (the peer's tile must follow).
+  const toggleS = Number(process.env.GRIIP_BOT_CAM_TOGGLE_S ?? 0);
+  let toggling = video && toggleS > 0;
+  if (toggling) (async () => {
+    await Promise.all(pubs);
+    while (toggling) {
+      await new Promise((r) => setTimeout(r, toggleS * 1000));
+      if (!toggling) break;
+      if (camSid) {
+        await room.localParticipant!.unpublishTrack(camSid).catch(() => {});
+        camSid = undefined;
+        log("📷 camera off");
+      } else {
+        camSid = (await publishCam().catch(() => undefined))?.sid;
+        log("📷 camera on");
+      }
+    }
+  })().catch((e) => log("camera toggling stopped:", e));
   let t = 0;
   const timer = setInterval(() => {
     if (video) {
@@ -243,7 +276,7 @@ function startMedia(room: Room, video: boolean) {
       if (++cycles % 5 === 0) log(`🔁 republished ${extra.length} tone tracks ${cycles} times`);
     }
   })().catch((e) => log("churn stopped:", e));
-  return { stop: () => { churning = false; clearInterval(timer); screen?.stop(); }, published: Promise.all(pubs) };
+  return { stop: () => { churning = false; toggling = false; clearInterval(timer); screen?.stop(); }, published: Promise.all(pubs) };
 }
 
 /** Landscape 960×540 pattern published as SOURCE_SCREENSHARE between 10 s and 40 s. */
@@ -320,7 +353,7 @@ function watchRemote(room: Room) {
   return { counts, enc, stop: () => clearInterval(timer) };
 }
 
-async function runMedia(bot: GriipClient, callId: string, media: { url: string; token: string }, key: string | null, video: boolean, seconds: number) {
+async function runMedia(bot: GriipClient, callId: string, media: { url: string; token: string }, key: string | null, video: boolean, seconds: number, group = false) {
   const room = new Room();
   const watch = watchRemote(room);
   const opts: any = { autoSubscribe: true, dynacast: false };
@@ -355,19 +388,28 @@ async function runMedia(bot: GriipClient, callId: string, media: { url: string; 
   watch.stop();
   log("final:", JSON.stringify(watch.counts), "encryption:", JSON.stringify(watch.enc), ended ? "(peer ended the call)" : endedFirst ? "(bot ended the call first)" : "(timeout)");
   await room.disconnect();
-  if (!ended && !endedFirst) await bot.req("POST", `/v1/calls/${callId}/end`).catch(() => {});
+  // A group call goes on without the bot; a one-to-one call ends with it.
+  if (!ended && !endedFirst) await bot.req("POST", `/v1/calls/${callId}/${group ? "leave" : "end"}`).catch(() => {});
+  if (group) log("👋 left the group call");
 }
 
 async function call(peerName: string, mode: string, seconds: number) {
   const bot = await loadBot();
-  const peer = await findPeer(bot, peerName);
-  const dm = (await bot.req("POST", "/v1/conversations/dm", { userId: peer.id })).conversation.id;
+  // "a,b,c": a group call with several people (they answer with `answer`); one name: a one-to-one call.
+  const names = peerName.split(",").map((n) => n.trim()).filter(Boolean);
+  const peers = [];
+  for (const n of names) peers.push(await findPeer(bot, n));
+  const group = peers.length > 1;
+  const peer = peers[0];
+  const dm = group
+    ? (await bot.req("POST", "/v1/conversations/group", { name: `Bot group ${new Date().toISOString().slice(11, 19)}`, memberIds: peers.map((p) => p.id) })).conversation.id
+    : (await bot.req("POST", "/v1/conversations/dm", { userId: peer.id })).conversation.id;
   await bot.connect();
   const video = mode !== "voice";
   const res = await bot.req("POST", "/v1/calls", { conversationId: dm, video });
   const key = crypto.randomBytes(32).toString("base64");
   await bot.send(dm, { type: "call_invite", callId: res.call.id, video, e2eeKey: key }, "control");
-  log(`📞 ringing @${peer.username} (${video ? "video" : "voice"} call ${res.call.id}); key sent via E2EE message`);
+  log(`📞 ringing ${peers.map((p) => "@" + p.username).join(", ")} (${group ? "group " : ""}${video ? "video" : "voice"} call ${res.call.id}); key sent via E2EE message`);
   // Report the call's own state changes: "alerted" (a callee device is ringing), "declined", "ended" with its reason.
   let seenEvents = 0;
   const watch = setInterval(() => {
@@ -376,7 +418,7 @@ async function call(peerName: string, mode: string, seconds: number) {
     seenEvents = evs.length;
   }, 250);
   try {
-    await runMedia(bot, res.call.id, res.media, key, video, seconds);
+    await runMedia(bot, res.call.id, res.media, key, video, seconds, group);
   } finally {
     clearInterval(watch);
   }
@@ -391,8 +433,15 @@ async function answer(seconds: number) {
   log(`📞 incoming ${ring.call.video ? "video" : "voice"} call ${ring.call.id} from ${ring.from?.displayName}`);
   const keyMsg = await bot.waitFor(() => bot.received.find((m) => m.payload.type === "call_invite" && m.payload.callId === ring.call.id), 15000);
   log("🔑 got media key via E2EE control message");
+  const delay = Number(process.env.GRIIP_BOT_ANSWER_DELAY_MS ?? 0);
+  if (delay > 0) {
+    log(`⏳ joining in ${delay} ms`);
+    await new Promise((r) => setTimeout(r, delay));
+  }
   const join = await bot.req("POST", `/v1/calls/${ring.call.id}/join`);
-  await runMedia(bot, ring.call.id, join.media, keyMsg.payload.e2eeKey, ring.call.video, seconds);
+  const video = ring.call.video && process.env.GRIIP_BOT_AUDIO_ONLY !== "1";
+  const group = ring.call.conversationType && ring.call.conversationType !== "DM";
+  await runMedia(bot, ring.call.id, join.media, keyMsg.payload.e2eeKey, video, Number(process.env.GRIIP_BOT_STAY_S ?? seconds), !!group);
   await bot.disconnect();
 }
 
