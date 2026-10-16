@@ -213,6 +213,27 @@ export class Authz {
     return removed;
   }
 
+  /**
+   * Demotion to Guest. Guests have explicit-only access, so everything the person had through
+   * their former role goes: branch and team memberships in this org and every channel
+   * membership in it (public, private and announcement). Managers re-add the specific channels a
+   * guest should keep. DMs and groups are not organisation-scoped and are left alone.
+   * Returns the ids of conversations the user was removed from.
+   */
+  demoteToGuest(orgId: string, userId: string): string[] {
+    this.db.prepare("DELETE FROM branch_members WHERE user_id = ? AND branch_id IN (SELECT id FROM branches WHERE org_id = ?)").run(userId, orgId);
+    this.db.prepare("DELETE FROM team_members WHERE user_id = ? AND team_id IN (SELECT id FROM teams WHERE org_id = ?)").run(userId, orgId);
+    const rows = this.db
+      .prepare(
+        `SELECT c.id FROM conversations c JOIN conversation_members m ON m.conversation_id = c.id
+         WHERE c.org_id = ? AND c.type = 'CHANNEL' AND m.user_id = ?`,
+      )
+      .all(orgId, userId) as { id: string }[];
+    const remove = this.db.prepare("DELETE FROM conversation_members WHERE conversation_id = ? AND user_id = ?");
+    for (const r of rows) remove.run(r.id, userId);
+    return rows.map((r) => r.id);
+  }
+
   /** Auto-join public + announcement channels of a scope the user just gained access to. */
   autoJoinScope(orgId: string, userId: string, now: number): string[] {
     const role = this.orgRole(orgId, userId);

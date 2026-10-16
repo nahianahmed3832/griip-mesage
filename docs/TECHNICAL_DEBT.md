@@ -1,0 +1,65 @@
+# Technical debt (audit, 2026-10-16)
+
+Severity: **High** = can cause a security failure, data loss or an outage. **Medium** = correctness or operability. **Low** = hygiene.
+
+Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`.
+
+## Security and correctness
+
+| # | Debt | Where | Severity | Roadmap |
+|---|---|---|---|---|
+| D1 | The certificate check uses the server's current identity key, not the pinned one. `SECURITY.md` §3 overstates the protection | `android/.../data/repo/Directory.kt`, `test/support/griipClient.ts` | High | T1.2 |
+| D2 | Demotion to Guest relies on `revalidateChannelMemberships`, whose GUEST branch keeps everything. Branch and team rows also survive | `server/src/authz.ts`, `routes/orgs.ts` | High | T1.1 |
+| D3 | No call eviction on membership change. `SECURITY.md` §7 describes an eviction that doesn't exist | `server/src/routes/*` | High | T1.3 |
+| D4 | The catch-all in `processQueue` acks after any exception | `MessageRepository.kt` | High | T1.4 |
+| D5 | Open registration and no per-user quotas on a relay that shares a VPS with production apps | `routes/auth.ts`, `routes/attachments.ts`, `compose.yaml` | High | T1.6 |
+| D6 | `Hub.Conn.flushing` is declared but unused. Live pushes and the backlog interleave | `server/src/hub.ts` | Medium | T2.1 |
+| D7 | `RealtimeClient` drops frames with `tryEmit` into a bounded buffer | `RealtimeClient.kt` | Medium | T2.2 |
+| D8 | `call_invite` keys are accepted from any member (first wins) | `MessageRepository.apply` | Medium | T5.2 |
+| D9 | Invitations aren't re-checked against the creator's current rights | `routes/orgs.ts` `findInvite` | Medium | T3.1 |
+| D10 | Presence and last-seen are readable by anyone | `routes/users.ts` | Medium | T1.7 |
+| D11 | The activity feed filters by action type, not scope | `routes/orgs.ts` | Medium | T1.8 |
+| D12 | Sender lookup excludes revoked devices, losing earlier messages | `routes/users.ts` `deviceDirectory`, `Directory.kt` | Medium | T1.5 |
+
+## Data, storage, retention
+
+| # | Debt | Where | Severity |
+|---|---|---|---|
+| D13 | Room `version = 1` with no migrations. Local history is the only copy | `Database.kt` | High (before any schema change) |
+| D14 | Channel fan-out stores the **full ciphertext once per recipient device**: up to 1,000 recipients × 128 KiB per message. Storage grows with members × devices | `routes/messages.ts`, `delivery_queue.payload` | Medium |
+| D15 | Attachments are buffered fully in memory: server (`parseAs: "buffer"`, 512 MB container), client (`ByteArray` read and download) | `app.ts`, `routes/attachments.ts`, `ApiClient.kt`, `ConversationViewModel.attach` | Medium |
+| D16 | `calls`, `call_participants` and `audit_log` are never pruned | `jobs.ts` | Low |
+| D17 | No `PRAGMA secure_delete`. Deleted ciphertext lingers in free pages and the WAL | `db.ts` | Low |
+| D18 | Decrypted attachment files survive message deletion | `MessageRepository` | Medium (T1.10) |
+| D19 | `setInterval` cleanup can overlap itself if LiveKit calls are slow (no in-flight guard) | `jobs.ts` | Low |
+| D20 | `lastTyping` map in `ws.ts` grows without bound | `ws.ts` | Low |
+
+## Testing and verification
+
+| # | Debt | Severity |
+|---|---|---|
+| D21 | **No Android tests at all.** That covers unit tests, Room migration tests and UI tests. All Android behaviour is verified by hand on one phone | High (T2.4) |
+| D22 | No shared crypto test vectors between Kotlin and Node. Interop is proved only by live runs | Medium |
+| D23 | Release (R8) build succeeds (`assembleRelease`, 64 MB unsigned) but has never been run on a device. Keep rules for LiveKit, BouncyCastle, SQLCipher and serialization exist but are unproven | Medium |
+| D24 | `TESTING.md` mixes device evidence from different builds. Screen share was verified before the teardown fix | Low |
+| D25 | The production smoke test (`test/e2e/prod-smoke.ts`) creates real accounts on production each run (four `e2e.*` accounts exist) | Low |
+
+## Operations and deployment
+
+| # | Debt | Severity |
+|---|---|---|
+| D26 | Compose limits memory only. No `cpus` or `pids_limit`, and no disk quota for `api-data` on a shared 2-vCPU host | Medium (T1.6) |
+| D27 | No TURN, so restricted networks can't place calls | Medium (T5.1) |
+| D28 | Public `/healthz` reveals the online device count | Low |
+| D29 | Admin CLI `disable` can't close live sockets (separate process) | Low (T3.3) |
+| D30 | No backups of permanent org metadata | Medium (owner decision) |
+| D31 | Single process with an in-memory hub, so it can't scale horizontally | Low for the beta |
+
+## Code structure
+
+| # | Debt | Severity |
+|---|---|---|
+| D32 | `MessageRepository` (550 lines) mixes outbox, receive pipeline, attachments, receipts and call-key handling. Split it once tests exist | Low |
+| D33 | `routes/orgs.ts` (760 lines) mixes structure, membership, invites, channels and activity | Low |
+| D34 | String-built JSON frames on Android (`"""{"t":"ack",…}"""`) instead of serializers | Low |
+| D35 | `ApiClient` is a concrete class used directly by repositories, which makes them hard to test. Introduce an interface or fake only where tests need one | Low (T2.4) |

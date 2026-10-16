@@ -1,0 +1,214 @@
+# Feature inventory (audit, 2026-10-16)
+
+This is the starting point for the feature-first phase. Every row was checked against the code, not against earlier docs. Where an earlier document claims something this audit could not confirm, the row says so.
+
+## How this audit was done
+
+| Evidence | Result |
+|---|---|
+| Read all server source (`server/src`, `migrations/001_init.sql`) and the Android core: crypto, data, repositories, call, services, navigation and notifications | Done |
+| Server test suite (`cd server && npm test`) | **32 / 32 pass** (vitest, 2.9 s) |
+| Server type check (`tsc --noEmit`) | Pass |
+| **Audit probes:** 7 throwaway vitest scenarios that exercise suspected defects through the real API (results below as P1–P7) | **All 7 confirmed a defect.** The probe file was deleted after recording |
+| Android debug compile (`./gradlew :app:compileDebugKotlin`) | Pass |
+| Android release (R8) build | See `PROGRESS.md` |
+| Android automated tests | **None exist.** There is no `src/test` or `src/androidTest` |
+| Production | `GET https://msg.griipbuddy.cloud/healthz` → `ok:true, livekit:true`; unauthenticated `/v1/conversations` → 401. No SSH and no write was made |
+| Device, emulator, live calls | **Not run in this audit.** Device results quoted below come from `TESTING.md` (same day, earlier session) and are marked as such |
+
+### Status key
+
+- **WORKING:** implemented, with test or recorded run evidence.
+- **PARTIALLY WORKING:** works, but with a limitation or defect noted.
+- **MOCKED:** simulated rather than connected to real functionality.
+- **BROKEN:** implemented, but fails or contradicts its documented guarantee.
+- **MISSING:** not implemented.
+- **UNVERIFIED:** code exists, but there isn't enough evidence for its function or security.
+
+**Nothing in the codebase is MOCKED.** The search for stubs, fakes, no-op handlers and placeholder data found none. Every screen action calls a real repository or API, and the app uses about 60 server endpoints.
+
+### Confirmed defects (probe results)
+
+| Probe | What was observed through the API |
+|---|---|
+| **P1** *(fixed by T1.1 after the audit, not yet deployed)* | An org member demoted to **Guest** kept every channel membership: their private team channel, branch channels, and their branch and team rows. Other members' clients keep encrypting private-channel messages to the guest's devices. |
+| **P2** | A member of branch B saw, in `GET /v1/orgs/:id/activity`, the name of branch A's team ("Confidential Layoff Planning") and branch A's public channel. `GET /v1/orgs/:id` correctly hides that team. |
+| **P3** | Removing a member from a conversation during a call did **not** call LiveKit `removeParticipant`. The member stays a call participant. `SECURITY.md` §7 says the server removes them. |
+| **P4** | An unrelated account found a user by exact username and read their **online** state and **last-seen** time (`/v1/presence`, `/v1/users/:id`). |
+| **P5** | A brand-new account with no invite and no organisation could DM any user, upload a 1 MiB attachment and create an org. Registration is open on the internet-facing relay. |
+| **P6** | After reconnecting with 105 queued items, a new live message was pushed **before** queue items 101–105 and delivered **twice** (live push, then again in the next backlog batch). |
+| **P7** | A message sent from a second device, which was then revoked before the recipient came online, could not be verified (`unknown or uncertified sender device`). The Android client acks such items as undecryptable, so a legitimate message is **permanently lost**. |
+
+---
+
+## 1. Identity, authentication, device security
+
+| Feature | Status | Evidence | Code, API, tables, tests |
+|---|---|---|---|
+| Identity creation: Ed25519 identity and device keys generated on the phone; X25519 HPKE key; device certificate | WORKING | `auth.test` (register, cert must be signed by identity); phone registration recorded in `TESTING.md` §5 | `crypto/IdentityStore.kt` `LocalKeys`, `SessionRepository.register`; `POST /v1/auth/challenge`, `/v1/auth/register`; `users`, `devices` |
+| Challenge–response login; automatic re-auth on 401; nonce single-use and 2-minute expiry | WORKING | `auth.test` (replay rejected, wrong key rejected, username alone grants nothing) | `routes/auth.ts`, `ApiClient.request`, `SessionRepository.reauth`; `auth_challenges`, `sessions` (hashed tokens) |
+| Private keys and session sealed by a non-exportable Android Keystore AES-GCM key; backups disabled | UNVERIFIED | The code is correct on reading (`KeystoreSealer`, `allowBackup=false`, `data_extraction_rules.xml`). No test checks it, and no check was made that the key is hardware-backed | `crypto/KeystoreSealer.kt`, `IdentityStore.kt`, `AndroidManifest.xml` |
+| Local database encrypted with SQLCipher (passphrase sealed by the Keystore) | UNVERIFIED | `SupportOpenHelperFactory(passphrase)` is wired. Nobody has checked that the `.db` file on a device is unreadable without the key | `data/db/Database.kt` |
+| Recovery onto a new phone with the recovery key | PARTIALLY WORKING | Server path tested (`auth.test`). The Android `restore()` flow was never run on a device. The restored session uses the username as display name | `SessionRepository.restore`, `RecoveryCode`; `POST /v1/auth/add-device` |
+| Linking a new device (pairing code, HPKE-sealed identity seed) | PARTIALLY WORKING | Server relay tested (`auth.test`). The app-to-app flow was never run: only one phone was available | `SessionRepository.startPairing/pollPairing/approvePairing`; `/v1/pairing*`; `pairing_requests` |
+| Device revocation: sessions and queue dropped, socket closed, peers told to refresh keys | PARTIALLY WORKING | `auth.test`. **Defect P7:** messages the revoked device sent before revocation become unverifiable and are lost | `DELETE /v1/devices/:id`, `Directory.kt` `senderSigningKey`, `deviceDirectory()` excludes revoked devices |
+| **TOFU identity pinning** (trust a contact's first identity key; detect later changes) | **BROKEN** (security) | Device certificates are checked against the identity key the **server returns now**, not the pinned one (`KeyDirectory.validDevices(u)` uses `u.identityKey`). After a key change, the app sets `identityChanged` but **still encrypts to, and accepts messages from, the new devices**. This contradicts `SECURITY.md` §3 ("chains to the sender's pinned identity key"). The warning banner exists only in DMs (`ConversationScreen.kt:203`), so group and channel members get no warning | `data/repo/Directory.kt`, `UserEntity.pinnedIdentityKey/identityChanged`; no test |
+| Safety numbers and "mark as verified" | PARTIALLY WORKING | The number is computed from both identity keys and matches the server's derivation. "Verified" is a flag on the user, cleared on key change. It isn't bound to a key | `ProfileScreens.kt` `safetyNumber`, `Fingerprint` |
+| Sign out & erase | PARTIALLY WORKING | Deletes local keys, the database and attachments, and logs out. It **does not revoke the device** on the server, so contacts keep encrypting to a device whose keys are gone, for up to 7 days of queue each time | `GriipApp.eraseEverything`, `SecurityScreen` |
+| Registration gating (invite-only or allowlist for an internal tool) | MISSING | P5: anyone can register on `msg.griipbuddy.cloud` | `POST /v1/auth/register` |
+| Session expiry enforced on open sockets | PARTIALLY WORKING | The server re-checks the session on each client frame. A socket that only receives (with OkHttp protocol pings) isn't re-checked until the client sends an app frame. Revocation and admin disable close sockets through `hub.disconnectDevice` (revoke only; admin `disable` runs in another process and can't) | `ws.ts`, `admin.ts` |
+
+## 2. Direct and group messages
+
+| Feature | Status | Evidence | Code, API, tables, tests |
+|---|---|---|---|
+| DM create, encrypt (`griip-envelope-v1`), send, receive | WORKING | `messaging.test` (two-way, relay holds only ciphertext, DB and WAL scanned); Kotlin↔Node interop on a phone (`TESTING.md` §5) | `EnvelopeCrypto.kt`, `MessageRepository`, `POST /v1/messages`; `delivery_queue`, `submitted_messages` |
+| Server checks the signature and that the recipient device set equals members' active devices (409 `device_mismatch` → client refreshes) | WORKING | `messaging.test` | `routes/messages.ts` |
+| Group conversations (≤ 50, group admins) | PARTIALLY WORKING | Delivery only to members is tested. The Android group-creation and member UI was never run on a device | `POST /v1/conversations/group`, `PUT/DELETE /v1/conversations/:id/members/:userId`, `NewChatScreen`, `ConversationInfoScreen` |
+| Org channels (public, private, announcement; only managers post in announcement channels) | WORKING | `orgs.test`, `messaging.test` | `POST /v1/orgs/:id/channels`, `authz.canPost` |
+| Multi-device fan-out (sender's other devices get a copy) | WORKING | `messaging.test` | `routes/messages.ts` |
+| Idempotent resubmission | WORKING | `messaging.test` | `submitted_messages` |
+| Delivery order and de-duplication | PARTIALLY WORKING | **P6:** live pushes overtake backlog batches and are delivered twice. The client drops duplicate *messages* by id, but *control* messages (edit, delete, reaction, pin, read) whose target is still in a later batch are discarded, then acked, so they're lost. `Hub.Conn.flushing` was meant to prevent this but is never used | `hub.ts` `pushQueued/flushBacklog`, `MessageRepository.apply` |
+| Client never loses a message on local errors | **BROKEN** (data integrity) | `MessageRepository.processQueue` acks and discards an item on **any** exception, including `CancellationException`, database errors and an NPE in `apply`, after storing a "couldn't be verified" placeholder. A transient local fault loses the message permanently. (Found by code reading; there's no Android test) | `MessageRepository.kt` `processQueue` |
+| Realtime frames never dropped | PARTIALLY WORKING | `RealtimeClient` emits into a `MutableSharedFlow(extraBufferCapacity = 256)` with `tryEmit`. A burst while the consumer waits on key fetches drops frames. Dropped live items are re-sent only at the next reconnect | `RealtimeClient.kt` |
+
+## 3. Offline delivery, acknowledgements, expiration
+
+| Feature | Status | Evidence | Code, API, tables, tests |
+|---|---|---|---|
+| Offline queue, delivered in order after reconnect (single backlog) | WORKING | `messaging.test`; production smoke test 8/8 (`TESTING.md` §3) | `delivery_queue`, `hub.flushBacklog`, `GET /v1/queue` fallback |
+| Ack deletes queue rows | WORKING | `messaging.test`; `admin.js stats` showed 0 after the smoke test | `acknowledge()` |
+| Delivery receipts (server-generated, DMs and groups) | WORKING | `messaging.test` | `routes/messages.ts` `acknowledge` |
+| Read receipts (encrypted control, DMs and groups ≤ 20, user can switch off) | PARTIALLY WORKING | Phone↔bot recorded in `TESTING.md`. Channels never show readers (by design) | `markConversationRead`, `Payload(type="read")` |
+| 7-day TTL with a hard cap, cleanup every 60 s, reads filter expiry | WORKING | `messaging.test` (1 s TTL, cap) | `config.ts`, `jobs.ts` |
+| Data older than 7 days for an offline device | MISSING (by design) | Lost permanently. There's no history fetch (`RETENTION.md`) | — |
+
+## 4. Local persistence and reconnection
+
+| Feature | Status | Evidence | Code |
+|---|---|---|---|
+| Local history in Room + SQLCipher; newest 60 shown, paging in steps of 60 | WORKING (basic) / UNVERIFIED (paging) | Used on the phone. Paging was never exercised | `Database.kt`, `ConversationViewModel.loadMore` |
+| Outbox: SENDING → SENT/FAILED, 409 refresh-and-retry, backoff 2 s…120 s, waits while offline, manual retry | UNVERIFIED | Basic send worked on the phone. The retry and backoff paths have no test | `MessageRepository.outboxLoop/sendOne` |
+| WebSocket reconnect (exponential backoff, jitter, network callback, re-auth on 4401) | UNVERIFIED | No test. Recorded only as "works on phone" | `RealtimeClient.kt` |
+| Drafts | WORKING | A stale-draft bug was fixed on device | `ConversationViewModel.typingChanged`, `ConversationDao.setDraft` |
+| Room schema migrations | MISSING | Database `version = 1` with no migration strategy (only `fallbackToDestructiveMigrationOnDowngrade`). The next schema change will crash or wipe history | `Database.kt` |
+
+## 5. Organisation, branches, departments, teams, channels, invitations, authorisation
+
+| Feature | Status | Evidence | Code, API, tables, tests |
+|---|---|---|---|
+| Orgs, branches, departments, teams (branch and cross-branch) | WORKING | `orgs.test` | `routes/orgs.ts`; `orgs`, `branches`, `departments`, `teams` |
+| Departments | PARTIALLY WORKING | Departments only group teams. There is no department membership or department-scoped channel, and no UI to edit a department (`PATCH /v1/departments/:id` is unused by the app) | `departments` |
+| Branch and team archiving | PARTIALLY WORKING | `archived_at` hides branches and teams from lists, but changes **no access**: channels and memberships stay | `PATCH /v1/branches/:id`, `/v1/teams/:id` |
+| Six roles enforced on the server (owner, admin, branch manager, team lead, member, guest) | WORKING (P1 fixed after the audit, server not yet redeployed) | `orgs.test` covers creation, invites, channel and member management, last-owner protection. **P1 (demotion to Guest removed nothing) was fixed by T1.1 on 2026-10-16**; 4 new tests in `orgs.test` › demotion to guest | `authz.ts` `demoteToGuest`, `PATCH /v1/orgs/:id/members/:userId` |
+| Cross-branch isolation | PARTIALLY WORKING | Structure, members and channels are filtered (`orgs.test`, P2 structure check). **P2 defect: the activity feed leaks other branches' team and channel names** | `GET /v1/orgs/:id/activity` |
+| Removal from org, branch or team revokes channel memberships immediately | WORKING | `orgs.test` | `authz.revalidateChannelMemberships` |
+| Moving members between teams (needs rights on both) | WORKING | `orgs.test` | `POST /v1/teams/:id/members/:userId/move` |
+| Invitations: hashed 60-bit codes, preview, max uses, expiry, revoke, scoped to a branch or team, role ≤ inviter | WORKING | `orgs.test` | `invitations` |
+| Invites outlive the creator's rights | UNVERIFIED (likely defect) | An invite made by a branch manager stays valid after that person is demoted or removed. The code never re-checks the creator | `findInvite()` |
+| Invite by QR (image), code, `griip://invite/…` link | PARTIALLY WORKING | QR image and link generation exist. **No in-app QR scanner** | `InvitesScreen`, `MainActivity.handleIntent` |
+| Directory and people search | WORKING | Search by name within shared orgs, plus exact username globally | `GET /v1/users/search`, `/v1/orgs/:id/members` |
+| Presence privacy | **BROKEN** (privacy) | **P4:** any account can read anyone's online and last-seen state. Realtime presence pushes are correctly limited to DM and group peers | `GET /v1/presence`, `GET /v1/users/:id` |
+| Activity feed | **BROKEN** (P2) | See above | `audit_log` |
+
+## 6. Message interactions, attachments, search
+
+| Feature | Status | Evidence | Code |
+|---|---|---|---|
+| Replies, threads, mentions, reactions, edit, delete, pins (all encrypted control messages) | UNVERIFIED | Implemented end to end in code. There's no automated test, and `TESTING.md` records no device run of these features. The sender check exists for edit and delete. Reaction and pin targets aren't checked against the conversation | `MessageRepository.react/edit/delete/setPinned/apply` |
+| Edit and delete are cooperative | PARTIALLY WORKING (by design) | A modified client can ignore them (`SECURITY.md` §4) | — |
+| Delete removes the local decrypted file | **BROKEN** (data retention) | Deleting a message clears `attachmentsJson`, but the decrypted file in `filesDir/attachments` stays until "erase this device" | `MessageRepository.delete/apply("delete")` |
+| Encrypted attachments (AES-GCM, key in the message, SHA-256 integrity, membership-checked download, ≤ 25 MB, 7-day expiry) | WORKING | `calls_attachments.test`; phone→bot decrypt and integrity check recorded in `TESTING.md` §5 | `AttachmentCrypto`, `routes/attachments.ts`; `attachments` |
+| Attachment failure handling | PARTIALLY WORKING | Only `ApiException` is caught. An I/O or memory error leaves the message stuck in SENDING. Files are read fully into memory on both sides | `sendAttachment`, `ApiClient.upload/download`, server `parseAs: "buffer"` |
+| Message search | PARTIALLY WORKING | Local SQL `LIKE` over decrypted text (max 100 results), with no index. Attachment names aren't searched. There's no server search (by design) | `MessageDao.search/searchIn`, `SearchScreen` |
+| Typing indicators | WORKING | `messaging.test`; phone↔bot | `ws.ts` |
+
+## 7. Push notifications and Android background behaviour
+
+| Feature | Status | Evidence | Code |
+|---|---|---|---|
+| Push wake-up (FCM or UnifiedPush) | MISSING | Decision D-08. A killed app gets nothing until reopened | — |
+| "Stay connected" foreground service (`remoteMessaging`) | PARTIALLY WORKING | Implemented and on by default. It isn't restarted after reboot (no `BOOT_COMPLETED`), and OEM battery managers may kill it. Long-running behaviour was never measured | `RelayConnectionService.kt`, `GriipApp` |
+| Message notifications (decrypted on device, private on the lock screen) | UNVERIFIED | Code is reasonable. No device evidence is recorded. Each conversation shows only its latest message | `notify/Channels.kt` `MessageNotifier` |
+| Incoming call while backgrounded or locked (full-screen intent) | UNVERIFIED | `TESTING.md` §5: "NOT VERIFIED". Android 14+ needs the user to grant full-screen intents for non-default apps | `IncomingCallNotifier`, `MainActivity` show-when-locked |
+
+## 8. Voice and video calling
+
+| Feature | Status | Evidence | Code, API, tables |
+|---|---|---|---|
+| 1:1 voice and video over self-hosted LiveKit (room-scoped 10-minute token, ring, accept, decline, missed, end) | WORKING | `calls_attachments.test`; phone↔bot voice and video recorded in `TESTING.md` §5 | `routes/calls.ts`, `livekit.ts`, `CallManager.kt`; `calls`, `call_participants` |
+| Group calls (≤ 12, one live call per conversation) | PARTIALLY WORKING | Server tests. Phone plus two bot devices rendered a grid. Never run with 3+ phones, and capacity was never benchmarked | — |
+| Network reachability | PARTIALLY WORKING | Media needs UDP 7882 or TCP 7881 to the VPS. **There is no TURN server**, so networks that allow only port 443 fail | `deploy/livekit` |
+| Removal from a conversation evicts the person from the live call | **BROKEN** (security; P3) | Never called. `SECURITY.md` §7 claims it | `DELETE /v1/conversations/:id/members/:userId`, org revalidation |
+| Busy handling | PARTIALLY WORKING | A busy callee silently ignores the ring. The caller rings until it's marked missed | `CallManager.onRing` |
+| Late joiners and newly linked devices can join a running call | MISSING | The media key is sent once, at call start, to the devices that existed then. Later joiners wait 10 s and are refused | `waitForKey`, `sendCallKey` |
+| Call records pruned | MISSING | `calls` and `call_participants` grow forever | `jobs.ts` |
+
+## 9. Screen sharing and the MediaProjection lifecycle
+
+| Feature | Status | Evidence | Code |
+|---|---|---|---|
+| Consent dialog → publish → "You're sharing" banner → Stop | UNVERIFIED | It worked on the phone **before** the SIGSEGV teardown fix. `KNOWN_ISSUES.md` says the re-test on the fixed build is still pending | `CallManager.startScreenShare`, LiveKit `ScreenCaptureService`, `CallOverlay` |
+| System-initiated stop (projection revoked) updates the UI | UNVERIFIED | An `onStop` callback refreshes participants. Never tested | — |
+| Screen-share track is E2EE | UNVERIFIED | The participant reported encryption as on, but the wrong-key test for the screen track was interrupted (`TESTING.md` §5) | — |
+
+## 10. Media end-to-end encryption and key distribution
+
+| Feature | Status | Evidence | Code |
+|---|---|---|---|
+| Per-call 256-bit key, sent inside an encrypted `call_invite` control message, never through the server API | WORKING | Production SFU right-key / wrong-key test; phone vs wrong-key bot: 0 frames decoded (`TESTING.md` §4–5) | `MessageRepository.sendCallKey`, `CallManager.connect` |
+| Refuse to join when E2EE is on and no key arrives (no downgrade) | UNVERIFIED | Implemented (`waitForKey` throws after 10 s). No test | `CallManager.waitForKey` |
+| Key authenticity | PARTIALLY WORKING | "First key wins", but any conversation member can send a `call_invite` for someone else's call id. The id is broadcast in the ring event, so a member can race the caller and split the call. The key isn't checked against the call's creator | `MessageRepository.apply("call_invite")` |
+| Settings consistency | PARTIALLY WORKING | The caller always uses E2EE. A callee who turned "media E2EE" off joins without a key and can't decode | `startCall`, `waitForKey` |
+| Key rotation when participants join or leave | MISSING | Decision D-06 gap | — |
+
+## 11. Docker deployment, resource isolation, retention cleanup
+
+| Feature | Status | Evidence | Code |
+|---|---|---|---|
+| Project-scoped Compose project `griip-internal-messaging`, its own volume and network, API and signalling on loopback only | WORKING | `deploy/compose.yaml`; health endpoint up today; isolation check recorded in `TESTING.md` §3 | `deploy/` |
+| Resource limits on a shared 2-vCPU VPS | PARTIALLY WORKING | Memory only (api 512 MB, LiveKit 1 GB). **No CPU, pids or disk limits.** With open registration (P5), a 25 MB upload per request with no per-user quota can fill the shared disk. Uploads are buffered in memory, so about 20 concurrent uploads can exhaust the API's 512 MB | `compose.yaml`, `routes/attachments.ts` |
+| Retention job (queue, idempotency records, challenges, sessions, pairing requests, attachments) | WORKING | `messaging.test`, `calls_attachments.test` | `jobs.ts` |
+| Pruning of call records and the audit log | MISSING | — | — |
+| Physical erasure of deleted envelopes | UNVERIFIED | Without `PRAGMA secure_delete`, deleted ciphertext stays in SQLite free pages and the WAL until overwritten. It's ciphertext, but "deleted" is not literally guaranteed | `db.ts` |
+| Backups | MISSING (documented) | `RETENTION.md` | — |
+| Operator CLI (stats, invite, disable, cleanup) | WORKING | `admin.ts`. `disable` can't close live sockets (separate process) | `admin.ts` |
+
+## 12. UI navigation and testability blockers
+
+No route is unreachable, and no button is a no-op: every tab and route in `AppRoot.kt` is wired. These things limit feature testing:
+
+| Blocker | Effect |
+|---|---|
+| No Android automated tests at all | No regression safety for the crypto pipeline, outbox, key directory or call state machine. Every Android row above relies on code reading or one recorded manual run |
+| One physical phone; the emulator can't boot on this Mac | Pairing, multi-device, 3+ party calls and background behaviour can't be checked locally. Griip Bot covers only the second-participant role |
+| Notification "Answer" opens the app instead of accepting | An extra tap. Doesn't block testing |
+| `GET /v1/calls/active` is unused | After an app restart, a running group call is found only through a conversation's `activeCall` |
+| No visual pass of Chats, Conversation, Workspace, Team, Members, Invites, Profile, Settings (`TESTING.md` §6) | Only Welcome, Home, Conversation and Call were reviewed |
+
+## 13. Decentralisation readiness
+
+| Item | Status | Notes |
+|---|---|---|
+| Clients own their keys; the relay sees only ciphertext | WORKING | Groundwork is in place |
+| Server URL per session | PARTIALLY WORKING | Stored per session; set before sign-up |
+| Group membership verified by clients (signed group state) | MISSING | The server asserts membership (`SECURITY.md` §4) |
+| Federation and identity documents | MISSING | — |
+| Horizontal scaling (shared pub/sub) | MISSING | In-memory hub (`ARCHITECTURE.md` §7) |
+
+## Existing features that should not be rebuilt
+
+These work, have evidence, and should only be extended:
+- the server authorisation core (`authz.ts`) and org model;
+- challenge auth and device certificates;
+- the `griip-envelope-v1` pipeline behind `MessageCrypto`;
+- the server queue, receipts and retention job;
+- encrypted attachments;
+- LiveKit token and call signalling;
+- the media-key-in-encrypted-message design;
+- the Compose design system and screens;
+- the deployment scripts;
+- the Node reference client (`test/support/griipClient.ts`);
+- Griip Bot.
+
+Fix the defects above inside these modules.

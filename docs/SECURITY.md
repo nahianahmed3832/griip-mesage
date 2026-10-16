@@ -61,7 +61,12 @@ Per message:
 
 The server verifies the sender signature and checks that the recipient set equals the current members' active devices.
 If not, it returns `409 device_mismatch` and the client refreshes keys. The recipient verifies the signature against a device
-key whose certificate chains to the sender's pinned identity key, opens the HPKE wrap, then decrypts and authenticates the content.
+key whose certificate chains to the sender's identity key, opens the HPKE wrap, then decrypts and authenticates the content.
+
+> **Audit correction (2026-10-16):** "identity key" here means the key **the server currently returns**, not the
+> key pinned on first contact. A changed key sets a warning, which is shown only in DMs, but the app keeps encrypting to,
+> and accepting from, the new devices. So pinning does not yet protect against a malicious relay.
+> Tracked as `FEATURE_ROADMAP.md` T1.2 (`FEATURE_INVENTORY.md` §1).
 
 **Libraries:** BouncyCastle 1.79 (HPKE per RFC 9180, Ed25519 per RFC 8032), platform JCA AES-GCM on Android, and
 `@hpke/core` 1.9 plus Node `crypto` in the test client. **No primitive is implemented by us.** The *composition* is ours and
@@ -109,7 +114,9 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
 - **Verified:** on the production SFU, a participant with the correct key decoded video and audio, and a participant with a wrong key
   decoded nothing (`TESTING.md` §4).
 - **Gaps:** the key is not rotated when participants leave or join. A removed member who still has the key could decrypt
-  media *if* they could also obtain the SFU-forwarded packets, which the server prevents by removing them from the room.
+  media *if* they could also obtain the SFU-forwarded packets.
+  **Audit correction (2026-10-16):** the server does **not** yet remove them from the room when their membership ends
+  (probe P3). Tracked as `FEATURE_ROADMAP.md` T1.3.
   The key is per call and is deleted from the device 24 h after the call ends.
 - LiveKit tokens are JWTs scoped to one room, valid for 10 minutes, and issued only to conversation members.
 

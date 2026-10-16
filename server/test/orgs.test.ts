@@ -182,3 +182,75 @@ describe("organization hierarchy", () => {
     expect(mine.activity.some((a: any) => String(a.detail).startsWith("PRIVATE"))).toBe(false);
   });
 });
+
+describe("demotion to guest", () => {
+  let o: GriipClient, m: GriipClient;
+  let org: string, branch: string, team: string;
+  let privateTeam: string, branchPublic: string, orgAnnounce: string, orgPublic: string, dm: string, group: string;
+
+  beforeAll(async () => {
+    o = await h.client("demoteowner");
+    m = await h.client("demotemember");
+    org = (await o.req("POST", "/v1/orgs", { name: "Demotion Co" })).org.id;
+    branch = (await o.req("POST", `/v1/orgs/${org}/branches`, { name: "Dhaka" })).branch.id;
+    team = (await o.req("POST", `/v1/orgs/${org}/teams`, { name: "Finance", branchId: branch })).team.id;
+    const code = (await o.req("POST", `/v1/orgs/${org}/invites`, { role: "MEMBER", teamId: team })).invite.code;
+    await m.req("POST", "/v1/invites/accept", { code });
+    privateTeam = (await o.req("POST", `/v1/orgs/${org}/channels`, { name: "payroll", scope: "TEAM", scopeId: team, kind: "PRIVATE", memberIds: [m.userId] })).channel.id;
+    branchPublic = (await o.req("POST", `/v1/orgs/${org}/channels`, { name: "dhaka", scope: "BRANCH", scopeId: branch, kind: "PUBLIC" })).channel.id;
+    orgAnnounce = (await o.req("POST", `/v1/orgs/${org}/channels`, { name: "news", scope: "ORG", kind: "ANNOUNCEMENT" })).channel.id;
+    orgPublic = (await o.req("POST", `/v1/orgs/${org}/channels`, { name: "lobby", scope: "ORG", kind: "PUBLIC" })).channel.id;
+    await m.req("POST", `/v1/conversations/${orgPublic}/join`);
+    dm = (await o.req("POST", "/v1/conversations/dm", { userId: m.userId })).conversation.id;
+    group = (await o.req("POST", "/v1/conversations/group", { name: "Lunch", memberIds: [m.userId] })).conversation.id;
+    const before = (await m.req("GET", "/v1/conversations")).conversations.map((c: any) => c.id);
+    expect(before).toEqual(expect.arrayContaining([privateTeam, branchPublic, orgAnnounce, orgPublic, dm, group]));
+  });
+
+  it("removes branch, team and every channel membership in the org, and tells the person's devices", async () => {
+    await m.connect();
+    await o.req("PATCH", `/v1/orgs/${org}/members/${m.userId}`, { role: "GUEST" });
+
+    const after = (await m.req("GET", "/v1/conversations")).conversations.map((c: any) => c.id).sort();
+    expect(after).toEqual([dm, group].sort()); // DMs and groups are not organisation-scoped
+    expect((await m.req("GET", `/v1/conversations/${group}/devices`)).users.map((u: any) => u.userId)).toContain(m.userId);
+    for (const c of [privateTeam, branchPublic, orgAnnounce, orgPublic]) {
+      await expectStatus(m.req("GET", `/v1/conversations/${c}`), 404);
+      await expectStatus(m.req("GET", `/v1/conversations/${c}/devices`), 404);
+      const keys = (await o.req("GET", `/v1/conversations/${c}/devices`)).users.map((u: any) => u.userId);
+      expect(keys).not.toContain(m.userId);
+    }
+    expect((await o.req("GET", `/v1/branches/${branch}/members`)).members.map((x: any) => x.id)).not.toContain(m.userId);
+    expect((await o.req("GET", `/v1/teams/${team}/members`)).members.map((x: any) => x.id)).not.toContain(m.userId);
+    expect((await o.req("GET", `/v1/orgs/${org}/members`)).members.find((x: any) => x.id === m.userId).orgRole).toBe("GUEST");
+
+    await m.waitFor(() => m.events.some((e) => e.t === "conv.updated" && e.conversationId === privateTeam));
+    await m.disconnect();
+  });
+
+  it("refuses envelopes still addressed to the guest's devices", async () => {
+    const stale = await o.conversationKeys(orgPublic);
+    const guestKeys = await o.userKeys(m.userId);
+    const devices = [...stale.flatMap((u) => o.verifiedDevices(u)), ...o.verifiedDevices(guestKeys)].filter((d) => d.id !== o.deviceId);
+    const env = await o.encrypt(orgPublic, { type: "text", text: "after demotion" }, "message", devices);
+    const err = await expectStatus(o.req("POST", "/v1/messages", env), 409);
+    expect(err.error.code).toBe("device_mismatch");
+    expect(err.error.details.extra).toContain(m.deviceId);
+  });
+
+  it("keeps channels a manager grants the guest explicitly afterwards", async () => {
+    await o.req("PUT", `/v1/conversations/${orgPublic}/members/${m.userId}`, {});
+    // A later role update that re-validates memberships must not remove the explicit grant.
+    await o.req("PATCH", `/v1/orgs/${org}/members/${m.userId}`, { role: "GUEST" });
+    expect((await m.req("GET", "/v1/conversations")).conversations.map((c: any) => c.id).sort()).toEqual([dm, group, orgPublic].sort());
+    await expectStatus(m.req("GET", `/v1/conversations/${privateTeam}`), 404);
+  });
+
+  it("promotion back to member restores only scope-wide channels; branch and team access must be re-granted", async () => {
+    await o.req("PATCH", `/v1/orgs/${org}/members/${m.userId}`, { role: "MEMBER" });
+    const convs = (await m.req("GET", "/v1/conversations")).conversations.map((c: any) => c.id);
+    expect(convs).toEqual(expect.arrayContaining([dm, orgPublic, orgAnnounce]));
+    expect(convs).not.toContain(privateTeam);
+    expect(convs).not.toContain(branchPublic);
+  });
+});

@@ -91,6 +91,7 @@ Scoping rules:
 - Branch membership never grants access to another branch.
 - A branch team may contain only members of that branch, unless the person is an org owner or admin. The server returns `409` otherwise.
 - Removing someone from an org, branch or team re-validates their channel memberships immediately.
+- Demoting someone to Guest removes their branch and team memberships and every channel membership in that org. Guests keep only channels a manager adds them to afterwards (`Authz.demoteToGuest`).
 
 ## 6. Data model (server)
 

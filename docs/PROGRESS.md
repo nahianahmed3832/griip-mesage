@@ -14,10 +14,10 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | Audit probes P1–P7 against the real API | ✅ | All 7 suspected defects confirmed. The probe file was deleted after recording (results in the inventory) |
 | Baseline checks | ✅ | Server 32/32 tests, `tsc` clean; Android `compileDebugKotlin` and `assembleRelease` (R8, 64 MB unsigned) succeed. The release APK hasn't been run on a device. Production `/healthz` OK |
 | **T1.1 Demotion to Guest revokes access** (P1) | ✅ server | See below |
-| T1.2 Enforce pinned identity keys | ⏳ | Needs an owner decision (block versus warn) and the Android test harness (T2.4) |
+| T1.2 Enforce pinned identity keys | ⏳ | Owner decision (2026-10-16 master prompt): **block** sending and receiving on an identity change until the user accepts. Needs T2.4 |
 | T1.3 Evict removed members from live calls | ⏳ | Next server task |
 | T1.4 Never discard messages on local failure | ⏳ | Needs T2.4 |
-| T1.6 Registration gating and quotas | ⏳ | Needs an owner decision on gating |
+| T1.6 Registration gating and quotas | ⏳ | Owner decision (2026-10-16): **invite-only registration** for the internal beta |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
 
 ### T1.1 Demotion to Guest (2026-10-16)
@@ -39,6 +39,11 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 - **Not done:**
   - **Not deployed.** Production still runs the old behaviour until an approved redeploy (`deploy/scripts/deploy.sh`).
   - A demoted person who is in a live call stays in it. That's T1.3.
+- **Phase 1 re-verification (2026-10-16, feature pass):**
+  - The source and diff were re-read.
+  - The test now also proves a non-org **group** membership survives demotion. Before, only the DM was checked.
+  - `npm test` gives 36/36 and `tsc` is clean.
+  - The release diff, deployment steps and rollback are in `RELEASE_PLAN.md`. **Still not deployed**: production needs explicit approval.
 
 ### Task 1: Android video calls and screen sharing (2026-10-16)
 

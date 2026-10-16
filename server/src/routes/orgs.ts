@@ -383,16 +383,22 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     } else if (body.title !== undefined && !authz.isOrgAdmin(p.orgId, actor) && actor !== p.userId) {
       throw forbidden();
     }
+    const removedFrom: string[] = [];
     db.transaction(() => {
       if (body.role) db.prepare("UPDATE org_members SET role = ? WHERE org_id = ? AND user_id = ?").run(body.role, p.orgId, p.userId);
       if (body.title !== undefined) db.prepare("UPDATE org_members SET title = ? WHERE org_id = ? AND user_id = ?").run(body.title, p.orgId, p.userId);
       if (body.role) {
-        authz.revalidateChannelMemberships(p.orgId, p.userId);
+        // Guests only keep what a manager grants them explicitly after the demotion.
+        if (body.role === "GUEST" && targetRole !== "GUEST") removedFrom.push(...authz.demoteToGuest(p.orgId, p.userId));
+        else removedFrom.push(...authz.revalidateChannelMemberships(p.orgId, p.userId));
         authz.autoJoinScope(p.orgId, p.userId, now());
       }
     })();
     if (body.role) ctx.audit({ actorId: actor, orgId: p.orgId, action: "member.role", target: p.userId, detail: `${targetRole}→${body.role}` });
     notifyOrg(ctx, p.orgId);
+    // The person's devices drop the channels; members refresh them. Envelopes still addressed to
+    // the person's devices are refused by the recipient-set check (409 device_mismatch).
+    for (const c of removedFrom) notifyConversation(ctx, c, [p.userId]);
     return { ok: true };
   });
 
