@@ -91,7 +91,7 @@ This is the starting point for the feature-first phase. Every row was checked ag
 | Outbox: SENDING → SENT/FAILED, 409 refresh-and-retry, backoff 2 s…120 s, waits while offline, manual retry | UNVERIFIED | Basic send worked on the phone. The retry and backoff paths have no test | `MessageRepository.outboxLoop/sendOne` |
 | WebSocket reconnect (exponential backoff, jitter, network callback, re-auth on 4401) | UNVERIFIED | No test. Recorded only as "works on phone" | `RealtimeClient.kt` |
 | Drafts | WORKING | A stale-draft bug was fixed on device | `ConversationViewModel.typingChanged`, `ConversationDao.setDraft` |
-| Room schema migrations | MISSING | Database `version = 1` with no migration strategy (only `fallbackToDestructiveMigrationOnDowngrade`). The next schema change will crash or wipe history | `Database.kt` |
+| Room schema migrations | **WORKING (policy and test in place, 2026-10-16, T2.3)** | `Migrations.kt` (explicit steps) registered in the builder, no destructive upgrade fallback. `MigrationsTest` checks contiguity and schema equality after each step, with data preserved. The first real step arrives with T1.2. Device check that SQLCipher still opens after an upgrade: pending | `Database.kt`, `Migrations.kt`, `app/schemas` |
 
 ## 5. Organisation, branches, departments, teams, channels, invitations, authorisation
 

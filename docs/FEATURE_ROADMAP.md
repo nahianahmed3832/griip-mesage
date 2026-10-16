@@ -152,7 +152,7 @@ Extend these, don't replace them:
 - **Acceptance:** a burst of 1,000 frames is processed completely.
 - **Verification:** JVM test with a fake socket.
 
-### T2.3 Room schema migration strategy
+### T2.3 Room schema migration strategy. **Done 2026-10-16** (D-13; `MigrationsTest` on the JVM)
 - **Purpose:** the next schema change would crash or wipe local history, which is the only copy.
 - **Acceptance:** `exportSchema` JSON is committed, and the policy is explicit migrations only. A migration test template exists.
 - **Verification:** a Room `MigrationTestHelper` test (instrumented) or a schema-diff check.

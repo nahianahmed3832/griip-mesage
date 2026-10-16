@@ -25,7 +25,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 
 | # | Debt | Where | Severity |
 |---|---|---|---|
-| D13 | Room `version = 1` with no migrations. Local history is the only copy | `Database.kt` | High (before any schema change) |
+| D13 | ~~Room `version = 1` with no migrations~~ **Fixed 2026-10-16 (T2.3):** explicit migration steps, no destructive upgrade fallback, JVM `MigrationsTest` (D-13) | `Database.kt`, `Migrations.kt` | High (before any schema change) |
 | D14 | Channel fan-out stores the **full ciphertext once per recipient device**: up to 1,000 recipients × 128 KiB per message. Storage grows with members × devices | `routes/messages.ts`, `delivery_queue.payload` | Medium |
 | D15 | Attachments are buffered fully in memory. **Server side fixed 2026-10-16** (uploads stream to disk, T1.6). The client (`ByteArray` read and download) remains, see T2.6 | `ApiClient.kt`, `ConversationViewModel.attach` | Medium |
 | D16 | `calls`, `call_participants` and `audit_log` are never pruned | `jobs.ts` | Low |

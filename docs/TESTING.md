@@ -160,6 +160,7 @@ with no device or emulator. `crypto/Bytes.kt` uses `java.util.Base64`, so the re
 | `crypto/RecoveryCodeTest` | 3 | PASS | Round trip for 200 random seeds; lowercase, space and no-dash input accepted; a typo or truncation is rejected |
 | `crypto/AttachmentCryptoTest` | 2 | PASS | Fresh key per file; a modified ciphertext fails the integrity check |
 | `ui/screens/calls/VideoSinkBindingTest` | 8 | PASS | Renderer lifetime and sink ordering (video fix) |
+| `data/db/MigrationsTest` | 3 | PASS | D-13: schema versions contiguous and equal to `GriipDatabase.VERSION`; each migration step gives the next exported schema and keeps sample rows (sqlite-jdbc) |
 
 Not yet covered: the key directory, outbox and queue processing. Each gets tests together with the change that needs them (T1.2, T1.4).
 **Device check of the Base64 change: BLOCKED.** The phone refused the USB install (`INSTALL_FAILED_ABORTED: User rejected permissions`,

@@ -43,3 +43,15 @@
 **D-11: Design language.** Soft glassmorphism on a mint → peach gradient, teal actions, pill CTAs with an arrow knob, frosted list cards and tinted icon tiles, translated from the supplied reference. Dark mode uses deeper "action" teals so white text stays readable on teal surfaces.
 
 **D-12: The test peer is a headless bot built on `@livekit/rtc-node` plus the reference TypeScript client.** It verifies Kotlin ↔ Node crypto interop and real media and E2EE behaviour on physical devices without a second phone.
+
+**D-13: Local database migrations are explicit and append-only (2026-10-16, T2.3).**
+- The Room/SQLCipher database holds the only copy of a user's history, so an upgrade must never wipe it.
+- Every schema change raises `GriipDatabase.VERSION`, adds the SQL for that step to `data/db/Migrations.kt`, and commits the exported
+  schema (`app/schemas/.../<N>.json`, written by KSP at build time).
+- The builder registers all steps and keeps only `fallbackToDestructiveMigrationOnDowngrade`. A missing upgrade path fails loudly
+  instead of deleting data.
+- `MigrationsTest` (JVM, `sqlite-jdbc`, test-only) enforces the policy without a device:
+  - versions must be contiguous, with one step per version;
+  - each step applied to the previous exported schema with sample rows must produce the next exported schema;
+  - the sample rows (conversations, messages, users, settings, call keys) must survive.
+- Room's instrumented `MigrationTestHelper` would additionally run SQLCipher on a device. It's left for when device tests exist.

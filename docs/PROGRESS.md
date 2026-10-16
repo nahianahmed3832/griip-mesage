@@ -21,7 +21,23 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T1.7 Presence privacy** (P4) | ✅ server | See below. Not deployed |
 | **T1.8 Activity feed scope** (P2) | ✅ server | See below. Not deployed |
 | **T2.4 Android test harness** | ✅ foundation | See below. 25 JVM tests; device check blocked |
+| **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
+
+### T2.3 Local database migration protection (2026-10-16)
+
+- **Gap:** Room `version = 1` with no migration strategy. The next schema change would crash or wipe history, which is the only copy (D13).
+- **Change:**
+  - `GriipDatabase.VERSION` constant.
+  - `data/db/Migrations.kt`: explicit SQL steps, registered with `addMigrations`. Only a downgrade may recreate the database.
+  - Policy recorded as **D-13**. Schema export was already on, and v1 is committed.
+- **Tests:** `MigrationsTest`, using test-only `org.xerial:sqlite-jdbc`:
+  - exported versions are contiguous, match `VERSION`, and each has a step;
+  - each step applied to the previous schema with sample rows yields the next exported schema (columns, types, nullability, keys, indices), and the rows survive;
+  - the v1 sample rows are valid.
+
+  3/3 pass. With only v1 there's no step yet. The first one, and proof that a missing step is caught, come with T1.2.
+- **Not verified:** SQLCipher opening an upgraded database on a device (needs an install on the phone).
 
 ### T2.4 Android unit-test harness (2026-10-16)
 

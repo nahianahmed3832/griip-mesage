@@ -111,4 +111,5 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.sqlite.jdbc) // runs Room migration SQL on the JVM (MigrationsTest)
 }

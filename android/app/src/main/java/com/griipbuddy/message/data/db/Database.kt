@@ -183,7 +183,7 @@ interface KvDao {
 
 @Database(
     entities = [ConversationEntity::class, MessageEntity::class, OutboxEntity::class, UserEntity::class, CallLogEntity::class, CallKeyEntity::class, KvEntity::class],
-    version = 1,
+    version = GriipDatabase.VERSION,
     exportSchema = true,
 )
 abstract class GriipDatabase : RoomDatabase() {
@@ -196,6 +196,12 @@ abstract class GriipDatabase : RoomDatabase() {
 
     companion object {
         /**
+         * Schema version. Raising it needs a matching step in [Migrations] and the exported schema
+         * committed under `app/schemas` (docs/DECISIONS.md D-13); `MigrationsTest` enforces both.
+         */
+        const val VERSION = 1
+
+        /**
          * The database file is encrypted with SQLCipher (AES-256) using a random passphrase that is
          * itself sealed by an Android Keystore key (docs/SECURITY.md §6).
          */
@@ -203,6 +209,9 @@ abstract class GriipDatabase : RoomDatabase() {
             System.loadLibrary("sqlcipher")
             return Room.databaseBuilder(context, GriipDatabase::class.java, name)
                 .openHelperFactory(SupportOpenHelperFactory(passphrase))
+                .addMigrations(*Migrations.all())
+                // Upgrades never fall back to wiping: local history is the only copy. A missing migration
+                // fails loudly (and MigrationsTest fails first). Only a downgrade may recreate the file.
                 .fallbackToDestructiveMigrationOnDowngrade(true)
                 .build()
         }
