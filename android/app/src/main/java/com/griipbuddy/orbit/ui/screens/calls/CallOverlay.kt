@@ -1,5 +1,14 @@
 package com.griipbuddy.orbit.ui.screens.calls
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.material.icons.rounded.SignalCellularConnectedNoInternet0Bar
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.Layout
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.BoxWithConstraints
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
@@ -24,7 +33,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,9 +51,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
@@ -149,6 +154,7 @@ fun CallOverlay() {
     BackHandler(enabled = s.phase != CallPhase.Idle && !minimized && s.phase != CallPhase.Incoming) { minimized = true }
     LaunchedEffect(s.phase) { if (s.phase == CallPhase.Incoming) minimized = false }
     var details by remember { mutableStateOf(false) }
+    var people by remember { mutableStateOf(false) }
     // Over video and shared screens the controls hide after a few seconds (tap to bring them back), so they don't sit on
     // top of what the other person shows. Without video they always stay.
     var chromeVisible by remember { mutableStateOf(true) }
@@ -162,8 +168,11 @@ fun CallOverlay() {
     val remote = s.participants.filter { !it.isLocal }
     val local = s.participants.firstOrNull { it.isLocal }
     val screen = s.participants.firstOrNull { it.screen != null && !it.isLocal }
-    val hasVideo = s.phase == CallPhase.Connected && (screen != null || remote.any { it.camera != null })
-    val autoHide = CallChrome.autoHides(hasVideo, s.phase, menuOpen = details || explainShare || s.error != null)
+    val mode = CallTiles.mode(s.isGroup, s.phase, remote.size, remote.any { it.camera != null }, screen != null)
+    // Full-screen media (one-to-one video, a shared screen) gets scrims and auto-hiding controls; the grid keeps its
+    // tiles clear of the controls instead, so they stay put.
+    val hasVideo = mode == CallTiles.Mode.OneToOne || mode == CallTiles.Mode.ScreenWithStrip
+    val autoHide = CallChrome.autoHides(hasVideo, s.phase, menuOpen = details || people || explainShare || s.error != null)
     LaunchedEffect(autoHide, lastTouch) {
         if (!autoHide) { chromeVisible = true; return@LaunchedEffect }
         delay(CallChrome.HIDE_AFTER_MS)
@@ -177,27 +186,21 @@ fun CallOverlay() {
                 lastTouch = System.currentTimeMillis()
             },
     ) {
-        when {
-            hasVideo && (screen != null || remote.size == 1) -> {
+        when (mode) {
+            CallTiles.Mode.OneToOne -> {
                 val main = screen ?: remote.first()
                 VideoTile(main.screen ?: main.camera, Modifier.fillMaxSize(), fit = screen != null)
-                if (screen != null && showChrome) {
-                    Text(
-                        "${screen.name} is sharing their screen", style = Griip.type.label, color = Color.White,
-                        modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(SafeTop).padding(top = 70.dp).clip(Shapes.pill).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 12.dp, vertical = 6.dp),
-                    )
-                }
+                if (screen != null && showChrome) ScreenLabel(screen.name, Modifier.align(Alignment.TopCenter))
             }
-            s.phase == CallPhase.Connected && remote.size > 1 -> {
-                LazyVerticalGrid(GridCells.Fixed(2), Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 64.dp, bottom = 150.dp, start = 10.dp, end = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(s.participants, key = { it.identity }) { p -> ParticipantTile(p, Modifier.aspectRatio(0.8f)) }
-                }
-            }
-            else -> CallerHero(s, Modifier.align(Alignment.Center))
+            CallTiles.Mode.ScreenWithStrip -> ScreenStage(screen!!, s.participants, showChrome)
+            CallTiles.Mode.Grid -> ParticipantGrid(
+                s.participants,
+                Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 68.dp, bottom = 128.dp, start = 8.dp, end = 8.dp),
+            )
+            CallTiles.Mode.Hero -> CallerHero(s, Modifier.align(Alignment.Center))
         }
-        val gridLayout = s.phase == CallPhase.Connected && remote.size > 1 && !(hasVideo && screen != null)
-        // Floating self-preview only in 1:1 / screen-share layouts; the grid already has a "You" tile.
-        if (local?.camera != null && !gridLayout) {
+        // Your camera floats only where you have no tile of your own (one-to-one and before anyone joins).
+        if (local?.camera != null && (mode == CallTiles.Mode.OneToOne || mode == CallTiles.Mode.Hero)) {
             VideoTile(local.camera, Modifier.align(Alignment.TopEnd).windowInsetsPadding(SafeTop).padding(top = if (showChrome) 68.dp else 16.dp, end = 16.dp).size(110.dp, 150.dp).clip(Shapes.tile).border(2.dp, Color.White.copy(alpha = 0.7f), Shapes.tile), mirror = true)
         }
 
@@ -215,8 +218,14 @@ fun CallOverlay() {
                     }
                     if (s.phase == CallPhase.Connected || s.phase == CallPhase.Reconnecting) {
                         Spacer(Modifier.width(8.dp))
-                        Box(Modifier.size(48.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f)).pressable({ details = !details }, onClickLabel = "Connection details"), contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(48.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f)).pressable({ details = !details; people = false }, onClickLabel = "Connection details"), contentAlignment = Alignment.Center) {
                             Icon(Icons.Rounded.NetworkCheck, "Connection details", tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
+                        if (s.isGroup) {
+                            Spacer(Modifier.width(8.dp))
+                            Box(Modifier.size(48.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f)).pressable({ people = !people; details = false }, onClickLabel = "People in this call"), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Groups, "People in this call", tint = Color.White, modifier = Modifier.size(20.dp))
+                            }
                         }
                     }
                 }
@@ -230,6 +239,7 @@ fun CallOverlay() {
                 )
             }
             if (details) ConnectionDetails(s, Modifier.padding(top = 10.dp)) { details = false }
+            if (people) PeoplePanel(s.participants, Modifier.padding(top = 10.dp)) { people = false }
         }
 
         // Bottom: share indicator + controls, kept clear of the navigation bar, gesture area and cutouts.
@@ -336,7 +346,10 @@ private fun CallerHero(s: CallUiState, modifier: Modifier) {
             }
             CallPhase.Connecting -> "Connecting…"
             CallPhase.Reconnecting -> "Reconnecting…"
-            CallPhase.Connected -> when (s.media) {
+            // Everyone else left (or nobody has joined yet): say so, rather than "connecting media".
+            CallPhase.Connected -> if (s.participants.none { !it.isLocal }) {
+                if (s.isGroup) "Waiting for others to join…" else "Waiting for the other person…"
+            } else when (s.media) {
                 MediaFlow.Flowing -> s.connectedAt?.let { TimeFmt.duration((now - it) / 1000) } ?: "Connected"
                 MediaFlow.Stalled -> "Reconnecting media…"
                 else -> "Connecting media…"
@@ -362,18 +375,142 @@ private fun CallerHero(s: CallUiState, modifier: Modifier) {
     }
 }
 
+/**
+ * One person in a group call: their video (camera, or a remote screen share when [preferScreen]), otherwise their
+ * avatar and name. Shows mute, speaking (LiveKit's own signal), a weak connection, and an encryption problem.
+ */
 @Composable
-private fun ParticipantTile(p: ParticipantUi, modifier: Modifier) {
+private fun ParticipantTile(p: ParticipantUi, modifier: Modifier, preferScreen: Boolean = true, compact: Boolean = false) {
     val c = Griip.colors
-    Box(modifier.clip(Shapes.card).background(Color.White.copy(alpha = 0.08f)).border(if (p.speaking) 2.dp else 1.dp, if (p.speaking) c.primaryBright else Color.White.copy(alpha = 0.12f), Shapes.card)) {
+    BoxWithConstraints(
+        modifier.clip(Shapes.card).background(Color.White.copy(alpha = 0.08f))
+            .border(if (p.speaking) 3.dp else 1.dp, if (p.speaking) c.primaryBright else Color.White.copy(alpha = 0.12f), Shapes.card)
+            .semantics(mergeDescendants = true) {
+                contentDescription = buildString {
+                    append(if (p.isLocal) "You" else p.name)
+                    if (!p.micOn) append(", muted")
+                    if (p.speaking) append(", speaking")
+                    if (!p.cameraOn) append(", camera off")
+                    if (p.connectionWeak) append(", weak connection")
+                    if (p.e2eeProblem) append(", encryption problem")
+                }
+            },
+    ) {
         // Your own tile shows your camera: drawing your own screen share into the screen being shared recurses.
-        val screen = p.screen.takeIf { !p.isLocal }
+        val screen = p.screen.takeIf { !p.isLocal && preferScreen }
         val track = screen ?: p.camera
-        if (track != null) VideoTile(track, Modifier.fillMaxSize(), mirror = p.isLocal, fit = screen != null)
-        else Avatar(p.name, p.userId.hashCode(), Modifier.align(Alignment.Center), size = 64.dp)
-        Row(Modifier.align(Alignment.BottomStart).padding(8.dp).clip(Shapes.pill).background(Color.Black.copy(alpha = 0.4f)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (!p.micOn) { Icon(Icons.Rounded.MicOff, "Muted", tint = Color.White, modifier = Modifier.size(12.dp)); Spacer(Modifier.width(4.dp)) }
-            Text(if (p.isLocal) "You" else p.name, style = Griip.type.caption, color = Color.White, maxLines = 1)
+        if (track != null) {
+            VideoTile(track, Modifier.fillMaxSize(), mirror = p.isLocal && screen == null, fit = screen != null)
+        } else {
+            val avatar = (minOf(maxWidth, maxHeight) * 0.42f).coerceIn(36.dp, 96.dp)
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                Avatar(p.name, p.userId.hashCode(), size = avatar)
+                // The camera is on but its video hasn't arrived yet (subscribing, or still decrypting the first frame).
+                if (p.cameraOn && !compact) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("Connecting video…", style = Griip.type.caption, color = Color.White.copy(alpha = 0.7f))
+                }
+            }
+        }
+        Row(
+            Modifier.align(Alignment.BottomStart).padding(6.dp).clip(Shapes.pill).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (!p.micOn) { Icon(Icons.Rounded.MicOff, null, tint = Color.White, modifier = Modifier.size(12.dp)); Spacer(Modifier.width(4.dp)) }
+            Text(if (p.isLocal) "You" else p.name, style = Griip.type.caption, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Row(Modifier.align(Alignment.TopEnd).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (p.connectionWeak) TileBadge(Icons.Rounded.SignalCellularConnectedNoInternet0Bar, Griip.colors.warning)
+            if (p.e2eeProblem) TileBadge(Icons.Rounded.GppMaybe, Griip.colors.warning)
+        }
+    }
+}
+
+@Composable
+private fun TileBadge(icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color) {
+    Box(Modifier.size(22.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
+    }
+}
+
+/**
+ * Everyone in a group call at once, in [CallTiles.grid] columns and rows filling the space (portrait and landscape).
+ * Tiles are keyed by identity in one layout, so a tile keeps its video renderer when others join, leave or move.
+ */
+@Composable
+private fun ParticipantGrid(participants: List<ParticipantUi>, modifier: Modifier) {
+    BoxWithConstraints(modifier) {
+        val g = CallTiles.grid(participants.size, landscape = maxWidth > maxHeight)
+        Layout(
+            content = { participants.forEach { p -> key(p.identity) { ParticipantTile(p, Modifier) } } },
+            modifier = Modifier.fillMaxSize(),
+        ) { measurables, constraints ->
+            val gap = 8.dp.roundToPx()
+            val w = ((constraints.maxWidth - gap * (g.columns - 1)) / g.columns).coerceAtLeast(1)
+            val h = ((constraints.maxHeight - gap * (g.rows - 1)) / g.rows).coerceAtLeast(1)
+            val placeables = measurables.map { it.measure(Constraints.fixed(w, h)) }
+            layout(constraints.maxWidth, constraints.maxHeight) {
+                placeables.forEachIndexed { i, pl ->
+                    val row = i / g.columns
+                    val col = i % g.columns
+                    val inRow = if (row == g.rows - 1) placeables.size - row * g.columns else g.columns
+                    val x0 = (constraints.maxWidth - (inRow * w + (inRow - 1) * gap)) / 2 // a short last row is centred
+                    pl.place(x0 + col * (w + gap), row * (h + gap))
+                }
+            }
+        }
+    }
+}
+
+/** A shared screen, as large as it fits with its aspect kept, above a strip with everyone's tile. */
+@Composable
+private fun ScreenStage(sharer: ParticipantUi, participants: List<ParticipantUi>, showChrome: Boolean) {
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(top = if (showChrome) 68.dp else 8.dp, bottom = if (showChrome) 128.dp else 8.dp)) {
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            VideoTile(sharer.screen, Modifier.fillMaxSize(), fit = true)
+            if (showChrome) ScreenLabel(sharer.name, Modifier.align(Alignment.TopCenter))
+        }
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // In the strip the sharer shows their camera (or avatar): their screen is already above.
+            participants.forEach { p -> key(p.identity) { ParticipantTile(p, Modifier.size(92.dp, 120.dp), preferScreen = false, compact = true) } }
+        }
+    }
+}
+
+@Composable
+private fun ScreenLabel(name: String, modifier: Modifier) {
+    Text(
+        "$name is sharing their screen", style = Griip.type.label, color = Color.White,
+        modifier = modifier.padding(top = 8.dp).clip(Shapes.pill).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 12.dp, vertical = 6.dp),
+    )
+}
+
+/** Who is in the call and their state, readable without relying on the tiles (also for screen readers). */
+@Composable
+private fun PeoplePanel(participants: List<ParticipantUi>, modifier: Modifier, onClose: () -> Unit) {
+    Column(
+        modifier.fillMaxWidth().widthIn(max = 520.dp).clip(Shapes.tile).background(Color.Black.copy(alpha = 0.75f))
+            .pressable(onClose, onClickLabel = "Close the list of people").padding(14.dp),
+    ) {
+        Text("${participants.size} in this call", style = Griip.type.label, color = Color.White)
+        participants.forEach { p ->
+            Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Avatar(p.name, p.userId.hashCode(), size = 28.dp, ring = false)
+                Spacer(Modifier.width(10.dp))
+                Text(if (p.isLocal) "You" else p.name, style = Griip.type.bodySmall, color = Color.White, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val status = listOfNotNull(
+                    if (p.speaking) "speaking" else null,
+                    if (p.micOn) null else "muted",
+                    if (p.cameraOn) "camera" else null,
+                    if (p.screen != null) "sharing" else null,
+                    if (p.connectionWeak) "weak connection" else null,
+                    if (p.e2eeProblem) "encryption problem" else null,
+                ).joinToString(" · ")
+                Text(status, style = Griip.type.caption, color = Color.White.copy(alpha = 0.7f))
+            }
         }
     }
 }

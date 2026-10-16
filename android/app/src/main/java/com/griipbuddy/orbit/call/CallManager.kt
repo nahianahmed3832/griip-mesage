@@ -66,6 +66,12 @@ data class ParticipantUi(
     val micOn: Boolean,
     val camera: VideoTrack?,
     val screen: VideoTrack?,
+    /** The camera is published and on, even if its video hasn't arrived yet ("connecting video"). */
+    val cameraOn: Boolean = camera != null,
+    /** LiveKit rates this person's connection poor or lost. */
+    val connectionWeak: Boolean = false,
+    /** This person's media reports an encryption failure (never hidden to make video show). */
+    val e2eeProblem: Boolean = false,
 )
 
 data class CallUiState(
@@ -137,6 +143,9 @@ class CallManager(
     private var releaseJob: Job? = null
     private var audioListener: ((List<AudioDevice>, AudioDevice?) -> Unit)? = null
     private val sampler = VideoStatsSampler()
+    /** When each participant identity was first seen in this call: tiles keep their places as people come and go. */
+    private val firstSeen = HashMap<String, Long>()
+    private var seenCounter = 0L
 
     /**
      * WebRTC's native library must be loaded before any LiveKit native object exists — including the
@@ -529,7 +538,10 @@ class CallManager(
     }
 
     private fun onE2eeState(tracker: MediaSecurityTracker, key: String, st: E2EEState) {
-        if (tracker.state(key, st)) publishSecurity(tracker)
+        if (!tracker.state(key, st)) return
+        publishSecurity(tracker)
+        // Tiles show who has an encryption problem: refresh them from the call's own scope (this may be WebRTC's thread).
+        scope.launch { if (securityTracker === tracker) refreshParticipants() }
     }
 
     /**
@@ -547,14 +559,27 @@ class CallManager(
 
     private fun refreshParticipants() {
         val r = room ?: return
+        val problems = securityTracker?.problemIdentities().orEmpty()
         fun ui(p: Participant, local: Boolean): ParticipantUi {
             val meta = p.metadata
             val uid = meta?.let { Regex("\"userId\":\"([^\"]+)\"").find(it)?.groupValues?.get(1) } ?: p.identity?.value?.substringBefore('.') ?: ""
-            val cam = p.videoTrackPublications.firstOrNull { it.first.source == Track.Source.CAMERA && !it.first.muted }?.second as? VideoTrack
+            val camPub = p.videoTrackPublications.firstOrNull { it.first.source == Track.Source.CAMERA && !it.first.muted }
+            val cam = camPub?.second as? VideoTrack
             val scr = p.videoTrackPublications.firstOrNull { it.first.source == Track.Source.SCREEN_SHARE && !it.first.muted }?.second as? VideoTrack
-            return ParticipantUi(p.identity?.value ?: "", uid, p.name ?: (if (local) "You" else "Participant"), local, p.isSpeaking, p.isMicrophoneEnabled, cam, scr)
+            val id = p.identity?.value ?: ""
+            synchronized(firstSeen) { if (id.isNotEmpty() && id !in firstSeen) firstSeen[id] = seenCounter++ }
+            return ParticipantUi(
+                id, uid, p.name?.takeIf { it.isNotBlank() } ?: (if (local) "You" else "Participant"), local, p.isSpeaking, p.isMicrophoneEnabled, cam, scr,
+                cameraOn = camPub != null,
+                connectionWeak = p.connectionQuality == ConnectionQuality.POOR || p.connectionQuality == ConnectionQuality.LOST,
+                e2eeProblem = id in problems,
+            )
         }
-        val list = listOf(ui(r.localParticipant, true)) + r.remoteParticipants.values.map { ui(it, false) }
+        // One tile per identity in a stable order (others by arrival, then you), never yourself twice.
+        val list = com.griipbuddy.orbit.ui.screens.calls.CallTiles.order(
+            listOf(ui(r.localParticipant, true)) + r.remoteParticipants.values.map { ui(it, false) },
+            identity = { it.identity }, isLocal = { it.isLocal }, firstSeen = { synchronized(firstSeen) { firstSeen[it] ?: Long.MAX_VALUE } },
+        )
         _state.update {
             it.copy(
                 participants = list,
@@ -663,6 +688,7 @@ class CallManager(
      */
     private fun teardown() {
         IncomingCallNotifier.cancel(context)
+        synchronized(firstSeen) { firstSeen.clear() }
         mediaJob?.cancel()
         mediaJob = null
         eventsJob?.cancel()

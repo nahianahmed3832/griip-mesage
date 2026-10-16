@@ -65,6 +65,11 @@ internal class MediaSecurityTracker(private val maxRemembered: Int = 2048) {
         return true
     }
 
+    /** Identities whose tracks report an encryption failure (for a warning on that person's tile). */
+    @Synchronized
+    fun problemIdentities(): Set<String> =
+        tracks.keys.filter { states[it]?.let(::isFailure) == true }.map { it.substringBeforeLast(':') }.toSet()
+
     @Synchronized
     fun security(): MediaSecurity {
         if (tracks.keys.any { states[it]?.let(::isFailure) == true }) return MediaSecurity.E2eeProblem
