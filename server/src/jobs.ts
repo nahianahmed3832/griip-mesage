@@ -69,13 +69,21 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
   // Call membership: anyone no longer admitted (removed from the conversation, revoked device,
   // disabled account) is removed from the room. This repairs evictions missed while LiveKit was
   // unreachable, rejoins with a token issued before removal, and `admin disable` from the CLI process.
-  for (const c of db.prepare("SELECT * FROM calls WHERE state != 'ENDED'").all() as CallRow[]) {
+  for (const c of db.prepare("SELECT * FROM calls WHERE state != 'ENDED' AND host_server_id IS NULL").all() as CallRow[]) {
     r.callEvictions += await evictFromCall(ctx, c);
+  }
+  // Calls hosted by another server are that server's to time out. If it vanished mid-call, close the local mirror
+  // instead of showing a call forever (no relay: the host is gone or will send its own end).
+  for (const c of db
+    .prepare("SELECT * FROM calls WHERE state != 'ENDED' AND host_server_id IS NOT NULL AND ((state = 'RINGING' AND created_at <= ?) OR created_at <= ?)")
+    .all(t - 2 * ctx.config.ringTimeoutSeconds * 1000, t - 12 * 3_600_000) as CallRow[]) {
+    db.prepare("UPDATE calls SET state = 'ENDED', ended_at = ?, end_reason = ? WHERE id = ? AND state != 'ENDED'").run(t, c.state === "RINGING" ? "missed" : "lost", c.id);
+    r.callsTimedOut++;
   }
   // Reconcile live calls with LiveKit (authoritative participant list) once they are past the
   // ring window: unanswered 1:1 calls become "missed", empty rooms are closed.
   const live = db
-    .prepare("SELECT * FROM calls WHERE state != 'ENDED' AND created_at <= ?")
+    .prepare("SELECT * FROM calls WHERE state != 'ENDED' AND host_server_id IS NULL AND created_at <= ?")
     .all(t - ctx.config.ringTimeoutSeconds * 1000) as CallRow[];
   for (const c of live) {
     const fromLiveKit = ctx.livekit ? await ctx.livekit.participantUsers(c.room_name) : null;

@@ -66,6 +66,8 @@ function federationInfo(ctx: AppContext, convId: string) {
   if (rows.length === 0) return null;
   return {
     servers: rows.map((r) => ({ serverId: r.id, domain: r.domain, state: r.state ?? "unknown", pending: ctx.federation?.pendingFor(r.id) ?? 0 })),
+    // Calls are hosted by the caller's server: this server can start one if it has its own media server.
+    calls: !!ctx.federation?.callsEnabled(),
   };
 }
 

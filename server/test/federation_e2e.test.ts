@@ -199,6 +199,79 @@ describe("attachments and voice messages across servers", () => {
   });
 });
 
+describe("cross-server calls (hosted by the caller's server)", () => {
+  it("rings across servers, reports alerted, admits the remote callee with a host-issued token, and ends on both sides", async () => {
+    const started = await alice.req("POST", "/v1/calls", { conversationId: conv, video: true });
+    const callId = started.call.id;
+    // The ring reaches Bob through his own server, which mirrors the call under the same id.
+    const ring = await bob.waitFor(() => bob.events.find((e) => e.t === "call" && e.event === "ring" && e.call?.id === callId));
+    expect(ring.call).toMatchObject({ createdBy: alice.userId, conversationId: conv, video: true, state: "RINGING" });
+    expect(ring.from.userId).toBe(alice.userId);
+    expect((B.ctx.db.prepare("SELECT host_server_id h FROM calls WHERE id = ?").get(callId) as any).h).toBe(A.ctx.federation!.serverId);
+    // Ring recovery on B sees it too.
+    expect((await bob.req("GET", "/v1/calls/active")).calls.map((c: any) => c.id)).toContain(callId);
+
+    await bob.req("POST", `/v1/calls/${callId}/alerted`);
+    await alice.waitFor(() => alice.events.find((e) => e.t === "call" && e.event === "alerted" && e.call?.id === callId));
+
+    const joined = await bob.req("POST", `/v1/calls/${callId}/join`);
+    expect(joined.media.url).toBe(A.ctx.livekit!.publicUrl); // A's media server; B needs none
+    const { TokenVerifier } = await import("livekit-server-sdk");
+    const claims = await new TokenVerifier("devkey", "test-secret-that-is-at-least-32-characters-long").verify(joined.media.token);
+    expect(claims.sub).toBe(`${bob.userId}.${bob.deviceId}`);
+    expect(claims.video?.room).toBe(started.media.room);
+    expect(JSON.stringify(joined)).not.toMatch(/e2eeKey|secret/i); // the media key never travels through the call API
+
+    await alice.req("POST", `/v1/calls/${callId}/connected`);
+    await bob.req("POST", `/v1/calls/${callId}/connected`);
+    await bob.waitFor(() => bob.events.find((e) => e.t === "call" && e.event === "updated" && e.call?.id === callId && e.call.state === "ACTIVE"));
+    expect((A.ctx.db.prepare("SELECT state FROM calls WHERE id = ?").get(callId) as any).state).toBe("ACTIVE");
+
+    await alice.req("POST", `/v1/calls/${callId}/end`);
+    await bob.waitFor(() => bob.events.find((e) => e.t === "call" && e.event === "ended" && e.call?.id === callId));
+    expect((B.ctx.db.prepare("SELECT state, end_reason FROM calls WHERE id = ?").get(callId) as any)).toMatchObject({ state: "ENDED", end_reason: "hangup" });
+  });
+
+  it("rings someone on another server before any message has created the conversation there", async () => {
+    const dana = await B.client("dana");
+    await dana.connect();
+    const found = await alice.req("GET", `/v1/federation/resolve?address=${encodeURIComponent(`@${dana.username}:b.test`)}`);
+    const dm = await alice.req("POST", "/v1/conversations/dm", { userId: found.user.id });
+    expect(B.ctx.db.prepare("SELECT 1 FROM conversations WHERE id = ?").get(dm.conversation.id)).toBeUndefined();
+    const started = await alice.req("POST", "/v1/calls", { conversationId: dm.conversation.id, video: false });
+    const ring = await dana.waitFor(() => dana.events.find((e) => e.t === "call" && e.event === "ring" && e.call?.id === started.call.id));
+    expect(ring.call.conversationId).toBe(dm.conversation.id);
+    expect(B.ctx.db.prepare("SELECT 1 FROM conversations WHERE id = ?").get(dm.conversation.id)).toBeTruthy();
+    await alice.req("POST", `/v1/calls/${started.call.id}/end`);
+    await dana.disconnect();
+  });
+
+  it("a remote decline ends a ringing 1:1 call on the host", async () => {
+    const started = await bob.req("POST", "/v1/calls", { conversationId: conv, video: false }); // hosted by B this time
+    const id = started.call.id;
+    await alice.waitFor(() => alice.events.find((e) => e.t === "call" && e.event === "ring" && e.call?.id === id));
+    await alice.req("POST", `/v1/calls/${id}/decline`, { reason: "busy" });
+    await bob.waitFor(() => bob.events.find((e) => e.t === "call" && e.event === "ended" && e.call?.id === id && e.call.endReason === "busy"));
+  });
+
+  it("refuses call actions and events from a server that doesn't own the user or the call", async () => {
+    const started = await alice.req("POST", "/v1/calls", { conversationId: conv, video: false });
+    const id = started.call.id;
+    const fedC = C.ctx.federation!;
+    const peerA = await fedC.resolver.server(A.ctx.federation!.serverId);
+    // C asks A for a token on Bob's behalf: Bob isn't C's user.
+    const r = await fedC.request(peerA, "POST", `/fed/v1/calls/${id}/join`, { userId: bob.userId, deviceId: bob.deviceId });
+    expect(r.status).toBe(403);
+    // C claims to host a call created by Alice (A's user) in the shared conversation.
+    const peerB = await fedC.resolver.server(B.ctx.federation!.serverId);
+    const forged = { ...A.ctx.federation!.callRelayView(A.ctx.db.prepare("SELECT * FROM calls WHERE id = ?").get(id) as any), id: "call_" + "x".repeat(22) };
+    const ev = await fedC.request(peerB, "POST", "/fed/v1/calls/event", { event: "ring", call: forged, extra: {} });
+    expect(ev.status).toBe(403);
+    expect(B.ctx.db.prepare("SELECT 1 FROM calls WHERE id = ?").get(forged.id)).toBeUndefined();
+    await alice.req("POST", `/v1/calls/${id}/end`);
+  });
+});
+
 describe("adversarial servers and requests", () => {
   it("a registered third server can't deliver as a user of another server", async () => {
     const fedC = C.ctx.federation!;

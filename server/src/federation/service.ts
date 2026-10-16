@@ -11,6 +11,7 @@ import type { FederationConfig } from "../config.js";
 import type { AppContext } from "../context.js";
 import { canonical, isValidPublicKey, verifyEd25519 } from "../crypto.js";
 import type { QueueItemRow } from "../hub.js";
+import { type CallRow, callView } from "../routes/calls.js";
 import { ApiError, now } from "../util.js";
 import { type ServerDescriptor, ServerIdentity, verifyServerText } from "./identity.js";
 import { FederationError, type ResolvedServer, Resolver } from "./resolver.js";
@@ -89,9 +90,12 @@ export class Federation {
   get domain() {
     return this.cfg.domain;
   }
-  /** Cross-server calls (F8) are off until both ends support them; see docs/CALLING_AND_E2EE.md. */
+  /**
+   * Whether this server can host calls with people on other servers: it needs its own LiveKit (the host issues every
+   * token). Joining a call hosted elsewhere needs no LiveKit here.
+   */
   callsEnabled(): boolean {
-    return false;
+    return !!this.ctx.livekit;
   }
 
   capabilities(): string[] {
@@ -635,6 +639,156 @@ export class Federation {
          WHERE a.user_id = ? AND u.home_server_id = ? LIMIT 1`,
       )
       .get(userId, peerServerId);
+  }
+
+  // ───────────────────────── calls (docs/CALLING_AND_E2EE.md §6) ─────────────────────────
+
+  /** What a peer needs to mirror a call this server hosts (no tokens, no keys). */
+  callRelayView(c: CallRow) {
+    const participants = this.ctx.db
+      .prepare("SELECT user_id, device_id, joined_at FROM call_participants WHERE call_id = ? AND left_at IS NULL")
+      .all(c.id) as { user_id: string; device_id: string; joined_at: number }[];
+    return {
+      id: c.id,
+      conversationId: c.conversation_id,
+      roomName: c.room_name,
+      createdBy: c.created_by,
+      video: !!c.video,
+      state: c.state,
+      createdAt: c.created_at,
+      answeredAt: c.answered_at,
+      endedAt: c.ended_at,
+      endReason: c.end_reason,
+      alertedAt: c.alerted_at,
+      participants: participants.map((p) => ({ userId: p.user_id, deviceId: p.device_id, joinedAt: p.joined_at })),
+    };
+  }
+
+  /**
+   * Sends a call event about a call hosted here to the home servers of the remote people in it (or of one person).
+   * Realtime and best effort: three quick attempts, then the peer's next sync (join, active list) catches up.
+   */
+  relayCall(c: CallRow, event: string, extra: object = {}, targetUserId?: string) {
+    const homes = targetUserId
+      ? (this.ctx.db.prepare("SELECT home_server_id h FROM users WHERE id = ? AND home_server_id IS NOT NULL").all(targetUserId) as { h: string }[])
+      : (this.ctx.db
+          .prepare("SELECT DISTINCT u.home_server_id h FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? AND u.home_server_id IS NOT NULL")
+          .all(c.conversation_id) as { h: string }[]);
+    if (homes.length === 0) return;
+    // A ring can arrive before any message has created the conversation on the peer: it carries what the peer needs
+    // to verify and create it (the caller's public directory entry and the members' ids).
+    const members = (this.ctx.db.prepare("SELECT user_id FROM conversation_members WHERE conversation_id = ?").all(c.conversation_id) as { user_id: string }[]).map((r) => r.user_id);
+    const body = { event, call: this.callRelayView(c), extra, targetUserId: targetUserId ?? null, caller: this.entry(c.created_by), members };
+    for (const { h } of homes) {
+      void (async () => {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const peer = await this.resolver.server(h);
+            const r = await this.request(peer, "POST", "/fed/v1/calls/event", body);
+            if (r.status === 200 || (r.status >= 400 && r.status < 500 && r.status !== 429)) return;
+          } catch {
+            /* retry */
+          }
+          await new Promise((res) => setTimeout(res, 500 * (attempt + 1)));
+        }
+        this.ctx.log.warn({ peer: h, event }, "call event not delivered");
+      })();
+    }
+  }
+
+  /** Mirrors a call hosted by `peer` from an event or a forwarded action's answer. Returns the mirror row. */
+  applyCallState(peer: ResolvedServer, v: ReturnType<Federation["callRelayView"]>): CallRow {
+    const { db } = this.ctx;
+    if (!v || typeof v.id !== "string" || !/^call_[A-Za-z0-9_-]{22}$/.test(v.id) || typeof v.roomName !== "string" || v.roomName.length > 80) {
+      throw new FederationError(400, "bad_call", "Invalid call");
+    }
+    const creator = db.prepare("SELECT home_server_id h FROM users WHERE id = ?").get(v.createdBy) as { h: string | null } | undefined;
+    if (creator?.h !== peer.serverId) throw new FederationError(403, "not_host", "Calls are hosted by the caller's own server");
+    const local = db
+      .prepare("SELECT 1 FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? AND u.home_server_id IS NULL LIMIT 1")
+      .get(v.conversationId);
+    const creatorMember = db.prepare("SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?").get(v.conversationId, v.createdBy);
+    if (!local || !creatorMember) throw new FederationError(403, "not_shared", "No shared conversation");
+    const state = ["RINGING", "ACTIVE", "ENDED"].includes(v.state) ? v.state : "ENDED";
+    const existing = db.prepare("SELECT * FROM calls WHERE id = ?").get(v.id) as CallRow | undefined;
+    db.transaction(() => {
+      if (!existing) {
+        db.prepare(
+          "INSERT INTO calls (id, conversation_id, room_name, created_by, video, state, created_at, answered_at, ended_at, end_reason, alerted_at, host_server_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ).run(v.id, v.conversationId, v.roomName, v.createdBy, v.video ? 1 : 0, state, v.createdAt, v.answeredAt, v.endedAt, v.endReason, v.alertedAt, peer.serverId);
+      } else {
+        if (existing.host_server_id !== peer.serverId) throw new FederationError(409, "call_conflict", "That call isn't hosted by your server");
+        if (existing.state !== "ENDED") {
+          db.prepare("UPDATE calls SET state = ?, answered_at = ?, ended_at = ?, end_reason = ?, alerted_at = COALESCE(alerted_at, ?) WHERE id = ?").run(
+            state,
+            v.answeredAt,
+            v.endedAt,
+            v.endReason,
+            v.alertedAt,
+            v.id,
+          );
+        }
+      }
+      // Participants as the host sees them (people known here only).
+      db.prepare("DELETE FROM call_participants WHERE call_id = ?").run(v.id);
+      const ins = db.prepare("INSERT OR IGNORE INTO call_participants (call_id, user_id, device_id, joined_at) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM devices WHERE id = ? AND user_id = ?)");
+      for (const p of Array.isArray(v.participants) ? v.participants.slice(0, 50) : []) ins.run(v.id, p.userId, p.deviceId, p.joinedAt, p.deviceId, p.userId);
+    })();
+    return db.prepare("SELECT * FROM calls WHERE id = ?").get(v.id) as CallRow;
+  }
+
+  /** A call event from its host: update the mirror and pass it to this server's members (or the one targeted). */
+  acceptCallEvent(
+    peer: ResolvedServer,
+    body: { event?: string; call?: any; extra?: object; targetUserId?: string | null; caller?: FedUser | null; members?: string[] },
+    notify?: (conversationId: string) => void,
+  ) {
+    const allowed = ["ring", "updated", "ended", "alerted", "declined", "dismissed", "started"];
+    if (!body?.event || !allowed.includes(body.event)) throw new FederationError(400, "bad_event", "Unknown call event");
+    this.ensureCallConversation(peer, body, notify);
+    const c = this.applyCallState(peer, body.call);
+    const view = callView(this.ctx, c);
+    const extra = body.extra && typeof body.extra === "object" ? body.extra : {};
+    const msg = { t: "call", event: body.event, call: view, ...extra };
+    if (body.targetUserId) {
+      const local = this.ctx.db
+        .prepare("SELECT 1 FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? AND m.user_id = ? AND u.home_server_id IS NULL")
+        .get(c.conversation_id, body.targetUserId);
+      if (local) this.ctx.hub.sendToUser(body.targetUserId, msg);
+    } else {
+      const members = (this.ctx.db
+        .prepare("SELECT m.user_id FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? AND u.home_server_id IS NULL")
+        .all(c.conversation_id) as { user_id: string }[]).map((r) => r.user_id);
+      this.ctx.hub.sendToUsers(members, msg);
+    }
+  }
+
+  /**
+   * First contact by call: create the federated DM if it doesn't exist yet, but only after checking that the caller is
+   * the host's own user (directory entry verified as for messages), the callee is local here, and the conversation id
+   * is the one both servers derive from exactly those two people.
+   */
+  private ensureCallConversation(peer: ResolvedServer, body: { call?: any; caller?: FedUser | null; members?: string[] }, notify?: (conversationId: string) => void) {
+    const convId = body.call?.conversationId;
+    if (typeof convId !== "string" || this.ctx.db.prepare("SELECT 1 FROM conversations WHERE id = ?").get(convId)) return;
+    const caller = body.caller;
+    if (!caller || caller.userId !== body.call?.createdBy || !Array.isArray(body.members) || body.members.length !== 2) return;
+    this.upsertShadow(peer, caller);
+    const callee = body.members.find((m) => m !== caller.userId);
+    const local = callee && this.ctx.db.prepare("SELECT 1 FROM users WHERE id = ? AND home_server_id IS NULL AND disabled_at IS NULL").get(callee);
+    if (!callee || !local) return;
+    const dmKey = [caller.userId, callee].sort().join("|");
+    if (fedDmId(dmKey) !== convId) return;
+    if (this.ensureDm(convId, dmKey, caller.userId, callee)) notify?.(convId);
+  }
+
+  /** One of this server's users acts on a call hosted elsewhere: forwarded to the host, which owns the state and tokens. */
+  async forwardCall(c: CallRow, action: string, userId: string, deviceId: string, body: object = {}) {
+    const peer = await this.resolver.server(c.host_server_id!);
+    const r = await this.request(peer, "POST", `/fed/v1/calls/${c.id}/${action}`, { userId, deviceId, ...body });
+    if (r.status !== 200) throw new ApiError(r.status === 404 ? 404 : r.status, r.json?.error?.code ?? "call_failed", r.json?.error?.message ?? "The call's server refused that");
+    const mirror = this.applyCallState(peer, r.json.call);
+    return { call: callView(this.ctx, mirror), ...(r.json.media ? { media: r.json.media } : {}) };
   }
 
   cleanup(t = now()) {

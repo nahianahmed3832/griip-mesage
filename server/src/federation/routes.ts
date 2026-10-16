@@ -12,6 +12,7 @@ import { type AppContext, me, parse, requireAuth } from "../context.js";
 import { keyFingerprint } from "../crypto.js";
 import { notifyConversation } from "../routes/orgs.js";
 import { userSummary } from "../routes/auth.js";
+import { callActions, loadCall } from "../routes/calls.js";
 import { badRequest, notFound, now } from "../util.js";
 import { isServerId } from "./identity.js";
 import { FederationError, type ResolvedServer } from "./resolver.js";
@@ -112,6 +113,8 @@ export async function federationPeerRoutes(app: FastifyInstance, ctx: AppContext
     return { results, at: now() };
   });
 
+  await federationCallRoutes(app, ctx, fed, verify);
+
   app.post("/fed/v1/attachments", { ...signed, bodyLimit: ctx.config.attachmentMaxBytes + 1024 }, async (req, reply) => {
     const peer = req.fedPeer!;
     let meta;
@@ -125,6 +128,42 @@ export async function federationPeerRoutes(app: FastifyInstance, ctx: AppContext
     const r = await fed.acceptAttachment(peer, meta, body, hdr(req, H.body));
     if (r.status !== 200) return reply.code(r.status).send({ error: { code: r.code, message: "Attachment refused" } });
     return { ok: true };
+  });
+}
+
+export async function federationCallRoutes(app: FastifyInstance, ctx: AppContext, fed: Federation, verify: (req: FastifyRequest) => Promise<void>) {
+  const signed = { preHandler: verify };
+  const actions = callActions(ctx);
+
+  // A call this peer hosts changed (ring, updated, ended, …): mirror it and tell our people in it.
+  app.post("/fed/v1/calls/event", signed, async (req) => {
+    fed.acceptCallEvent(req.fedPeer!, req.body as never, (convId) => notifyConversation(ctx, convId));
+    return { ok: true };
+  });
+
+  // One of the peer's users acts on a call hosted here. Only for their own user and device, in a conversation we share.
+  app.post("/fed/v1/calls/:id/:action", signed, async (req) => {
+    const peer = req.fedPeer!;
+    const { id, action } = parse(z.object({ id: z.string().max(64), action: z.enum(["join", "connected", "alerted", "decline", "end", "leave"]) }), req.params);
+    const body = parse(
+      z.object({ userId: z.string().max(64), deviceId: z.string().max(64), reason: z.enum(["declined", "busy"]).default("declined") }),
+      req.body ?? {},
+    );
+    const c = loadCall(ctx, id);
+    if (!c || c.host_server_id) throw notFound("Call not found");
+    const dev = ctx.db
+      .prepare("SELECT u.home_server_id h, d.revoked_at FROM devices d JOIN users u ON u.id = d.user_id WHERE d.id = ? AND d.user_id = ?")
+      .get(body.deviceId, body.userId) as { h: string | null; revoked_at: number | null } | undefined;
+    if (!dev || dev.h !== peer.serverId || dev.revoked_at) throw new FederationError(403, "not_your_user", "That user or device isn't on your server");
+    if (!ctx.authz.isMember(c.conversation_id, body.userId)) throw notFound("Call not found");
+    let r: { call: unknown; media?: unknown };
+    if (action === "join") r = await actions.join(c, body.userId, body.deviceId);
+    else if (action === "connected") r = await actions.connected(c, body.userId, body.deviceId);
+    else if (action === "alerted") r = await actions.alerted(c, body.userId);
+    else if (action === "decline") r = await actions.decline(c, body.userId, body.reason);
+    else if (action === "end") r = await actions.end(c, body.userId);
+    else r = await actions.leave(c, body.userId, body.deviceId);
+    return { call: fed.callRelayView(loadCall(ctx, id)!), ...(r.media ? { media: r.media } : {}) };
   });
 }
 

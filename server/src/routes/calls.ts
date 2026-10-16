@@ -17,6 +17,8 @@ export interface CallRow {
   end_reason: string | null;
   /** First time a recipient device confirmed it is ringing (null: no recipient has been reached yet). */
   alerted_at: number | null;
+  /** Set on a mirror of a call hosted by another server (federation); null when this server hosts it. */
+  host_server_id: string | null;
 }
 
 export function callView(ctx: AppContext, c: CallRow) {
@@ -50,6 +52,8 @@ export function loadCall(ctx: AppContext, id: string): CallRow | undefined {
 
 export function broadcastCall(ctx: AppContext, c: CallRow, event: string, extra: object = {}): void {
   ctx.hub.sendToUsers(conversationMemberIds(ctx, c.conversation_id), { t: "call", event, call: callView(ctx, c), ...extra });
+  // Hosted here with people on other servers: their home servers get the same event (signed, best effort).
+  if (!c.host_server_id) ctx.federation?.relayCall(c, event, extra);
 }
 
 export async function endCallRow(ctx: AppContext, c: CallRow, reason: string): Promise<void> {
@@ -58,7 +62,7 @@ export async function endCallRow(ctx: AppContext, c: CallRow, reason: string): P
   if (res.changes === 0) return;
   ctx.db.prepare("UPDATE call_participants SET left_at = ? WHERE call_id = ? AND left_at IS NULL").run(t, c.id);
   broadcastCall(ctx, loadCall(ctx, c.id)!, "ended");
-  await ctx.livekit?.deleteRoom(c.room_name);
+  if (!c.host_server_id) await ctx.livekit?.deleteRoom(c.room_name);
 }
 
 /**
@@ -151,14 +155,15 @@ export async function evictUserDevicesFromCalls(ctx: AppContext, userId: string)
   return n;
 }
 
-export default async function callRoutes(app: FastifyInstance, ctx: AppContext) {
-  const auth = { preHandler: requireAuth(ctx) };
+/**
+ * Call actions shared by this server's own users (routes below) and by people on another server whose request their
+ * home server forwards (federation, `/fed/v1/calls/:id/:action`). The caller has already been checked as a member.
+ */
+export function callActions(ctx: AppContext) {
   const { db, authz } = ctx;
-
   const load = (id: string) => loadCall(ctx, id);
   const broadcast = (c: CallRow, event: string, extra: object = {}) => broadcastCall(ctx, c, event, extra);
   const endCall = (c: CallRow, reason: string) => endCallRow(ctx, c, reason);
-  const memberIds = (convId: string) => conversationMemberIds(ctx, convId);
 
   const issue = async (c: CallRow, userId: string, deviceId: string) => {
     if (!ctx.livekit) throw new ApiError(503, "media_unavailable", "Calling is not configured on this server");
@@ -172,22 +177,118 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
     return { url: ctx.livekit.publicUrl, token, room: c.room_name };
   };
 
+  return {
+    issue,
+    async join(c: CallRow, userId: string, deviceId: string) {
+      if (c.state === "ENDED") throw new ApiError(410, "call_ended", "This call has ended");
+      return { call: callView(ctx, c), media: await issue(c, userId, deviceId) };
+    },
+    // Client-side confirmation that it is connected to the media room. Complements LiveKit
+    // webhooks so call state stays correct even where webhooks can't reach the API.
+    async connected(c: CallRow, userId: string, deviceId: string) {
+      if (c.state === "ENDED") throw new ApiError(410, "call_ended", "This call has ended");
+      db.prepare(
+        "INSERT INTO call_participants (call_id, user_id, device_id, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT(call_id, device_id) DO UPDATE SET left_at = NULL",
+      ).run(c.id, userId, deviceId, now());
+      const users = (db.prepare("SELECT COUNT(DISTINCT user_id) n FROM call_participants WHERE call_id = ? AND left_at IS NULL").get(c.id) as { n: number }).n;
+      if (c.state === "RINGING" && users >= 2) db.prepare("UPDATE calls SET state = 'ACTIVE', answered_at = ? WHERE id = ?").run(now(), c.id);
+      const cur = load(c.id)!;
+      broadcast(cur, "updated");
+      return { call: callView(ctx, cur) };
+    },
+    // A recipient device is ringing: lets the caller show "Ringing" instead of "Calling". Idempotent; only
+    // the first confirmation is stored and announced. The caller's own devices can't alert.
+    async alerted(c: CallRow, userId: string) {
+      if (c.state === "ENDED") throw new ApiError(410, "call_ended", "This call has ended");
+      if (c.created_by === userId) throw conflict("The caller can't alert their own call");
+      if (c.alerted_at == null) {
+        db.prepare("UPDATE calls SET alerted_at = ? WHERE id = ? AND alerted_at IS NULL").run(now(), c.id);
+        notifyCallUser(ctx, load(c.id)!, c.created_by, "alerted");
+      }
+      return { call: callView(ctx, load(c.id)!) };
+    },
+    async decline(c: CallRow, userId: string, reason: "declined" | "busy") {
+      if (c.state === "ENDED") return { call: callView(ctx, c) };
+      const conv = authz.conversation(c.conversation_id)!;
+      if (conv.type === "DM" && c.state === "RINGING") {
+        await endCall(c, reason);
+      } else {
+        notifyCallUser(ctx, c, c.created_by, "declined", { userId, reason });
+      }
+      // Stop ringing on the decliner's other devices.
+      notifyCallUser(ctx, load(c.id)!, userId, "dismissed");
+      return { call: callView(ctx, load(c.id)!) };
+    },
+    async end(c: CallRow, userId: string) {
+      const conv = authz.conversation(c.conversation_id)!;
+      // In 1:1 calls either party ends the call for both. In group calls only the starter or a
+      // conversation manager may end it for everyone; others just leave.
+      if (conv.type !== "DM" && c.created_by !== userId && !authz.canManageConversation(conv, userId)) {
+        throw forbidden("Only the person who started this call or a manager can end it for everyone");
+      }
+      await endCall(c, "hangup");
+      return { call: callView(ctx, load(c.id)!) };
+    },
+    async leave(c: CallRow, userId: string, deviceId: string) {
+      db.prepare("UPDATE call_participants SET left_at = ? WHERE call_id = ? AND device_id = ? AND left_at IS NULL").run(now(), c.id, deviceId);
+      const conv = authz.conversation(c.conversation_id)!;
+      const remaining = (db.prepare("SELECT COUNT(*) n FROM call_participants WHERE call_id = ? AND left_at IS NULL").get(c.id) as { n: number }).n;
+      if (conv.type === "DM" || remaining === 0) await endCall(c, conv.type === "DM" ? "hangup" : "empty");
+      else broadcast(load(c.id)!, "updated");
+      await ctx.livekit?.removeParticipant(c.room_name, `${userId}.${deviceId}`);
+      return { call: callView(ctx, load(c.id)!) };
+    },
+  };
+}
+
+/** Sends a call event to one person: over their sockets here, or to their home server if they're on another one. */
+export function notifyCallUser(ctx: AppContext, c: CallRow, userId: string, event: string, extra: object = {}) {
+  const home = (ctx.db.prepare("SELECT home_server_id h FROM users WHERE id = ?").get(userId) as { h: string | null } | undefined)?.h;
+  if (home) {
+    if (!c.host_server_id) ctx.federation?.relayCall(c, event, extra, userId);
+    return;
+  }
+  ctx.hub.sendToUser(userId, { t: "call", event, call: callView(ctx, c), ...extra });
+}
+
+export default async function callRoutes(app: FastifyInstance, ctx: AppContext) {
+  const auth = { preHandler: requireAuth(ctx) };
+  const { db, authz } = ctx;
+  const actions = callActions(ctx);
+  const load = (id: string) => loadCall(ctx, id);
+  const broadcast = (c: CallRow, event: string, extra: object = {}) => broadcastCall(ctx, c, event, extra);
+  const endCall = (c: CallRow, reason: string) => endCallRow(ctx, c, reason);
+  const memberIds = (convId: string) => conversationMemberIds(ctx, convId);
+
+  /** A call hosted by another server: the action goes to the host (signed), which answers with the new state. */
+  const forwarded = async (c: CallRow, action: string, userId: string, deviceId: string, body: object = {}) => {
+    if (!ctx.federation) throw new ApiError(503, "federation_disabled", "This server no longer federates");
+    return ctx.federation.forwardCall(c, action, userId, deviceId, body);
+  };
+
+  const memberCall = (id: string, userId: string) => {
+    const c = load(id);
+    if (!c || !authz.isMember(c.conversation_id, userId)) throw notFound("Call not found");
+    return c;
+  };
+
   app.post("/v1/calls", auth, async (req) => {
     const { userId, deviceId } = me(req);
     const body = parse(z.object({ conversationId: z.string().max(64), video: z.boolean().default(false) }), req.body);
     const conv = authz.requireMember(body.conversationId, userId);
     if (conv.archived_at || authz.conversationScopeArchived(conv)) throw conflict("This channel is archived");
+    // One live call per conversation: starting while one exists joins it instead (also one hosted by another server).
+    const existing = db.prepare("SELECT * FROM calls WHERE conversation_id = ? AND state != 'ENDED' ORDER BY created_at DESC LIMIT 1").get(conv.id) as
+      | CallRow
+      | undefined;
+    if (existing?.host_server_id) return { ...(await forwarded(existing, "join", userId, deviceId)), joinedExisting: true };
     if (!ctx.livekit) throw new ApiError(503, "media_unavailable", "Calling is not configured on this server");
     const remote = db.prepare("SELECT 1 FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? AND u.home_server_id IS NOT NULL LIMIT 1").get(conv.id);
     if (remote && !ctx.federation?.callsEnabled()) {
       throw new ApiError(409, "federated_calls_unavailable", "Calls with people on other servers aren't available yet");
     }
-    // One live call per conversation: starting while one exists joins it instead.
-    const existing = db.prepare("SELECT * FROM calls WHERE conversation_id = ? AND state != 'ENDED' ORDER BY created_at DESC LIMIT 1").get(conv.id) as
-      | CallRow
-      | undefined;
     if (existing) {
-      return { call: callView(ctx, existing), media: await issue(existing, userId, deviceId), joinedExisting: true };
+      return { call: callView(ctx, existing), media: await actions.issue(existing, userId, deviceId), joinedExisting: true };
     }
     const id = newId("call");
     const room = `griip-${crypto.randomBytes(12).toString("hex")}`;
@@ -201,15 +302,15 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
     );
     const c = load(id)!;
     if (conv.org_id) ctx.audit({ actorId: userId, orgId: conv.org_id, action: "call.start", target: conv.id, detail: body.video ? "video" : "voice" });
-    // Ring everyone else. The media E2EE key is NOT in this event: the caller sends it as an
-    // end-to-end encrypted control message through the normal messaging path.
+    // Ring everyone else (people on another server through their home server). The media E2EE key is NOT in this
+    // event: the caller sends it as an end-to-end encrypted control message through the normal messaging path.
     const callerName = (db.prepare("SELECT display_name FROM users WHERE id = ?").get(userId) as { display_name: string }).display_name;
     for (const m of memberIds(conv.id)) {
       if (m === userId) continue;
-      ctx.hub.sendToUser(m, { t: "call", event: "ring", call: callView(ctx, c), from: { userId, displayName: callerName } });
+      notifyCallUser(ctx, c, m, "ring", { from: { userId, displayName: callerName } });
     }
     ctx.hub.sendToUser(userId, { t: "call", event: "started", call: callView(ctx, c) }, deviceId);
-    return { call: callView(ctx, c), media: await issue(c, userId, deviceId), joinedExisting: false };
+    return { call: callView(ctx, c), media: await actions.issue(c, userId, deviceId), joinedExisting: false };
   });
 
   app.get("/v1/calls/active", auth, async (req) => {
@@ -226,99 +327,62 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
   app.get("/v1/calls/:id", auth, async (req) => {
     const { userId } = me(req);
     const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const c = load(id);
-    if (!c || !authz.isMember(c.conversation_id, userId)) throw notFound("Call not found");
-    return { call: callView(ctx, c) };
+    return { call: callView(ctx, memberCall(id, userId)) };
   });
 
   app.post("/v1/calls/:id/join", auth, async (req) => {
     const { userId, deviceId } = me(req);
     const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const c = load(id);
-    if (!c || !authz.isMember(c.conversation_id, userId)) throw notFound("Call not found");
-    if (c.state === "ENDED") throw new ApiError(410, "call_ended", "This call has ended");
-    return { call: callView(ctx, c), media: await issue(c, userId, deviceId) };
+    const c = memberCall(id, userId);
+    if (c.host_server_id) return forwarded(c, "join", userId, deviceId);
+    return actions.join(c, userId, deviceId);
   });
 
-  // Client-side confirmation that it is connected to the media room. Complements LiveKit
-  // webhooks so call state stays correct even where webhooks can't reach the API.
   app.post("/v1/calls/:id/connected", auth, async (req) => {
     const { userId, deviceId } = me(req);
     const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const c = load(id);
-    if (!c || !authz.isMember(c.conversation_id, userId)) throw notFound("Call not found");
-    if (c.state === "ENDED") throw new ApiError(410, "call_ended", "This call has ended");
-    db.prepare(
-      "INSERT INTO call_participants (call_id, user_id, device_id, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT(call_id, device_id) DO UPDATE SET left_at = NULL",
-    ).run(c.id, userId, deviceId, now());
-    const users = (db.prepare("SELECT COUNT(DISTINCT user_id) n FROM call_participants WHERE call_id = ? AND left_at IS NULL").get(c.id) as { n: number }).n;
-    if (c.state === "RINGING" && users >= 2) db.prepare("UPDATE calls SET state = 'ACTIVE', answered_at = ? WHERE id = ?").run(now(), c.id);
-    const cur = load(id)!;
-    broadcast(cur, "updated");
-    return { call: callView(ctx, cur) };
+    const c = memberCall(id, userId);
+    if (c.host_server_id) return forwarded(c, "connected", userId, deviceId);
+    return actions.connected(c, userId, deviceId);
   });
 
-  // A recipient device is ringing: lets the caller show "Ringing" instead of "Calling". Idempotent; only
-  // the first confirmation is stored and announced. The caller's own devices can't alert.
   app.post("/v1/calls/:id/alerted", auth, async (req) => {
-    const { userId } = me(req);
+    const { userId, deviceId } = me(req);
     const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const c = load(id);
-    if (!c || !authz.isMember(c.conversation_id, userId)) throw notFound("Call not found");
-    if (c.state === "ENDED") throw new ApiError(410, "call_ended", "This call has ended");
-    if (c.created_by === userId) throw conflict("The caller can't alert their own call");
-    if (c.alerted_at == null) {
-      db.prepare("UPDATE calls SET alerted_at = ? WHERE id = ? AND alerted_at IS NULL").run(now(), c.id);
-      ctx.hub.sendToUser(c.created_by, { t: "call", event: "alerted", call: callView(ctx, load(id)!) });
+    const c = memberCall(id, userId);
+    if (c.host_server_id) {
+      if (c.state === "ENDED") throw new ApiError(410, "call_ended", "This call has ended");
+      return forwarded(c, "alerted", userId, deviceId);
     }
-    return { call: callView(ctx, load(id)!) };
+    return actions.alerted(c, userId);
   });
 
   app.post("/v1/calls/:id/decline", auth, async (req) => {
-    const { userId } = me(req);
+    const { userId, deviceId } = me(req);
     const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
     const body = parse(z.object({ reason: z.enum(["declined", "busy"]).default("declined") }), req.body ?? {});
-    const c = load(id);
-    if (!c || !authz.isMember(c.conversation_id, userId)) throw notFound("Call not found");
-    if (c.state === "ENDED") return { call: callView(ctx, c) };
-    const conv = authz.conversation(c.conversation_id)!;
-    if (conv.type === "DM" && c.state === "RINGING") {
-      await endCall(c, body.reason);
-    } else {
-      ctx.hub.sendToUser(c.created_by, { t: "call", event: "declined", call: callView(ctx, c), userId, reason: body.reason });
+    const c = memberCall(id, userId);
+    if (c.host_server_id) {
+      if (c.state === "ENDED") return { call: callView(ctx, c) };
+      return forwarded(c, "decline", userId, deviceId, { reason: body.reason });
     }
-    // Stop ringing on the decliner's other devices.
-    ctx.hub.sendToUser(userId, { t: "call", event: "dismissed", call: callView(ctx, load(id)!) });
-    return { call: callView(ctx, load(id)!) };
+    return actions.decline(c, userId, body.reason);
   });
 
   app.post("/v1/calls/:id/end", auth, async (req) => {
-    const { userId } = me(req);
+    const { userId, deviceId } = me(req);
     const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const c = load(id);
-    if (!c || !authz.isMember(c.conversation_id, userId)) throw notFound("Call not found");
-    const conv = authz.conversation(c.conversation_id)!;
-    // In 1:1 calls either party ends the call for both. In group calls only the starter or a
-    // conversation manager may end it for everyone; others just leave.
-    if (conv.type !== "DM" && c.created_by !== userId && !authz.canManageConversation(conv, userId)) {
-      throw forbidden("Only the person who started this call or a manager can end it for everyone");
-    }
-    await endCall(c, "hangup");
-    return { call: callView(ctx, load(id)!) };
+    const c = memberCall(id, userId);
+    if (c.host_server_id) return forwarded(c, "end", userId, deviceId);
+    return actions.end(c, userId);
   });
 
   app.post("/v1/calls/:id/leave", auth, async (req) => {
     const { userId, deviceId } = me(req);
     const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const c = load(id);
-    if (!c || !authz.isMember(c.conversation_id, userId)) throw notFound("Call not found");
-    db.prepare("UPDATE call_participants SET left_at = ? WHERE call_id = ? AND device_id = ? AND left_at IS NULL").run(now(), id, deviceId);
-    const conv = authz.conversation(c.conversation_id)!;
-    const remaining = (db.prepare("SELECT COUNT(*) n FROM call_participants WHERE call_id = ? AND left_at IS NULL").get(id) as { n: number }).n;
-    if (conv.type === "DM" || remaining === 0) await endCall(c, conv.type === "DM" ? "hangup" : "empty");
-    else broadcast(load(id)!, "updated");
-    await ctx.livekit?.removeParticipant(c.room_name, `${userId}.${deviceId}`);
-    return { call: callView(ctx, load(id)!) };
+    const c = memberCall(id, userId);
+    if (c.host_server_id) return forwarded(c, "leave", userId, deviceId);
+    return actions.leave(c, userId, deviceId);
   });
 
   // LiveKit → API webhook: authoritative participant join/leave and room lifecycle.
