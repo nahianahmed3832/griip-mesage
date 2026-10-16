@@ -19,6 +19,7 @@ Production runs Compose project `griip-internal-messaging` in `/opt/griip-intern
 
 | T1.6 Invite-only registration, streamed uploads with quotas, container CPU/pids limits | see `git log -- server/src/invites.ts` | `invites.ts` (new), `routes/auth.ts`, `routes/orgs.ts`, `routes/attachments.ts`, `app.ts`, `config.ts`, `admin.ts`, `migrations/002_registration_gate.sql`; `deploy/compose.yaml`, `deploy/.env.example`, `deploy/scripts/verify.sh` | **002** adds `registration_invites` and an index (additive; the old code ignores both) | **Pending approval. Must ship together with an Android build whose onboarding sends an invite code**, otherwise new users can't register from the app. Before go-live, mint codes with `admin.js reg-invite`. Tests: 56/56 + tsc clean |
 | T1.7 Presence visible only to people who share a conversation or org | see `git log -- server/test/presence.test.ts` | `authz.ts` (`canSeePresence`), `routes/users.ts` | none | **Pending approval.** Compatible with released apps (`/v1/presence` omits hidden users instead of returning nulls). Tests: 60/60 + tsc clean |
+| T1.8 Activity feed filtered by each event's real scope | see `git log -- server/test/activity_scope.test.ts` | `routes/orgs.ts` (`activityVisibleTo`) | none | **Pending approval.** Tests: 64/64 + tsc clean |
 
 Later tasks append rows here as they land.
 

@@ -119,7 +119,7 @@ Extend these, don't replace them:
 - **Risks:** none significant.
 - **Verification:** vitest (the probe P4 scenario becomes a regression test).
 
-### T1.8 Activity feed must respect branch isolation (P2)
+### T1.8 Activity feed must respect branch isolation (P2). **Done 2026-10-16 (server; not deployed)**
 - **Purpose:** members see other branches' team and channel names.
 - **Modules:** `GET /v1/orgs/:id/activity`. Store the scope (branch and team id) in `audit_log.detail`, or filter by the target's scope.
 - **Acceptance:** a branch-B member sees only org-level events and events for branches and teams they can access. Admins see everything.

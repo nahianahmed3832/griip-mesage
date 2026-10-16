@@ -18,7 +18,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 | D8 | `call_invite` keys are accepted from any member (first wins) | `MessageRepository.apply` | Medium | T5.2 |
 | D9 | Invitations aren't re-checked against the creator's current rights | `routes/orgs.ts` `findInvite` | Medium | T3.1 |
 | D10 | ~~Presence and last-seen are readable by anyone~~ **Fixed 2026-10-16 (T1.7), not deployed** | `routes/users.ts`, `authz.ts` | Medium | T1.7 |
-| D11 | The activity feed filters by action type, not scope | `routes/orgs.ts` | Medium | T1.8 |
+| D11 | ~~The activity feed filters by action type, not scope~~ **Fixed 2026-10-16 (T1.8), not deployed** | `routes/orgs.ts` | Medium | T1.8 |
 | D12 | Sender lookup excludes revoked devices, losing earlier messages | `routes/users.ts` `deviceDirectory`, `Directory.kt` | Medium | T1.5 |
 
 ## Data, storage, retention

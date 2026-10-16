@@ -19,7 +19,31 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | T1.4 Never discard messages on local failure | ⏳ | Needs T2.4 |
 | **T1.6 Registration gating, quotas, limits** (P5) | ✅ server | See below. Android invite field pending; not deployed |
 | **T1.7 Presence privacy** (P4) | ✅ server | See below. Not deployed |
+| **T1.8 Activity feed scope** (P2) | ✅ server | See below. Not deployed |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
+
+### T1.8 Activity feed respects branch isolation (2026-10-16)
+
+- **Defect (probe P2):** a member of branch B saw, in the org activity feed, the names of branch A's teams, departments and public channels, plus `call.start` events for channels they couldn't open. The feed filtered by *action type* only.
+- **Change:**
+  - `activityVisibleTo` in `routes/orgs.ts` decides per event for non-admins:
+    - teams: the same rule as the org structure view;
+    - departments: access to their branch;
+    - channels: `canViewChannel`, so private channels need membership;
+    - calls: membership of the conversation;
+    - branch creation, joins and leaves: always shown, as the structure view and member directory already show them;
+    - anything else: hidden.
+  - The target is looked up live, so older audit rows without scope data are filtered the same way, and a deleted target hides its row.
+  - The scan window grew from 200 to 500 rows so filtered feeds still fill up.
+  - Admins are unchanged.
+- **Tests:** `server/test/activity_scope.test.ts` has 4 tests:
+  - branch B learns nothing about branch A's team, department, channel or call, but still sees its own team, both branch names and joins;
+  - the reverse holds;
+  - admins see everything;
+  - legacy rows and deleted targets are handled.
+
+  3 fail without the fix. With it, `npm test` gives **64/64** and `tsc` is clean.
+- **Not deployed** (`RELEASE_PLAN.md`). **Security:** closes P2 and D11 once deployed.
 
 ### T1.7 Presence privacy (2026-10-16)
 

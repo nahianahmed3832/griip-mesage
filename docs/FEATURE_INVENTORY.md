@@ -101,7 +101,7 @@ This is the starting point for the feature-first phase. Every row was checked ag
 | Departments | PARTIALLY WORKING | Departments only group teams. There is no department membership or department-scoped channel, and no UI to edit a department (`PATCH /v1/departments/:id` is unused by the app) | `departments` |
 | Branch and team archiving | PARTIALLY WORKING | `archived_at` hides branches and teams from lists, but changes **no access**: channels and memberships stay | `PATCH /v1/branches/:id`, `/v1/teams/:id` |
 | Six roles enforced on the server (owner, admin, branch manager, team lead, member, guest) | WORKING (P1 fixed after the audit, server not yet redeployed) | `orgs.test` covers creation, invites, channel and member management, last-owner protection. **P1 (demotion to Guest removed nothing) was fixed by T1.1 on 2026-10-16**; 4 new tests in `orgs.test` › demotion to guest | `authz.ts` `demoteToGuest`, `PATCH /v1/orgs/:id/members/:userId` |
-| Cross-branch isolation | PARTIALLY WORKING | Structure, members and channels are filtered (`orgs.test`, P2 structure check). **P2 defect: the activity feed leaks other branches' team and channel names** | `GET /v1/orgs/:id/activity` |
+| Cross-branch isolation | **WORKING (server, not deployed)** | Structure, members and channels are filtered (`orgs.test`, P2 structure check). The activity-feed leak (P2) is fixed by T1.8 on 2026-10-16 (`activity_scope.test.ts`); production still leaks until deployed | `GET /v1/orgs/:id/activity` |
 | Removal from org, branch or team revokes channel memberships immediately | WORKING | `orgs.test` | `authz.revalidateChannelMemberships` |
 | Moving members between teams (needs rights on both) | WORKING | `orgs.test` | `POST /v1/teams/:id/members/:userId/move` |
 | Invitations: hashed 60-bit codes, preview, max uses, expiry, revoke, scoped to a branch or team, role ≤ inviter | WORKING | `orgs.test` | `invitations` |
@@ -109,7 +109,7 @@ This is the starting point for the feature-first phase. Every row was checked ag
 | Invite by QR (image), code, `griip://invite/…` link | PARTIALLY WORKING | QR image and link generation exist. **No in-app QR scanner** | `InvitesScreen`, `MainActivity.handleIntent` |
 | Directory and people search | WORKING | Search by name within shared orgs, plus exact username globally | `GET /v1/users/search`, `/v1/orgs/:id/members` |
 | Presence privacy | **WORKING (server, not deployed)**. Was BROKEN (P4) | T1.7 (2026-10-16): online and last-seen are visible only to the person, people sharing a conversation, and non-guest members of a shared org. Strangers get `null` from `/v1/users/:id` and search, and are omitted from `/v1/presence`. Realtime pushes are unchanged (DM and group peers only). `presence.test.ts` (2 of 4 fail without the fix) | `authz.canSeePresence`, `routes/users.ts` |
-| Activity feed | **BROKEN** (P2) | See above | `audit_log` |
+| Activity feed | **WORKING (server, not deployed)**. Was BROKEN (P2) | T1.8: non-admins see an event only if they can see its target in the org structure or the conversation itself. Targets are resolved live, so old rows are covered and deleted targets hidden. 4 tests, 3 fail without the fix | `routes/orgs.ts` `activityVisibleTo` |
 
 ## 6. Message interactions, attachments, search
 

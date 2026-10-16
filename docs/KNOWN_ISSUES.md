@@ -40,7 +40,7 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
   - Messages from a device revoked before delivery are lost (P7, T1.5).
   - ~~Open registration with no upload quotas on a shared VPS (P5, T1.6).~~ Fixed on the server 2026-10-16 (invite-only registration, streamed uploads with quotas, container CPU and process limits). **Not yet deployed**: it needs an Android build with an invitation-code field first (`RELEASE_PLAN.md`).
   - ~~Presence is readable by anyone (P4, T1.7).~~ Fixed on the server 2026-10-16, **not yet deployed**.
-  - The activity feed leaks other branches' team and channel names (P2, T1.8).
+  - ~~The activity feed leaks other branches' team and channel names (P2, T1.8).~~ Fixed on the server 2026-10-16, **not yet deployed**.
   - Erasing a device doesn't revoke it (T1.9).
   - Deleted messages leave decrypted files on the device (T1.10).
   - Backlog and live deliveries interleave and duplicate (P6, T2.1).

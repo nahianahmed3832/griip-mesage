@@ -729,14 +729,43 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   // ───────────── Activity ─────────────
-  const PUBLIC_ACTIONS = new Set(["branch.create", "team.create", "channel.create", "invite.accept", "department.create", "member.leave", "call.start"]);
+  // Non-admins see an event only if they could see its target in the org structure (GET /v1/orgs/:id)
+  // or the conversation itself. The target is looked up live, so older audit rows without any scope
+  // information are filtered the same way; a target that no longer exists is hidden.
+  const activityVisibleTo = (r: { action: string; target: string | null }, viewer: string): boolean => {
+    const target = r.target ?? "";
+    switch (r.action) {
+      case "branch.create":
+        return true; // every branch name is listed for org members
+      case "department.create": {
+        const d = db.prepare("SELECT branch_id FROM departments WHERE id = ?").get(target) as { branch_id: string } | undefined;
+        const b = d && authz.branch(d.branch_id);
+        return !!b && authz.canAccessBranch(b, viewer);
+      }
+      case "team.create": {
+        const t = authz.team(target);
+        return !!t && (authz.canAccessTeam(t, viewer) || (!!t.branch_id && !!authz.branchRole(t.branch_id, viewer)));
+      }
+      case "channel.create": {
+        const c = authz.conversation(target);
+        return !!c && authz.canViewChannel(c, viewer);
+      }
+      case "call.start":
+        return authz.isMember(target, viewer);
+      case "invite.accept":
+      case "member.leave":
+        return true; // joining and leaving are org-level, like the member directory
+      default:
+        return false;
+    }
+  };
   app.get("/v1/orgs/:orgId/activity", auth, async (req) => {
     const actor = me(req).userId;
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
     const role = authz.requireOrgMember(orgId, actor);
     if (role === "GUEST") throw forbidden();
     const isAdmin = role === "OWNER" || role === "ADMIN";
-    const rows = db.prepare("SELECT * FROM audit_log WHERE org_id = ? ORDER BY id DESC LIMIT 200").all(orgId) as any[];
+    const rows = db.prepare("SELECT * FROM audit_log WHERE org_id = ? ORDER BY id DESC LIMIT 500").all(orgId) as any[];
     const names = new Map<string, string>();
     const nameOf = (id: string | null) => {
       if (!id) return null;
@@ -745,7 +774,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     };
     return {
       activity: rows
-        .filter((r) => isAdmin || (PUBLIC_ACTIONS.has(r.action) && !(r.action === "channel.create" && String(r.detail).startsWith("PRIVATE"))))
+        .filter((r) => isAdmin || activityVisibleTo(r, actor))
         .slice(0, 60)
         .map((r) => ({ id: r.id, at: r.at, action: r.action, actorId: r.actor_id, actorName: nameOf(r.actor_id), target: r.target, detail: r.detail })),
     };
