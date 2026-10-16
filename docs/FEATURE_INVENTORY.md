@@ -68,7 +68,7 @@ This is the starting point for the feature-first phase. Every row was checked ag
 | Org channels (public, private, announcement; only managers post in announcement channels) | WORKING | `orgs.test`, `messaging.test` | `POST /v1/orgs/:id/channels`, `authz.canPost` |
 | Multi-device fan-out (sender's other devices get a copy) | WORKING | `messaging.test` | `routes/messages.ts` |
 | Idempotent resubmission | WORKING | `messaging.test` | `submitted_messages` |
-| Delivery order and de-duplication | PARTIALLY WORKING | **P6:** live pushes overtake backlog batches and are delivered twice. The client drops duplicate *messages* by id, but *control* messages (edit, delete, reaction, pin, read) whose target is still in a later batch are discarded, then acked, so they're lost. `Hub.Conn.flushing` was meant to prevent this but is never used | `hub.ts` `pushQueued/flushBacklog`, `MessageRepository.apply` |
+| Delivery order and de-duplication | **Server fixed 2026-10-16 (not deployed)**; app part next | T2.1: a socket gets no live pushes until its backlog is fully sent, so new items join the next batch in queue order. `backlog:true` acknowledgements no longer trigger a flush once the backlog has drained. That had looped forever on empty batches and re-sent unacknowledged live items (the duplicates). `ordering.test.ts` (P6 with 105 + live; burst), fails without the fix | `hub.ts`, `ws.ts` |
 | Client never loses a message on local errors | **WORKING (JVM-tested)**. Was BROKEN | T1.4 (2026-10-16): `QueueProcessor` acknowledges only:
 - committed items;
 - quarantined items (identity change);

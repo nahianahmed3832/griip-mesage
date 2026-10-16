@@ -29,11 +29,15 @@ export function queueItemToWire(r: QueueItemRow) {
   };
 }
 
-interface Conn {
+export interface Conn {
   ws: WebSocket;
   userId: string;
   deviceId: string;
-  /** Highest queue id pushed on this socket, so live pushes don't duplicate the backlog flush. */
+  /**
+   * True until this socket's backlog has been sent completely. While flushing, live items aren't
+   * pushed: they're already queued and go out in the next backlog batch, in queue order, so a new
+   * message can't overtake (or duplicate) the backlog (P6).
+   */
   flushing: boolean;
 }
 
@@ -50,7 +54,7 @@ export class Hub {
   constructor(private db: DB) {}
 
   add(ws: WebSocket, userId: string, deviceId: string): Conn {
-    const conn: Conn = { ws, userId, deviceId, flushing: false };
+    const conn: Conn = { ws, userId, deviceId, flushing: true }; // its backlog flush starts right after "hello"
     let set = this.byDevice.get(deviceId);
     if (!set) this.byDevice.set(deviceId, (set = new Set()));
     set.add(conn);
@@ -121,10 +125,11 @@ export class Hub {
     }
   }
 
-  /** Push freshly queued items to a device if it is connected (fire and forget). */
+  /** Push freshly queued items to a device's sockets whose backlog has drained (fire and forget). */
   pushQueued(deviceId: string, rows: QueueItemRow[]): void {
     if (rows.length === 0) return;
-    this.sendToDevice(deviceId, { t: "queue", items: rows.map(queueItemToWire), more: false });
+    const data = JSON.stringify({ t: "queue", items: rows.map(queueItemToWire), more: false });
+    for (const c of this.byDevice.get(deviceId) ?? []) if (!c.flushing && c.ws.readyState === 1) c.ws.send(data);
   }
 
   /** Send the next backlog batch for a device. Called on connect and after each ack. */
@@ -139,8 +144,11 @@ export class Hub {
     const batch = rows.slice(0, batchSize);
     if (conn.ws.readyState !== 1) return;
     conn.ws.send(JSON.stringify({ t: "queue", items: batch.map(queueItemToWire), more, backlog: true }));
+    // Query, send and this switch happen in one synchronous step, so an item queued afterwards is
+    // pushed live and one queued before is in this batch: nothing is skipped or sent twice.
+    conn.flushing = more;
     if (!more) conn.ws.send(JSON.stringify({ t: "queue.drained" }));
   }
 }
 
-export type { Conn };
+

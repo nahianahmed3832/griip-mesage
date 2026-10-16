@@ -13,7 +13,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 | D3 | ~~No call eviction on membership change~~ **Fixed 2026-10-16 (T1.3), not deployed** | `server/src/routes/calls.ts`, `jobs.ts` | High | T1.3 |
 | D4 | ~~The catch-all in `processQueue` acks after any exception~~ **Fixed 2026-10-16 (T1.4)** | `QueueProcessor.kt` | High | T1.4 |
 | D5 | ~~Open registration and no per-user quotas~~ **Fixed in code 2026-10-16 (T1.6), not deployed** | `routes/auth.ts`, `routes/attachments.ts`, `compose.yaml` | High | T1.6 |
-| D6 | `Hub.Conn.flushing` is declared but unused. Live pushes and the backlog interleave | `server/src/hub.ts` | Medium | T2.1 |
+| D6 | ~~`Hub.Conn.flushing` is declared but unused~~ **Fixed 2026-10-16 (T2.1):** it gates live pushes until the backlog is drained, and stops the empty-backlog acknowledgement loop | `server/src/hub.ts`, `ws.ts` | Medium | T2.1 |
 | D7 | `RealtimeClient` drops frames with `tryEmit` into a bounded buffer | `RealtimeClient.kt` | Medium | T2.2 |
 | D8 | `call_invite` keys are accepted from any member (first wins) | `MessageRepository.apply` | Medium | T5.2 |
 | D9 | Invitations aren't re-checked against the creator's current rights | `routes/orgs.ts` `findInvite` | Medium | T3.1 |

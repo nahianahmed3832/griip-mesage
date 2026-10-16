@@ -24,6 +24,24 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
 
+### T2.1 (server) Ordered, exactly-once delivery (2026-10-16)
+
+- **Defect (probe P6):** with 105 items queued, a new message was pushed live before items 101–105 and then delivered again in the next backlog batch.
+- **Telegram reference (behaviour only):** updates apply in sequence, and gaps are filled before newer updates. Applied as *no live push until the backlog has drained*. No code reused.
+- **Root causes (two):**
+  1. Live pushes ignored the backlog in progress. `Conn.flushing` was declared but never used.
+  2. **Found by the new test:** both clients acknowledge every backlog frame with `backlog:true`, including the final empty one, and the server answered each with another flush. The connection looped through empty batches indefinitely, and each extra flush re-sent live items not yet acknowledged.
+- **Change:**
+  - A connection starts `flushing`, and `flushBacklog` clears it in the same synchronous step that sends the final batch.
+  - `pushQueued` skips flushing sockets, whose items go out in the next batch, in queue order.
+  - `backlog:true` acknowledgements flush only while still flushing.
+- **Tests:** `server/test/ordering.test.ts`:
+  - 105 queued plus one live message sent mid-flush: 106 unique ids, strictly in queue order, and the live message is last on the wire, with live pushes resuming after the drain;
+  - a 60-message burst to a connected device with no duplicates.
+
+  Both fail without the fix. Passed on 3 consecutive runs. `npm test` gives **72/72**.
+- **Not deployed** (`RELEASE_PLAN.md`). The app's half of T2.1 (controls arriving before their target) and T2.2 follow.
+
 ### T1.4 No message lost during queue processing (2026-10-16)
 
 - **Defect:** `processQueue` acknowledged an item after *any* exception: a database error, cancellation (for example the screen closing) or a bug in `apply`. The relay then deleted its only copy. The REST fallback (`pollQueueOnce`) had different rules again.

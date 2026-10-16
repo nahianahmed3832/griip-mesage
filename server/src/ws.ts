@@ -80,7 +80,10 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
         case "ack": {
           const ids = Array.isArray(msg.ids) ? msg.ids.filter((x: unknown) => Number.isInteger(x)).slice(0, 500) : [];
           if (ids.length) acknowledge(ctx, auth.userId, auth.deviceId, ids);
-          if (msg.backlog) hub.flushBacklog(conn);
+          // Only while this socket's backlog is still being sent: clients also acknowledge the final (empty)
+          // batch with backlog:true, and answering that with another flush looped forever and re-sent
+          // unacknowledged live items (P6 duplicates).
+          if (msg.backlog && conn.flushing) hub.flushBacklog(conn);
           break;
         }
         case "typing": {
