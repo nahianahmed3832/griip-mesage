@@ -29,9 +29,9 @@ There was no second physical phone. Every two-party test used the phone plus the
 | Release (R8) build | NOT VERIFIED | Configured but not built in this session |
 | Android unit tests | PASS | `./gradlew :app:testDebugUnitTest` → `VideoSinkBindingTest` 8/8 (renderer lifetime, sink ordering, track switching, stop/start, release) |
 
-## 2. Backend (vitest: 65 tests, all PASS on 2026-10-16)
+## 2. Backend (vitest: 69 tests, all PASS on 2026-10-16)
 
-`cd server && npm test` gives 9 files and 65 tests passed. Earlier results on this list were recorded on older builds (32, then 36).
+`cd server && npm test` gives 10 files and 69 tests passed. Earlier results on this list were recorded on older builds (32, then 36).
 Suites added in the 2026-10-16 feature pass. For each, the tests failed with the fix removed, except where noted:
 
 | Suite | Tests | Covers |
@@ -162,6 +162,7 @@ with no device or emulator. `crypto/Bytes.kt` uses `java.util.Base64`, so the re
 | `crypto/AttachmentCryptoTest` | 2 | PASS | Fresh key per file; a modified ciphertext fails the integrity check |
 | `ui/screens/calls/VideoSinkBindingTest` | 8 | PASS | Renderer lifetime and sink ordering (video fix) |
 | `data/db/MigrationsTest` | 3 | PASS | D-13: schema versions contiguous and equal to `GriipDatabase.VERSION`; each migration step gives the next exported schema and keeps sample rows (sqlite-jdbc). Proven to fail when v2 had no step |
+| `data/api/RegisterReqTest` | 2 | PASS | T1.6: `inviteCode` is sent when entered and omitted when blank |
 | `data/repo/KeyDirectoryTest` | 7 | PASS | T1.2 pinning: TOFU; a substituted key pauses sending to the whole conversation; a forged sender is held; an uncertified device is rejected; accepting the reviewed key resumes; a second swap is caught; reverting clears the warning |
 
 Not yet covered: the key directory, outbox and queue processing. Each gets tests together with the change that needs them (T1.2, T1.4).

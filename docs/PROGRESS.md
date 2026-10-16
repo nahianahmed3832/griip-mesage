@@ -17,7 +17,7 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T1.2 Enforce pinned identity keys** | ✅ (device check pending) | See below |
 | **T1.3 Evict removed members from live calls** (P3) | ✅ server | See below. Not deployed |
 | T1.4 Never discard messages on local failure | ⏳ | Needs T2.4 |
-| **T1.6 Registration gating, quotas, limits** (P5) | ✅ server | See below. Android invite field pending; not deployed |
+| **T1.6 Registration gating, quotas, limits** (P5) | ✅ server + app | See below. Not deployed |
 | **T1.7 Presence privacy** (P4) | ✅ server | See below. Not deployed |
 | **T1.8 Activity feed scope** (P2) | ✅ server | See below. Not deployed |
 | **T2.4 Android test harness** | ✅ foundation | See below. 25 JVM tests; device check blocked |
@@ -165,7 +165,7 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
   - stale `.part` cleanup.
 - **Results:** `npm test` gives **56/56** on three consecutive runs, and `tsc` is clean. Not run: `docker compose config` (Docker isn't installed on this workstation).
 - **Not done:**
-  - **Android onboarding needs an invitation-code field** before this is deployed (Android phase).
+  - ~~Android onboarding needs an invitation-code field~~ **Done (same day):** an "Invitation code" field on *Create your identity*, sent as `inviteCode` (`RegisterReqTest` checks the wire format). On-device registration is not verified.
   - **Not deployed** (`RELEASE_PLAN.md`).
 - **Security:** closes P5, D5 and D26 once deployed, and fixes the server half of D15. Residual: an org owner can invite people to register.
 

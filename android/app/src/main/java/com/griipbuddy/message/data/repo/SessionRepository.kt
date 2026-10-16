@@ -74,7 +74,7 @@ class SessionRepository(
     private fun deviceName(): String = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}".take(60)
 
     /** Create a brand-new identity on this device and register the username. */
-    suspend fun register(url: String, username: String, displayName: String, avatarColor: Int) {
+    suspend fun register(url: String, username: String, displayName: String, avatarColor: Int, inviteCode: String? = null) {
         val c = setupClient(url)
         val keys = store.keys() ?: LocalKeys.generate().also { store.saveKeys(it) }
         val nonce = challenge(c)
@@ -87,6 +87,7 @@ class SessionRepository(
             device = DeviceReg(deviceName(), signing, keys.deviceEncPublic, keys.deviceCertificate()),
             nonce = nonce,
             signature = keys.signWithDevice(Canonical.authProof("register", nonce, signing)),
+            inviteCode = inviteCode?.trim()?.takeIf { it.isNotEmpty() },
         )
         val res: SessionRes = c.request("POST", "/v1/auth/register", GriipJson.encodeToString(RegisterReq.serializer(), req), SessionRes.serializer(), auth = false)
         settings.update { it.copy(serverUrl = url) }

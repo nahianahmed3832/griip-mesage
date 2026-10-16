@@ -161,6 +161,7 @@ private fun CreateIdentityScreen(onBack: () -> Unit, onServer: () -> Unit) {
     val server by container.settings.state.collectAsStateWithLifecycle()
     var name by rememberSaveable { mutableStateOf("") }
     var username by rememberSaveable { mutableStateOf("") }
+    var invite by rememberSaveable { mutableStateOf("") }
     var color by rememberSaveable { mutableIntStateOf((0..7).random()) }
     var availability by remember { mutableStateOf<String?>(null) }
     var available by remember { mutableStateOf<Boolean?>(null) }
@@ -215,6 +216,13 @@ private fun CreateIdentityScreen(onBack: () -> Unit, onServer: () -> Unit) {
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 trailing = { if (available == true) Icon(Icons.Rounded.Check, "Available", tint = c.success, modifier = Modifier.size(20.dp)) },
             )
+            Spacer(Modifier.height(16.dp))
+            GriipTextField(
+                invite, { invite = it.uppercase().filter { ch -> ch.isLetterOrDigit() || ch == '-' }.take(20) }, "Invitation code",
+                placeholder = "ABCD-EFGH-JKMN", leadingIcon = Icons.Outlined.Key,
+                helper = "From your organisation's admin. The GriipBuddy server only accepts invited sign-ups.",
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
+            )
             Spacer(Modifier.height(20.dp))
             GlassCard(Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.Top) {
@@ -248,7 +256,7 @@ private fun CreateIdentityScreen(onBack: () -> Unit, onServer: () -> Unit) {
                 busy = true
                 error = null
                 scope.launch {
-                    runCatching { container.session.register(server.serverUrl, username, name, color) }
+                    runCatching { container.session.register(server.serverUrl, username, name, color, invite) }
                         .onFailure { error = it.friendly() }
                     busy = false
                 }

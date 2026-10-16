@@ -10,6 +10,8 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class RegisterReq(
     val username: String, val displayName: String, val identityKey: String, val avatarColor: Int,
     val device: DeviceReg, val nonce: String, val signature: String,
+    /** Required by invite-only servers (the default): a registration invite or an org invite code. */
+    val inviteCode: String? = null,
 )
 @Serializable data class LoginReq(val deviceId: String, val nonce: String, val signature: String)
 @Serializable data class AddDeviceReq(val username: String, val device: DeviceReg, val nonce: String, val signature: String)
