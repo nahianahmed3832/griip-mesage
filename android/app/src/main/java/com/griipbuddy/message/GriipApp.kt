@@ -4,10 +4,10 @@ import android.app.Application
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
-import com.griipbuddy.message.data.repo.SessionState
 import com.griipbuddy.message.di.AppContainer
 import com.griipbuddy.message.notify.Channels
-import com.griipbuddy.message.service.RelayConnectionService
+import com.griipbuddy.message.service.BackgroundDelivery
+import com.griipbuddy.message.service.PersistentConnection
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.File
 
@@ -26,8 +26,7 @@ class GriipApp : Application() {
                 val c = container ?: return
                 c.appState.foreground.value = true
                 // FGS may only be started while visible: (re)start the optional background connection here.
-                if (c.session.state.value is SessionState.SignedIn && c.settings.current.backgroundConnection) RelayConnectionService.start(this@GriipApp)
-                else RelayConnectionService.stop(this@GriipApp)
+                BackgroundDelivery.sync(this@GriipApp)
             }
 
             override fun onStop(owner: LifecycleOwner) {
@@ -38,7 +37,7 @@ class GriipApp : Application() {
 
     /** "Sign out & erase": deletes keys, the encrypted database and downloaded attachments. */
     fun eraseEverything() {
-        RelayConnectionService.stop(this)
+        PersistentConnection.stop(this)
         container?.let {
             it.identity.clearAll()
             it.close()

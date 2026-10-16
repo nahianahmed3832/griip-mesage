@@ -167,6 +167,7 @@ with no device or emulator. `crypto/Bytes.kt` uses `java.util.Base64`, so the re
 | `crypto/AttachmentFileCryptoTest` | 4 | PASS | T2.6: streamed encryption gives the one-shot format; a tampered file or wrong key leaves no output or temp file |
 | `data/repo/TransferRetryTest` | 3 | PASS | T2.6: what is retried (network, busy, 5xx) and what isn't (size, quota, storage, access) |
 | `data/api/ResumableDownloadTest` | 4 | PASS | T2.6 with MockWebServer: Range resume appends; a server ignoring the range restarts; fresh download; 404 |
+| `service/BackgroundDeliveryTest` | 1 | PASS | T2.5: "stay connected" runs only for a signed-in user with the setting on (also after reboot or update) |
 | `data/api/FrameInboxTest` | 3 | PASS | T2.2: a 1,000-frame burst arrives complete and in order with a slow consumer; a stalled consumer triggers a reconnect, not loss; bounded |
 | `data/api/RegisterReqTest` | 2 | PASS | T1.6: `inviteCode` is sent when entered and omitted when blank |
 | `data/repo/AttachmentFilesTest` | 3 | PASS | T1.10: a message's decrypted files are deleted with it; names from messages can't reach outside `filesDir/attachments` |

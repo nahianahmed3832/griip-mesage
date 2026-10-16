@@ -133,8 +133,8 @@ Cancellation propagates. Database errors and bugs aren't acknowledged; network e
 
 | Feature | Status | Evidence | Code |
 |---|---|---|---|
-| Push wake-up (FCM or UnifiedPush) | MISSING | Decision D-08. A killed app gets nothing until reopened | — |
-| "Stay connected" foreground service (`remoteMessaging`) | PARTIALLY WORKING | Implemented and on by default. It isn't restarted after reboot (no `BOOT_COMPLETED`), and OEM battery managers may kill it. Long-running behaviour was never measured | `RelayConnectionService.kt`, `GriipApp` |
+| Push wake-up (FCM or UnifiedPush) | MISSING (evaluated) | `BACKGROUND_DELIVERY.md` recommends self-hosted UnifiedPush (ntfy) as the next mechanism, because the HONOR test phone likely has no Play services. **Needs owner approval for the infrastructure** | — |
+| "Stay connected" foreground service (`remoteMessaging`) | PARTIALLY WORKING (restart not device-verified) | On by default. T2.5 (2026-10-16): now restarted after reboot and app update (`BackgroundDeliveryRestartReceiver`), behind a replaceable `BackgroundDelivery` interface. OEM battery managers may still kill it | `RelayConnectionService`, `service/BackgroundDelivery.kt` |
 | Message notifications (decrypted on device, private on the lock screen) | UNVERIFIED | Code is reasonable. No device evidence is recorded. Each conversation shows only its latest message | `notify/Channels.kt` `MessageNotifier` |
 | Incoming call while backgrounded or locked (full-screen intent) | UNVERIFIED | `TESTING.md` §5: "NOT VERIFIED". Android 14+ needs the user to grant full-screen intents for non-default apps | `IncomingCallNotifier`, `MainActivity` show-when-locked |
 

@@ -168,7 +168,7 @@ Extend these, don't replace them:
   - the outbox and `processQueue`.
 - **Risks:** refactoring production classes for testability. Keep it minimal.
 
-### T2.5 Background delivery decision (push)
+### T2.5 Background delivery decision (push). **Evaluated 2026-10-16** (`BACKGROUND_DELIVERY.md`); restart after reboot/update implemented; push needs owner approval
 - **Purpose:** a killed app receives nothing (D-08).
 - **Dependencies:** owner decision: FCM (metadata to Google) or self-hosted UnifiedPush/ntfy (another service on the VPS). Also add `BOOT_COMPLETED` restart of the stay-connected service.
 - **Acceptance:** after a reboot or OS kill, a message or call arrives within the agreed time with the chosen mechanism.

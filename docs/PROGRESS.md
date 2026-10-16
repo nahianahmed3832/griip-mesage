@@ -24,6 +24,22 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
 
+### T2.5 Background delivery: evaluation and restart after reboot or update (2026-10-16)
+
+- **Gap:** a killed app receives nothing. The "stay connected" service also stayed off after a reboot or an app update until the user opened the app.
+- **Evaluation:** `docs/BACKGROUND_DELIVERY.md` compares the persistent connection, self-hosted UnifiedPush (ntfy) and FCM on these points:
+  - privacy;
+  - phones without Google services (likely including the HONOR test phone);
+  - OEM battery managers;
+  - infrastructure and work.
+
+  **Recommendation:** self-hosted UnifiedPush with payload-free wake-ups as the next mechanism. It needs **owner approval** for a new container, TLS route and nginx site. FCM would be optional, and only if the owner accepts Google seeing wake-up timing.
+- **Change (app):**
+  - `BackgroundDelivery` interface (with `PersistentConnection` as today's mechanism) and `BackgroundDelivery.sync`, used by `GriipApp`.
+  - `BackgroundDeliveryRestartReceiver` handles `BOOT_COMPLETED` and `MY_PACKAGE_REPLACED` (not exported; `RECEIVE_BOOT_COMPLETED`).
+  - The rule "only for a signed-in user with the setting on" is unit-tested (`BackgroundDeliveryTest`).
+- **Not verified:** none of the device steps in the evaluation's verification plan have run. Background and killed-app delivery are **not** claimed.
+
 ### T2.6 Reliable encrypted attachment transfers (2026-10-16)
 
 - **Defects:**
