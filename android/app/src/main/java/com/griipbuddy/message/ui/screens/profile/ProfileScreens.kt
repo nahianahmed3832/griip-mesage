@@ -200,7 +200,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsSections(
     item { SectionHeader("Server and about", Modifier.padding(top = 18.dp, bottom = 6.dp)) }
     item {
         GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
-            MenuRow(Icons.Outlined.Dns, container.session.serverUrl, subtitle = "Signed in to this relay. Changing servers needs a new account.", tint = c.textSecondary, tintBg = c.surfaceVariant, trailing = null)
+            MenuRow(
+                Icons.Outlined.Dns, container.session.serverUrl,
+                subtitle = "Servers on this phone: add your organisation's or community's server, or switch between them. Your accounts stay separate.",
+                tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.SERVERS) },
+            )
             MenuRow(Icons.Outlined.Info, "About Griip Message", subtitle = "Version ${BuildConfig.VERSION_NAME} · internal beta · how your data is protected", tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.SECURITY) })
         }
         if (container.session.serverUrl.startsWith("http://")) {
@@ -392,7 +396,7 @@ fun SecurityScreen(nav: NavHostController) {
     }
     if (revealConfirm) ConfirmDialog("Show recovery key?", "Make sure nobody can see your screen.", "Show", onConfirm = { revealConfirm = false; showKey = true }, onDismiss = { revealConfirm = false })
     if (eraseConfirm) ConfirmDialog(
-        "Erase this device?", "Deletes your keys, message history and files from this phone. Without your recovery key or another linked device, you can't get back into this account.", "Erase",
+        "Erase this device?", "Deletes this account's keys, message history and files from this phone. Accounts on other servers on this phone aren't affected. Without your recovery key or another linked device, you can't get back into this account.", "Erase",
         onConfirm = {
             eraseConfirm = false
             scope.launch {

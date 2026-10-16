@@ -80,10 +80,11 @@ class MessageRepository(
     private val settings: SettingsStore,
     private val appState: AppState,
     private val scope: CoroutineScope,
+    attachmentsDir: File = File(context.filesDir, "attachments"),
     private val notify: (Notice) -> Unit,
 ) {
     private val json = GriipJson
-    private val files = AttachmentFiles(File(context.filesDir, "attachments"))
+    private val files = AttachmentFiles(attachmentsDir)
     private val pending = PendingControls(RoomPendingControlStore(db))
     private val keyRequests = CallKeyRequests()
     private val callKeys = CallKeyVerifier { id ->

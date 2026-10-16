@@ -11,7 +11,9 @@ import com.griipbuddy.message.data.repo.AppState
 import com.griipbuddy.message.data.repo.ConversationRepository
 import com.griipbuddy.message.data.repo.KeyDirectory
 import com.griipbuddy.message.data.repo.MessageRepository
+import com.griipbuddy.message.BuildConfig
 import com.griipbuddy.message.data.repo.OrgRepository
+import com.griipbuddy.message.data.repo.ProfileStorage
 import com.griipbuddy.message.data.repo.SessionRepository
 import com.griipbuddy.message.data.repo.SessionState
 import com.griipbuddy.message.data.repo.SettingsStore
@@ -25,16 +27,21 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
- * Manual dependency injection (docs/DECISIONS.md D-07). One container per signed-in installation;
- * recreated after "erase this device".
+ * Manual dependency injection (docs/DECISIONS.md D-07). One container per active server profile;
+ * recreated after "erase this device" and when the person switches profiles. [profile] decides where
+ * this container's keys, database and files live; the default is the original single-account layout.
  */
-class AppContainer(val app: Application) {
+class AppContainer(
+    val app: Application,
+    val profile: ProfileStorage = ProfileStorage.of(ProfileStorage.DEFAULT),
+    serverDefault: String = BuildConfig.DEFAULT_SERVER_URL,
+) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val settings = SettingsStore(app)
-    val identity = IdentityStore(app)
+    val settings = SettingsStore(app, profile.serverKey, serverDefault)
+    val identity = IdentityStore(app, profile.identityPrefs, profile.keystoreAlias)
     val session = SessionRepository(identity, settings)
     val api = ApiClient({ session.serverUrl }, { session.token }, { session.reauth() }).also { session.api = it }
-    val db: GriipDatabase = GriipDatabase.open(app, identity.databasePassphrase(), DB_NAME)
+    val db: GriipDatabase = GriipDatabase.open(app, identity.databasePassphrase(), profile.dbName)
     val realtime = RealtimeClient(app, api.http, scope, { session.serverUrl }, { session.token }, { session.reauth() })
     val users = UserRepository(api, db)
     val directory = KeyDirectory(api, db)
@@ -42,7 +49,7 @@ class AppContainer(val app: Application) {
     val appState = AppState()
     val notifier = MessageNotifier(app)
     val crypto = EnvelopeV1 { session.keys ?: error("no keys on this device") }
-    val messages = MessageRepository(app, db, api, realtime, session, crypto, directory, conversations, users, settings, appState, scope) { notifier.show(it) }
+    val messages = MessageRepository(app, db, api, realtime, session, crypto, directory, conversations, users, settings, appState, scope, java.io.File(app.filesDir, profile.attachmentsDir)) { notifier.show(it) }
     val orgs = OrgRepository(api, db, conversations, users)
     val calls = CallManager(app, api, db, session, messages, conversations, settings, scope)
     val voicePlayer = com.griipbuddy.message.voice.VoicePlayer(app)

@@ -22,8 +22,10 @@ import com.griipbuddy.message.ui.AppRoot
 import com.griipbuddy.message.ui.scan.InviteCodes
 import com.griipbuddy.message.ui.theme.GriipTheme
 import com.griipbuddy.message.ui.theme.ThemeMode
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class MainActivity : ComponentActivity() {
     private var pendingConversation by mutableStateOf<String?>(null)
     private var pendingInvite by mutableStateOf<String?>(null)
@@ -36,7 +38,9 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
         setContent {
             val gen by app.generation.collectAsStateWithLifecycle()
-            val container = app.container!!
+            // Read here, keyed on the generation, so this whole scope recomposes with the new container after
+            // an erase or a profile switch (a read only inside a nested lambda kept the old one).
+            val container = androidx.compose.runtime.remember(gen) { app.container!! }
             val settings by container.settings.state.collectAsStateWithLifecycle()
             val dark = when (settings.theme) {
                 ThemeMode.DARK -> true
@@ -50,22 +54,25 @@ class MainActivity : ComponentActivity() {
                 )
             }
             GriipTheme(settings.theme) {
-                @Suppress("UNUSED_EXPRESSION") gen
-                AppRoot(container, pendingConversation, pendingInvite) {
-                    pendingConversation = null
-                    pendingInvite = null
+                // A new container (erase, or a switch to another server profile) gets a fresh UI tree:
+                // navigation, view models and remembered state never carry over between profiles.
+                androidx.compose.runtime.key(gen, container) {
+                    AppRoot(container, pendingConversation, pendingInvite) {
+                        pendingConversation = null
+                        pendingInvite = null
+                    }
                 }
             }
         }
         lifecycleScope.launch {
-            app.container!!.session.state.collect { s ->
+            app.generation.flatMapLatest { app.container!!.session.state }.collect { s ->
                 if (s is SessionState.SignedIn && Build.VERSION.SDK_INT >= 33 &&
                     ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
                 ) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
         lifecycleScope.launch {
-            app.container!!.calls.state.collect { c ->
+            app.generation.flatMapLatest { app.container!!.calls.state }.collect { c ->
                 // Let an incoming call show over the lock screen; revert afterwards.
                 val ringing = c.phase == CallPhase.Incoming || c.phase == CallPhase.Connected || c.phase == CallPhase.Connecting
                 if (Build.VERSION.SDK_INT >= 27) {

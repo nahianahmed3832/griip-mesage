@@ -22,6 +22,15 @@ export function openDatabase(file: string): DB {
   return db;
 }
 
+/** The newest migration this server ships (its schema version). */
+export function latestMigration(): number {
+  return fs
+    .readdirSync(MIGRATIONS_DIR)
+    .filter((f) => /^\d+_.+\.sql$/.test(f))
+    .map((f) => Number.parseInt(f.split("_")[0], 10))
+    .reduce((a, b) => Math.max(a, b), 0);
+}
+
 export function migrate(db: DB): void {
   db.exec(
     "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL)",

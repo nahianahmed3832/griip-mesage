@@ -46,10 +46,14 @@ data class SessionInfo(
     val tokenExpiresAt: Long = 0,
 )
 
-/** Persists keys and the session sealed under the Keystore key (SharedPreferences holds ciphertext only). */
-class IdentityStore(context: Context) {
-    private val prefs = context.getSharedPreferences("griip_identity", Context.MODE_PRIVATE)
-    private val sealer = KeystoreSealer()
+/**
+ * Persists keys and the session sealed under the Keystore key (SharedPreferences holds ciphertext only).
+ * Each server profile passes its own [prefsName] and Keystore [alias]; the defaults are the original
+ * profile's, so existing installs read exactly what they always did.
+ */
+class IdentityStore(context: Context, prefsName: String = "griip_identity", alias: String = "griip_master_v1") {
+    private val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+    private val sealer = KeystoreSealer(alias)
     private val json = Json { ignoreUnknownKeys = true }
 
     @Volatile private var cachedKeys: LocalKeys? = null

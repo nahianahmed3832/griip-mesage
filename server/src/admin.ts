@@ -12,8 +12,11 @@
  *   disable <username>             disable an account and drop its sessions
  *   enable <username>
  *   cleanup                        run the retention job now
+ *   backup <file>                  consistent snapshot of the live database (never overwrites)
+ *   verify-backup <file>           read-only check that a snapshot is intact and this server can use it
  */
 import { Authz } from "./authz.js";
+import { backupDatabase, verifyBackup } from "./backup.js";
 import { loadConfig } from "./config.js";
 import { openDatabase } from "./db.js";
 import { Hub } from "./hub.js";
@@ -22,6 +25,16 @@ import { runCleanup } from "./jobs.js";
 import { humanCode, newId, now, sha256Hex } from "./util.js";
 
 const [cmd, ...rest] = process.argv.slice(2);
+// verify-backup only reads the snapshot: it must not open (or migrate) the live database.
+if (cmd === "verify-backup") {
+  if (!rest[0]) {
+    console.error("usage: verify-backup <file>");
+    process.exit(2);
+  }
+  const r = verifyBackup(rest[0]);
+  console.log(JSON.stringify(r, null, 2));
+  process.exit(r.ok ? 0 : 1);
+}
 const cfg = loadConfig();
 const db = openDatabase(cfg.databasePath);
 const one = (sql: string, ...p: unknown[]) => (db.prepare(sql).get(...p) as { n: number }).n;
@@ -106,9 +119,23 @@ switch (cmd) {
     console.table(r);
     break;
   }
+  case "backup": {
+    if (!rest[0]) {
+      console.error("usage: backup <file>");
+      process.exit(2);
+    }
+    try {
+      const r = await backupDatabase(db, rest[0]);
+      console.log(`backup written: ${r.file} (${r.bytes} bytes)`);
+    } catch (e) {
+      console.error(`backup failed: ${(e as Error).message}`);
+      process.exit(1);
+    }
+    break;
+  }
   default:
     console.log(
-      "commands: stats | users | invite <orgSlug> [role] [uses] | reg-invite [uses] [days] [note] | reg-invites | reg-invite-revoke <hint|id> | disable <username> | enable <username> | cleanup",
+      "commands: stats | users | invite <orgSlug> [role] [uses] | reg-invite [uses] [days] [note] | reg-invites | reg-invite-revoke <hint|id> | disable <username> | enable <username> | cleanup | backup <file> | verify-backup <file>",
     );
 }
 db.close();

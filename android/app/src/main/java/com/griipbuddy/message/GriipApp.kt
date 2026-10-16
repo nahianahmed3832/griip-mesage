@@ -4,6 +4,9 @@ import android.app.Application
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.griipbuddy.message.crypto.IdentityStore
+import com.griipbuddy.message.data.repo.ProfileRegistry
+import com.griipbuddy.message.data.repo.ProfileStorage
 import com.griipbuddy.message.di.AppContainer
 import com.griipbuddy.message.notify.Channels
 import com.griipbuddy.message.service.BackgroundDelivery
@@ -16,11 +19,14 @@ class GriipApp : Application() {
         private set
     /** Bumped when the container is recreated so the UI rebinds. */
     val generation = MutableStateFlow(0)
+    lateinit var profiles: ProfileRegistry
+        private set
 
     override fun onCreate() {
         super.onCreate()
         Channels.create(this)
-        container = AppContainer(this)
+        profiles = ProfileRegistry(this)
+        container = containerFor(profiles.current.active)
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
                 val c = container ?: return
@@ -35,18 +41,87 @@ class GriipApp : Application() {
         })
     }
 
-    /** "Sign out & erase": deletes keys, the encrypted database and downloaded attachments. */
+    private fun containerFor(id: String): AppContainer =
+        AppContainer(this, ProfileStorage.of(id), profiles.initialUrl(id) ?: BuildConfig.DEFAULT_SERVER_URL)
+
+    /**
+     * "Sign out & erase" for the active profile: deletes its keys, encrypted database and downloaded
+     * attachments. Other server profiles on this phone are not touched.
+     */
     fun eraseEverything() {
         PersistentConnection.stop(this)
+        val storage = container?.profile ?: ProfileStorage.of(profiles.current.active)
         container?.let {
             it.notifier.clearAll() // decrypted message text must not stay in the notification shade
             it.identity.clearAll()
             it.close()
         }
-        deleteDatabase(AppContainer.DB_NAME)
-        File(filesDir, "attachments").deleteRecursively()
-        getSharedPreferences("griip_settings", MODE_PRIVATE).edit().remove("serverUrl").apply()
-        container = AppContainer(this)
+        deleteProfileFiles(storage)
+        container = containerFor(storage.id)
         generation.value++
+    }
+
+    /**
+     * Makes [id] the active profile. The current profile is closed, not erased: its keys, messages and
+     * session stay on this phone for when the person switches back. Nothing is copied between profiles.
+     */
+    fun switchProfile(id: String) {
+        val current = container
+        if (current?.profile?.id == id || !profiles.current.has(id)) return
+        PersistentConnection.stop(this)
+        current?.let {
+            it.notifier.clearAll() // notifications belong to the profile that showed them
+            it.close()
+        }
+        profiles.update { it.activate(id) }
+        container = containerFor(id)
+        generation.value++
+        BackgroundDelivery.sync(this)
+    }
+
+    /** Adds a profile for another server and switches to it; the new profile starts signed out. */
+    fun addProfile(serverUrl: String): String {
+        var id = ""
+        profiles.update { l -> l.add(serverUrl, System.currentTimeMillis()).also { id = it.extra.last().id } }
+        switchProfile(id)
+        return id
+    }
+
+    /**
+     * Removes an inactive, non-original profile from this phone: its keys, messages and files here. The
+     * account on that server isn't deleted (another device or the recovery key can still sign in).
+     */
+    fun removeProfile(id: String) {
+        val l = profiles.current
+        if (id == ProfileStorage.DEFAULT || id == l.active || !l.has(id)) return
+        val storage = ProfileStorage.of(id)
+        IdentityStore(this, storage.identityPrefs, storage.keystoreAlias).clearAll()
+        deleteProfileFiles(storage)
+        deleteSharedPreferences(storage.identityPrefs)
+        profiles.update { it.remove(id) }
+    }
+
+    data class ProfileSummary(val id: String, val serverUrl: String, val username: String?, val active: Boolean, val original: Boolean)
+
+    /**
+     * What the Servers screen lists. An inactive profile's session is opened with that profile's own
+     * Keystore key, only to show its server and username; nothing is copied out of it.
+     */
+    fun profileSummaries(): List<ProfileSummary> {
+        val l = profiles.current
+        val settings = getSharedPreferences("griip_settings", MODE_PRIVATE)
+        return l.ids.map { id ->
+            val st = ProfileStorage.of(id)
+            val c = container?.takeIf { it.profile.id == id }
+            val session = c?.session?.session ?: if (c == null) runCatching { IdentityStore(this, st.identityPrefs, st.keystoreAlias).session() }.getOrNull() else null
+            val url = session?.serverUrl ?: settings.getString(st.serverKey, null) ?: profiles.initialUrl(id) ?: BuildConfig.DEFAULT_SERVER_URL
+            ProfileSummary(id, url, session?.username, id == l.active, id == ProfileStorage.DEFAULT)
+        }
+    }
+
+    private fun deleteProfileFiles(storage: ProfileStorage) {
+        deleteDatabase(storage.dbName)
+        File(filesDir, storage.attachmentsDir).deleteRecursively()
+        getSharedPreferences("griip_settings", MODE_PRIVATE).edit().remove(storage.serverKey).apply()
     }
 }

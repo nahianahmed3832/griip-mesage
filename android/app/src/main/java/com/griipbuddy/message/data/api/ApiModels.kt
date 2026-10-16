@@ -20,6 +20,9 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class ServerInfo(
     val name: String, val version: String, val calling: Boolean, val queueTtlSeconds: Long,
     val attachmentMaxBytes: Long, val attachmentTtlSeconds: Long, val encryption: String,
+    // Added 2026-10-16 (server-info v1); absent on older servers.
+    val infoVersion: Int? = null, val api: Int? = null, val minClientApi: Int? = null,
+    val instanceName: String? = null, val registration: String? = null,
 )
 
 @Serializable data class PairingStartReq(val deviceName: String, val signingKey: String, val encryptionKey: String, val transferKey: String)

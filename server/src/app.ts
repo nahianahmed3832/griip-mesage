@@ -18,6 +18,14 @@ import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
 export const VERSION = "0.1.0";
+/**
+ * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
+ * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
+ */
+export const API_VERSION = 1;
+export const MIN_CLIENT_API = 1;
+/** Version of the /v1/server-info document itself (fields are only ever added). */
+export const SERVER_INFO_VERSION = 1;
 
 export interface BuiltApp {
   app: FastifyInstance;
@@ -96,9 +104,14 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
     return { ok: true, version: VERSION, time: now(), livekit: !!ctx.livekit };
   });
 
-  // Public, non-sensitive server info for client setup screens.
+  // Public, non-sensitive server info for client setup screens. Additive only: clients ignore unknown fields.
   app.get("/v1/server-info", async () => ({
     name: "Griip Message relay",
+    infoVersion: SERVER_INFO_VERSION,
+    api: API_VERSION,
+    minClientApi: MIN_CLIENT_API,
+    instanceName: config.instanceName,
+    registration: config.registrationMode,
     version: VERSION,
     calling: !!ctx.livekit,
     queueTtlSeconds: config.queueTtlSeconds,

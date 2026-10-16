@@ -1,5 +1,13 @@
 package com.griipbuddy.message.ui.screens.onboarding
 
+import com.griipbuddy.message.BuildConfig
+import com.griipbuddy.message.ui.components.MenuRow
+import com.griipbuddy.message.data.repo.ServerAddress
+import com.griipbuddy.message.ui.screens.profile.ServerCheck
+import com.griipbuddy.message.ui.screens.profile.checkServer
+import com.griipbuddy.message.ui.screens.profile.hostOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -382,33 +390,45 @@ private fun LinkDeviceScreen(onBack: () -> Unit) {
 fun ServerSheet(onDismiss: () -> Unit) {
     val c = Griip.colors
     val container = LocalContainer.current
+    val app = LocalContext.current.applicationContext as GriipApp
     val scope = rememberCoroutineScope()
     val settings by container.settings.state.collectAsStateWithLifecycle()
     var url by remember { mutableStateOf(settings.serverUrl) }
-    var status by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    var status by remember { mutableStateOf<ServerCheck?>(null) }
     var busy by remember { mutableStateOf(false) }
+    val parsed = ServerAddress.parse(url, allowCleartext = BuildConfig.DEBUG).getOrNull()
+    var others by remember { mutableStateOf<List<GriipApp.ProfileSummary>>(emptyList()) }
+    LaunchedEffect(Unit) { others = withContext(Dispatchers.IO) { app.profileSummaries().filterNot { it.active } } }
     GlassSheet(onDismiss, title = "Server") {
         Text("Griip Message connects to your organisation's relay. Internal beta default: the GriipBuddy test server.", style = Griip.type.bodySmall, color = c.textSecondary)
         Spacer(Modifier.height(16.dp))
-        GriipTextField(url, { url = it.trim() }, "Server address", placeholder = "https://msg.example.com", leadingIcon = Icons.Outlined.Dns)
-        status?.let { (ok, msg) ->
+        GriipTextField(url, { url = it.trim(); status = null }, "Server address", placeholder = "https://msg.example.com", leadingIcon = Icons.Outlined.Dns)
+        status?.let {
             Spacer(Modifier.height(10.dp))
-            StatusBanner(msg, if (ok) BannerKind.Success else BannerKind.Error)
+            StatusBanner(it.message, if (it.ok) BannerKind.Success else BannerKind.Error)
         }
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PillButton("Test", {
                 busy = true
                 scope.launch {
-                    status = runCatching { container.session.serverInfo(url) }.fold(
-                        { true to "Connected · v${it.version} · calls ${if (it.calling) "available" else "unavailable"}" },
-                        { false to it.friendly() },
-                    )
+                    status = checkServer(container.session, url)
                     busy = false
                 }
             }, Modifier.weight(1f), tone = ButtonTone.Glass, loading = busy, height = 50.dp)
-            PillButton("Save", { container.settings.update { it.copy(serverUrl = url) }; onDismiss() }, Modifier.weight(1f), showKnob = false, height = 50.dp,
-                enabled = url.startsWith("http://") || url.startsWith("https://"))
+            PillButton("Save", { parsed?.let { p -> container.settings.update { it.copy(serverUrl = p.url) } }; onDismiss() }, Modifier.weight(1f), showKnob = false, height = 50.dp,
+                enabled = parsed != null)
+        }
+        if (others.isNotEmpty()) {
+            Spacer(Modifier.height(18.dp))
+            Text("Other servers on this phone", style = Griip.type.label, color = c.textSecondary)
+            Spacer(Modifier.height(4.dp))
+            others.forEach { p ->
+                MenuRow(
+                    Icons.Outlined.Dns, hostOf(p.serverUrl), subtitle = p.username?.let { "@$it · switch back" } ?: "Not signed in",
+                    tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { onDismiss(); app.switchProfile(p.id) },
+                )
+            }
         }
     }
 }

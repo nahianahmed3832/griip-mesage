@@ -52,6 +52,8 @@ export interface Config {
     apiSecret: string;
   } | null;
   trustProxy: boolean;
+  /** Optional display name for this instance, shown on client setup screens (INSTANCE_NAME). */
+  instanceName: string | null;
   logLevel: string;
   rateLimitPerMinute: number;
 }
@@ -96,6 +98,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
           }
         : null,
     trustProxy: env.TRUST_PROXY === "true",
+    instanceName: (env.INSTANCE_NAME ?? "").trim().slice(0, 80) || null,
     logLevel: env.LOG_LEVEL ?? "info",
     rateLimitPerMinute: int("RATE_LIMIT_PER_MINUTE", 600),
   };

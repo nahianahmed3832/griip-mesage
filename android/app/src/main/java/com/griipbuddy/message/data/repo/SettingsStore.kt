@@ -16,15 +16,22 @@ data class Settings(
     val mediaE2ee: Boolean,
 )
 
-/** Non-secret user preferences. */
-class SettingsStore(context: Context) {
+/**
+ * Non-secret user preferences. Appearance and behaviour are shared by every server profile on the phone;
+ * the server address is the profile's own ([serverKey]), starting at [serverDefault].
+ */
+class SettingsStore(
+    context: Context,
+    private val serverKey: String = "serverUrl",
+    private val serverDefault: String = BuildConfig.DEFAULT_SERVER_URL,
+) {
     private val prefs = context.getSharedPreferences("griip_settings", Context.MODE_PRIVATE)
     private val _state = MutableStateFlow(read())
     val state: StateFlow<Settings> = _state
     val current: Settings get() = _state.value
 
     private fun read() = Settings(
-        serverUrl = prefs.getString("serverUrl", null) ?: BuildConfig.DEFAULT_SERVER_URL,
+        serverUrl = prefs.getString(serverKey, null) ?: serverDefault,
         theme = runCatching { ThemeMode.valueOf(prefs.getString("theme", "SYSTEM")!!) }.getOrDefault(ThemeMode.SYSTEM),
         notifications = prefs.getBoolean("notifications", true),
         backgroundConnection = prefs.getBoolean("backgroundConnection", true),
@@ -36,7 +43,7 @@ class SettingsStore(context: Context) {
     fun update(f: (Settings) -> Settings) {
         val n = f(_state.value)
         prefs.edit()
-            .putString("serverUrl", n.serverUrl.trim().trimEnd('/'))
+            .putString(serverKey, n.serverUrl.trim().trimEnd('/'))
             .putString("theme", n.theme.name)
             .putBoolean("notifications", n.notifications)
             .putBoolean("backgroundConnection", n.backgroundConnection)

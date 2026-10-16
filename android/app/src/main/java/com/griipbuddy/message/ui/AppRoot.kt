@@ -54,6 +54,7 @@ import com.griipbuddy.message.ui.screens.onboarding.RevokedScreen
 import com.griipbuddy.message.ui.screens.profile.DevicesScreen
 import com.griipbuddy.message.ui.screens.profile.ProfileScreen
 import com.griipbuddy.message.ui.screens.profile.SecurityScreen
+import com.griipbuddy.message.ui.screens.profile.ServersScreen
 import com.griipbuddy.message.ui.screens.profile.SettingsScreen
 import com.griipbuddy.message.ui.screens.profile.UserProfileScreen
 import com.griipbuddy.message.ui.screens.workspace.ActivityScreen
@@ -77,6 +78,8 @@ object Routes {
     const val SEARCH = "search"
     const val DEVICES = "devices"
     const val SECURITY = "security"
+    /** Servers on this phone: one profile per server, switched without deleting anything. */
+    const val SERVERS = "servers"
     /** Kept for older links; the settings now live on the Settings tab. */
     const val SETTINGS = "settings"
     fun conversation(id: String, thread: String? = null) = "conversation/$id" + (thread?.let { "?thread=$it" } ?: "")
@@ -153,6 +156,7 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             composable("user/{id}") { UserProfileScreen(nav, it.arguments!!.getString("id")!!) }
             composable(Routes.DEVICES) { DevicesScreen(nav) }
             composable(Routes.SECURITY) { SecurityScreen(nav) }
+            composable(Routes.SERVERS) { ServersScreen(nav) }
             composable(Routes.SETTINGS) { SettingsScreen(nav) }
         }
         if (route in Routes.tabs || route == Routes.HOME) {
