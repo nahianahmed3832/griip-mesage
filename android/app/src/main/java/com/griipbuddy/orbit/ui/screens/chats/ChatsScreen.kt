@@ -6,6 +6,9 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.MarkChatRead
+import androidx.compose.material.icons.outlined.MarkChatUnread
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.ExtendedFloatingActionButton
 import com.griipbuddy.orbit.data.db.ConversationEntity
@@ -94,27 +97,46 @@ fun ChatsScreen(nav: NavHostController) {
     var filter by rememberSaveable { mutableIntStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
     var actionsFor by remember { mutableStateOf<ConversationEntity?>(null) }
+    // The archived list (local to this phone), and the chat just archived, for Undo.
+    var archivedView by rememberSaveable { mutableStateOf(false) }
+    var undo by remember { mutableStateOf<ConversationEntity?>(null) }
+    androidx.activity.compose.BackHandler(enabled = archivedView) { archivedView = false }
+    LaunchedEffect(undo) { if (undo != null) { delay(5_000); undo = null } }
     var refreshing by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     val permission = com.griipbuddy.orbit.ui.screens.calls.rememberCallPermission()
     LaunchedEffect(Unit) { runCatching { container.conversations.refresh() }; refreshing = false }
 
     val filters = listOf("All", "Unread", "Direct", "Groups", "Channels")
-    val shown = convs.filter {
-        when (filter) {
-            1 -> it.unreadCount > 0
-            2 -> it.type == "DM"
-            3 -> it.type == "GROUP"
-            4 -> it.type == "CHANNEL"
-            else -> true
+    val shown = ChatListRules.visible(convs, filter, query, archivedView) { ConversationRepository.title(it, me) }
+    val archivedInfo = ChatListRules.archived(convs)
+    fun toggleRead(conv: ConversationEntity) {
+        scope.launch {
+            if (ChatListRules.swipeMarksRead(conv)) {
+                container.conversations.markRead(conv.id)
+                container.notifier.clear(conv.id)
+            } else container.conversations.markUnread(conv.id)
         }
-    }.filter { query.isBlank() || ConversationRepository.title(it, me).contains(query, ignoreCase = true) }
+    }
+    fun toggleArchive(conv: ConversationEntity) {
+        val archive = !ChatListRules.isArchived(conv)
+        scope.launch { container.conversations.setArchived(conv.id, archive) }
+        undo = if (archive) conv else null
+    }
+    fun toggleMute(conv: ConversationEntity) {
+        scope.launch { container.conversations.setMuted(conv.id, !conv.muted) }
+    }
     val online = users.associate { it.id to it.online }
     val liveCall = if (call.phase == CallPhase.Idle) convs.firstOrNull { it.activeCallId != null } else null
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
-            item {
+            if (archivedView) item {
+                GriipTopBar(
+                    "Archived chats", subtitle = "Only on this phone. They still notify you unless muted.",
+                    onBack = { archivedView = false },
+                )
+            } else item {
                 LargeHeader("Chats") {
                     CircleIconButton(Icons.Rounded.Search, "Search people, chats and messages", { nav.navigate(Routes.SEARCH) })
                     CircleIconButton(Icons.Outlined.GroupAdd, "New group", { nav.navigate(Routes.NEW_CHAT + "?mode=group") })
@@ -136,13 +158,23 @@ fun ChatsScreen(nav: NavHostController) {
                 )
             }
             item { SearchPill(query, { query = it }, "Filter chats by name", Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
-            item {
+            if (!archivedView) item {
                 ChipRow {
                     filters.forEachIndexed { i, f ->
-                        PillChip(f, filter == i, { filter = i }, count = if (i == 1) convs.count { it.unreadCount > 0 } else null)
+                        PillChip(f, filter == i, { filter = i }, count = if (i == ChatListRules.UNREAD) ChatListRules.unreadCount(convs) else null)
                     }
                 }
                 Spacer(Modifier.height(4.dp))
+            }
+            if (!archivedView && query.isBlank() && archivedInfo.chats > 0) item(key = "archived") {
+                ListCard(
+                    "Archived", Modifier.padding(horizontal = 8.dp, vertical = 2.dp).animateItem(),
+                    subtitle = "${archivedInfo.chats} chat${if (archivedInfo.chats == 1) "" else "s"}" +
+                        if (archivedInfo.unreadChats > 0) " · ${archivedInfo.unreadChats} unread" else "",
+                    leading = { com.griipbuddy.orbit.ui.components.IconTile(Icons.Outlined.Archive, c.lavender, c.lavenderSoft, size = 44.dp) },
+                    trailing = { ArrowKnob() },
+                    onClick = { archivedView = true },
+                )
             }
             if (refreshing && convs.isEmpty()) item { ShimmerList(6, Modifier.padding(top = 8.dp)) }
             else if (shown.isEmpty()) {
@@ -152,14 +184,17 @@ fun ChatsScreen(nav: NavHostController) {
                         when {
                             convs.isEmpty() -> "No conversations yet"
                             query.isNotBlank() -> "No chats named \"${query.trim()}\""
+                            archivedView -> "No archived chats"
                             else -> "Nothing here"
                         },
                         when {
                             convs.isEmpty() -> "Message a colleague, or join your team's channels from the Workspace tab."
                             query.isNotBlank() -> "Search also finds people and message text."
+                            archivedView -> "Swipe a chat left to archive it. You stay in it and can restore it any time."
                             else -> "Try another filter."
                         },
                         action = when {
+                            archivedView && query.isBlank() -> null
                             convs.isEmpty() -> "New message"
                             query.isNotBlank() -> "Search everywhere"
                             else -> null
@@ -171,12 +206,17 @@ fun ChatsScreen(nav: NavHostController) {
             items(shown, key = { it.id }) { conv ->
                 val peer = ConversationRepository.peer(conv, me)
                 val names = typing[conv.id]?.keys?.mapNotNull { id -> users.firstOrNull { it.id == id }?.displayName } ?: emptyList()
-                ConversationRow(
-                    conv, me, names, peer?.let { online[it.id] },
-                    onClick = { nav.navigate(Routes.conversation(conv.id)) },
-                    onLongClick = { actionsFor = conv },
+                SwipeableChat(
+                    archived = ChatListRules.isArchived(conv), unread = conv.unreadCount > 0, muted = conv.muted,
+                    onToggleRead = { toggleRead(conv) }, onToggleArchive = { toggleArchive(conv) }, onToggleMute = { toggleMute(conv) },
                     modifier = Modifier.animateItem(),
-                )
+                ) {
+                    ConversationRow(
+                        conv, me, names, peer?.let { online[it.id] },
+                        onClick = { nav.navigate(Routes.conversation(conv.id)) },
+                        onLongClick = { actionsFor = conv },
+                    )
+                }
             }
         }
         ExtendedFloatingActionButton(
@@ -186,6 +226,16 @@ fun ChatsScreen(nav: NavHostController) {
             containerColor = c.actionStart, contentColor = c.onAction,
             modifier = Modifier.align(Alignment.BottomEnd).padding(Space.gutter),
         )
+        undo?.let { conv ->
+            val title = ConversationRepository.title(conv, me).let { if (conv.type == "CHANNEL") "#$it" else it }
+            com.griipbuddy.orbit.ui.components.UndoBar(
+                "Archived $title", onUndo = {
+                    scope.launch { container.conversations.setArchived(conv.id, false) }
+                    undo = null
+                },
+                Modifier.align(Alignment.BottomCenter).padding(start = Space.gutter, end = Space.gutter, bottom = 84.dp),
+            )
+        }
     }
 
     actionsFor?.let { conv ->
@@ -199,7 +249,16 @@ fun ChatsScreen(nav: NavHostController) {
             )
             if (conv.unreadCount > 0) MenuRow(
                 Icons.Outlined.MarkChatRead, "Mark as read", subtitle = "Only on this device; no read receipt is sent",
-                onClick = { scope.launch { container.conversations.markRead(conv.id) }; container.notifier.clear(conv.id); actionsFor = null }, trailing = null,
+                onClick = { toggleRead(conv); actionsFor = null }, trailing = null,
+            ) else MenuRow(
+                Icons.Outlined.MarkChatUnread, "Mark as unread", subtitle = "Only on this device; nothing is sent",
+                onClick = { toggleRead(conv); actionsFor = null }, trailing = null,
+            )
+            val archived = ChatListRules.isArchived(conv)
+            MenuRow(
+                if (archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, if (archived) "Unarchive" else "Archive",
+                subtitle = if (archived) "Back to your chat list" else "Only on this phone; you stay in the chat and can restore it",
+                onClick = { toggleArchive(conv); actionsFor = null }, trailing = null,
             )
             MenuRow(
                 Icons.Outlined.Info, if (conv.type == "DM") "Contact info" else if (conv.type == "GROUP") "Group info" else "Channel info",

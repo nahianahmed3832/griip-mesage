@@ -36,6 +36,12 @@ data class ConversationEntity(
     val muted: Boolean = false,
     val draft: String? = null,
     val removed: Boolean = false,     // no longer a member (kept so history stays readable)
+    /**
+     * When the user archived this chat on this phone (swipe left in Chats; null: not archived). Local only: membership,
+     * history and notifications are unchanged, and nothing is sent. Not the server's [archived] (a channel an admin made
+     * read-only).
+     */
+    val archivedAt: Long? = null,
 )
 
 @Entity(

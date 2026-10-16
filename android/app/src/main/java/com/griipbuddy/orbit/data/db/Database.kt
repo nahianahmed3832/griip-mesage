@@ -35,6 +35,14 @@ interface ConversationDao {
     @Query("UPDATE conversations SET muted = :muted WHERE id = :id")
     suspend fun setMuted(id: String, muted: Boolean)
 
+    /** Archive ([at] = now) or restore ([at] = null) a chat on this phone. */
+    @Query("UPDATE conversations SET archivedAt = :at WHERE id = :id")
+    suspend fun setArchived(id: String, at: Long?)
+
+    /** Marked unread on this phone: at least one unread (no receipt changes; opening the chat clears it). */
+    @Query("UPDATE conversations SET unreadCount = CASE WHEN unreadCount = 0 THEN 1 ELSE unreadCount END WHERE id = :id")
+    suspend fun markUnread(id: String)
+
     @Query("UPDATE conversations SET draft = :draft WHERE id = :id")
     suspend fun setDraft(id: String, draft: String?)
 
@@ -47,7 +55,7 @@ interface ConversationDao {
     @Query("UPDATE conversations SET unreadCount = unreadCount + :unreadInc, mentionCount = mentionCount + :mentionInc WHERE id = :id")
     suspend fun bumpUnread(id: String, unreadInc: Int, mentionInc: Int)
 
-    @Query("SELECT COALESCE(SUM(unreadCount), 0) FROM conversations WHERE muted = 0 AND removed = 0")
+    @Query("SELECT COALESCE(SUM(unreadCount), 0) FROM conversations WHERE muted = 0 AND removed = 0 AND archivedAt IS NULL")
     fun observeTotalUnread(): Flow<Int>
 }
 
@@ -256,7 +264,7 @@ abstract class GriipDatabase : RoomDatabase() {
          * Schema version. Raising it needs a matching step in [Migrations] and the exported schema
          * committed under `app/schemas` (docs/DECISIONS.md D-13); `MigrationsTest` enforces both.
          */
-        const val VERSION = 4
+        const val VERSION = 5
 
         /**
          * The database file is encrypted with SQLCipher (AES-256) using a random passphrase that is

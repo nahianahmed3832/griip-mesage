@@ -28,6 +28,8 @@ object Migrations {
                 "`expiresAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
             "CREATE INDEX IF NOT EXISTS `index_pending_controls_conversationId_targetId` ON `pending_controls` (`conversationId`, `targetId`)",
         ),
+        // v5 (2026-10-17): chats archived on this phone (swipe actions). Nullable, so every existing chat stays unarchived.
+        4 to listOf("ALTER TABLE `conversations` ADD COLUMN `archivedAt` INTEGER"),
     )
 
     fun all(): Array<Migration> = steps.map { (from, sql) ->

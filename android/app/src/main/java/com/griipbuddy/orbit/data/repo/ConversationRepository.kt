@@ -66,6 +66,7 @@ class ConversationRepository(
             lastMessageId = local?.lastMessageId, lastMessagePreview = local?.lastMessagePreview, lastMessageAt = local?.lastMessageAt ?: 0,
             lastSenderName = local?.lastSenderName, unreadCount = local?.unreadCount ?: 0, mentionCount = local?.mentionCount ?: 0,
             muted = local?.muted ?: false, draft = local?.draft, removed = !d.joined && local?.joined == true,
+            archivedAt = local?.archivedAt,
         )
         if (d.joined || local != null) db.conversations().upsert(e)
         return e
@@ -118,6 +119,10 @@ class ConversationRepository(
     }
 
     suspend fun setMuted(id: String, muted: Boolean) = db.conversations().setMuted(id, muted)
+    /** Archive ([archived]) or restore a chat on this phone only: membership, history and notifications don't change. */
+    suspend fun setArchived(id: String, archived: Boolean) =
+        db.conversations().setArchived(id, if (archived) System.currentTimeMillis() else null)
+    suspend fun markUnread(id: String) = db.conversations().markUnread(id)
     suspend fun markRead(id: String) = db.conversations().markRead(id)
     suspend fun setDraft(id: String, draft: String?) = db.conversations().setDraft(id, draft)
 

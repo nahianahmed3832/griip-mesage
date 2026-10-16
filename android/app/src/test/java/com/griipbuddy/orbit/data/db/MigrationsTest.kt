@@ -56,6 +56,16 @@ class MigrationsTest {
         }
     }
 
+    @Test
+    fun chatsExistingBeforeTheArchiveStayUnarchived() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { c ->
+            create(c, schema(4))
+            Fixtures.insert(c, 4)
+            Migrations.steps.getValue(4).forEach { c.createStatement().execute(it) }
+            c.createStatement().executeQuery("SELECT COUNT(*) FROM conversations WHERE archivedAt IS NULL").use { it.next(); assertEquals(1, it.getInt(1)) }
+        }
+    }
+
     private fun create(c: Connection, db: JsonObject) {
         for (e in db["entities"]!!.jsonArray.map { it.jsonObject }) {
             val table = e["tableName"]!!.jsonPrimitive.content
@@ -96,6 +106,14 @@ private object Fixtures {
     fun insert(c: Connection, version: Int): Map<String, Int> {
         val s = c.createStatement()
         when (version) {
+            4 -> {
+                val base = insert(c, 3)
+                s.execute(
+                    "INSERT INTO pending_controls (id, conversationId, targetId, senderUserId, payloadJson, serverTs, receivedAt, expiresAt) " +
+                        "VALUES ('p1','c1','m9','u1','{}',1,1,9)",
+                )
+                return base + ("pending_controls" to 1)
+            }
             3 -> {
                 val base = insert(c, 2)
                 s.execute("UPDATE quarantine SET reason = 'failed: SQLiteException' WHERE queueId = 7")
