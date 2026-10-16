@@ -15,6 +15,8 @@ export interface CallRow {
   answered_at: number | null;
   ended_at: number | null;
   end_reason: string | null;
+  /** First time a recipient device confirmed it is ringing (null: no recipient has been reached yet). */
+  alerted_at: number | null;
 }
 
 export function callView(ctx: AppContext, c: CallRow) {
@@ -31,6 +33,7 @@ export function callView(ctx: AppContext, c: CallRow) {
     state: c.state,
     createdAt: c.created_at,
     answeredAt: c.answered_at,
+    alertedAt: c.alerted_at ?? null,
     endedAt: c.ended_at,
     endReason: c.end_reason,
     participants: participants.map((p) => ({ userId: p.user_id, deviceId: p.device_id, joinedAt: p.joined_at })),
@@ -251,17 +254,34 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
     return { call: callView(ctx, cur) };
   });
 
+  // A recipient device is ringing: lets the caller show "Ringing" instead of "Calling". Idempotent; only
+  // the first confirmation is stored and announced. The caller's own devices can't alert.
+  app.post("/v1/calls/:id/alerted", auth, async (req) => {
+    const { userId } = me(req);
+    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const c = load(id);
+    if (!c || !authz.isMember(c.conversation_id, userId)) throw notFound("Call not found");
+    if (c.state === "ENDED") throw new ApiError(410, "call_ended", "This call has ended");
+    if (c.created_by === userId) throw conflict("The caller can't alert their own call");
+    if (c.alerted_at == null) {
+      db.prepare("UPDATE calls SET alerted_at = ? WHERE id = ? AND alerted_at IS NULL").run(now(), c.id);
+      ctx.hub.sendToUser(c.created_by, { t: "call", event: "alerted", call: callView(ctx, load(id)!) });
+    }
+    return { call: callView(ctx, load(id)!) };
+  });
+
   app.post("/v1/calls/:id/decline", auth, async (req) => {
     const { userId } = me(req);
     const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const body = parse(z.object({ reason: z.enum(["declined", "busy"]).default("declined") }), req.body ?? {});
     const c = load(id);
     if (!c || !authz.isMember(c.conversation_id, userId)) throw notFound("Call not found");
     if (c.state === "ENDED") return { call: callView(ctx, c) };
     const conv = authz.conversation(c.conversation_id)!;
     if (conv.type === "DM" && c.state === "RINGING") {
-      await endCall(c, "declined");
+      await endCall(c, body.reason);
     } else {
-      ctx.hub.sendToUser(c.created_by, { t: "call", event: "declined", call: callView(ctx, c), userId });
+      ctx.hub.sendToUser(c.created_by, { t: "call", event: "declined", call: callView(ctx, c), userId, reason: body.reason });
     }
     // Stop ringing on the decliner's other devices.
     ctx.hub.sendToUser(userId, { t: "call", event: "dismissed", call: callView(ctx, load(id)!) });

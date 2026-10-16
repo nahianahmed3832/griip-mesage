@@ -9,6 +9,8 @@ import com.griipbuddy.message.data.api.ApiClient
 import com.griipbuddy.message.data.api.ApiException
 import com.griipbuddy.message.data.api.CallDto
 import com.griipbuddy.message.data.api.CallRes
+import com.griipbuddy.message.data.api.CallsRes
+import com.griipbuddy.message.data.api.DeclineCallReq
 import com.griipbuddy.message.data.api.MediaGrant
 import com.griipbuddy.message.data.api.StartCallReq
 import com.griipbuddy.message.data.db.CallLogEntity
@@ -34,6 +36,7 @@ import io.livekit.android.room.track.screencapture.ScreenCaptureParams
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,6 +77,12 @@ data class CallUiState(
     val error: String? = null,
     val endReason: String? = null,
     val waitingForKey: Boolean = false,
+    /** Outgoing: a recipient device confirmed it is ringing ("Ringing…" instead of "Calling…"). */
+    val alerted: Boolean = false,
+    /** Whether remote media actually arrives (inbound bytes), separate from the room being connected. */
+    val media: MediaFlow = MediaFlow.None,
+    /** Redacted network path of the media, e.g. "udp · direct" or "tcp · direct"; null until known. */
+    val path: String? = null,
 )
 
 /**
@@ -107,6 +116,9 @@ class CallManager(
     /** Publishing the badge and swapping [securityTracker] happen under this lock, so an ended call's callbacks can't touch the next call. */
     private val securityLock = Any()
     private val diag = CallDiagnostics(scope)
+    /** Calls this device already rang, answered, declined or ended: ring recovery never re-rings them. Bounded. */
+    private val handled = LinkedHashSet<String>()
+    private var mediaJob: Job? = null
 
     /**
      * WebRTC's native library must be loaded before any LiveKit native object exists — including the
@@ -127,14 +139,47 @@ class CallManager(
                         // Group call already running: keep the banner but stop ringing UI.
                         IncomingCallNotifier.cancel(context)
                     }
+                    "alerted" -> if (call.id == _state.value.callId && _state.value.phase == CallPhase.Outgoing) _state.update { it.copy(alerted = true) }
                 }
             }
         }
         scope.launch { messages.callInvites.collect { /* key arrival is read from DB when joining */ } }
+        // Ring recovery: the server rings only live sockets, so after every reconnect (once the backlog,
+        // and with it any call key, has drained) look for calls that started ringing while we were away.
+        scope.launch { messages.backlogDrained.collect { drained -> if (drained) recoverRinging() } }
+    }
+
+    private suspend fun recoverRinging() {
+        val calls = runCatching { api.get<CallsRes>("/v1/calls/active").calls }.getOrNull() ?: return
+        val me = session.session?.userId
+        val now = System.currentTimeMillis()
+        for (c in calls) {
+            if (RingRecovery.shouldRing(c, me, now, synchronized(handled) { handled.toSet() }, idle = _state.value.phase == CallPhase.Idle)) {
+                Log.i(TAG, "ring recovered after reconnect")
+                onRing(c)
+            }
+        }
+    }
+
+    private fun markHandled(id: String?) {
+        id ?: return
+        synchronized(handled) {
+            handled += id
+            if (handled.size > 64) handled.remove(handled.first())
+        }
     }
 
     private suspend fun onRing(call: CallDto) {
-        if (_state.value.phase != CallPhase.Idle) return // busy: the caller sees no answer; group calls can be joined later
+        if (synchronized(handled) { call.id in handled }) return // a repeated or recovered ring for a call already dealt with
+        if (_state.value.phase != CallPhase.Idle) {
+            // Busy: tell a 1:1 caller at once instead of leaving them ringing; group calls can be joined later.
+            if (call.id != _state.value.callId && call.conversationType == "DM") {
+                markHandled(call.id)
+                scope.launch { runCatching { api.post<DeclineCallReq, CallRes>("/v1/calls/${call.id}/decline", DeclineCallReq("busy")) } }
+            }
+            return
+        }
+        markHandled(call.id)
         val conv = db.conversations().get(call.conversationId) ?: conversations.refreshOne(call.conversationId)
         val me = session.session?.userId
         val title = conv?.let { ConversationRepository.title(it, me) } ?: "Incoming call"
@@ -147,6 +192,8 @@ class CallManager(
         )
         db.calls().upsertLog(CallLogEntity(call.id, call.conversationId, call.video, false, call.createdAt, peerName = _state.value.title))
         IncomingCallNotifier.show(context, call.id, _state.value.title, call.video)
+        // Tell the caller this device is actually ringing ("Ringing…" rather than "Calling…").
+        scope.launch { runCatching { api.post<CallRes>("/v1/calls/${call.id}/alerted") } }
     }
 
     suspend fun startCall(conversationId: String, video: Boolean) {
@@ -160,7 +207,8 @@ class CallManager(
         )
         try {
             val res = api.post<StartCallReq, CallRes>("/v1/calls", StartCallReq(conversationId, video))
-            _state.update { it.copy(callId = res.call.id) }
+            markHandled(res.call.id)
+            _state.update { it.copy(callId = res.call.id, alerted = res.call.alertedAt != null) }
             val key = if (res.joinedExisting) waitForKey(res.call.id) else newKey().also { messages.sendCallKey(conversationId, res.call.id, video, it) }
             db.calls().upsertLog(CallLogEntity(res.call.id, conversationId, video, !res.joinedExisting, System.currentTimeMillis(), peerName = _state.value.title))
             connect(res.call.id, res.media!!, key, video)
@@ -179,7 +227,7 @@ class CallManager(
             val key = waitForKey(callId)
             connect(callId, res.media!!, key, s.video)
         } catch (e: ApiException) {
-            fail(if (e.status == 410) "This call has already ended" else e.message)
+            fail(CallFailure.forApi(e))
         }
     }
 
@@ -198,6 +246,7 @@ class CallManager(
 
     fun decline() {
         val id = _state.value.callId ?: return
+        markHandled(id)
         IncomingCallNotifier.cancel(context)
         scope.launch { runCatching { api.post<CallRes>("/v1/calls/$id/decline") } }
         reset()
@@ -241,18 +290,25 @@ class CallManager(
         _state.update { it.copy(security = if (key != null) MediaSecurity.Unknown else MediaSecurity.TransportOnly) }
         eventsJob = scope.launch { r.events.events.collect { ev -> onRoomEvent(ev) } }
         CallService.start(context, _state.value.title, video)
+        val t0 = System.currentTimeMillis()
         try {
             r.connect(media.url, media.token)
         } catch (e: Throwable) {
-            Log.w(TAG, "connect failed: ${e.javaClass.simpleName}")
-            fail("Couldn't connect to the call server. Check your connection and try again.")
+            Log.w(TAG, "connect failed after ${System.currentTimeMillis() - t0} ms: ${e.javaClass.simpleName}")
+            fail(CallFailure.forConnect(e))
             return
         }
+        diag.log("media room joined in ${System.currentTimeMillis() - t0} ms")
+        startMediaMonitor(r)
         try {
             r.localParticipant.setMicrophoneEnabled(true)
-            if (video) r.localParticipant.setCameraEnabled(true)
         } catch (e: Throwable) {
-            _state.update { it.copy(error = "Couldn't start microphone/camera: check permissions") }
+            _state.update { it.copy(error = CallFailure.MICROPHONE) }
+        }
+        if (video) try {
+            r.localParticipant.setCameraEnabled(true)
+        } catch (e: Throwable) {
+            _state.update { it.copy(error = CallFailure.CAMERA) }
         }
         setSpeaker(_state.value.speakerOn)
         runCatching { api.post<CallRes>("/v1/calls/$callId/connected") }
@@ -263,6 +319,36 @@ class CallManager(
             )
         }
         refreshParticipants()
+    }
+
+    /**
+     * Samples WebRTC inbound byte counters every 2 s (all builds): the UI says media is flowing only when
+     * bytes actually arrive, and the redacted network path (udp/tcp/relay) is recorded for diagnosis.
+     */
+    private fun startMediaMonitor(r: Room) {
+        mediaJob?.cancel()
+        val monitor = MediaFlowMonitor()
+        mediaJob = scope.launch {
+            while (isActive && room === r) {
+                delay(2000)
+                var total: Long? = null
+                var path: String? = null
+                for (rp in r.remoteParticipants.values) {
+                    for ((_, t) in rp.audioTrackPublications + rp.videoTrackPublications) {
+                        val report = runCatching { t?.getRTCStats() }.getOrNull() ?: continue
+                        val stats = report.statsMap.values
+                        val bytes = stats.filter { it.type == "inbound-rtp" }.sumOf { (it.members["bytesReceived"] as? Number)?.toLong() ?: 0L }
+                        total = (total ?: 0L) + bytes
+                        if (path == null) path = MediaPath.describe(stats)
+                    }
+                }
+                if (room !== r) break
+                val before = _state.value
+                val flow = monitor.sample(total)
+                if (flow != before.media || (path != null && path != before.path)) diag.log("media $flow via ${path ?: before.path ?: "unknown path"}")
+                _state.update { if (it.media == flow && (path == null || it.path == path)) it else it.copy(media = flow, path = path ?: it.path) }
+            }
+        }
     }
 
     private fun onRoomEvent(ev: RoomEvent) {
@@ -408,6 +494,7 @@ class CallManager(
     private fun finish(remoteReason: String, notifyServer: Boolean) {
         val s = _state.value
         if (s.phase == CallPhase.Idle) return
+        markHandled(s.callId)
         Log.i(TAG, "call ending: reason=$remoteReason notifyServer=$notifyServer phase=${s.phase} participants=${s.participants.size}")
         val id = s.callId
         if (notifyServer && id != null) {
@@ -449,6 +536,8 @@ class CallManager(
      */
     private fun teardown() {
         IncomingCallNotifier.cancel(context)
+        mediaJob?.cancel()
+        mediaJob = null
         eventsJob?.cancel()
         eventsJob = null
         diag.stop()

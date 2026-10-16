@@ -79,6 +79,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.griipbuddy.message.call.CallPhase
+import com.griipbuddy.message.call.MediaFlow
 import com.griipbuddy.message.call.CallUiState
 import com.griipbuddy.message.call.MediaSecurity
 import com.griipbuddy.message.call.ParticipantUi
@@ -278,19 +279,39 @@ private fun CallerHero(s: CallUiState, modifier: Modifier) {
         Spacer(Modifier.height(24.dp))
         Text(s.title, style = Griip.type.display, color = Color.White, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(8.dp))
+        // Each stage says what is actually true: an invite sent is not a ringing phone, and a joined room is
+        // not flowing media (the timer starts only once remote audio/video bytes arrive).
         val status = when (s.phase) {
             CallPhase.Incoming -> s.subtitle ?: if (s.video) "Incoming video call" else "Incoming voice call"
-            CallPhase.Outgoing -> if (s.isGroup) "Waiting for others to join…" else "Calling…"
+            CallPhase.Outgoing -> when {
+                s.isGroup -> "Waiting for others to join…"
+                s.alerted -> "Ringing…"
+                else -> "Calling…"
+            }
             CallPhase.Connecting -> "Connecting…"
             CallPhase.Reconnecting -> "Reconnecting…"
-            CallPhase.Connected -> s.connectedAt?.let { TimeFmt.duration((now - it) / 1000) } ?: "Connected"
-            CallPhase.Ended -> when (s.endReason) { "declined" -> "Call declined"; "missed" -> "No answer"; "error" -> "Call failed"; else -> "Call ended" }
+            CallPhase.Connected -> when (s.media) {
+                MediaFlow.Flowing -> s.connectedAt?.let { TimeFmt.duration((now - it) / 1000) } ?: "Connected"
+                MediaFlow.Stalled -> "Reconnecting media…"
+                else -> "Connecting media…"
+            }
+            CallPhase.Ended -> when (s.endReason) {
+                "declined" -> "Call declined"; "busy" -> "Busy"; "missed" -> "No answer"; "error" -> "Call failed"; else -> "Call ended"
+            }
             else -> ""
         }
         Text(status, style = Griip.type.body, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.Center)
         if (s.phase == CallPhase.Connected && s.participants.size > 1) {
             Spacer(Modifier.height(6.dp))
             Text("${s.participants.size} in call", style = Griip.type.caption, color = Color.White.copy(alpha = 0.6f))
+        }
+        val path = s.path
+        if (s.phase == CallPhase.Connected && path != null && !path.startsWith("udp")) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                if (path.startsWith("relay")) "Connected through a relay" else "Connected over TCP: this network may block UDP, so quality can suffer",
+                style = Griip.type.caption, color = Color.White.copy(alpha = 0.6f), textAlign = TextAlign.Center,
+            )
         }
     }
 }

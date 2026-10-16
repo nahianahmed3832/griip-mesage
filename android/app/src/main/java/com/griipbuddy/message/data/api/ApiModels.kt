@@ -155,12 +155,15 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class CallDto(
     val id: String, val conversationId: String, val conversationType: String? = null, val createdBy: String, val video: Boolean,
     val state: String, val createdAt: Long, val answeredAt: Long? = null, val endedAt: Long? = null, val endReason: String? = null,
+    /** First time a recipient device confirmed it is ringing (server ≥ 2026-10-16; null on older servers). */
+    val alertedAt: Long? = null,
     val participants: List<CallParticipantDto> = emptyList(),
 )
 @Serializable data class MediaGrant(val url: String, val token: String, val room: String)
 @Serializable data class CallRes(val call: CallDto, val media: MediaGrant? = null, val joinedExisting: Boolean = false)
 @Serializable data class CallsRes(val calls: List<CallDto>)
 @Serializable data class StartCallReq(val conversationId: String, val video: Boolean)
+@Serializable data class DeclineCallReq(val reason: String)
 
 @Serializable data class ApiErrorBody(val error: ApiErrorDetail? = null)
 @Serializable data class ApiErrorDetail(val code: String = "", val message: String = "", val details: JsonElement? = null)

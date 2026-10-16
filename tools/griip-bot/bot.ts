@@ -336,7 +336,18 @@ async function call(peerName: string, mode: string, seconds: number) {
   const key = crypto.randomBytes(32).toString("base64");
   await bot.send(dm, { type: "call_invite", callId: res.call.id, video, e2eeKey: key }, "control");
   log(`📞 ringing @${peer.username} (${video ? "video" : "voice"} call ${res.call.id}); key sent via E2EE message`);
-  await runMedia(bot, res.call.id, res.media, key, video, seconds);
+  // Report the call's own state changes: "alerted" (a callee device is ringing), "declined", "ended" with its reason.
+  let seenEvents = 0;
+  const watch = setInterval(() => {
+    const evs = bot.events.filter((e) => e.t === "call" && e.call?.id === res.call.id);
+    for (const e of evs.slice(seenEvents)) log(`📣 call event: ${e.event}${e.call?.endReason ? ` (reason ${e.call.endReason})` : ""}${e.call?.alertedAt ? " alertedAt set" : ""}`);
+    seenEvents = evs.length;
+  }, 250);
+  try {
+    await runMedia(bot, res.call.id, res.media, key, video, seconds);
+  } finally {
+    clearInterval(watch);
+  }
   await bot.disconnect();
 }
 
