@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.Cameraswitch
 import androidx.compose.material.icons.rounded.CloseFullscreen
 import androidx.compose.material.icons.rounded.GppGood
 import androidx.compose.material.icons.rounded.GppMaybe
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.PhoneInTalk
@@ -245,7 +246,9 @@ private fun SecurityPill(s: CallUiState) {
         MediaSecurity.E2eeActive -> Triple(Icons.Rounded.GppGood, "End-to-end encrypted", c.primaryBright)
         MediaSecurity.E2eeProblem -> Triple(Icons.Rounded.GppMaybe, "Encryption problem", c.warning)
         MediaSecurity.TransportOnly -> Triple(Icons.Rounded.GppMaybe, "Not end-to-end encrypted", c.warning)
-        MediaSecurity.Unknown -> Triple(Icons.Rounded.GppGood, if (s.waitingForKey) "Getting encryption key…" else "Securing media…", Color.White.copy(alpha = 0.8f))
+        // Not verified: no decrypted media proves the key yet. A peer with the wrong key stays here, because
+        // WebRTC doesn't report those failures (MediaSecurityTracker), so this must not look like success.
+        MediaSecurity.Unknown -> Triple(Icons.Rounded.Shield, if (s.waitingForKey) "Getting encryption key…" else "Verifying encryption…", Color.White.copy(alpha = 0.8f))
     }
     Row(Modifier.clip(Shapes.pill).background(Color.White.copy(alpha = 0.12f)).padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = tint, modifier = Modifier.size(16.dp))

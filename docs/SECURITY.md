@@ -133,10 +133,15 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
   **Since T5.2 (2026-10-16), a key is accepted only from the call's creator**, in the call's own conversation: the app looks up the
   call (`GET /v1/calls/:id`) and compares `createdBy` with the envelope's signed sender. Keys from other members are ignored and logged.
   If the lookup fails for a reason other than 404, the queue item is redelivered and checked again; it is never accepted unchecked.
-- **E2EE status badge:** since 2026-10-16 it is fed by `FrameCryptorGuard`, a crash mitigation that replaces only LiveKit's
-  frame-cryptor *status* observer (`KNOWN_ISSUES.md` › Calls). Frame encryption itself, the cryptors, key provider, key index and
-  enabled flag, is untouched. Missing-key, encryption, decryption and internal errors still show as an E2EE problem. If the guard
-  can't reach a cryptor, LiveKit's own observer and events stay in place.
+- **E2EE status badge:** fed by `FrameCryptorGuard`, a crash mitigation that replaces only LiveKit's frame-cryptor *status* observer
+  (`KNOWN_ISSUES.md` › Calls). Frame encryption itself, the cryptors, key provider, key index and enabled flag, is untouched.
+  - **"End-to-end encrypted" needs proof (D-17, 2026-10-16):** every live track has encrypted or decrypted a frame with our key
+    (WebRTC's OK or KEY_RATCHETED), including at least one remote track.
+  - Missing-key, encryption, decryption and internal errors show "Encryption problem".
+  - Anything else shows "Verifying encryption…".
+  - **Limit:** with LiveKit's default `failureTolerance` (-1), a frame that fails to decrypt is dropped without a report. A
+    wrong-key peer is therefore shown as not verified, not as an error. Confidentiality isn't affected: its media can't be
+    decrypted.
 - **Late joiners (T5.3):** a device that has no key for a call it is joining sends a `call_key_request` control in the call's
   conversation. Only the call's creator answers, re-sending the same key inside a `call_invite` to the conversation's current
   member devices, the same audience the server admits to the call. Requests and answers are paced (1.5 s grace, then at most

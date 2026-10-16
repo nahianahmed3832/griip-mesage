@@ -27,7 +27,7 @@ There was no second physical phone. Every two-party test used the phone plus the
 | Installs and launches (emulator) | PASS | No crash. Cold start 4.7–6.6 s on the emulator (debug build) |
 | Installs and launches (physical phone) | PASS | No crash. Cold start **1.97 s** (`am start -W`), container init 190 ms |
 | Release (R8) build | NOT VERIFIED | `assembleRelease` succeeds (2026-10-16, about 65 MB unsigned); never run on a device |
-| Android unit tests | PASS | `./gradlew :app:testDebugUnitTest` → `VideoSinkBindingTest` 8/8 (renderer lifetime, sink ordering, track switching, stop/start, release), `FrameCryptorGuardTest` 8/8 (observer never throws, late callbacks dropped, callback failures reported, map copy survives concurrent changes, state mapping, LiveKit internals still where the guard looks) |
+| Android unit tests | PASS | `./gradlew :app:testDebugUnitTest` → `VideoSinkBindingTest` 8/8 (renderer lifetime, sink ordering, track switching, stop/start, release), `FrameCryptorGuardTest` 8/8 (observer never throws, late callbacks dropped, callback failures reported, map copy survives concurrent changes, state mapping, LiveKit internals still where the guard looks), `MediaSecurityTrackerTest` 16/16 (badge needs decryption evidence; D-17) |
 
 ## 2. Backend (vitest: 87 tests, all PASS on 2026-10-16)
 
@@ -178,7 +178,53 @@ run the phone answered, Home was pressed, and the phone stayed in the background
   - The guard counted **0 late callbacks** in every patched run. A state callback for an already-cleared track, the crash's
     precondition, never occurred, so the guard's protective path wasn't exercised on the device.
 - The hardening added after these runs (map-copy and swap errors caught, callback failures reported, `FrameCryptorGuardTest`
-  6 → 8) hasn't been run on the phone yet. Re-run is **BLOCKED**: no phone was connected.
+  6 → 8) was run on the phone afterwards: §5c.
+
+## 5c. Hardened frame-cryptor guard on the phone (2026-10-16, build `d8f327f1…`, commit b97c09c)
+
+Phone over Wi-Fi debugging (USB had dropped), production SFU, bot options as in §5b. Each call ran in its own process session
+with logcat captured. App in the background, except A1 and R1–R3, which were in the foreground so the badge could be read
+from the UI tree.
+
+| Scenario | Duration | Cryptors guarded | Subscribe / unsubscribe | Badge problem / active | Late | Failed | Result |
+|---|---|---|---|---|---|---|---|
+| A1 voice | 30 s | 2 | 1 / 0 | 0 / 1 | 0 | 0 | PASS: UI showed "End-to-end encrypted" |
+| A2 video | 30 s | 4 | 2 / 2 | 0 / 1 | 0 | 0 | PASS: 175 frames at 640×360 decoded on the phone, 550 on the bot |
+| B key-index flap every 40 ms | 30 s | 4 | 2 / 1 | 203 / 203 | 0 | 0 | PASS |
+| C 6 extra tracks re-published every 1.5 s, end-first | 45 s | 101 | 99 / 92 | 0 / 1 | 0 | 0 | PASS |
+| D1 combined (§5b settings) | 30 s | 70 | 68 / 61 | 15 / 15 | 0 | 0 | PASS |
+| D2 combined | 60 s | 123 | 121 / 115 | 42 / 42 | 0 | 0 | PASS (one `SUBSCRIPTION FAILED` for a track unpublished before it was subscribed; no cryptor existed) |
+| D3 combined | 60 s | 132 | 130 / 122 | 18 / 18 | 0 | 0 | PASS |
+| R1 voice after the stress | 30 s | 2 | 1 / 0 | 0 / 1 | 0 | 0 | PASS |
+| R2 missing key held 5 s at a time | 40 s | 2 | 1 / 0 | 4 / 5 | 0 | 0 | PASS: UI alternated "Encryption problem" and "End-to-end encrypted" |
+| R3 wrong-key peer | 30 s | 2 | 1 / 1 | 0 / 1 | 0 | 0 | **FAIL (badge): UI showed "End-to-end encrypted"**, while the bot decoded 0 audible of 2,484 frames. Fixed in §5d |
+
+There were no app crashes, ANRs or tombstones, and the process stayed the same throughout. **Assessment: stable but unverified.**
+No late callback occurred, so the guard's protective path wasn't exercised in these runs.
+
+## 5d. E2EE badge fix on the phone (2026-10-16, builds `081372c1…` and final `3b6f7fee…`: b97c09c + `MediaSecurityTracker`)
+
+USB, production SFU, installed with `adb install -r` (app data kept). The badge was read from the UI tree every 3–5 s.
+
+| Scenario | Result | Evidence |
+|---|---|---|
+| V1 valid voice | PASS | "Verifying encryption…" while connecting, then "End-to-end encrypted" 0.68 s after the room connected. The bot decoded 1,480 encrypted frames |
+| V2 valid video | INCONCLUSIVE | The LiveKit join stalled until the call ended (`connect failed: JobCancellationException`); no tracks |
+| V2b valid video (retry) | PASS | "End-to-end encrypted" 0.23 s after connecting (4 tracks proven). The phone decoded 83 frames at 640×360; the bot decoded 166 camera and 2,490 audio frames |
+| R2 missing key held 5 s at a time | PASS | UI alternated "Encryption problem" / "End-to-end encrypted" with the holds (25/25 changes, brief flicker at each switch) |
+| R3 wrong-key peer | **PASS** | **"Verifying encryption…" for the whole call, never "End-to-end encrypted".** The bot decoded 0 audible of 1,885 frames. **Guard: 1 late callback** (bot mic, during `disconnect()`, dropped; app unaffected) |
+| V3 valid voice right after R3 | PASS | "End-to-end encrypted" 2 ms after connecting; no state carried over |
+| R3b wrong-key peer (repeat) | PASS | Badge never left "not verified". **Guard: 1 late callback** again during `disconnect()`, dropped |
+| R3c wrong-key video, background | INCONCLUSIVE | LiveKit `JOIN_FAILURE` (timeout) |
+| V4 valid voice, **final build `3b6f7fee…`** (badge computed inside the publishing lock) | PASS | Joined slowly (about 25 s), then "End-to-end encrypted" 4 ms after connecting; the bot decoded 125 encrypted frames |
+| R3d wrong-key, final build | INCONCLUSIVE | Not answered on the phone; no call |
+
+The wrong-key result (R3, R3b) comes from build `081372c1…`. The final build differs only in computing the badge inside its
+publishing lock (an ordering fix). On the final build only the valid path (V4) was re-checked on the device.
+
+- There were no app crashes, ANRs or tombstones. The only exit was the install at 17:07:05, and the process stayed the same for
+  every call.
+- The four "FATAL EXCEPTION" lines in R2 and V3 came from the `uiautomator` tool (two dumps overlapping), not from the app.
 
 ## 6a. Android unit tests (JVM, T2.4 harness)
 
@@ -208,8 +254,10 @@ with no device or emulator. `crypto/Bytes.kt` uses `java.util.Base64`, so the re
 | `data/repo/CallKeyRequestsTest` | 4 | PASS | T5.3: grace period, request pacing over a 10 s wait, per-call answer pacing, bounded state |
 | `notify/NotificationHistoryTest` | 4 | PASS | T4.4: last few lines per conversation, cleared on read or erase, bounded |
 | `data/api/ScopeRequestsTest` | 3 | PASS | Clearing a team's department or a description sends an explicit JSON null |
+| `call/FrameCryptorGuardTest` | 8 | PASS | Frame-cryptor abort mitigation (see §1) |
+| `call/MediaSecurityTrackerTest` | 16 | PASS | D-17: verified only with OK/KEY_RATCHETED from every live track (at least one remote); a silent wrong-key peer stays unverified; missing key shows a problem and recovers; key changes leave nothing stale; removed tracks and participants are forgotten and their late callbacks ignored; muted tracks need no proof; a new call starts fresh; SDK default `failureTolerance` is still -1. **8 of 16 fail with the old rule** |
 
-**Totals (2026-10-16):** 92/92 in the working tree. That includes `call/FrameCryptorGuardTest` (6), which belongs to another session's uncommitted call work; the committed tree alone has 86. The outbox and the repository's receive wiring still have no JVM tests (D35, D36).
+**Totals (2026-10-16):** 110/110 (the frame-cryptor guard's tests are committed since b97c09c). Earlier on 2026-10-16: 92 in the working tree, 86 committed. The outbox and the repository's receive wiring still have no JVM tests (D35, D36).
 **Device check of the Base64 change: BLOCKED.** The phone refused the USB install (`INSTALL_FAILED_ABORTED: User rejected permissions`,
 which needs the owner to confirm on screen).
 
@@ -260,6 +308,19 @@ cd tools/griip-bot && GRIIP_BOT_KEY_FLAP=1 GRIIP_BOT_KEY_FLAP_MS=20 GRIIP_BOT_EX
 
 Afterwards, `CallDiag` logs a `frame-cryptor guard:` summary, and `adb shell dumpsys dropbox --print data_app_native_crash`
 should have no new entry.
+
+Badge checks (§5d), with the app in the foreground. Missing key held 5 s at a time, then a wrong-key peer (the phone gets the real
+key; the bot encrypts with another):
+
+```bash
+cd tools/griip-bot && GRIIP_BOT_KEY_FLAP=1 GRIIP_BOT_KEY_FLAP_MS=5000 npm run bot -- call <yourUsername> voice 45
+```
+
+```bash
+cd tools/griip-bot && GRIIP_BOT_WRONG_KEY=1 npm run bot -- call <yourUsername> voice 40
+```
+
+Expected: the first alternates "Encryption problem" / "End-to-end encrypted"; the second shows "Verifying encryption…" throughout.
 
 Wrong-key E2EE check: call the bot from the phone while two bot devices answer, one of them with a wrong key:
 

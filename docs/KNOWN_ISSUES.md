@@ -77,8 +77,13 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
   - **Remaining uncertainty:**
     - The original crash was never reproduced on demand, and the stress test also passed without the guard. The stress
       runs don't prove the guard removes the crash.
-    - In the patched runs the guard counted **0 late callbacks**: the crash's precondition never occurred, so its
-      protective path wasn't exercised on a device. Only the JVM tests exercise it.
+    - **Protective path exercised on a device (2026-10-16, `TESTING.md` §5d):**
+      - In 2 of 2 wrong-key calls (R3, R3b), the bot's microphone cryptor reported once during `disconnect()`, 350–440 ms after
+        the guard's sweep, with its track already cleared. The guard dropped the callback and the app kept running.
+      - LiveKit's own observer would have evaluated `publication.track` at that point. That cryptor had never changed state
+        during the call (wrong-key failures are silent), so its first change came during teardown.
+      - The 10 stress calls and all valid-key calls counted 0 late callbacks.
+      - Whether the *unpatched* build aborts in that wrong-key teardown hasn't been tested. It would confirm the cause.
     - A callback queued between the SDK creating a cryptor and the guard swapping its observer still goes to LiveKit's
       observer.
     - `FrameCryptor.setObserver` and the SDK's `dispose` aren't synchronised in WebRTC's Java code, and the SDK changes
@@ -86,7 +91,32 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
       milliseconds of being subscribed) can't be excluded app-side.
     - The guard reaches the cryptors through LiveKit's private `frameCryptors` field. `FrameCryptorGuardTest` fails if a
       LiveKit upgrade moves it; re-check then whether LiveKit fixed the observer, and remove the guard if so.
-    - The hardening changes made after the stress runs haven't been on a device yet.
+    - The hardened guard has run on the phone (2026-10-16) with no crash: 10 stress calls (`TESTING.md` §5c, *stable but
+      unverified*) and 8 calls with the badge fix (§5d; 6 connected).
+- **~~The badge said "End-to-end encrypted" while a peer's media couldn't be decrypted.~~ Fixed 2026-10-16 (D-17), with a remaining limit.**
+  - Cause:
+    - With LiveKit Android's default `failureTolerance` (-1), WebRTC drops a frame that fails to decrypt and reports nothing.
+    - A wrong-key peer's cryptor therefore stays silent, and the old rule ("every state heard is OK") counted only the
+      phone's own outgoing OK.
+  - Fix: `MediaSecurityTracker`.
+    - "End-to-end encrypted" now needs proof: every live track has encrypted or decrypted a frame (OK or KEY_RATCHETED),
+      including at least one remote track.
+    - A reported failure on a current track shows "Encryption problem". Anything else shows "Verifying encryption…".
+  - Verified on the phone: a wrong-key peer now shows "Verifying encryption…" for the whole call (R3 in `TESTING.md` §5d).
+  - **Limit:** a wrong key is shown as *not verified*, never as an explicit error, because the SDK gives no failure signal.
+    `failureTolerance` stays at -1. With a tolerance of 0 or more, WebRTC counts failures for the whole call (a good frame
+    doesn't reset the count) and, past the limit, drops all of that participant's media until a new key is set. That could
+    break valid calls (D-17).
+  - A video track that never sends a frame, for example one adaptive streaming paused before its first frame, also stays
+    unverified until it does. Muted tracks need no proof.
+- **The badge flickers for under a second when a peer switches key index.** Frames under the old and new index arrive
+  interleaved, and WebRTC reports each change between missing key and OK (R2).
+- **Joining a call's media room is slow and sometimes fails.** It takes 10–16 s from Accept to connected on the test phone (the
+  same before and after 2026-10-16). In 2 of 18 calls on 2026-10-16 the LiveKit join timed out (`JOIN_FAILURE`) or stalled until
+  the call ended. Not investigated; Wi-Fi to the phone was poor (60–75 ms LAN ping).
+- **Open question (not investigated):** WebRTC's sender cryptor passes frames through *unencrypted* while it isn't enabled
+  (`frame_crypto_transformer.cc`). Whether LiveKit ever sends media before enabling the cryptor (for example at track start)
+  hasn't been checked.
 - **Android ↔ Android on two physical phones isn't verified.** Only one phone was available. Both directions were
   verified against the Node peer, which uses the same SFU, codec (VP8) and E2EE scheme.
 

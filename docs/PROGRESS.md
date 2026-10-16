@@ -30,6 +30,47 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T4.4 Notification history and actions** | ✅ code + JVM (device check pending) | See below |
 | **Department editing** | ✅ server + app (not deployed; device check pending) | See below |
 | **Phase 17 decentralisation readiness** | ✅ evaluated (nothing implemented; D-16 proposed) | See below |
+| **E2EE badge needs decryption evidence (wrong-key fix)** | ✅ code + JVM + phone | See below |
+
+### E2EE badge no longer shows "encrypted" for a wrong-key peer (2026-10-16)
+
+- **Defect (device test R3):** with a peer using the wrong media key, the call badge said "End-to-end encrypted", although
+  neither side could decrypt the other.
+- **Root cause, confirmed in source:**
+  - LiveKit Android 2.29.0's `BaseKeyProvider()` passes `failureTolerance = -1` (`E2EEOptionsKt.defaultFailureTolerance`)
+    to WebRTC's key provider.
+  - In webrtc-sdk M144 `FrameCryptorTransformer::decryptFrame`, a frame that fails AES-GCM (after up to 16 ratchet tries) is
+    dropped, and `DecryptionFailure()` returns false at tolerance below 0, so nothing is reported.
+  - States are reported per cryptor and only when they change: `kOk` after a real decrypt, `kMissingKey` for an unknown key
+    index; the initial `kNew` is never reported. A wrong-key peer's cryptor therefore stays silent.
+  - The app's rule ("every state heard is OK") counted only the phone's own outgoing OK.
+- **Fix (app only):**
+  - New `MediaSecurityTracker`, one per call, fed by room events and the guard. It shows "End-to-end encrypted" only when every
+    live track (remote subscribed or local published, not muted) has reported OK/KEY_RATCHETED and at least one is remote.
+  - A failure on a current track shows "Encryption problem"; otherwise "Verifying encryption…", with a neutral shield instead
+    of the check icon.
+  - Removed tracks and participants are forgotten, their late callbacks ignored, and an ended call can't publish into the
+    next one.
+  - `failureTolerance`, keys, cryptors, the envelope and the crash guard are unchanged (D-17 explains why the tolerance stays).
+- **Files:** `call/MediaSecurityTracker.kt` (new), `call/CallManager.kt` (tracker wiring replaces the old state map),
+  `ui/screens/calls/CallOverlay.kt` (unverified wording), `MediaSecurityTrackerTest.kt` (new, 16).
+- **Tests:**
+  - `MediaSecurityTrackerTest` 16/16; 8 of 16 fail when the old rule is put back.
+  - Android **110/110**, `lintDebug` no errors, `assembleDebug` and `assembleRelease` succeed.
+- **Device (`TESTING.md` §5d):**
+  - Valid calls are verified within 0.7 s of connecting, with encrypted media decoded both ways.
+  - The missing-key warning still works.
+  - **A wrong-key peer now shows "Verifying encryption…" for the whole call (2 of 2).**
+  - A new call after a failed one resets.
+  - 2 of 8 calls failed to join LiveKit (an existing issue).
+  - The final build (badge computed inside the publishing lock, so two threads can't publish out of order) was re-checked on
+    the valid path only. Its wrong-key re-run wasn't answered (inconclusive).
+- **Also observed:** the frame-cryptor guard's protective path ran on the device for the first time. In both wrong-key calls,
+  a late callback for the cleared remote mic track arrived during `disconnect()` and was dropped (`KNOWN_ISSUES.md` › Calls).
+- **Remaining:**
+  - A wrong key is shown as unverified, not as an explicit error (no SDK signal).
+  - Stats-based "media not decoding" detection is a possible follow-up (D-17).
+  - Not pushed. Not deployed (app-only).
 
 ### Frame-cryptor abort mitigation isolated and validated (2026-10-16)
 

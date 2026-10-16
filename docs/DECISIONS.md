@@ -71,6 +71,21 @@
 - Access comes only from org, branch, team and channel membership.
 - This matches the implemented schema and authorisation. Department-scoped channels would need their own membership model and are not planned.
 
+**D-17: The E2EE badge claims encryption only on decryption evidence; `failureTolerance` stays at -1 (2026-10-16).**
+- "End-to-end encrypted" requires every live track to have reported OK or KEY_RATCHETED, which WebRTC sends only after a real
+  encrypt or decrypt with our key, and at least one remote track. "Encryption enabled" or "key present" is never enough.
+- Wrong-key failures aren't reported by WebRTC at `failureTolerance` -1 (LiveKit Android's default), so they appear as
+  "Verifying encryption…".
+- Not taken: setting a tolerance of 0 or more to surface `DECRYPTION_FAILED`.
+  - In WebRTC (`frame_crypto_transformer`, M144), the per-participant failure count is reset only by a new key or a
+    successful ratchet, not by a good frame.
+  - Past the tolerance, every following frame from that participant is dropped until a new key is set.
+  - The source notes failures at call start from frames sent before encryption was enabled, so valid calls could lose
+    media.
+  - Revisit only with a device experiment that measures failure counts in valid calls.
+- Considered for later: a negative signal from WebRTC stats (packets arriving while nothing decodes). It's evidence that
+  media isn't decoding, but it isn't specific to keys.
+
 **D-16 (proposed, for owner confirmation): decentralisation means independent instances, not federation (2026-10-16, Phase 17).**
 - Each organisation can run its own instance and media server. Griip has no central account service.
 - Federation between instances, and any blockchain or global ledger, are not planned.

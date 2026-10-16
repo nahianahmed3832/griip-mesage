@@ -28,6 +28,7 @@ import io.livekit.android.room.Room
 import io.livekit.android.room.participant.Participant
 import io.livekit.android.room.track.LocalVideoTrack
 import io.livekit.android.room.track.Track
+import io.livekit.android.room.track.TrackPublication
 import io.livekit.android.room.track.VideoTrack
 import io.livekit.android.room.track.screencapture.ScreenCaptureParams
 import kotlinx.coroutines.CoroutineScope
@@ -101,8 +102,10 @@ class CallManager(
         private set(value) { _room.value = value }
     private var eventsJob: Job? = null
     private var cryptorGuard: FrameCryptorGuard? = null
-    /** Guarded: written from room events and, through [cryptorGuard], from WebRTC's signaling thread. */
-    private val e2eeStates = HashMap<String, E2EEState>()
+    /** This call's badge evidence (null without E2EE). Fed from room events and, through [cryptorGuard], WebRTC's signaling thread. */
+    @Volatile private var securityTracker: MediaSecurityTracker? = null
+    /** Publishing the badge and swapping [securityTracker] happen under this lock, so an ended call's callbacks can't touch the next call. */
+    private val securityLock = Any()
     private val diag = CallDiagnostics(scope)
 
     /**
@@ -232,8 +235,9 @@ class CallManager(
         }
         room = r
         diag.start(r)
-        synchronized(e2eeStates) { e2eeStates.clear() }
-        cryptorGuard = if (key != null) FrameCryptorGuard(onState = { k, st -> if (room === r) onE2eeState(k, st) }, log = diag::log) else null
+        val tracker = if (key != null) MediaSecurityTracker() else null
+        synchronized(securityLock) { securityTracker = tracker }
+        cryptorGuard = tracker?.let { t -> FrameCryptorGuard(onState = { k, st -> if (room === r) onE2eeState(t, k, st) }, log = diag::log) }
         _state.update { it.copy(security = if (key != null) MediaSecurity.Unknown else MediaSecurity.TransportOnly) }
         eventsJob = scope.launch { r.events.events.collect { ev -> onRoomEvent(ev) } }
         CallService.start(context, _state.value.title, video)
@@ -269,6 +273,7 @@ class CallManager(
                 scope.launch { db.calls().getLog(_state.value.callId ?: "")?.let { db.calls().upsertLog(it.copy(answeredAt = System.currentTimeMillis())) } }
             }
             is RoomEvent.ParticipantDisconnected -> {
+                securityTracker?.let { t -> ev.participant.identity?.value?.let(t::participantLeft); publishSecurity(t) }
                 val s = _state.value
                 if (!s.isGroup && room?.remoteParticipants?.isEmpty() == true) finish("hangup", notifyServer = true)
             }
@@ -278,28 +283,53 @@ class CallManager(
                 Log.i(TAG, "room disconnected: ${ev.reason}")
                 finish("disconnected", notifyServer = true)
             }
-            // The SDK has set up the track's frame cryptor by now: swap in the crash-safe observer.
-            is RoomEvent.TrackSubscribed -> cryptorGuard?.guard(ev.room, ev.publication, ev.participant)
-            is RoomEvent.TrackPublished -> cryptorGuard?.guard(ev.room, ev.publication, ev.participant)
+            // The SDK has set up the track's frame cryptor by now: register the track for the badge, then
+            // swap in the crash-safe observer.
+            is RoomEvent.TrackSubscribed -> {
+                trackChanged { it.trackAdded(trackKey(ev.participant, ev.publication), remote = true, muted = ev.publication.muted) }
+                cryptorGuard?.guard(ev.room, ev.publication, ev.participant)
+            }
+            is RoomEvent.TrackPublished -> {
+                // Remote publications get a cryptor only once subscribed (TrackSubscribed); local ones now.
+                if (ev.participant === ev.room.localParticipant) {
+                    trackChanged { it.trackAdded(trackKey(ev.participant, ev.publication), remote = false, muted = ev.publication.muted) }
+                }
+                cryptorGuard?.guard(ev.room, ev.publication, ev.participant)
+            }
+            is RoomEvent.TrackUnsubscribed -> trackChanged { it.trackRemoved(trackKey(ev.participant, ev.publications)) }
+            is RoomEvent.TrackUnpublished -> trackChanged { it.trackRemoved(trackKey(ev.participant, ev.publication)) }
+            is RoomEvent.TrackMuted -> trackChanged { it.trackMuted(trackKey(ev.participant, ev.publication), true) }
+            is RoomEvent.TrackUnmuted -> trackChanged { it.trackMuted(trackKey(ev.participant, ev.publication), false) }
             // Only until the guard has replaced a cryptor's observer; afterwards states arrive through the guard.
-            is RoomEvent.TrackE2EEStateEvent -> onE2eeState(FrameCryptorGuard.key(ev.participant.identity?.value, ev.publication.sid), ev.state)
+            is RoomEvent.TrackE2EEStateEvent -> securityTracker?.let { onE2eeState(it, trackKey(ev.participant, ev.publication), ev.state) }
             else -> {}
         }
         refreshParticipants()
     }
 
-    private fun onE2eeState(key: String, st: E2EEState) {
-        val sec = synchronized(e2eeStates) {
-            e2eeStates[key] = st
-            val vals = e2eeStates.values
-            when {
-                vals.any { it == E2EEState.DECRYPTION_FAILED || it == E2EEState.ENCRYPTION_FAILED || it == E2EEState.MISSING_KEY || it == E2EEState.INTERNAL_ERROR } -> MediaSecurity.E2eeProblem
-                vals.isNotEmpty() && vals.all { it == E2EEState.OK || it == E2EEState.KEY_RATCHETED } -> MediaSecurity.E2eeActive
-                else -> MediaSecurity.Unknown
-            }
+    private fun trackKey(p: Participant, pub: TrackPublication) = FrameCryptorGuard.key(p.identity?.value, pub.sid)
+
+    private inline fun trackChanged(change: (MediaSecurityTracker) -> Unit) {
+        val t = securityTracker ?: return
+        change(t)
+        publishSecurity(t)
+    }
+
+    private fun onE2eeState(tracker: MediaSecurityTracker, key: String, st: E2EEState) {
+        if (tracker.state(key, st)) publishSecurity(tracker)
+    }
+
+    /**
+     * Shows what [tracker] can prove, unless its call has ended or been replaced meanwhile. Computed inside the lock, so
+     * two threads can't publish out of order and leave a stale badge (lock order: [securityLock], then the tracker).
+     */
+    private fun publishSecurity(tracker: MediaSecurityTracker) {
+        synchronized(securityLock) {
+            if (securityTracker !== tracker) return
+            val sec = tracker.security()
+            if (_state.value.security != sec) diag.log("media security: $sec")
+            _state.update { if (it.security == sec) it else it.copy(security = sec) }
         }
-        if (_state.value.security != sec) diag.log("media security: $sec")
-        _state.update { if (it.security == sec) it else it.copy(security = sec) }
     }
 
     private fun refreshParticipants() {
@@ -426,6 +456,7 @@ class CallManager(
         room = null
         val guard = cryptorGuard
         cryptorGuard = null
+        synchronized(securityLock) { securityTracker = null }
         CallService.stop(context)
         if (r != null) {
             scope.launch(Dispatchers.Main) {
