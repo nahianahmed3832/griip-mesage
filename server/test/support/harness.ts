@@ -32,6 +32,8 @@ export async function startServer(env: Record<string, string> = {}): Promise<Har
   const addr = built.app.server.address();
   const port = typeof addr === "object" && addr ? addr.port : 0;
   const baseUrl = `http://127.0.0.1:${port}`;
+  // Federated test servers advertise the address they actually listen on (timers aren't started: tests drive them).
+  if (built.ctx.config.federation && !built.ctx.config.federation.publicUrl) built.ctx.config.federation.publicUrl = baseUrl;
   const clients: GriipClient[] = [];
   return {
     ...built,
@@ -44,6 +46,7 @@ export async function startServer(env: Record<string, string> = {}): Promise<Har
       return c;
     },
     close: async () => {
+      built.ctx.federation?.stop();
       for (const c of clients) await c.disconnect();
       await built.app.close();
       built.ctx.db.close();

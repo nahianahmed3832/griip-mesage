@@ -54,8 +54,59 @@ export interface Config {
   trustProxy: boolean;
   /** Optional display name for this instance, shown on client setup screens (INSTANCE_NAME). */
   instanceName: string | null;
+  /** Federation with other Griip servers (docs/FEDERATION_PROTOCOL.md). Null when FEDERATION_DOMAIN isn't set. */
+  federation: FederationConfig | null;
   logLevel: string;
   rateLimitPerMinute: number;
+}
+
+export interface FederationConfig {
+  /** This server's federation domain: the part after ":" in user addresses (@name:domain). */
+  domain: string;
+  /** Public base URL other servers and core nodes reach this server at. Set after listen() in tests if empty. */
+  publicUrl: string;
+  /** Core nodes: url and public key of each. */
+  coreNodes: { url: string; publicKey: string }[];
+  /** How many core nodes must agree on a domain → server binding. */
+  coreQuorum: number;
+  /** Development only: allow plain http between servers and to core nodes. */
+  allowHttp: boolean;
+  /** "open": any registered, verified server may federate; "allowlist": only listed server ids or domains. */
+  policy: "open" | "allowlist";
+  allowlist: string[];
+  heartbeatMs: number;
+  outboxIntervalMs: number;
+  /** Bound on queued federation items per destination server. */
+  outboxMaxPerPeer: number;
+  /** Where the server's identity key lives (default DATA_DIR/federation). */
+  keyDir: string;
+}
+
+function federationConfig(env: NodeJS.ProcessEnv, dataDir: string, int: (n: string, d: number) => number): FederationConfig | null {
+  const domain = (env.FEDERATION_DOMAIN ?? "").trim().toLowerCase();
+  if (!domain) return null;
+  const coreNodes = (env.FEDERATION_CORE_NODES ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      const i = s.lastIndexOf("#");
+      if (i < 0) throw new Error("FEDERATION_CORE_NODES entries need the form url#publicKey");
+      return { url: s.slice(0, i), publicKey: s.slice(i + 1) };
+    });
+  return {
+    domain,
+    publicUrl: (env.FEDERATION_PUBLIC_URL ?? "").trim().replace(/\/$/, ""),
+    coreNodes,
+    coreQuorum: int("FEDERATION_CORE_QUORUM", Math.floor(coreNodes.length / 2) + 1),
+    allowHttp: env.FEDERATION_ALLOW_HTTP === "true",
+    policy: env.FEDERATION_POLICY === "allowlist" ? "allowlist" : "open",
+    allowlist: (env.FEDERATION_ALLOWLIST ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    heartbeatMs: int("FEDERATION_HEARTBEAT_SECONDS", 60) * 1000,
+    outboxIntervalMs: int("FEDERATION_OUTBOX_INTERVAL_MS", 2000),
+    outboxMaxPerPeer: int("FEDERATION_OUTBOX_MAX_PER_PEER", 10000),
+    keyDir: env.FEDERATION_KEY_DIR ?? path.join(dataDir, "federation"),
+  };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -99,6 +150,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
         : null,
     trustProxy: env.TRUST_PROXY === "true",
     instanceName: (env.INSTANCE_NAME ?? "").trim().slice(0, 80) || null,
+    federation: federationConfig(env, dataDir, int),
     logLevel: env.LOG_LEVEL ?? "info",
     rateLimitPerMinute: int("RATE_LIMIT_PER_MINUTE", 600),
   };

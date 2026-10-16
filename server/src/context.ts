@@ -4,6 +4,7 @@ import type { Authz } from "./authz.js";
 import type { Config } from "./config.js";
 import type { DB } from "./db.js";
 import type { Hub } from "./hub.js";
+import type { Federation } from "./federation/service.js";
 import type { LiveKitService } from "./livekit.js";
 import { ApiError, badRequest, now, sha256Hex, unauthorized } from "./util.js";
 
@@ -13,6 +14,8 @@ export interface AppContext {
   authz: Authz;
   hub: Hub;
   livekit: LiveKitService | null;
+  /** Present when FEDERATION_DOMAIN is configured (docs/FEDERATION_PROTOCOL.md). */
+  federation?: Federation;
   log: FastifyBaseLogger;
   audit: (e: { actorId?: string | null; orgId?: string | null; action: string; target?: string | null; detail?: string | null }) => void;
 }

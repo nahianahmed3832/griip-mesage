@@ -3,6 +3,8 @@ import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Authz } from "./authz.js";
 import type { Config } from "./config.js";
+import { federationClientRoutes, federationPeerRoutes } from "./federation/routes.js";
+import { Federation } from "./federation/service.js";
 import { type AppContext, authenticateToken, bearer } from "./context.js";
 import { type DB, openDatabase } from "./db.js";
 import { Hub } from "./hub.js";
@@ -67,6 +69,8 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
     },
   };
 
+  if (config.federation) ctx.federation = new Federation(ctx, config.federation);
+
   // Attachment uploads are streamed to disk by their route (size and quota enforced while reading),
   // so the raw request stream is passed through instead of being buffered in memory.
   app.addContentTypeParser("application/octet-stream", (_req, payload, done) => done(null, payload));
@@ -112,6 +116,8 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
     minClientApi: MIN_CLIENT_API,
     instanceName: config.instanceName,
     registration: config.registrationMode,
+    // Federation (additive): this server's global identity, if it federates.
+    federation: ctx.federation ? { domain: ctx.federation.domain, serverId: ctx.federation.serverId, protocols: ["griip-fed/1"] } : null,
     version: VERSION,
     calling: !!ctx.livekit,
     queueTtlSeconds: config.queueTtlSeconds,
@@ -122,6 +128,11 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
 
   for (const r of [authRoutes, userRoutes, orgRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, wsRoutes]) {
     await app.register(async (scope) => r(scope, ctx));
+  }
+  const fed = ctx.federation;
+  if (fed) {
+    await app.register(async (scope) => federationPeerRoutes(scope, ctx, fed));
+    await app.register(async (scope) => federationClientRoutes(scope, ctx, fed));
   }
   return { app, ctx };
 }

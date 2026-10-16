@@ -178,6 +178,10 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
     const conv = authz.requireMember(body.conversationId, userId);
     if (conv.archived_at || authz.conversationScopeArchived(conv)) throw conflict("This channel is archived");
     if (!ctx.livekit) throw new ApiError(503, "media_unavailable", "Calling is not configured on this server");
+    const remote = db.prepare("SELECT 1 FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? AND u.home_server_id IS NOT NULL LIMIT 1").get(conv.id);
+    if (remote && !ctx.federation?.callsEnabled()) {
+      throw new ApiError(409, "federated_calls_unavailable", "Calls with people on other servers aren't available yet");
+    }
     // One live call per conversation: starting while one exists joins it instead.
     const existing = db.prepare("SELECT * FROM calls WHERE conversation_id = ? AND state != 'ENDED' ORDER BY created_at DESC LIMIT 1").get(conv.id) as
       | CallRow

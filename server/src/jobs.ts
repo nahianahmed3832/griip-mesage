@@ -10,6 +10,8 @@ export interface CleanupResult {
   sessions: number;
   pairing: number;
   attachments: number;
+  /** Expired federation nonces, inbox dedupe keys and outbox items. */
+  federation: number;
   callsTimedOut: number;
   callEvictions: number;
   disabledDisconnected: number;
@@ -31,6 +33,7 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     sessions: db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(t).changes,
     pairing: db.prepare("DELETE FROM pairing_requests WHERE expires_at <= ?").run(t).changes,
     attachments: purgeExpiredAttachments(ctx),
+    federation: ctx.federation ? Object.values(ctx.federation.cleanup(t)).reduce((a, b) => a + b, 0) : 0,
     callsTimedOut: 0,
     callEvictions: 0,
     disabledDisconnected: 0,

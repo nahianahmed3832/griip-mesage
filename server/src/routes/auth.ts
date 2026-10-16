@@ -58,6 +58,7 @@ export function userSummary(u: {
   avatar_color: number;
   status_text: string | null;
   identity_key?: string;
+  home_server_id?: string | null;
 }) {
   return {
     id: u.id,
@@ -65,6 +66,8 @@ export function userSummary(u: {
     displayName: u.display_name,
     avatarColor: u.avatar_color,
     statusText: u.status_text,
+    // Set for people on another server: their home server's id (username is then "name:domain").
+    homeServer: u.home_server_id ?? null,
   };
 }
 
@@ -159,7 +162,8 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
   app.post("/v1/auth/login", strict, async (req) => {
     const body = parse(z.object({ deviceId: z.string().max(64), nonce: z.string().min(16).max(64), signature: zSig }), req.body);
     const dev = ctx.db
-      .prepare("SELECT d.*, u.disabled_at FROM devices d JOIN users u ON u.id = d.user_id WHERE d.id = ?")
+      // A remote user's stand-in (home_server_id set) can never sign in here, even with its device key.
+      .prepare("SELECT d.*, u.disabled_at FROM devices d JOIN users u ON u.id = d.user_id WHERE d.id = ? AND u.home_server_id IS NULL")
       .get(body.deviceId) as { id: string; user_id: string; signing_key: string; revoked_at: number | null; disabled_at: number | null } | undefined;
     // Same error for unknown device and bad signature: don't reveal which device ids exist.
     if (!dev || !verifyEd25519(dev.signing_key, canonical.authProof("login", body.nonce, dev.signing_key), body.signature)) {
@@ -179,7 +183,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
       z.object({ username: zUsername, device: zDevice, nonce: z.string().min(16).max(64), signature: zSig }),
       req.body,
     );
-    const user = ctx.db.prepare("SELECT * FROM users WHERE username = ?").get(body.username) as
+    const user = ctx.db.prepare("SELECT * FROM users WHERE username = ? AND home_server_id IS NULL").get(body.username) as
       | { id: string; identity_key: string; disabled_at: number | null }
       | undefined;
     if (!user) throw unauthorized("Invalid device proof");

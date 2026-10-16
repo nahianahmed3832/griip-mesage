@@ -4,6 +4,7 @@
  *   npm run bot -- chat   <peerUsername> [seconds]          DM the peer, echo every message back
  *   npm run bot -- call   <peerUsername> [voice|video] [s]  ring the peer, exchange E2EE media
  *   npm run bot -- answer [seconds]                          wait for the peer to call, answer
+ * <peerUsername> may be a full address (name:server) for someone on another federated server.
  *
  * Env: GRIIP_SERVER (default https://msg.griipbuddy.cloud). The bot's identity is stored in
  * bot-identity.json next to this file (private keys — never commit).
@@ -90,6 +91,12 @@ async function loadBot(): Promise<GriipClient> {
 }
 
 async function findPeer(bot: GriipClient, username: string) {
+  // A full address (name:server) is someone on another server: resolved through federation (exact lookup).
+  if (username.includes(":")) {
+    const r = await bot.req("GET", `/v1/federation/resolve?address=${encodeURIComponent(username)}`);
+    log(`🌐 resolved ${username} → ${r.user.id} on ${r.server.domain} (verified by ${r.server.verifiedBy} directory nodes, ${r.server.source})`);
+    return r.user;
+  }
   const r = await bot.req("GET", `/v1/users/search?q=${encodeURIComponent(username)}`);
   const u = r.users.find((x: any) => x.username === username.toLowerCase());
   if (!u) throw new Error(`no user @${username}`);

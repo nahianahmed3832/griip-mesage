@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { type AppContext, me, parse, requireAuth, zName } from "../context.js";
 import { keyFingerprint } from "../crypto.js";
-import { notFound, now } from "../util.js";
+import { badRequest, notFound, now } from "../util.js";
 import { userSummary } from "./auth.js";
 
 export interface DeviceKeyRow {
@@ -82,7 +82,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
     const rows = ctx.db
       .prepare(
         `SELECT DISTINCT u.* FROM users u
-         WHERE u.disabled_at IS NULL AND u.id != ? AND (
+         WHERE u.disabled_at IS NULL AND u.home_server_id IS NULL AND u.id != ? AND (
            u.username = ? COLLATE NOCASE OR (
              (u.username LIKE ? ESCAPE '\\' OR lower(u.display_name) LIKE ? ESCAPE '\\' OR lower(u.display_name) LIKE ? ESCAPE '\\')
              AND EXISTS (
@@ -115,7 +115,31 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.post("/v1/users/devices", auth, async (req) => {
     const { userIds } = parse(z.object({ userIds: z.array(z.string().max(64)).min(1).max(500) }), req.body);
-    return { users: deviceDirectory(ctx, [...new Set(userIds)]) };
+    const ids = [...new Set(userIds)];
+    await ctx.federation?.refreshStale(ids);
+    return { users: deviceDirectory(ctx, ids) };
+  });
+
+  // Blocking (local or remote people): their messages are dropped for the blocker; the blocked person isn't told.
+  app.post("/v1/blocks", auth, async (req) => {
+    const { userId } = me(req);
+    const { userId: other } = parse(z.object({ userId: z.string().max(64) }), req.body);
+    if (other === userId) throw badRequest("You can't block yourself");
+    if (!ctx.db.prepare("SELECT 1 FROM users WHERE id = ?").get(other)) throw notFound("User not found");
+    ctx.db.prepare("INSERT OR IGNORE INTO user_blocks (user_id, blocked_user_id, created_at) VALUES (?, ?, ?)").run(userId, other, now());
+    return { blocked: true };
+  });
+
+  app.delete("/v1/blocks/:userId", auth, async (req) => {
+    const { userId } = me(req);
+    const { userId: other } = parse(z.object({ userId: z.string().max(64) }), req.params);
+    ctx.db.prepare("DELETE FROM user_blocks WHERE user_id = ? AND blocked_user_id = ?").run(userId, other);
+    return { blocked: false };
+  });
+
+  app.get("/v1/blocks", auth, async (req) => {
+    const rows = ctx.db.prepare("SELECT blocked_user_id id FROM user_blocks WHERE user_id = ?").all(me(req).userId) as { id: string }[];
+    return { userIds: rows.map((r) => r.id) };
   });
 
   // Users the caller may not see are left out (not nulled): released apps parse `online` as non-null.

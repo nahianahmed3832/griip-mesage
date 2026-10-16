@@ -90,6 +90,9 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     ctx.db
       .prepare("INSERT INTO attachments (id, conversation_id, uploader_user_id, size, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)")
       .run(id, conv.id, userId, size, t, expiresAt);
+    // Federated conversation: the ciphertext is pushed to the other people's servers, so they download it from
+    // their own server. Queued before the message that references it, and delivered in order.
+    ctx.federation?.pushAttachment(conv.id, { id, conversationId: conv.id, uploaderUserId: userId, size, expiresAt });
     return { id, size, expiresAt };
   });
 
