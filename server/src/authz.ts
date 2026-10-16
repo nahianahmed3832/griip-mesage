@@ -235,6 +235,22 @@ export class Authz {
   }
 
   /**
+   * Whether `userId` may issue an org invite with this role and scope: owners invite admins; owners
+   * and admins invite anyone below; branch managers and team leads invite into what they manage.
+   * Checked when an invite is created and again whenever it is used (T3.1), so an invite stops working
+   * once its creator loses the right to issue it.
+   */
+  canIssueInvite(orgId: string, userId: string, role: string, branchId: string | null, teamId: string | null): boolean {
+    const actorRole = this.orgRole(orgId, userId);
+    if (!actorRole || actorRole === "GUEST") return false;
+    if (role === "ADMIN") return actorRole === "OWNER";
+    if (actorRole === "OWNER" || actorRole === "ADMIN") return true;
+    const branch = branchId ? this.branch(branchId) : undefined;
+    const team = teamId ? this.team(teamId) : undefined;
+    return (!!branch && this.canManageBranch(branch, userId)) || (!!team && this.canManageTeam(team, userId));
+  }
+
+  /**
    * Online state and last-seen are visible to the person themself, to anyone who shares a
    * conversation with them, and to non-guest members of an organisation they belong to. Knowing a
    * username or id is not enough.

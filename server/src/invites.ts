@@ -1,3 +1,4 @@
+import type { Authz } from "./authz.js";
 import type { AppContext } from "./context.js";
 import type { DB } from "./db.js";
 import { humanCode, newId, normalizeCode, now, sha256Hex } from "./util.js";
@@ -12,6 +13,7 @@ export interface OrgInviteRow {
   uses: number;
   expires_at: number;
   revoked_at: number | null;
+  created_by: string;
 }
 
 export interface RegistrationInviteRow {
@@ -28,10 +30,14 @@ export interface RegistrationInviteRow {
 const usable = (r: { revoked_at: number | null; expires_at: number; uses: number; max_uses: number } | undefined) =>
   !!r && !r.revoked_at && r.expires_at > now() && r.uses < r.max_uses;
 
-/** A usable (not revoked, expired or used up) org invitation for this code. */
-export function findOrgInvite(db: DB, code: string): OrgInviteRow | undefined {
+/**
+ * A usable org invitation for this code: not revoked, expired or used up, and its creator may still
+ * issue it (T3.1). An invite made by someone who has since been demoted or removed stops working.
+ */
+export function findOrgInvite(db: DB, authz: Authz, code: string): OrgInviteRow | undefined {
   const inv = db.prepare("SELECT * FROM invitations WHERE code_hash = ?").get(sha256Hex(normalizeCode(code))) as OrgInviteRow | undefined;
-  return usable(inv) ? inv : undefined;
+  if (!inv || !usable(inv)) return undefined;
+  return authz.canIssueInvite(inv.org_id, inv.created_by, inv.role, inv.branch_id, inv.team_id) ? inv : undefined;
 }
 
 /** A usable registration invite for this code. */

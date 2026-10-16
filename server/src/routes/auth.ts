@@ -131,7 +131,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
         if (ctx.config.registrationMode === "invite") {
           // Looked up inside the transaction so two registrations can't both take an invite's last use.
           const reg = findRegistrationInvite(ctx.db, body.inviteCode!);
-          const org = reg ? undefined : findOrgInvite(ctx.db, body.inviteCode!);
+          const org = reg ? undefined : findOrgInvite(ctx.db, ctx.authz, body.inviteCode!);
           if (reg) {
             ctx.db.prepare("UPDATE registration_invites SET uses = uses + 1 WHERE id = ?").run(reg.id);
             return { via: `registration-invite:${reg.id}`, joined: null };

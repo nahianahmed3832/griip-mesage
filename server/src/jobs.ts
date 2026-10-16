@@ -12,6 +12,7 @@ export interface CleanupResult {
   attachments: number;
   callsTimedOut: number;
   callEvictions: number;
+  disabledDisconnected: number;
 }
 
 /**
@@ -30,7 +31,21 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     attachments: purgeExpiredAttachments(ctx),
     callsTimedOut: 0,
     callEvictions: 0,
+    disabledDisconnected: 0,
   };
+  // Accounts disabled with the admin CLI (a separate process) keep receive-only sockets open, because
+  // sessions are only re-checked on client frames. Close them here (T3.3).
+  const online = ctx.hub.connectedUserIds();
+  for (let i = 0; i < online.length; i += 500) {
+    const chunk = online.slice(i, i + 500);
+    const disabled = db
+      .prepare(`SELECT id FROM users WHERE disabled_at IS NOT NULL AND id IN (${chunk.map(() => "?").join(",")})`)
+      .all(...chunk) as { id: string }[];
+    for (const u of disabled) {
+      ctx.hub.disconnectUser(u.id, "account disabled");
+      r.disabledDisconnected++;
+    }
+  }
   // Call membership: anyone no longer admitted (removed from the conversation, revoked device,
   // disabled account) is removed from the room. This repairs evictions missed while LiveKit was
   // unreachable, rejoins with a token issued before removal, and `admin disable` from the CLI process.

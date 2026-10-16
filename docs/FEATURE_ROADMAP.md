@@ -182,9 +182,9 @@ Extend these, don't replace them:
 
 | Item | Purpose and acceptance | Modules | Verification |
 |---|---|---|---|
-| T3.1 Invites re-checked against the creator's current rights | An invite from someone who lost manage rights stops working (or is revoked automatically) | `findInvite`, role and member removal paths | vitest |
+| T3.1 Invites re-checked against the creator's current rights **Done 2026-10-16 (not deployed)** | An invite from someone who lost manage rights stops working (or is revoked automatically) | `findInvite`, role and member removal paths | vitest |
 | T3.2 Archived branch or team semantics | Decide whether archiving freezes channels (read-only) and stops new members; enforce on the server | `authz.ts`, `orgs.ts` | vitest |
-| T3.3 Admin `disable` disconnects live sockets | The CLI marks the user, and the API process closes sockets (poll `disabled_at` in the cleanup job) | `admin.ts`, `jobs.ts` | vitest |
+| T3.3 Admin `disable` disconnects live sockets **Done 2026-10-16 (not deployed)** | The CLI marks the user, and the API process closes sockets (poll `disabled_at` in the cleanup job) | `admin.ts`, `jobs.ts` | vitest |
 | T3.4 Control-message scope checks. **Done 2026-10-16** (with T2.1) | Reactions and pins only apply to targets in the same conversation | `MessageRepository.apply` | JVM test |
 | T3.5 Departments (only if the product needs them) | Department membership and channels, or document that departments group teams only | schema migration 002 | vitest |
 

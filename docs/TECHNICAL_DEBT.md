@@ -16,7 +16,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 | D6 | ~~`Hub.Conn.flushing` is declared but unused~~ **Fixed 2026-10-16 (T2.1):** it gates live pushes until the backlog is drained, and stops the empty-backlog acknowledgement loop | `server/src/hub.ts`, `ws.ts` | Medium | T2.1 |
 | D7 | ~~`RealtimeClient` drops frames with `tryEmit` into a bounded buffer~~ **Fixed 2026-10-16 (T2.2)**: `FrameInbox` | `FrameInbox.kt`, `RealtimeClient.kt` | Medium | T2.2 |
 | D8 | `call_invite` keys are accepted from any member (first wins) | `MessageRepository.apply` | Medium | T5.2 |
-| D9 | Invitations aren't re-checked against the creator's current rights | `routes/orgs.ts` `findInvite` | Medium | T3.1 |
+| D9 | ~~Invitations aren't re-checked against the creator's current rights~~ **Fixed 2026-10-16 (T3.1), not deployed** | `invites.ts`, `authz.ts` | Medium | T3.1 |
 | D10 | ~~Presence and last-seen are readable by anyone~~ **Fixed 2026-10-16 (T1.7), not deployed** | `routes/users.ts`, `authz.ts` | Medium | T1.7 |
 | D11 | ~~The activity feed filters by action type, not scope~~ **Fixed 2026-10-16 (T1.8), not deployed** | `routes/orgs.ts` | Medium | T1.8 |
 | D12 | Sender lookup excludes revoked devices, losing earlier messages | `routes/users.ts` `deviceDirectory`, `Directory.kt` | Medium | T1.5 |
@@ -51,7 +51,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 | D26 | ~~Compose limits memory only~~ **`cpus` and `pids_limit` added 2026-10-16 (T1.6), not deployed.** No Docker volume quota is possible here, so attachment caps plus `verify.sh` disk warning stand in | Medium (T1.6) |
 | D27 | No TURN, so restricted networks can't place calls | Medium (T5.1) |
 | D28 | Public `/healthz` reveals the online device count | Low |
-| D29 | Admin CLI `disable` can't close live sockets (separate process) | Low (T3.3) |
+| D29 | ~~Admin CLI `disable` can't close live sockets~~ **Fixed 2026-10-16 (T3.3), not deployed:** the API's cleanup job closes sockets of disabled accounts (within 60 s) | Low (T3.3) |
 | D30 | No backups of permanent org metadata | Medium (owner decision) |
 | D31 | Single process with an in-memory hub, so it can't scale horizontally | Low for the beta |
 

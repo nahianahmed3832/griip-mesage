@@ -24,6 +24,20 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
 
+### T3.1 Invites follow their creator's rights; T3.3 CLI disable closes sockets (2026-10-16)
+
+- **T3.1 defect:** an invite created by a branch manager, team lead or owner stayed valid after that person was demoted or removed.
+- **T3.1 change:** `Authz.canIssueInvite` holds the issuing rule: owners invite admins; owners and admins invite anyone below; managers and leads invite into what they manage. It's used at creation *and* by `findOrgInvite` whenever an invite is previewed, accepted or used to register. An invite whose creator lost the right behaves like an invalid code.
+- **T3.3 defect:** `admin.js disable` runs in its own process. It deleted sessions, but a socket that only receives was never re-checked and stayed open.
+- **T3.3 change:** the API's cleanup job (every 60 s) closes the sockets of connected users who are now disabled (`Hub.connectedUserIds`, `disconnectUser`).
+- **Tests:** `server/test/authz_edges.test.ts` has 3 tests:
+  - a manager's invite works, then stops after demotion;
+  - an owner's admin invite stops after the owner becomes an admin, while another owner's member invite still works;
+  - a CLI-disabled user's socket is closed at the next cleanup.
+
+  All 3 fail without the fix. `npm test` gives **77/77**.
+- **Not deployed.**
+
 ### T2.5 Background delivery: evaluation and restart after reboot or update (2026-10-16)
 
 - **Gap:** a killed app receives nothing. The "stay connected" service also stayed off after a reboot or an app update until the user opened the app.

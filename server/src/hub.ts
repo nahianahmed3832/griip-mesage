@@ -113,6 +113,15 @@ export class Hub {
     for (const u of userIds) this.sendToUser(u, msg, exceptDeviceId);
   }
 
+  /** Users with at least one open socket. */
+  connectedUserIds(): string[] {
+    return [...this.byUser.keys()];
+  }
+
+  disconnectUser(userId: string, reason: string): void {
+    for (const d of [...(this.byUser.get(userId) ?? [])]) this.disconnectDevice(d, reason);
+  }
+
   disconnectDevice(deviceId: string, reason: string): void {
     const set = this.byDevice.get(deviceId);
     if (!set) return;

@@ -22,6 +22,7 @@ Production runs Compose project `griip-internal-messaging` in `/opt/griip-intern
 | T1.8 Activity feed filtered by each event's real scope | see `git log -- server/test/activity_scope.test.ts` | `routes/orgs.ts` (`activityVisibleTo`) | none | **Pending approval.** Tests: 64/64 + tsc clean |
 | T2.1 (server) Ordered, exactly-once delivery: live pushes wait for the backlog; no empty-backlog loop | see `git log -- server/test/ordering.test.ts` | `hub.ts`, `ws.ts` | none | **Pending approval.** Compatible with released apps. Tests: 72/72 + tsc clean |
 | T2.6 (server) Resumable attachment downloads (HTTP Range) | see `git log -- server/src/routes/attachments.ts` | `routes/attachments.ts` | none | **Pending approval.** Old apps ignore it; new apps fall back to full downloads against an old server. Tests: 74/74 |
+| T3.1 Invites re-checked against the creator's rights; T3.3 CLI-disabled accounts disconnected | see `git log -- server/test/authz_edges.test.ts` | `authz.ts`, `invites.ts`, `routes/orgs.ts`, `routes/auth.ts`, `hub.ts`, `jobs.ts` | none | **Pending approval.** Note: invites created by `admin.js invite` belong to the org's creator and stop working if that person can no longer issue them. Tests: 77/77 |
 
 Later tasks append rows here as they land.
 

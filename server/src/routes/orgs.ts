@@ -560,12 +560,9 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     }
     const branch = branchId ? authz.branch(branchId) : undefined;
     if (branchId && (!branch || branch.org_id !== orgId)) throw badRequest("Unknown branch");
-    const isAdmin = actorRole === "OWNER" || actorRole === "ADMIN";
     if (body.role === "ADMIN" && actorRole !== "OWNER") throw forbidden("Only owners can invite admins");
-    if (!isAdmin) {
-      const team = body.teamId ? authz.team(body.teamId) : undefined;
-      const allowed = (branch && authz.canManageBranch(branch, actor)) || (team && authz.canManageTeam(team, actor));
-      if (!allowed) throw forbidden("You can only invite people into branches or teams you manage");
+    if (!authz.canIssueInvite(orgId, actor, body.role, branchId, body.teamId ?? null)) {
+      throw forbidden("You can only invite people into branches or teams you manage");
     }
     const code = humanCode(12);
     const id = newId("inv");
@@ -619,7 +616,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   const findInvite = (code: string) => {
-    const inv = findOrgInvite(db, code);
+    const inv = findOrgInvite(db, authz, code);
     if (!inv) throw notFound("This invite is invalid, expired or already used");
     return inv;
   };
