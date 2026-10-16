@@ -24,6 +24,18 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
 
+### T3.2 Archived branches and teams are read-only; T3.5 departments decided (2026-10-16)
+
+- **Gap:** archiving only hid a branch or team from lists. Its channels, memberships and invites kept working.
+- **Decision D-14 (read-only, reversible):**
+  - `Authz.scopeArchived` treats a team as archived if it or its branch is.
+  - Its channels refuse posts (`canPost`) and calls.
+  - Adding members, creating invites or creating channels in it returns 409, and pending invites into it stop working.
+  - Existing members keep read access. Unarchiving restores everything.
+- **Decision D-15:** departments only group teams (no membership, roles or channels). This already matches the code.
+- **Tests:** `authz_edges.test.ts` › archived: a branch archive blocks the team channel's posts and calls, new team members, new invites and channels, and a pending invite. Unarchiving restores posting and adding. Fails without the change. `npm test` gives **78/78**.
+- **Not deployed.** It changes behaviour for anything already archived (see `RELEASE_PLAN.md`).
+
 ### T3.1 Invites follow their creator's rights; T3.3 CLI disable closes sockets (2026-10-16)
 
 - **T3.1 defect:** an invite created by a branch manager, team lead or owner stayed valid after that person was demoted or removed.

@@ -34,7 +34,9 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
     const e = parse(zEnvelope, req.body);
     const conv = authz.requireMember(e.conversationId, userId);
     if (!authz.canPost(conv, userId)) {
-      throw forbidden(conv.archived_at ? "This channel is archived" : "Only managers can post in announcement channels");
+      throw forbidden(
+        conv.archived_at || authz.conversationScopeArchived(conv) ? "This channel is archived" : "Only managers can post in announcement channels",
+      );
     }
     // Clock sanity: sentAt is signed by the client; reject wildly wrong clocks (±1 day).
     if (Math.abs(e.sentAt - now()) > 24 * 3600_000) throw new ApiError(400, "bad_clock", "Device clock is too far off");

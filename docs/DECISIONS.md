@@ -55,3 +55,18 @@
   - each step applied to the previous exported schema with sample rows must produce the next exported schema;
   - the sample rows (conversations, messages, users, settings, call keys) must survive.
 - Room's instrumented `MigrationTestHelper` would additionally run SQLCipher on a device. It's left for when device tests exist.
+
+**D-14: An archived branch or team is read-only (2026-10-16, T3.2).**
+- Archiving keeps the history and existing members' access, but freezes the scope:
+  - its channels refuse posts, including control messages, and new calls;
+  - no one can be added to it;
+  - invites into it can't be created, and existing ones stop working;
+  - no new channels can be created in it.
+- Archiving a branch also freezes its teams. Unarchiving restores everything.
+- Org admins archive branches; managers archive teams, as before.
+- Alternative not taken: removing members on archive. It's irreversible and destroys context, while read-only is reversible.
+
+**D-15: Departments only group teams (2026-10-16, T3.5).**
+- A department is a label that organises a branch's teams. It has no membership, roles or channels of its own, and grants no access.
+- Access comes only from org, branch, team and channel membership.
+- This matches the implemented schema and authorisation. Department-scoped channels would need their own membership model and are not planned.

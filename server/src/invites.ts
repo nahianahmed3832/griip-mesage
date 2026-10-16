@@ -36,7 +36,7 @@ const usable = (r: { revoked_at: number | null; expires_at: number; uses: number
  */
 export function findOrgInvite(db: DB, authz: Authz, code: string): OrgInviteRow | undefined {
   const inv = db.prepare("SELECT * FROM invitations WHERE code_hash = ?").get(sha256Hex(normalizeCode(code))) as OrgInviteRow | undefined;
-  if (!inv || !usable(inv)) return undefined;
+  if (!inv || !usable(inv) || authz.scopeArchived(inv.branch_id, inv.team_id)) return undefined; // D-14
   return authz.canIssueInvite(inv.org_id, inv.created_by, inv.role, inv.branch_id, inv.team_id) ? inv : undefined;
 }
 

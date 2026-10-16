@@ -467,6 +467,9 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     }
     const targetOrgRole = authz.orgRole(orgId, target);
     if (!targetOrgRole) throw notFound("That person is not a member of this organization");
+    if (role && authz.scopeArchived(kind === "branch" ? scopeId : null, kind === "team" ? scopeId : null)) {
+      throw conflict(`This ${kind} is archived. Unarchive it before adding people.`);
+    }
     if (role && targetOrgRole === "GUEST") throw conflict("Guests cannot join branches or teams; add them to specific channels instead");
     const t = now();
     const removedFrom: string[] = [];
@@ -561,6 +564,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const branch = branchId ? authz.branch(branchId) : undefined;
     if (branchId && (!branch || branch.org_id !== orgId)) throw badRequest("Unknown branch");
     if (body.role === "ADMIN" && actorRole !== "OWNER") throw forbidden("Only owners can invite admins");
+    if (authz.scopeArchived(branchId, body.teamId ?? null)) throw conflict("You can't invite people into an archived branch or team");
     if (!authz.canIssueInvite(orgId, actor, body.role, branchId, body.teamId ?? null)) {
       throw forbidden("You can only invite people into branches or teams you manage");
     }
@@ -670,11 +674,13 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       const b = body.scopeId ? authz.branch(body.scopeId) : undefined;
       if (!b || b.org_id !== orgId) throw badRequest("Unknown branch");
       if (!authz.canManageBranch(b, actor)) throw forbidden("Only this branch's managers can create its channels");
+      if (authz.scopeArchived(b.id, null)) throw conflict("This branch is archived");
       scopeId = b.id;
     } else {
       const tm = body.scopeId ? authz.team(body.scopeId) : undefined;
       if (!tm || tm.org_id !== orgId) throw badRequest("Unknown team");
       if (!authz.canManageTeam(tm, actor)) throw forbidden("Only this team's leads and managers can create its channels");
+      if (authz.scopeArchived(null, tm.id)) throw conflict("This team is archived");
       scopeId = tm.id;
     }
     const id = newId("c");

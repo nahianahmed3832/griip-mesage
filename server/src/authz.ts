@@ -181,8 +181,26 @@ export class Authz {
     return conv;
   }
 
+  /**
+   * Whether a branch or team is archived (D-14). A team counts as archived if its branch is. Archived
+   * scopes are read-only: no posts or calls in their channels, no new members, invites or channels.
+   */
+  scopeArchived(branchId: string | null, teamId: string | null): boolean {
+    const team = teamId ? this.team(teamId) : undefined;
+    if (team?.archived_at) return true;
+    const b = branchId ?? team?.branch_id ?? null;
+    return !!(b && this.branch(b)?.archived_at);
+  }
+
+  /** The archived state of the branch or team a channel belongs to. */
+  conversationScopeArchived(conv: ConversationRow): boolean {
+    if (conv.scope === "BRANCH") return this.scopeArchived(conv.scope_id, null);
+    if (conv.scope === "TEAM") return this.scopeArchived(null, conv.scope_id);
+    return false;
+  }
+
   canPost(conv: ConversationRow, userId: string): boolean {
-    if (conv.archived_at) return false;
+    if (conv.archived_at || this.conversationScopeArchived(conv)) return false;
     if (!this.isMember(conv.id, userId)) return false;
     if (conv.type === "CHANNEL" && conv.kind === "ANNOUNCEMENT") return this.canManageConversation(conv, userId);
     return true;

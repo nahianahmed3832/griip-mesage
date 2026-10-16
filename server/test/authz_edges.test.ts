@@ -62,3 +62,36 @@ describe("accounts disabled from the admin CLI are disconnected (T3.3)", () => {
     await closed;
   });
 });
+
+describe("archived branches and teams are read-only (T3.2, D-14)", () => {
+  it("blocks posts, calls, new members, invites and channels until unarchived", async () => {
+    const o = await h.client("archowner");
+    const m = await h.client("archmember");
+    const extra = await h.client("archextra");
+    const orgId = (await o.req("POST", "/v1/orgs", { name: "Archive Co" })).org.id;
+    const br = (await o.req("POST", `/v1/orgs/${orgId}/branches`, { name: "Old site" })).branch.id;
+    const team = (await o.req("POST", `/v1/orgs/${orgId}/teams`, { name: "Wind-down", branchId: br })).team.id;
+    for (const c of [m, extra]) {
+      const code = (await o.req("POST", `/v1/orgs/${orgId}/invites`, { role: "MEMBER", branchId: br })).invite.code;
+      await c.req("POST", "/v1/invites/accept", { code });
+    }
+    await o.req("PUT", `/v1/teams/${team}/members/${m.userId}`, {});
+    const ch = (await o.req("POST", `/v1/orgs/${orgId}/channels`, { name: "wind-down", scope: "TEAM", scopeId: team, kind: "PUBLIC", memberIds: [m.userId] })).channel.id;
+    const pendingInvite = (await o.req("POST", `/v1/orgs/${orgId}/invites`, { role: "MEMBER", teamId: team })).invite.code;
+    await m.send(ch, { type: "text", text: "before archiving" });
+
+    await o.req("PATCH", `/v1/branches/${br}`, { archived: true }); // archiving the branch archives its teams too
+    await expectStatus(m.send(ch, { type: "text", text: "after" }), 403);
+    await expectStatus(m.req("POST", "/v1/calls", { conversationId: ch }), 409);
+    await expectStatus(o.req("PUT", `/v1/teams/${team}/members/${extra.userId}`, {}), 409);
+    await expectStatus(o.req("POST", `/v1/orgs/${orgId}/invites`, { role: "MEMBER", teamId: team }), 409);
+    await expectStatus(o.req("POST", `/v1/orgs/${orgId}/channels`, { name: "new", scope: "TEAM", scopeId: team, kind: "PUBLIC" }), 409);
+    await expectStatus(extra.req("POST", "/v1/invites/accept", { code: pendingInvite }), 404);
+    // Existing members keep access to the (read-only) channel.
+    expect((await m.req("GET", `/v1/conversations/${ch}`)).conversation.canPost).toBe(false);
+
+    await o.req("PATCH", `/v1/branches/${br}`, { archived: false });
+    await m.send(ch, { type: "text", text: "back" });
+    await o.req("PUT", `/v1/teams/${team}/members/${extra.userId}`, {});
+  });
+});
