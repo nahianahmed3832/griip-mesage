@@ -14,7 +14,12 @@ import com.griipbuddy.message.data.api.UsersRes
 import com.griipbuddy.message.data.db.ConversationEntity
 import com.griipbuddy.message.data.db.GriipDatabase
 import com.griipbuddy.message.data.model.MemberSummary
+import com.griipbuddy.message.data.api.ConversationFederationDto
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.builtins.ListSerializer
 
 class ConversationRepository(
@@ -22,6 +27,11 @@ class ConversationRepository(
     private val db: GriipDatabase,
     private val users: UserRepository,
 ) {
+    private val _federation = MutableStateFlow<Map<String, ConversationFederationDto>>(emptyMap())
+
+    /** Latest server-reported state of other servers per conversation (in memory; refreshed with the conversation). */
+    val federation: StateFlow<Map<String, ConversationFederationDto>> = _federation.asStateFlow()
+
     fun observeAll(): Flow<List<ConversationEntity>> = db.conversations().observeAll()
     fun observe(id: String): Flow<ConversationEntity?> = db.conversations().observe(id)
     fun totalUnread(): Flow<Int> = db.conversations().observeTotalUnread()
@@ -43,7 +53,8 @@ class ConversationRepository(
 
     suspend fun upsertFromServer(d: ConversationDto): ConversationEntity {
         d.members?.forEach { users.remember(it) }
-        val members = d.members.orEmpty().map { MemberSummary(it.id, it.username, it.displayName, it.avatarColor, it.role, it.online) }
+        val members = d.members.orEmpty().map { MemberSummary(it.id, it.username, it.displayName, it.avatarColor, it.role, it.online, it.homeServer) }
+        _federation.update { m -> if (d.federation != null) m + (d.id to d.federation) else m - d.id }
         val local = db.conversations().get(d.id)
         val e = ConversationEntity(
             id = d.id, type = d.type, orgId = d.orgId, scope = d.scope, scopeId = d.scopeId, scopeName = d.scopeName, kind = d.kind,
@@ -95,6 +106,9 @@ class ConversationRepository(
             "GROUP" -> e.name ?: "Group"
             else -> members(e).firstOrNull { it.id != myUserId }?.displayName ?: "Direct message"
         }
+
+        /** People in the conversation whose account is on another server (federation). */
+        fun remoteMembers(e: ConversationEntity): List<MemberSummary> = members(e).filter { GlobalAddress.isRemote(it.username, it.homeServer) }
 
         fun peer(e: ConversationEntity, myUserId: String?): MemberSummary? =
             if (e.type == "DM") members(e).firstOrNull { it.id != myUserId } else null

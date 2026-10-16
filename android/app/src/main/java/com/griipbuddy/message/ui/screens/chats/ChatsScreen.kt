@@ -51,7 +51,10 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.griipbuddy.message.data.api.ResolveRes
 import com.griipbuddy.message.data.api.UserDto
+import com.griipbuddy.message.data.repo.GlobalAddress
+import com.griipbuddy.message.crypto.unb64
 import com.griipbuddy.message.data.repo.ConversationRepository
 import com.griipbuddy.message.ui.LocalContainer
 import com.griipbuddy.message.ui.Routes
@@ -213,6 +216,10 @@ fun NewChatScreen(nav: NavHostController, mode: String?) {
     var groupName by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    // Someone on another server, found by their full address (exact lookup only).
+    var remote by remember { mutableStateOf<ResolveRes?>(null) }
+    var remoteSheet by remember { mutableStateOf<ResolveRes?>(null) }
+    var resolving by remember { mutableStateOf(false) }
     val group = mode == "group"
     val call = mode == "call"
     val me = container.session.session?.userId
@@ -223,7 +230,17 @@ fun NewChatScreen(nav: NavHostController, mode: String?) {
         if (org != null) colleagues = runCatching { container.orgs.members(org) }.getOrDefault(emptyList()).filter { it.id != me }
     }
     LaunchedEffect(q) {
+        remote = null
+        error = null
         if (q.length < 2) { results = emptyList(); return@LaunchedEffect }
+        if (GlobalAddress.looksLike(q) && !group) {
+            results = emptyList()
+            delay(500)
+            resolving = true
+            remote = runCatching { container.federation.resolve(q) }.onFailure { error = it.friendly() }.getOrNull()
+            resolving = false
+            return@LaunchedEffect
+        }
         delay(250)
         results = runCatching { container.users.search(q) }.onFailure { error = it.friendly() }.getOrDefault(emptyList())
     }
@@ -252,7 +269,7 @@ fun NewChatScreen(nav: NavHostController, mode: String?) {
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences))
             Spacer(Modifier.height(12.dp))
         }
-        SearchPill(q, { q = it }, "Search by name or @username", Modifier.padding(horizontal = Space.gutter, vertical = 4.dp))
+        SearchPill(q, { q = it }, if (group) "Search by name or @username" else "Name, @username or @name:server", Modifier.padding(horizontal = Space.gutter, vertical = 4.dp))
         if (!group && !call) {
             ListCard(
                 "New group", Modifier.padding(horizontal = 8.dp, vertical = 4.dp), subtitle = "Pick people to add",
@@ -266,8 +283,24 @@ fun NewChatScreen(nav: NavHostController, mode: String?) {
         error?.let { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(vertical = 8.dp)) {
             item { SectionHeader(if (q.length >= 2) "Results" else "Colleagues", Modifier.padding(vertical = 6.dp)) }
-            if (list.isEmpty()) item {
-                EmptyState(Icons.Outlined.Search, if (q.length >= 2) "No one found" else "Search for people", "You can find colleagues in your organization, or anyone by exact @username.")
+            if (resolving) item { Text("Looking up that address…", style = Griip.type.bodySmall, color = c.textSecondary, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 8.dp)) }
+            remote?.let { r ->
+                item(key = "remote") {
+                    ListCard(
+                        r.user.displayName, Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        subtitle = (r.user.address ?: "@${r.user.username}") + if (r.server.source == "local") "" else " · on ${r.server.domain}",
+                        leading = { Avatar(r.user.displayName, r.user.avatarColor, size = 44.dp) },
+                        trailing = { if (r.server.source != "local") TagPill("Other server", c.lavender, c.lavenderSoft) else ArrowKnob() },
+                        onClick = { remoteSheet = r },
+                    )
+                }
+            }
+            if (list.isEmpty() && remote == null && !resolving) item {
+                EmptyState(
+                    Icons.Outlined.Search, if (q.length >= 2) "No one found" else "Search for people",
+                    if (group) "You can find colleagues in your organization, or anyone on this server by exact @username."
+                    else "Find colleagues in your organization, anyone on this server by exact @username, or someone on another Griip server by their full address, like @name:server.example.",
+                )
             }
             items(list, key = { it.id }) { u ->
                 val sel = picked.any { it.id == u.id }
@@ -288,6 +321,12 @@ fun NewChatScreen(nav: NavHostController, mode: String?) {
                 )
             }
         }
+        remoteSheet?.let { r ->
+            RemoteContactSheet(r, call, container.session.keys?.identityPublic, onDismiss = { remoteSheet = null }) {
+                remoteSheet = null
+                open(r.user)
+            }
+        }
         if (group) {
             PillButton(
                 "Create group (${picked.size})",
@@ -304,6 +343,52 @@ fun NewChatScreen(nav: NavHostController, mode: String?) {
                 enabled = groupName.isNotBlank() && picked.isNotEmpty(), loading = busy,
             )
         }
+    }
+}
+
+/**
+ * Someone found by global address: who they are, which server vouches for them and how that server was verified,
+ * and their safety number, before the first message.
+ */
+@Composable
+private fun RemoteContactSheet(r: ResolveRes, call: Boolean, myKey: ByteArray?, onDismiss: () -> Unit, onMessage: () -> Unit) {
+    val c = Griip.colors
+    val remote = r.server.source != "local"
+    GlassSheet(onDismiss, title = r.user.displayName) {
+        Text(r.user.address ?: "@${r.user.username}", style = Griip.type.bodyMedium, color = c.textPrimary)
+        Spacer(Modifier.height(10.dp))
+        if (remote) {
+            Text(
+                when {
+                    r.server.source == "cache" -> "Server ${r.server.domain}: identity checked earlier (the directory couldn't be reached just now)."
+                    else -> "Server ${r.server.domain}: identity verified by ${r.server.verifiedBy} directory nodes."
+                },
+                style = Griip.type.bodySmall, color = c.textSecondary,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text("Server id ${r.server.serverId.take(15)}…", style = Griip.type.caption, color = c.textTertiary)
+            Spacer(Modifier.height(10.dp))
+        }
+        val theirs = r.user.identityKey?.let { runCatching { it.unb64() }.getOrNull() }
+        if (theirs != null && myKey != null) {
+            Text("Safety number", style = Griip.type.label, color = c.textSecondary)
+            Text(com.griipbuddy.message.ui.screens.profile.safetyNumber(myKey, theirs), style = Griip.type.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace), color = c.textPrimary)
+            Text("Compare it with ${r.user.displayName} in person or on a call you trust.", style = Griip.type.caption, color = c.textTertiary)
+            Spacer(Modifier.height(10.dp))
+        }
+        if (r.server.identityChanged) {
+            StatusBanner("This address now points to a different server than before. Check with the person before you trust it.", BannerKind.Warning)
+            Spacer(Modifier.height(8.dp))
+        }
+        if (r.server.state == "unreachable") {
+            StatusBanner("${r.server.domain} isn't reachable right now. Messages wait for up to 7 days.", BannerKind.Info)
+            Spacer(Modifier.height(8.dp))
+        }
+        if (call && remote) {
+            Text("The call is hosted by your server; ${r.user.displayName} joins through theirs. Media stays end-to-end encrypted.", style = Griip.type.caption, color = c.textTertiary)
+            Spacer(Modifier.height(8.dp))
+        }
+        PillButton(if (call) "Call" else "Message", onMessage, Modifier.fillMaxWidth(), height = 50.dp)
     }
 }
 

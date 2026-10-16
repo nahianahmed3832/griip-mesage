@@ -74,6 +74,9 @@ import com.griipbuddy.message.data.api.UserDto
 import com.griipbuddy.message.data.api.UserRes
 import com.griipbuddy.message.ui.LocalContainer
 import com.griipbuddy.message.ui.Routes
+import com.griipbuddy.message.data.repo.GlobalAddress
+import androidx.compose.material.icons.outlined.AlternateEmail
+import androidx.compose.material.icons.outlined.Block
 import com.griipbuddy.message.ui.TimeFmt
 import com.griipbuddy.message.ui.components.Avatar
 import com.griipbuddy.message.ui.components.BannerKind
@@ -157,6 +160,18 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsSections(
     item { SectionHeader("Account", Modifier.padding(top = 14.dp, bottom = 6.dp)) }
     item {
         GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
+            // The account's global address, when this server federates: people on other servers use it to reach you.
+            var address by remember { mutableStateOf<String?>(null) }
+            LaunchedEffect(Unit) { address = runCatching { container.federation.info()?.address }.getOrNull() }
+            val clipboard = androidx.compose.ui.platform.LocalClipboard.current
+            val scope = rememberCoroutineScope()
+            address?.let { a ->
+                MenuRow(
+                    Icons.Outlined.AlternateEmail, a, subtitle = "Your address on the Griip network. Share it so people on other servers can message you. Tap to copy.",
+                    onClick = { scope.launch { clipboard.setClipEntry(androidx.compose.ui.platform.ClipEntry(android.content.ClipData.newPlainText("address", a))) } },
+                    trailing = null,
+                )
+            }
             MenuRow(Icons.Outlined.Security, "Security & recovery", subtitle = "Recovery key, safety numbers, what is encrypted", onClick = { nav.navigate(Routes.SECURITY) })
             MenuRow(Icons.Outlined.Devices, "Devices", subtitle = "Linked phones, link a new device, revoke", onClick = { nav.navigate(Routes.DEVICES) })
         }
@@ -447,6 +462,8 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
     val local by container.db.users().observe(userId).collectAsStateWithLifecycle(null)
     val myKey = container.session.keys?.identityPublic
     LaunchedEffect(userId) { runCatching { container.users.fetch(userId) }.onSuccess { user = it }.onFailure { error = it.friendly() } }
+    var blocked by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(userId) { blocked = runCatching { userId in container.federation.blocked() }.getOrNull() }
     val u = user
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
         item { GriipTopBar("Profile", onBack = { nav.popBackStack() }) }
@@ -459,7 +476,13 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
                         Spacer(Modifier.height(10.dp))
                         Text(u.displayName, style = Griip.type.headline, color = c.textPrimary)
                         Text("@${u.username}", style = Griip.type.bodySmall, color = c.textSecondary)
-                        Text(if (u.online == true) "Online" else "Last seen ${TimeFmt.relative(u.lastSeenAt)}", style = Griip.type.caption, color = if (u.online == true) c.success else c.textTertiary)
+                        val server = if (GlobalAddress.isRemote(u.username, u.homeServer)) GlobalAddress.serverOf(u.username) else null
+                        if (server != null) {
+                            // Presence isn't shared between servers.
+                            Text("On another server: $server", style = Griip.type.caption, color = c.textTertiary)
+                        } else {
+                            Text(if (u.online == true) "Online" else "Last seen ${TimeFmt.relative(u.lastSeenAt)}", style = Griip.type.caption, color = if (u.online == true) c.success else c.textTertiary)
+                        }
                         u.statusText?.let { Spacer(Modifier.height(6.dp)); Text(it, style = Griip.type.bodySmall, color = c.textSecondary) }
                         Spacer(Modifier.height(14.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -501,6 +524,24 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
                         }, Modifier.fillMaxWidth(), height = 46.dp)
                     } else if (local?.verified != true) {
                         PillButton("Mark as verified", { scope.launch { container.users.markVerified(userId) } }, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, height = 46.dp)
+                    }
+                }
+            }
+            blocked?.let { isBlocked ->
+                item {
+                    GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), contentPadding = PaddingValues(4.dp)) {
+                        MenuRow(
+                            Icons.Outlined.Block, if (isBlocked) "Unblock ${u.displayName}" else "Block ${u.displayName}",
+                            subtitle = if (isBlocked) "Their messages are dropped before they reach you." else "Their messages are dropped; they aren't told.",
+                            tint = c.danger, tintBg = c.dangerSoft, trailing = null,
+                            onClick = {
+                                scope.launch {
+                                    runCatching { if (isBlocked) container.federation.unblock(userId) else container.federation.block(userId) }
+                                        .onSuccess { blocked = !isBlocked }
+                                        .onFailure { error = it.friendly() }
+                                }
+                            },
+                        )
                     }
                 }
             }

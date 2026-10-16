@@ -106,6 +106,7 @@ import com.griipbuddy.message.call.CallPhase
 import com.griipbuddy.message.data.db.MessageEntity
 import com.griipbuddy.message.data.model.MessageStatus
 import com.griipbuddy.message.data.repo.ConversationRepository
+import com.griipbuddy.message.data.repo.GlobalAddress
 import com.griipbuddy.message.ui.Routes
 import com.griipbuddy.message.ui.TimeFmt
 import com.griipbuddy.message.ui.components.BannerKind
@@ -203,9 +204,14 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val peer = conv?.let { ConversationRepository.peer(it, me) }
     val peerUser = peer?.let { users[it.id] }
     val isGroup = conv?.type != "DM"
+    // People on another server (federation): their presence isn't shared across servers, and calls with them aren't available yet.
+    val remoteMembers = conv?.let { ConversationRepository.remoteMembers(it) }.orEmpty()
+    val federation by vm.c.conversations.federation.collectAsStateWithLifecycle()
+    val remoteServers = federation[conversationId]?.servers.orEmpty()
     val subtitle = when {
         threadRoot != null -> "Thread"
         typing.isNotEmpty() -> if (isGroup) "${typing.first()} is typing…" else "typing…"
+        conv?.type == "DM" && peer != null && remoteMembers.isNotEmpty() -> "@${peer.username}"
         conv?.type == "DM" -> if (peerUser?.online == true) "Online" else "Last seen ${TimeFmt.relative(peerUser?.lastSeenAt)}"
         conv?.type == "CHANNEL" -> listOfNotNull(conv?.scopeName, "${conv?.memberCount ?: 0} members").joinToString(" · ")
         else -> "${conv?.memberCount ?: 0} members"
@@ -229,13 +235,26 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     Text(subtitle, style = Griip.type.caption, color = if (typing.isNotEmpty() || peerUser?.online == true) c.primary else c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            if (threadRoot == null && conv?.removed != true) {
+            // With people on another server, calls need this server to host them (it says so per conversation).
+            val canCall = remoteMembers.isEmpty() || federation[conversationId]?.calls == true
+            if (threadRoot == null && conv?.removed != true && canCall) {
                 CircleIconButton(Icons.Rounded.Videocam, "Video call", { permission(true) { vm.startCall(true) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
                 CircleIconButton(Icons.Rounded.Call, "Voice call", { permission(false) { vm.startCall(false) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
             }
         }
         HorizontalDivider(thickness = 1.dp, color = c.border)
         ConnectionBanner(conn, Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) { vm.c.realtime.reconnectNow() }
+        remoteServers.firstOrNull { it.state == "decommissioned" || it.state == "revoked" }?.let { s ->
+            StatusBanner(
+                "${s.domain ?: "Their server"} has shut down. Messages in this conversation can't be delivered.",
+                BannerKind.Error, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        } ?: remoteServers.firstOrNull { it.state == "unreachable" }?.let { s ->
+            StatusBanner(
+                "${s.domain ?: "Their server"} isn't reachable right now. Your messages wait for up to 7 days and are delivered when it's back.",
+                BannerKind.Warning, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
         if (changedMembers.isNotEmpty()) {
             val who = if (changedMembers.size == 1) "${changedMembers.first().displayName.ifEmpty { "A member" }}'s security key" else "${changedMembers.size} members' security keys"
             val waiting = if (heldIncoming > 0) " $heldIncoming incoming message${if (heldIncoming == 1) " is" else "s are"} waiting." else ""
@@ -270,7 +289,11 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             if (messages.isEmpty() && threadRoot == null) {
                 EmptyState(
                     Icons.Rounded.Lock, "Say hello 👋",
-                    "Messages here are end-to-end encrypted on your device and stored only on members' devices. The relay keeps encrypted copies for at most 7 days until delivered.",
+                    if (remoteMembers.isNotEmpty()) {
+                        "${remoteMembers.first().displayName} is on another server (${GlobalAddress.serverOf(remoteMembers.first().username) ?: "elsewhere"}). Messages are end-to-end encrypted on your device; both servers only relay encrypted copies, kept for at most 7 days until delivered."
+                    } else {
+                        "Messages here are end-to-end encrypted on your device and stored only on members' devices. The relay keeps encrypted copies for at most 7 days until delivered."
+                    },
                     modifier = Modifier.align(Alignment.Center),
                 )
             }

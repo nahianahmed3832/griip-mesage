@@ -44,6 +44,8 @@ data class MemberSummary(
     val avatarColor: Int = 0,
     val role: String? = null,
     val online: Boolean? = null,
+    /** Home server id of someone on another server (federation); null for people on this server. */
+    val homeServer: String? = null,
 )
 
 @Serializable

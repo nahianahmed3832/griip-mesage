@@ -40,6 +40,8 @@ import kotlinx.serialization.json.JsonObject
     val online: Boolean? = null, val lastSeenAt: Long? = null, val identityKey: String? = null, val fingerprint: String? = null,
     val role: String? = null, val orgRole: String? = null, val title: String? = null,
     val branches: List<ScopedRole> = emptyList(), val teams: List<ScopedRole> = emptyList(),
+    // Federation (2026-10-16): set for people on another server (their username is then "name:server").
+    val homeServer: String? = null, val address: String? = null,
 )
 @Serializable data class ScopedRole(val id: String, val role: String)
 @Serializable data class MeRes(val user: UserDto, val deviceId: String)
@@ -66,7 +68,18 @@ import kotlinx.serialization.json.JsonObject
     val archived: Boolean = false, val createdAt: Long = 0, val updatedAt: Long = 0, val memberCount: Int = 0,
     val members: List<UserDto>? = null, val joined: Boolean = true, val myRole: String? = null,
     val canPost: Boolean = true, val canManage: Boolean = false, val activeCall: ActiveCallDto? = null,
+    val federation: ConversationFederationDto? = null,
 )
+/** Servers of the people in a conversation who are on another server, as this server sees them. */
+@Serializable data class ConversationFederationDto(val servers: List<FederationServerDto> = emptyList(), val calls: Boolean = false)
+@Serializable data class FederationServerDto(val serverId: String, val domain: String? = null, val state: String = "unknown", val pending: Int = 0)
+@Serializable data class ResolvedServerDto(
+    val serverId: String, val domain: String, val state: String, val verifiedBy: Int = 0, val source: String = "quorum", val identityChanged: Boolean = false,
+)
+@Serializable data class ResolveRes(val user: UserDto, val server: ResolvedServerDto)
+@Serializable data class FederationInfoRes(val enabled: Boolean, val domain: String, val serverId: String, val address: String)
+@Serializable data class BlockReq(val userId: String)
+@Serializable data class BlocksRes(val userIds: List<String> = emptyList())
 @Serializable data class ConversationsRes(val conversations: List<ConversationDto>)
 @Serializable data class ConversationRes(val conversation: ConversationDto)
 @Serializable data class ChannelsRes(val channels: List<ConversationDto>)

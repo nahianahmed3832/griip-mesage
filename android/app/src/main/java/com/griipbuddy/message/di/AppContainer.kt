@@ -51,6 +51,7 @@ class AppContainer(
     val crypto = EnvelopeV1 { session.keys ?: error("no keys on this device") }
     val messages = MessageRepository(app, db, api, realtime, session, crypto, directory, conversations, users, settings, appState, scope, java.io.File(app.filesDir, profile.attachmentsDir)) { notifier.show(it) }
     val orgs = OrgRepository(api, db, conversations, users)
+    val federation = com.griipbuddy.message.data.repo.FederationRepository(api)
     val calls = CallManager(app, api, db, session, messages, conversations, settings, scope)
     val voicePlayer = com.griipbuddy.message.voice.VoicePlayer(app)
 
