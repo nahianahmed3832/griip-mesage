@@ -9,6 +9,8 @@
  * bot-identity.json next to this file (private keys — never commit).
  * Media: publishes a synthetic moving test pattern + 440 Hz tone, and logs every second how many
  * decoded frames it receives per remote track (camera / microphone / screen share).
+ * GRIIP_BOT_SCREEN=1 also publishes a landscape "screen share" pattern from 10 s to 40 s into a video call,
+ * so the peer's switch from camera to screen share and back can be checked.
  */
 import {
   AudioFrame, AudioSource, AudioStream, dispose, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, TrackKind,
@@ -85,8 +87,11 @@ async function chat(peerName: string, seconds: number) {
   const dm = (await bot.req("POST", "/v1/conversations/dm", { userId: peer.id })).conversation.id;
   await bot.connect();
   log(`bot @${bot.username} connected; DM with @${peer.username} (${dm})`);
+  if (process.env.GRIIP_BOT_QUIET === "1") log("quiet mode: no greeting");
+  else {
   const greeting = await bot.send(dm, { type: "text", text: `👋 Hi ${peer.displayName}! Griip Bot is online. I echo messages and auto-answer voice/video calls with a test pattern + tone — call me to test calling and screen sharing.` });
   log(`sent greeting ${greeting.messageId} (relay accepted at ${greeting.serverTs})`);
+  }
   const seen = new Set<string>();
   const answered = new Set<string>();
   const deadline = Date.now() + seconds * 1000;
@@ -173,7 +178,34 @@ function startMedia(room: Room, video: boolean) {
     void asrc.captureFrame(f);
     t++;
   }, 100);
-  return { stop: () => clearInterval(timer), published: Promise.all(pubs) };
+  const screen = video && process.env.GRIIP_BOT_SCREEN === "1" ? startScreenShare(room) : null;
+  return { stop: () => { clearInterval(timer); screen?.stop(); }, published: Promise.all(pubs) };
+}
+
+/** Landscape 960×540 pattern published as SOURCE_SCREENSHARE between 10 s and 40 s. */
+function startScreenShare(room: Room) {
+  const w = 960, h = 540, src = new VideoSource(w, h);
+  let t = 0, sid: string | undefined;
+  const timer = setInterval(() => {
+    const px = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4, bar = y > 60 && y < 500 && x > 40 && x < 920 && ((y >> 4) & 1) && x < 120 + ((y * 37 + t * 8) % 760);
+      px[i] = bar ? 230 : 24; px[i + 1] = bar ? 230 : 32; px[i + 2] = bar ? 240 : 48; px[i + 3] = 255;
+      if (y < 40) { px[i] = 31; px[i + 1] = 181; px[i + 2] = 166; }
+    }
+    src.captureFrame(new VideoFrame(px, w, h, VideoBufferType.RGBA));
+    t++;
+  }, 200);
+  const on = setTimeout(async () => {
+    const pub = await room.localParticipant!.publishTrack(LocalVideoTrack.createVideoTrack("bot-screen", src), new TrackPublishOptions({ source: TrackSource.SOURCE_SCREENSHARE }));
+    sid = pub.sid;
+    log("🖥  publishing screen share 960x540");
+  }, 10_000);
+  const off = setTimeout(async () => {
+    if (sid) await room.localParticipant!.unpublishTrack(sid).catch(() => {});
+    log("🖥  stopped screen share");
+  }, 40_000);
+  return { stop: () => { clearInterval(timer); clearTimeout(on); clearTimeout(off); } };
 }
 
 function watchRemote(room: Room) {

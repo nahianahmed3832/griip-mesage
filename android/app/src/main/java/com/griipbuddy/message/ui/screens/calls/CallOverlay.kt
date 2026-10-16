@@ -4,7 +4,9 @@ import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
+import android.util.Log
 import android.widget.Toast
+import com.griipbuddy.message.BuildConfig
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -56,6 +58,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -288,8 +291,10 @@ private fun CallerHero(s: CallUiState, modifier: Modifier) {
 private fun ParticipantTile(p: ParticipantUi, modifier: Modifier) {
     val c = Griip.colors
     Box(modifier.clip(Shapes.card).background(Color.White.copy(alpha = 0.08f)).border(if (p.speaking) 2.dp else 1.dp, if (p.speaking) c.primaryBright else Color.White.copy(alpha = 0.12f), Shapes.card)) {
-        val track = p.screen ?: p.camera
-        if (track != null) VideoTile(track, Modifier.fillMaxSize(), mirror = p.isLocal && p.screen == null, fit = p.screen != null)
+        // Your own tile shows your camera: drawing your own screen share into the screen being shared recurses.
+        val screen = p.screen.takeIf { !p.isLocal }
+        val track = screen ?: p.camera
+        if (track != null) VideoTile(track, Modifier.fillMaxSize(), mirror = p.isLocal, fit = screen != null)
         else Avatar(p.name, p.userId.hashCode(), Modifier.align(Alignment.Center), size = 64.dp)
         Row(Modifier.align(Alignment.BottomStart).padding(8.dp).clip(Shapes.pill).background(Color.Black.copy(alpha = 0.4f)).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             if (!p.micOn) { Icon(Icons.Rounded.MicOff, "Muted", tint = Color.White, modifier = Modifier.size(12.dp)); Spacer(Modifier.width(4.dp)) }
@@ -300,8 +305,9 @@ private fun ParticipantTile(p: ParticipantUi, modifier: Modifier) {
 
 /**
  * LiveKit video sink rendered through a TextureView so it composes with rounded clipping.
- * The sink is attached only while the screen is started and the room is alive: pushing frames into a
- * destroyed surface (e.g. when the screen-share consent dialog covers the app) crashed WebRTC natively.
+ * [VideoSinkBinding] owns the renderer: the sink is attached only while the screen is started (frames pushed into a
+ * destroyed surface, e.g. under the screen-share consent dialog, crashed WebRTC natively), and the renderer is
+ * released only when the view itself is removed.
  */
 @Composable
 fun VideoTile(track: VideoTrack?, modifier: Modifier, mirror: Boolean = false, fit: Boolean = false) {
@@ -312,41 +318,48 @@ fun VideoTile(track: VideoTrack?, modifier: Modifier, mirror: Boolean = false, f
         Box(modifier.background(Color.Black.copy(alpha = 0.3f)))
         return
     }
-    var renderer by remember(r0) { mutableStateOf<TextureViewRenderer?>(null) }
-    AndroidView(
-        factory = { ctx ->
-            TextureViewRenderer(ctx).also { r ->
-                r0.initVideoRenderer(r)
-                r.setMirror(mirror)
-                r.setScalingType(if (fit) livekit.org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FIT else livekit.org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FILL)
-                renderer = r
+    key(r0) {
+        val binding = remember {
+            VideoSinkBinding<VideoTrack, TextureViewRenderer>(
+                addSink = { t, r ->
+                    runCatching { t.addRenderer(r) }
+                    if (BuildConfig.DEBUG) Log.i("CallDiag", "renderer attach ${t.javaClass.simpleName} sid=${t.sid?.takeLast(6)} view=${r.width}x${r.height} shown=${r.isShown}")
+                },
+                removeSink = { t, r ->
+                    runCatching { t.removeRenderer(r) }
+                    if (BuildConfig.DEBUG) Log.i("CallDiag", "renderer detach sid=${t.sid?.takeLast(6)}")
+                },
+                releaseRenderer = { r ->
+                    runCatching { r.release() }
+                    if (BuildConfig.DEBUG) Log.i("CallDiag", "renderer released")
+                },
+            )
+        }
+        // The renderer letterboxes (FIT) only when measured with loose constraints, so a fitted tile is centred in a
+        // Box instead of being forced to the tile's exact size, which crops the frame.
+        Box(modifier, contentAlignment = Alignment.Center) {
+            AndroidView(
+                factory = { ctx -> TextureViewRenderer(ctx).also { r -> r0.initVideoRenderer(r); binding.setRenderer(r) } },
+                update = { r ->
+                    r.setMirror(mirror)
+                    r.setScalingType(if (fit) livekit.org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FIT else livekit.org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FILL)
+                },
+                onRelease = { binding.release() },
+                modifier = if (fit) Modifier else Modifier.fillMaxSize(),
+            )
+        }
+        val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+        DisposableEffect(track, lifecycle) {
+            binding.bind(track)
+            val observer = androidx.lifecycle.LifecycleEventObserver { _, e ->
+                binding.setStarted(e.targetState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))
             }
-        },
-        modifier = modifier,
-    )
-    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(track, renderer, lifecycle) {
-        val r = renderer
-        var attached = false
-        fun attach() { if (r != null && !attached) { runCatching { track.addRenderer(r) }; attached = true } }
-        fun detach() { if (r != null && attached) { runCatching { track.removeRenderer(r) }; attached = false } }
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, e ->
-            when (e) {
-                androidx.lifecycle.Lifecycle.Event.ON_START -> attach()
-                androidx.lifecycle.Lifecycle.Event.ON_STOP -> detach()
-                else -> {}
+            lifecycle.addObserver(observer)
+            onDispose {
+                lifecycle.removeObserver(observer)
+                binding.bind(null)
             }
         }
-        if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) attach()
-        lifecycle.addObserver(observer)
-        onDispose {
-            lifecycle.removeObserver(observer)
-            detach()
-        }
-    }
-    DisposableEffect(renderer) {
-        val r = renderer
-        onDispose { runCatching { r?.release() } }
     }
 }
 

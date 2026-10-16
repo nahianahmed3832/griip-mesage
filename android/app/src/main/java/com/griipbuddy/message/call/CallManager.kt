@@ -101,6 +101,7 @@ class CallManager(
         private set(value) { _room.value = value }
     private var eventsJob: Job? = null
     private val e2eeStates = HashMap<String, E2EEState>()
+    private val diag = CallDiagnostics(scope)
 
     /**
      * WebRTC's native library must be loaded before any LiveKit native object exists — including the
@@ -228,6 +229,7 @@ class CallManager(
             return
         }
         room = r
+        diag.start(r)
         e2eeStates.clear()
         _state.update { it.copy(security = if (key != null) MediaSecurity.Unknown else MediaSecurity.TransportOnly) }
         eventsJob = scope.launch { r.events.events.collect { ev -> onRoomEvent(ev) } }
@@ -257,6 +259,7 @@ class CallManager(
     }
 
     private fun onRoomEvent(ev: RoomEvent) {
+        diag.event(ev)
         when (ev) {
             is RoomEvent.ParticipantConnected -> {
                 _state.update { if (it.phase == CallPhase.Outgoing) it.copy(phase = CallPhase.Connected, connectedAt = System.currentTimeMillis()) else it }
@@ -337,8 +340,12 @@ class CallManager(
     fun startScreenShare(resultData: Intent) = scope.launch {
         val r = room ?: return@launch
         try {
-            r.localParticipant.setScreenShareEnabled(true, ScreenCaptureParams(resultData, onStop = { scope.launch { refreshParticipants() } }))
+            r.localParticipant.setScreenShareEnabled(true, ScreenCaptureParams(resultData, onStop = {
+                Log.i(TAG, "screen capture stopped by the system")
+                scope.launch { refreshParticipants() }
+            }))
         } catch (e: Exception) {
+            Log.w(TAG, "screen share start failed: ${e.javaClass.simpleName}")
             _state.update { it.copy(error = "Screen sharing failed to start") }
         }
         refreshParticipants()
@@ -400,6 +407,7 @@ class CallManager(
         IncomingCallNotifier.cancel(context)
         eventsJob?.cancel()
         eventsJob = null
+        diag.stop()
         val r = room
         room = null
         CallService.stop(context)

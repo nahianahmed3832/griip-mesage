@@ -1,10 +1,25 @@
 # Known issues & limitations
 
 ## Fixed during testing
+- **Remote camera video and screen share never appeared; every video tile was black** (tester reports, fixed 2026-10-16).
+  - Cause: `VideoTile` released its own renderer straight after creating it. A `DisposableEffect` keyed on renderer
+    state was first keyed while the state was `null`, but its body read the renderer that the view factory had already
+    set. The next recomposition disposed that effect, which called `release()` on the live renderer. Frames still
+    decoded (stats showed rising `framesDecoded`, stream ACTIVE, E2EE OK) but the released EGL renderer dropped them.
+  - The same cause hid the self-preview, remote cameras and remote screen shares, on every receiving Android device.
+    Sending was never affected: peers received the phone's camera and screen share throughout.
+  - Fix: `VideoSinkBinding` owns the renderer. The sink is attached only while the screen is started, a track switch
+    removes the old sink first, and the renderer is released once, from `AndroidView(onRelease)`, after the sink is removed.
+  - Unit-tested (`VideoSinkBindingTest`, 8 tests) and verified on the phone (`TESTING.md` §5a).
+- **A received screen share was cropped instead of fitted.** The FIT scaling never took effect, because the renderer only
+  letterboxes when measured with loose constraints. Fitted tiles are now centred in a `Box`.
+- **Your own screen share filled your "You" tile in group calls**, so the share captured itself recursively and loaded
+  the encoder. The "You" tile now always shows your camera.
 - **Native WebRTC crashes (SIGSEGV)** on a physical phone.
   - One happened when the screen-share consent dialog covered the call, the other on the audio thread after a call ended.
   - The cause was freeing native call objects while video sinks and audio threads still used them.
-  - Fixed with ordered teardown and lifecycle-aware sinks. **The re-test of screen share on the fixed build is still pending.**
+  - Fixed with ordered teardown and lifecycle-aware sinks. Re-tested on 2026-10-16: no crash in six calls, including two
+    phone screen shares with the consent dialog covering the call. One different crash remains open (below).
 - **The floating self-preview overlapped the "You" tile in grid (3+ participant) layouts.**
 - **Every call crashed with `UnsatisfiedLinkError`.** The E2EE key provider was created before WebRTC's native library had loaded.
   The fix calls `LiveKit.init()` first, and native init errors now show an error instead of crashing. Verified on the phone.
@@ -13,11 +28,40 @@
 - **A sent message's text came back in the composer as a stale draft.** The draft is now cleared on send and restored only when the conversation first opens.
 - **A config bug made `QUEUE_TTL_SECONDS` and other integer settings ignore the environment passed in.** Caught by the expiry test and fixed.
 
+## Found by the 2026-10-16 audit (open unless marked)
+
+Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
+
+- **Fixed (server, not yet deployed):** demotion to Guest kept all channel access (P1).
+- **Open:**
+  - Pinned identity keys aren't enforced (T1.2).
+  - Removed members stay in live calls (P3, T1.3).
+  - Any local error while processing a delivery discards the message (T1.4).
+  - Messages from a device revoked before delivery are lost (P7, T1.5).
+  - Open registration with no upload quotas on a shared VPS (P5, T1.6).
+  - Presence is readable by anyone (P4, T1.7).
+  - The activity feed leaks other branches' team and channel names (P2, T1.8).
+  - Erasing a device doesn't revoke it (T1.9).
+  - Deleted messages leave decrypted files on the device (T1.10).
+  - Backlog and live deliveries interleave and duplicate (P6, T2.1).
+  - Realtime frames can be dropped under load (T2.2).
+- The release (R8) build compiles but has never been run on a device.
+
+## Calls (open, 2026-10-16)
+- **One native abort (SIGABRT) on WebRTC's `signaling_thread`.** It happened at 02:50 on the test phone, after the crash-fix
+  commit, with the app in the background 35 s after start. The frames sit in the E2EE `FrameCryptor` observer JNI path.
+  - Probable cause, not confirmed: LiveKit 2.29.0's `E2EEManager` runs `checkNotNull(publication.track)` inside the frame-cryptor
+    state callback. If that callback arrives after the track was cleared (unpublish, screen-share stop, teardown), the
+    exception is thrown inside a native callback and WebRTC aborts.
+  - Not reproduced in six calls on 2026-10-16. A fix needs an SDK change or upgrade.
+- **Android ↔ Android on two physical phones isn't verified.** Only one phone was available. Both directions were
+  verified against the Node peer, which uses the same SFU, codec (VP8) and E2EE scheme.
+
 ## Security gaps (see SECURITY.md §4)
 - There is no forward secrecy or post-compromise security for messages (custom `griip-envelope-v1`, not Signal or MLS).
 - Group membership is asserted by the server, and keys are trusted on first use. Users must compare safety numbers to detect a key-substitution attack.
 - The call media key isn't rotated when participants join or leave.
-- Screen-share E2EE hasn't been confirmed with a wrong-key test. The participant encryption status stayed true while sharing.
+- Screen-share E2EE is confirmed (2026-10-16). A wrong-key participant decoded 0 screen-share frames while the correct-key one decoded 2,262 (`TESTING.md` §5a).
 - The debug APK allows `http://` servers, with a warning.
 
 ## Functional limitations

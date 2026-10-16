@@ -11,7 +11,7 @@ Test environments:
 - **Unit/integration:** vitest, with the server in-process.
 - **Production:** `https://msg.griipbuddy.cloud` and `wss://rtc.griipbuddy.cloud` on the VPS.
 - **Emulator:** Android 16 (API 36.1), arm64.
-- **Physical phone:** HONOR ELI-AN00, MagicOS 10 / Android 16, arm64, 1200×2664, connected over USB.
+- **Physical phone:** HONOR ELI-AN00, MagicOS 10 / Android 16, arm64, 1200×2664, connected over USB and wireless debugging.
 - **Second participant:** the headless Griip Bot (`tools/griip-bot`), using the TypeScript reference client and the official `@livekit/rtc-node` SDK.
 
 There was no second physical phone. Every two-party test used the phone plus the bot.
@@ -27,10 +27,12 @@ There was no second physical phone. Every two-party test used the phone plus the
 | Installs and launches (emulator) | PASS | No crash. Cold start 4.7–6.6 s on the emulator (debug build) |
 | Installs and launches (physical phone) | PASS | No crash. Cold start **1.97 s** (`am start -W`), container init 190 ms |
 | Release (R8) build | NOT VERIFIED | Configured but not built in this session |
+| Android unit tests | PASS | `./gradlew :app:testDebugUnitTest` → `VideoSinkBindingTest` 8/8 (renderer lifetime, sink ordering, track switching, stop/start, release) |
 
-## 2. Backend (vitest: 32 tests, all PASS)
+## 2. Backend (vitest: 36 tests, all PASS)
 
-`cd server && npm test` → 4 files, 32 tests passed.
+`cd server && npm test` → 4 files, 36 tests passed (32 originally, plus 4 for demotion to Guest added on 2026-10-16).
+The 2026-10-16 audit also ran 7 probe scenarios against the API. All confirmed defects: see `FEATURE_INVENTORY.md`.
 
 | Area | Status | Covered by |
 |---|---|---|
@@ -50,6 +52,7 @@ There was no second physical phone. Every two-party test used the phone plus the
 | Public, private and announcement channels; guest explicit-only access | PASS | orgs.test |
 | Moving between teams needs rights on both teams; removal revokes team channels | PASS | orgs.test |
 | Org removal revokes all channels | PASS | orgs.test |
+| Demotion to Guest removes branch, team and all org channel memberships; stale envelopes to the guest refused; explicit re-grant kept; promotion restores scope-wide channels only | PASS (failed before the fix) | orgs.test › demotion to guest |
 | Activity feed hides private channel names from members | PASS | orgs.test |
 | Real-time two-way E2EE delivery; **server holds only ciphertext** (DB and WAL scanned for plaintext) | PASS | messaging.test |
 | Ack deletes queue rows; delivery receipt to sender | PASS | messaging.test |
@@ -103,14 +106,38 @@ A→B delivery (515 ms), delivery receipt, B→A, offline queue after reconnect,
 | **Video call phone ↔ bot** | PASS | Bot received phone camera 360×640 (348 frames) + mic; phone rendered bot's test pattern with "End-to-end encrypted" badge |
 | Mute, camera toggle, speaker controls rendered | PASS | Screenshot during call |
 | **Screen share from phone** (MediaProjection consent → publish) | PASS | Bot subscribed `SOURCE_SCREENSHARE` at 1200×2664; "You're sharing your screen" banner + Stop shown; Stop unpublished the track |
-| Screen-share track E2EE | NOT VERIFIED | Participant encryption status stayed `true` while sharing. The wrong-key run was interrupted by the native crash above and needs re-running on the fixed build |
+| Screen-share track E2EE | PASS (2026-10-16) | Wrong-key participant decoded 0 screen-share frames; correct-key participant decoded 2,262 at 1200×2664 (§5a) |
 | Call end/cleanup propagates | PASS | Server `ENDED reason=hangup`; bot room torn down |
 | **Incoming call → Accept on phone** (bot calls phone) | PASS | After fix: phone joined, showed bot video + self-preview + E2EE badge; bot received phone camera 360×640 + mic |
 | Background/locked incoming calls | NOT VERIFIED | Needs the "stay connected" service; no push wake-up |
 | 3-party call (phone + 2 bot devices) | PASS | Phone rendered a grid (You, bot test pattern, undecodable wrong-key bot tile) |
 | **Wrong-key participant vs phone's camera/mic** | PASS | Second bot device with a deliberately wrong media key: **0 video frames, 0 audible audio frames** from the phone (1,584 silent frames), while the correct-key bot decoded camera and mic normally; phone couldn't decode the wrong-key bot either |
-| Native crash during screen-share consent / after call end | FAIL → fixed (re-test pending) | `ApplicationExitInfo`: 2× SIGSEGV in `libjingle_peerconnection_so`. One was on the main thread when the consent dialog covered the call, the other on the audio playout thread after release. Fixed by ordered teardown (UI detaches sinks, then disconnect, then delayed release) and lifecycle-aware video sinks |
+| Native crash during screen-share consent / after call end | FAIL → fixed (re-tested 2026-10-16, §5a) | `ApplicationExitInfo`: 2× SIGSEGV in `libjingle_peerconnection_so`. One was on the main thread when the consent dialog covered the call, the other on the audio playout thread after release. Fixed by ordered teardown (UI detaches sinks, then disconnect, then delayed release) and lifecycle-aware video sinks |
 | Group calls with 3+ physical phones | NOT VERIFIED | Only one phone was available |
+
+## 5a. Video and screen-share fix (2026-10-16)
+
+The testers reported that remote camera video and screen share weren't visible. It was reproduced on the phone with the
+diagnostic build: the phone decoded the bot's video (`framesDecoded` rising, stream ACTIVE, E2EE OK, renderer attached at
+1200×2664), but the screen stayed black, and the self-preview was blank too. The bot received the phone's camera throughout.
+Root cause and fix: `KNOWN_ISSUES.md` › Fixed during testing. Every row below ran on the fixed build, the phone against the
+production SFU, with Griip Bot as the other participant. Debug builds log per-track pipeline state under the `CallDiag` tag.
+
+| Test | Status | Evidence |
+|---|---|---|
+| Remote camera visible on the phone | PASS | Bot test pattern shown full-bleed (screenshot); inbound 640×360, `framesDecoded` rising, 0 dropped |
+| Self-preview visible | PASS | Live camera in the floating preview (screenshot) |
+| Phone camera visible to the peer | PASS | Bot decoded 720×1280 (1,519 frames in the final run) |
+| Remote screen share visible on the phone | PASS | Bot published a 960×540 share 10 s into the call; phone switched the main tile to it, letterboxed in full (screenshot), E2EE OK, stream ACTIVE |
+| Back to camera when the remote share stops | PASS | Main tile returned to the bot's camera, full-bleed (screenshot) |
+| Phone screen share to peers (MediaProjection consent tapped by the tester) | PASS | Correct-key bot decoded the phone's screen at 1200×2664 (2,262 frames); Stop unpublished it and both peers unsubscribed |
+| **Screen-share E2EE, wrong key** | PASS | Wrong-key bot device: 0 screen-share, 0 camera, 0 audible audio frames from the phone. Correct-key device decoded all three |
+| 3-party grid (phone + correct-key + wrong-key bot devices) | PASS | You tile = camera, correct-key bot = test pattern, wrong-key bot = blank (undecodable) |
+| Group-call "You" tile while sharing | NOT VERIFIED on device | Before the fix it showed the phone's own screen recursively (screenshot). The fix (camera instead) is built and installed, not re-run |
+| Camera off/on during a call | PASS | Self-preview renderer released, then re-attached, with no errors |
+| End call cleanup | PASS | Both renderers released; peers saw the participant leave; server `ENDED` |
+| Crashes in these runs | PASS | `dumpsys activity exit-info`: only package-update restarts. No new `data_app_native_crash` entries |
+| **Android ↔ Android, two physical phones** | BLOCKED | Only one phone was available. Needs two testers on this build |
 
 ## 6. Visual review
 
@@ -143,4 +170,28 @@ Bot calls you:
 
 ```bash
 cd tools/griip-bot && npm run bot -- call <yourUsername> video 120
+```
+
+Bot calls you and shares a landscape test screen from 10 s to 40 s:
+
+```bash
+cd tools/griip-bot && GRIIP_BOT_SCREEN=1 npm run bot -- call <yourUsername> video 60
+```
+
+Wrong-key E2EE check: call the bot from the phone while two bot devices answer, one of them with a wrong key:
+
+```bash
+cd tools/griip-bot && GRIIP_BOT_ID=bot-identity-wrongkey.json GRIIP_BOT_WRONG_KEY=1 npm run bot -- answer 150
+```
+
+Android unit tests:
+
+```bash
+cd android && ./gradlew :app:testDebugUnitTest
+```
+
+Call pipeline logs from a debug build (use the SDK's `platform-tools/adb`. A second adb version on PATH keeps killing the server):
+
+```bash
+adb logcat -s CallDiag:I CallManager:I
 ```

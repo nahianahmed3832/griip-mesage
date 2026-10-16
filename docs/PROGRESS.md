@@ -1,5 +1,71 @@
 # Progress log
 
+## Feature-first phase (from 2026-10-16)
+
+The UI/UX redesign is postponed until the prioritised functionality is implemented and verified. These identifiers are unchanged:
+- Android package `com.griipbuddy.message`;
+- Compose project `griip-internal-messaging`.
+
+Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Debt register: `TECHNICAL_DEBT.md`.
+
+| Step | Status | Evidence |
+|---|---|---|
+| Audit of the whole prototype (server, schema, Docker, transport, crypto, LiveKit, org system, Android, tests) | ✅ | `FEATURE_INVENTORY.md`. It found 6 BROKEN rows, many UNVERIFIED rows and no MOCKED features |
+| Audit probes P1–P7 against the real API | ✅ | All 7 suspected defects confirmed. The probe file was deleted after recording (results in the inventory) |
+| Baseline checks | ✅ | Server 32/32 tests, `tsc` clean; Android `compileDebugKotlin` and `assembleRelease` (R8, 64 MB unsigned) succeed. The release APK hasn't been run on a device. Production `/healthz` OK |
+| **T1.1 Demotion to Guest revokes access** (P1) | ✅ server | See below |
+| T1.2 Enforce pinned identity keys | ⏳ | Needs an owner decision (block versus warn) and the Android test harness (T2.4) |
+| T1.3 Evict removed members from live calls | ⏳ | Next server task |
+| T1.4 Never discard messages on local failure | ⏳ | Needs T2.4 |
+| T1.6 Registration gating and quotas | ⏳ | Needs an owner decision on gating |
+| **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
+
+### T1.1 Demotion to Guest (2026-10-16)
+
+- **Defect (probe P1):** demoting an org member to Guest left all their branch, team and channel memberships in place, including private team channels. Other members' clients kept encrypting those channels' messages to the guest's devices.
+- **Change:**
+  - `Authz.demoteToGuest` (`server/src/authz.ts`) runs when the role changes *to* Guest. It deletes the person's branch and team memberships in that org and all of their channel memberships there.
+  - DMs and groups aren't org-scoped and are kept.
+  - The role-change handler (`server/src/routes/orgs.ts`) now sends `conv.updated` for every conversation the person was removed from, for any role change. Before, it re-validated silently. The Android client already reacts by refetching, getting 404 and marking the channel removed, so no app change was needed.
+- **Unchanged:**
+  - Existing guests' explicit grants.
+  - Promotion back to Member auto-joins only scope-wide channels. Branch and team access must be granted again.
+- **Tests:** a new `server/test/orgs.test.ts` › "demotion to guest" block covers four things:
+  1. Removal from every channel kind, plus removal from branch, team and device lists, with `conv.updated` received on the person's socket.
+  2. An envelope still addressed to the guest's device is refused with 409 `device_mismatch`.
+  3. An explicit re-grant survives later re-validation.
+  4. Promotion restores only scope-wide channels.
+- **Results:** with the fix, `npm test` gives **36 / 36 pass** and `tsc --noEmit` is clean. With the two source changes temporarily stashed, the 4 new tests **fail**, confirming they detect the defect.
+- **Not done:**
+  - **Not deployed.** Production still runs the old behaviour until an approved redeploy (`deploy/scripts/deploy.sh`).
+  - A demoted person who is in a live call stays in it. That's T1.3.
+
+### Task 1: Android video calls and screen sharing (2026-10-16)
+
+- **Reports:** testers couldn't see the other person's camera (A) or screen share (B).
+- **Diagnosis:** a debug-only `CallDiagnostics` (`CallDiag` log tag) logs room and track events and, every 3 s, encode and
+  decode counters per video track. It never logs keys, tokens or content. On the phone, frames were decoded with E2EE OK and
+  the renderer was attached at full size, yet nothing was drawn. So the fault was after decode, in rendering.
+- **Root cause (shared by A and B):** `VideoTile` released its renderer straight after creating it (an effect keyed on
+  renderer state disposed with the live renderer). That hid every remote camera, every received screen share and the
+  self-preview. Publishing, the SFU, signalling and E2EE were never at fault, and the server wasn't changed.
+- **Changes:**
+  - `VideoSinkBinding.kt` (new) owns the renderer's sink attachments and its single release.
+  - `CallOverlay.kt`: `VideoTile` uses it, releases in `AndroidView(onRelease)`, and applies mirror and scaling on update.
+    Fitted (screen-share) tiles letterbox instead of cropping. The group "You" tile shows the camera, not your own share.
+  - `CallManager.kt` wires the diagnostics and logs when the system stops a screen capture.
+  - `bot.ts`: `GRIIP_BOT_SCREEN=1` publishes a screen-share track mid-call.
+- **Tests:** `VideoSinkBindingTest` 8/8. Phone acceptance against the bot is in `TESTING.md` §5a: camera both ways, screen share
+  both ways, wrong-key screen-share E2EE (0 frames), 3-party grid, end-of-call cleanup, with no crashes.
+- **Open:**
+  - Two-phone Android ↔ Android verification.
+  - The group "You" tile while sharing, on a device.
+  - One post-fix SIGABRT in the E2EE frame-cryptor path from an earlier session (`KNOWN_ISSUES.md` › Calls).
+
+---
+
+## Internal beta build (2026-10-16, before the audit)
+
 | Milestone | Status | Notes |
 |---|---|---|
 | 1. Environment & design foundation | ✅ | Toolchain verified. Reference analysed with sampled colours (`DESIGN_SYSTEM.md`). Compose design system written: tokens, glass components, hero art. Isolated Compose project. |
