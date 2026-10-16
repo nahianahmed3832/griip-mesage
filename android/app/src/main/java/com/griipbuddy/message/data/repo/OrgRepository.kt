@@ -23,10 +23,14 @@ import com.griipbuddy.message.data.api.OrgRoleReq
 import com.griipbuddy.message.data.api.OrgsRes
 import com.griipbuddy.message.data.api.PatchScopeReq
 import com.griipbuddy.message.data.api.RoleReq
+import com.griipbuddy.message.data.api.TeamDepartmentReq
+import com.griipbuddy.message.data.api.UpdateDepartmentReq
 import com.griipbuddy.message.data.api.UsersRes
 import com.griipbuddy.message.data.db.GriipDatabase
 import com.griipbuddy.message.data.db.KvEntity
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.coroutines.flow.StateFlow
 
 /** Organisation hierarchy operations. Every call is authorised server-side; UI hides what the user can't do. */
@@ -78,6 +82,13 @@ class OrgRepository(
         api.post<CreateDepartmentReq, kotlinx.serialization.json.JsonObject>("/v1/branches/$branchId/departments", CreateDepartmentReq(name))
     suspend fun createTeam(orgId: String, name: String, description: String?, branchId: String?, departmentId: String?) =
         api.post<CreateTeamReq, kotlinx.serialization.json.JsonObject>("/v1/orgs/$orgId/teams", CreateTeamReq(name, description, branchId, departmentId))
+    suspend fun updateDepartment(id: String, name: String, description: String?) =
+        api.patch<UpdateDepartmentReq, OkRes>("/v1/departments/$id", UpdateDepartmentReq(name, description?.let { JsonPrimitive(it) } ?: JsonNull))
+    /** Its teams stay in the branch, ungrouped (D-15). */
+    suspend fun deleteDepartment(id: String) = api.delete<OkRes>("/v1/departments/$id")
+    /** Puts a team in one of its branch's departments, or in none ([departmentId] null). */
+    suspend fun setTeamDepartment(teamId: String, departmentId: String?) =
+        api.patch<TeamDepartmentReq, OkRes>("/v1/teams/$teamId", TeamDepartmentReq(departmentId?.let { JsonPrimitive(it) } ?: JsonNull))
     suspend fun updateTeam(id: String, name: String?, description: String?, archived: Boolean? = null) =
         api.patch<PatchScopeReq, OkRes>("/v1/teams/$id", PatchScopeReq(name, description, archived))
 

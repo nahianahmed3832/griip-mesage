@@ -221,7 +221,7 @@ Signed group state (MLS or a signed membership log) so clients don't trust serve
 - The notification Answer action accepts directly.
 - Release (R8) build smoke test on a device.
 - Backups policy for org metadata (not the queue).
-- Department edit UI.
+- ~~Department edit UI.~~ Done in code 2026-10-16 (rename, describe, delete, move teams between departments); device check pending.
 - `GET /v1/calls/active` on app start.
 
 ---

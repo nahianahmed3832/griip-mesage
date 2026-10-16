@@ -145,6 +145,17 @@ fun TeamScreen(nav: NavHostController, orgId: String, teamId: String) {
                         PillButton("Add member", { showAdd = true }, Modifier.weight(1f), tone = ButtonTone.Glass, showKnob = false, leadingIcon = Icons.Outlined.PersonAdd, height = 46.dp)
                         PillButton("Channel", { showChannel = true }, Modifier.weight(1f), tone = ButtonTone.Glass, showKnob = false, leadingIcon = Icons.Outlined.PostAdd, height = 46.dp)
                     }
+                    // A department only groups a branch's teams (D-15); cross-branch teams have none.
+                    val depts = detail?.departments.orEmpty().filter { it.branchId == team.branchId }
+                    if (!team.crossBranch && depts.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        Text("Department", style = Griip.type.label, color = c.textSecondary)
+                        Spacer(Modifier.height(6.dp))
+                        ChipRow {
+                            PillChip("None", team.departmentId == null, { if (team.departmentId != null) act { container.orgs.setTeamDepartment(teamId, null) } })
+                            depts.forEach { dep -> PillChip(dep.name, team.departmentId == dep.id, { if (team.departmentId != dep.id) act { container.orgs.setTeamDepartment(teamId, dep.id) } }) }
+                        }
+                    }
                 }
             }
         }

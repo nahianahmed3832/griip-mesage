@@ -21,9 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.griipbuddy.message.data.api.CreateChannelReq
+import com.griipbuddy.message.data.api.DepartmentDto
 import com.griipbuddy.message.data.api.OrgDetailRes
 import com.griipbuddy.message.ui.LocalContainer
 import com.griipbuddy.message.ui.components.BannerKind
+import com.griipbuddy.message.ui.components.ButtonTone
+import com.griipbuddy.message.ui.components.ConfirmDialog
 import com.griipbuddy.message.ui.components.ChipRow
 import com.griipbuddy.message.ui.components.GlassSheet
 import com.griipbuddy.message.ui.components.GriipTextField
@@ -86,6 +89,45 @@ fun CreateDepartmentSheet(d: OrgDetailRes, onDismiss: () -> Unit, onDone: () -> 
             }
         }, Modifier.fillMaxWidth(), enabled = name.isNotBlank() && branch != null, height = 50.dp)
     }
+}
+
+/** Rename a department, change its description, or delete it (Phase 16). Branch managers only; the server enforces it. */
+@Composable
+fun EditDepartmentSheet(d: OrgDetailRes, dept: DepartmentDto, onDismiss: () -> Unit, onDone: () -> Unit) {
+    val container = LocalContainer.current
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf(dept.name) }
+    var desc by remember { mutableStateOf(dept.description.orEmpty()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val teams = d.teams.count { it.departmentId == dept.id }
+    fun run(block: suspend () -> Unit) {
+        busy = true; error = null
+        scope.launch {
+            runCatching { block() }.onSuccess { onDone(); onDismiss() }.onFailure { error = it.friendly() }
+            busy = false
+        }
+    }
+    GlassSheet(onDismiss, title = "Edit department") {
+        GriipTextField(name, { name = it.take(80) }, "Department name", keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
+        Spacer(Modifier.height(12.dp))
+        GriipTextField(desc, { desc = it.take(300) }, "Description (optional)", singleLine = false, minLines = 2)
+        error?.let { Spacer(Modifier.height(10.dp)); StatusBanner(it, BannerKind.Error) }
+        Spacer(Modifier.height(16.dp))
+        PillButton("Save", { run { container.orgs.updateDepartment(dept.id, name.trim(), desc.trim().ifEmpty { null }) } },
+            Modifier.fillMaxWidth(), enabled = name.isNotBlank() && !busy, loading = busy, height = 50.dp)
+        Spacer(Modifier.height(10.dp))
+        PillButton("Delete department", { confirmDelete = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, enabled = !busy, height = 50.dp)
+    }
+    if (confirmDelete) ConfirmDialog(
+        "Delete ${dept.name}?",
+        if (teams == 0) "It has no teams. Nobody loses access." else "Its $teams team${if (teams == 1) "" else "s"} stay in the branch, without a department. Nobody loses access.",
+        "Delete",
+        onConfirm = { confirmDelete = false; run { container.orgs.deleteDepartment(dept.id) } },
+        onDismiss = { confirmDelete = false },
+        destructive = true,
+    )
 }
 
 @Composable

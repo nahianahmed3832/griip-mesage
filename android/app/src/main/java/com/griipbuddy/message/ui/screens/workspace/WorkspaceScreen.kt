@@ -273,6 +273,20 @@ fun WorkspaceScreen(nav: NavHostController) {
                         trailing = { if (b.myRole != null) RoleBadge(b.myRole) else if (!b.canAccess) Icon(Icons.Rounded.Lock, "No access", tint = c.textTertiary) },
                     )
                 }
+                val depts = d.departments.filter { dep -> d.branches.any { it.id == dep.branchId } } // archived branches aren't listed
+                if (depts.isNotEmpty()) item {
+                    Text("Departments", style = Griip.type.section, color = c.textPrimary, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 10.dp))
+                }
+                items(depts, key = { "d" + it.id }) { dep ->
+                    val branch = d.branches.first { it.id == dep.branchId }
+                    ListCard(
+                        dep.name, Modifier.padding(horizontal = Space.gutter, vertical = 5.dp),
+                        subtitle = listOfNotNull(branch.name, "${d.teams.count { it.departmentId == dep.id }} teams", dep.description).joinToString(" · "),
+                        leading = { IconTile(Icons.Outlined.Apartment, c.lavender, c.lavenderSoft, size = 42.dp) },
+                        trailing = { if (branch.canManage) ArrowKnob() },
+                        onClick = if (branch.canManage) ({ sheet = "dept:" + dep.id }) else null,
+                    )
+                }
             }
         }
     }
@@ -294,6 +308,9 @@ fun WorkspaceScreen(nav: NavHostController) {
             "department" -> CreateDepartmentSheet(det, { sheet = null }) { vm.refresh() }
             "team" -> CreateTeamSheet(det, branchFilter, { sheet = null }) { vm.refresh() }
             "channel" -> CreateChannelSheet(det, branchFilter, { sheet = null }) { id -> vm.refresh(); nav.navigate(Routes.conversation(id)) }
+            else -> sheet?.removePrefix("dept:")?.takeIf { sheet!!.startsWith("dept:") }?.let { id ->
+                det.departments.firstOrNull { it.id == id }?.let { dep -> EditDepartmentSheet(det, dep, { sheet = null }) { vm.refresh() } }
+            }
         }
     }
     @Suppress("UNUSED_VARIABLE") val unused = rememberCoroutineScope()

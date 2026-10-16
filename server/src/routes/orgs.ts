@@ -245,6 +245,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     if (!d) throw notFound("Department not found");
     const b = loadBranch(d.branch_id, userId);
     if (!authz.canManageBranch(b, userId)) throw forbidden();
+    if (b.archived_at) throw conflict("This branch is archived"); // D-14
     const body = parse(z.object({ name: zName.optional(), description: zOptText }), req.body);
     db.prepare("UPDATE departments SET name = ?, description = ?, updated_at = ? WHERE id = ?").run(
       body.name ?? d.name,
@@ -252,6 +253,25 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       now(),
       id,
     );
+    ctx.audit({ actorId: userId, orgId: b.org_id, action: "department.update", target: id, detail: body.name ?? d.name });
+    notifyOrg(ctx, b.org_id);
+    return { ok: true };
+  });
+
+  /** Deletes a department. Its teams stay in the branch, ungrouped: a department grants no access (D-15). */
+  app.delete("/v1/departments/:id", auth, async (req) => {
+    const { userId } = me(req);
+    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const d = db.prepare("SELECT * FROM departments WHERE id = ?").get(id) as any;
+    if (!d) throw notFound("Department not found");
+    const b = loadBranch(d.branch_id, userId);
+    if (!authz.canManageBranch(b, userId)) throw forbidden();
+    if (b.archived_at) throw conflict("This branch is archived"); // D-14
+    db.transaction(() => {
+      db.prepare("UPDATE teams SET department_id = NULL, updated_at = ? WHERE department_id = ?").run(now(), id);
+      db.prepare("DELETE FROM departments WHERE id = ?").run(id);
+    })();
+    ctx.audit({ actorId: userId, orgId: b.org_id, action: "department.delete", target: id, detail: d.name });
     notifyOrg(ctx, b.org_id);
     return { ok: true };
   });
@@ -296,11 +316,21 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
     const team = loadTeam(id, userId);
     if (!authz.canManageTeam(team, userId)) throw forbidden();
-    const body = parse(z.object({ name: zName.optional(), description: zOptText, archived: z.boolean().optional() }), req.body);
-    db.prepare("UPDATE teams SET name = ?, description = ?, archived_at = ?, updated_at = ? WHERE id = ?").run(
+    const body = parse(
+      z.object({ name: zName.optional(), description: zOptText, archived: z.boolean().optional(), departmentId: z.string().max(64).nullable().optional() }),
+      req.body,
+    );
+    if (authz.scopeArchived(team.branch_id, null)) throw conflict("This team's branch is archived"); // D-14: unarchive the branch first
+    if (body.departmentId) {
+      // A department groups one branch's teams (D-15): cross-branch teams have none.
+      const dep = db.prepare("SELECT branch_id FROM departments WHERE id = ?").get(body.departmentId) as { branch_id: string } | undefined;
+      if (!dep || !team.branch_id || dep.branch_id !== team.branch_id) throw badRequest("That department isn't in this team's branch");
+    }
+    db.prepare("UPDATE teams SET name = ?, description = ?, archived_at = ?, department_id = ?, updated_at = ? WHERE id = ?").run(
       body.name ?? team.name,
       body.description === undefined ? team.description : body.description,
       body.archived === undefined ? team.archived_at : body.archived ? now() : null,
+      body.departmentId === undefined ? team.department_id : body.departmentId,
       now(),
       id,
     );

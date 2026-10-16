@@ -28,6 +28,25 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T4.2 In-app invite QR scanner** | ✅ code + JVM (device check pending) | See below |
 | **T5.3 Late joiners get the call key** | ✅ code + JVM (device check pending) | See below |
 | **T4.4 Notification history and actions** | ✅ code + JVM (device check pending) | See below |
+| **Department editing** | ✅ server + app (not deployed; device check pending) | See below |
+
+### Department editing (Tier 7, 2026-10-16)
+
+- **Gap:** departments could be created but not renamed, described, deleted or used to regroup teams, from the app or the API.
+- **Server (not deployed):**
+  - `PATCH /v1/departments/:id` is now audited and refused in an archived branch.
+  - New `DELETE /v1/departments/:id`: the department's teams stay in the branch, ungrouped. A department grants no access (D-15),
+    so nobody loses any.
+  - `PATCH /v1/teams/:id` accepts `departmentId` (or null). The department must belong to the team's own branch; cross-branch
+    teams have none.
+  - Team edits inside an archived branch are refused (D-14).
+  - The new audit actions are visible to admins only.
+- **App:** a *Departments* list in the workspace's Manage tab, with an edit sheet (rename, description, delete with confirmation) for
+  branch managers, and department chips on the team screen for people who manage the team. `GriipJson` drops nulls, so the
+  requests that clear a field send an explicit JSON null.
+- **Tests:** `departments.test.ts` (5: permissions, regrouping limits, delete, archived branch, audit visibility). 4 of 5 fail
+  against the previous server code. `ScopeRequestsTest` (3). Server **87/87**, Android **92/92**.
+- **NOT VERIFIED on a device**, and the server part is in `RELEASE_PLAN.md`.
 
 ### T4.4 Message notifications: history, Reply, Mark as read (2026-10-16)
 

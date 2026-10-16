@@ -124,6 +124,9 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class CreateDepartmentReq(val name: String, val description: String? = null)
 @Serializable data class CreateTeamReq(val name: String, val description: String? = null, val branchId: String? = null, val departmentId: String? = null)
 @Serializable data class PatchScopeReq(val name: String? = null, val description: String? = null, val archived: Boolean? = null)
+/** JSON nulls are omitted by [GriipJson], so fields that may be cleared are sent as a [kotlinx.serialization.json.JsonElement] (`JsonNull` clears). */
+@Serializable data class UpdateDepartmentReq(val name: String, val description: kotlinx.serialization.json.JsonElement)
+@Serializable data class TeamDepartmentReq(val departmentId: kotlinx.serialization.json.JsonElement)
 @Serializable data class CreateChannelReq(
     val name: String, val topic: String? = null, val scope: String, val scopeId: String? = null, val kind: String,
     val autoJoin: Boolean? = null, val memberIds: List<String> = emptyList(),
