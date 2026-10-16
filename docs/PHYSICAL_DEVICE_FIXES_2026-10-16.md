@@ -52,7 +52,7 @@ No wire format, encryption, message id, reply id or federation change.
 ## Orbit rebrand
 
 - App name **Orbit**, "Orbit by GriipBuddy", tagline "Private by design. Connected by everyone."
-- Application id **`com.griipbuddy.orbit`** (was `com.griipbuddy.message`). It installs as a **separate app**: the old
+- Application id **`com.griipbuddy.Orbit`** (capital O, matching the Play Console app; the 2026-10-16 testing APK used `com.griipbuddy.orbit`, and earlier builds `com.griipbuddy.message`). It installs as a **separate app**: the old
   app, its identity keys, history and settings stay where they are; nothing migrates. On Orbit, sign in by linking
   the device or restoring with a recovery key, or register.
 - Unchanged on purpose: Kotlin namespace `com.griipbuddy.message` (R/BuildConfig), server protocols, `griip://invite/`
@@ -61,7 +61,7 @@ No wire format, encryption, message id, reply id or federation change.
 - Launcher: adaptive icon (foreground, deep-green background, monochrome for themed icons), notification icon,
   AndroidX SplashScreen (system splash on Android 12+, same look on 8–11). Artwork generated as vectors from one
   geometry (`res/drawable/ic_launcher_*.xml`, `orbit_mark`, `orbit_tile`).
-- FileProvider authority follows the id (`com.griipbuddy.orbit.files`). No Firebase, no push credentials.
+- FileProvider authority follows the id (`com.griipbuddy.Orbit.files`). No Firebase, no push credentials.
 
 ## Deployment needed (not performed)
 

@@ -14,7 +14,7 @@ Docker deployment keep their names.
 
 | | |
 |---|---|
-| Android application ID | `com.griipbuddy.orbit` (Orbit). Builds before 2026-10-16 were `com.griipbuddy.message` (Griip Message): a separate app; nothing moves between them, so an Orbit install signs in or registers afresh |
+| Android application ID | `com.griipbuddy.Orbit` (Orbit; capital O, as registered on Google Play). Earlier builds were `com.griipbuddy.message` (Griip Message) and, on 2026-10-16 only, `com.griipbuddy.orbit`: separate apps; nothing moves between them, so an Orbit install signs in or registers afresh |
 | APK | `artifacts/GriipMessage-Federation-v1-testing.apk` (Orbit, debug-signed); older Griip Message builds stay in `artifacts/`. Default server `https://msg.griipbuddy.cloud` |
 | Relay / API | `https://msg.griipbuddy.cloud` |
 | Calls (LiveKit) | `wss://rtc.griipbuddy.cloud`, media on 7881/tcp and 7882/udp |

@@ -23,7 +23,9 @@ android {
     defaultConfig {
         // Orbit (2026-10-16 rebrand). A new application id installs as a separate app beside Griip Message; nothing
         // migrates between them. The Kotlin namespace (and so R/BuildConfig) stays com.griipbuddy.message.
-        applicationId = "com.griipbuddy.orbit"
+        // Capital O on purpose: it must equal the Play Console app's package name exactly (package names are
+        // case-sensitive and permanent on Play). Builds before 2026-10-17 used com.griipbuddy.orbit.
+        applicationId = "com.griipbuddy.Orbit"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
