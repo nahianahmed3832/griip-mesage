@@ -18,6 +18,14 @@ object MediaGallery {
     /** Raster formats Android decodes itself; SVG and unknown image types stay files. */
     private val IMAGES = setOf("image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif", "image/bmp", "image/avif")
 
+    /** Photo or video by its declared type, including one still being sent (for the album grid); voice notes are neither. */
+    fun visualKind(ref: AttachmentRef): MediaKind? = when {
+        VoiceNote.isVoice(ref) -> null
+        ref.mime.lowercase() in IMAGES -> MediaKind.Image
+        ref.mime.lowercase().startsWith("video/") -> MediaKind.Video
+        else -> null
+    }
+
     fun kindOf(ref: AttachmentRef): MediaKind? = when {
         ref.id == "pending" || VoiceNote.isVoice(ref) -> null
         ref.mime.lowercase() in IMAGES -> MediaKind.Image

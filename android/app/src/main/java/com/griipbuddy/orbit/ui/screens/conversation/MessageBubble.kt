@@ -183,7 +183,20 @@ fun MessageBubble(
                     }
                     m.deleted -> Text("This message was deleted", style = Griip.type.bodySmall.copy(fontStyle = FontStyle.Italic), color = c.textSecondary)
                     else -> {
-                        b.attachments.forEach { a ->
+                        // Two or more photos and videos: an album grid; other files and voice notes stay rows below it.
+                        val visuals = b.attachments.filter { MediaGallery.visualKind(it) != null }
+                        val album = visuals.size >= 2
+                        if (album) {
+                            AlbumGrid(visuals, transfer, localFile, onOpenAttachment)
+                            if (transfer != null && m.status == MessageStatus.SENDING) {
+                                Text(
+                                    "Sending ${visuals.size} · ${(transfer * 100).toInt()}%", style = Griip.type.caption,
+                                    color = if (out) c.bubbleOutgoingMeta else c.textSecondary, modifier = Modifier.padding(top = 4.dp),
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
+                        }
+                        b.attachments.filter { !album || it !in visuals }.forEach { a ->
                             if (VoiceNote.isVoice(a)) {
                                 VoiceMessageView(a, out, transfer, voice.takeIf { it.key == m.id }, { onVoiceToggle(a) }, { onVoiceSeek(a, it) })
                             } else AttachmentView(a, out, transfer, localFile(a), onOpenAttachment)

@@ -124,6 +124,10 @@ dependencies {
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
+    // Standard/HD video quality for attachments (2026-10-17): re-encodes picked videos on the phone before encryption.
+    implementation(libs.media3.transformer)
+    implementation(libs.media3.effect)
+    implementation(libs.media3.common)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

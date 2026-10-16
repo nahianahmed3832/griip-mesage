@@ -14,6 +14,8 @@ import com.griipbuddy.orbit.voice.AndroidAudioRecorder
 import com.griipbuddy.orbit.voice.VoiceDraftController
 import com.griipbuddy.orbit.voice.VoiceNote
 import com.griipbuddy.orbit.data.model.AttachmentRef
+import com.griipbuddy.orbit.data.model.AttachmentPolicy
+import com.griipbuddy.orbit.data.repo.MessageRepository
 import com.griipbuddy.orbit.data.model.MentionMember
 import com.griipbuddy.orbit.data.model.MentionRules
 import com.griipbuddy.orbit.data.model.MentionSet
@@ -236,27 +238,82 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     fun pin(m: MessageEntity) = viewModelScope.launch { c.messages.setPinned(m, !m.pinned) }
     fun retry(m: MessageEntity) = viewModelScope.launch { c.messages.retry(m.id) }
 
-    fun attach(context: Context, uri: Uri) = viewModelScope.launch {
-        try {
-            val (name, size) = withContext(Dispatchers.IO) {
-                context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cur ->
-                    if (cur.moveToFirst()) (cur.getString(0) ?: "file") to cur.getLong(1) else "file" to 0L
-                } ?: ("file" to 0L)
-            }
-            if (size > MAX_ATTACHMENT) {
-                error.value = "Files up to 25 MB can be shared in this beta."
-                return@launch
-            }
-            val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
-            // Streamed into app storage by the repository; the whole file is never held in memory (T2.6).
-            val input = withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri) } ?: return@launch
-            input.use { c.messages.sendAttachment(conversationId, name, mime, it, "") }
-        } catch (e: com.griipbuddy.orbit.data.repo.MessageRepository.AttachmentTooLarge) {
-            error.value = e.message
-        } catch (e: Exception) {
-            error.value = "Couldn't read that file"
+    // ─────────── Photos, videos and files picked to send (2026-10-17 batch attachments, docs/ATTACHMENTS.md) ───────────
+
+    /** A picked file waiting in the send preview, with what the safety checks found ([risk]: why it can run software). */
+    data class Candidate(val item: MessageRepository.BatchItem, val risk: String?)
+
+    /** The send preview's files (empty: no preview). Kept here so a rotation doesn't lose the selection. */
+    val batch = MutableStateFlow<List<Candidate>>(emptyList())
+    /** A note about the last pick ("Up to 10 at a time…", "1 couldn't be read"). */
+    val batchNote = MutableStateFlow<String?>(null)
+
+    /** Adds picked files to the preview: at most [AttachmentPolicy.MAX_ITEMS], each inspected (name, size, real type). */
+    fun pick(context: Context, uris: List<Uri>) = viewModelScope.launch {
+        val current = batch.value
+        val fresh = uris.distinct().filter { u -> current.none { it.item.uri == u } }
+        val room = (AttachmentPolicy.MAX_ITEMS - current.size).coerceAtLeast(0)
+        val accepted = fresh.take(room)
+        val read = withContext(Dispatchers.IO) { accepted.mapNotNull { inspect(context, it) } }
+        val notes = buildList {
+            if (fresh.size > room) add("Up to ${AttachmentPolicy.MAX_ITEMS} at a time: ${fresh.size - room} not added.")
+            if (read.size < accepted.size) add(if (accepted.size - read.size == 1) "1 file couldn't be read." else "${accepted.size - read.size} files couldn't be read.")
         }
+        batch.value = current + read
+        batchNote.value = notes.joinToString(" ").ifEmpty { null }
+        if (batch.value.isEmpty() && notes.isNotEmpty()) error.value = batchNote.value
     }
+
+    private fun inspect(context: Context, uri: Uri): Candidate? = runCatching {
+        val cr = context.contentResolver
+        var name: String? = null
+        var size = -1L
+        cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cur ->
+            if (cur.moveToFirst()) {
+                name = cur.getString(0)
+                if (!cur.isNull(1)) size = cur.getLong(1)
+            }
+        }
+        if (size <= 0) size = runCatching { cr.openAssetFileDescriptor(uri, "r")?.use { it.length } }.getOrNull()?.takeIf { it >= 0 } ?: -1L
+        val safe = AttachmentPolicy.safeName(name ?: uri.lastPathSegment)
+        val mime = cr.getType(uri)
+            ?: android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(safe.substringAfterLast('.', "").lowercase())
+            ?: "application/octet-stream"
+        val head = cr.openInputStream(uri)?.use { i -> ByteArray(64).let { b -> b.copyOf(i.read(b).coerceAtLeast(0)) } } ?: return null
+        val sniffed = AttachmentPolicy.sniff(head)
+        val kind = AttachmentPolicy.kind(mime, sniffed)
+        Candidate(MessageRepository.BatchItem(uri, safe, mime, size, kind, sniffed), AttachmentPolicy.risk(safe, mime, sniffed))
+    }.getOrNull()
+
+    fun unpick(uri: Uri) {
+        batch.value = batch.value.filterNot { it.item.uri == uri }
+        if (batch.value.isEmpty()) batchNote.value = null
+    }
+
+    fun clearBatch() {
+        batch.value = emptyList()
+        batchNote.value = null
+    }
+
+    /**
+     * Sends the preview's files that pass the checks as one message at [quality], with [caption] and the reply target
+     * chosen now. The preview closes once the message is queued; preparing and uploading carry on in the background.
+     */
+    fun sendBatch(quality: AttachmentPolicy.Quality, caption: String) = viewModelScope.launch {
+        val items = batch.value.map { it.item }
+            .filter { AttachmentPolicy.check(it.kind, it.sniffed, it.size, quality) == AttachmentPolicy.Verdict.Ok }
+        if (items.isEmpty()) return@launch
+        val replyId = replyTo.value?.id
+        runCatching { c.messages.sendBatch(conversationId, items, quality, caption.trim(), replyId) }
+            .onSuccess {
+                clearBatch()
+                replyTo.value = ReplyTarget.afterSend(replyTo.value, replyId, success = true)
+            }
+            .onFailure { error.value = it.friendly() }
+    }
+
+    /** A received file that can run software, waiting for the user to confirm opening it: the file and why. */
+    val riskyOpen = MutableStateFlow<Pair<AttachmentRef, String>?>(null)
 
     /** Short confirmations ("Saved to Pictures/Orbit"); failures go to [error]. */
     val notice = MutableStateFlow<String?>(null)
@@ -270,7 +327,14 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     fun pauseVoice() = c.voicePlayer.pause()
 
     fun saveToGallery(ref: AttachmentRef) = viewModelScope.launch {
-        runCatching { MediaExport.saveToGallery(c.app, mediaFile(ref), ref.name, ref.mime) }
+        runCatching {
+            val f = mediaFile(ref)
+            // Only real photos and videos go to the gallery, whatever the sender's message says the file is.
+            if (AttachmentPolicy.kind(ref.mime, withContext(Dispatchers.IO) { sniffFile(f) }) == AttachmentPolicy.Kind.FILE) {
+                throw NotMedia()
+            }
+            MediaExport.saveToGallery(c.app, f, ref.name, ref.mime)
+        }
             .onSuccess { folder -> notice.value = "Saved to $folder" }
             .onFailure { error.value = saveFailure(it) }
     }
@@ -287,18 +351,32 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
             .onFailure { error.value = saveFailure(it) }
     }
 
+    private class NotMedia : Exception()
+
     private fun saveFailure(e: Throwable): String = when (e) {
+        is NotMedia -> "This file isn't really a photo or video, so it wasn't added to the gallery. Use Save to files instead."
         is com.griipbuddy.orbit.data.api.ApiException -> e.message
         is java.io.IOException -> "Couldn't save: ${e.message ?: "the phone's storage refused the file"}"
         is SecurityException -> "Couldn't save: storage permission is needed"
         else -> "Couldn't save this file"
     }
 
-    fun openAttachment(context: Context, ref: AttachmentRef) = viewModelScope.launch {
+    /**
+     * Opens a received file with another app. A file that can install or run software (by its name or its real content)
+     * asks first: the server only stores encrypted files, so nothing has scanned it ([confirmed]: the user said yes).
+     */
+    fun openAttachment(context: Context, ref: AttachmentRef, confirmed: Boolean = false) = viewModelScope.launch {
         runCatching { c.messages.downloadAttachment(ref) }
-            .onSuccess { f -> openFile(context, f, ref.mime) }
+            .onSuccess { f ->
+                val risk = AttachmentPolicy.risk(ref.name, ref.mime, withContext(Dispatchers.IO) { sniffFile(f) })
+                if (risk != null && !confirmed) riskyOpen.value = ref to risk
+                else openFile(context, f, ref.mime)
+            }
             .onFailure { error.value = it.friendly() }
     }
+
+    private fun sniffFile(f: File): AttachmentPolicy.Sniffed? =
+        runCatching { f.inputStream().use { i -> ByteArray(64).let { b -> AttachmentPolicy.sniff(b.copyOf(i.read(b).coerceAtLeast(0))) } } }.getOrNull()
 
     private fun openFile(context: Context, file: File, mime: String) {
         val shared = File(context.cacheDir, "shared").apply { mkdirs() }
@@ -313,7 +391,4 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     fun startCall(video: Boolean) = viewModelScope.launch { c.calls.startCall(conversationId, video) }
     fun joinCall(callId: String, video: Boolean) = viewModelScope.launch { c.calls.join(conversationId, callId, video) }
 
-    companion object {
-        const val MAX_ATTACHMENT = 25L * 1024 * 1024
-    }
 }

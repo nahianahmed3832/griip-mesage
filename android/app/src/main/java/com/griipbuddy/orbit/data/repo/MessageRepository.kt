@@ -31,6 +31,7 @@ import com.griipbuddy.orbit.data.db.QuarantineEntity
 import com.griipbuddy.orbit.data.model.AttachmentRef
 import com.griipbuddy.orbit.voice.VoiceNote
 import com.griipbuddy.orbit.data.model.CallInfo
+import com.griipbuddy.orbit.data.model.AttachmentPolicy
 import com.griipbuddy.orbit.data.model.CallHistory
 import com.griipbuddy.orbit.data.api.CallDto
 import com.griipbuddy.orbit.data.api.CallsRes
@@ -52,6 +53,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.ListSerializer
@@ -257,15 +259,11 @@ class MessageRepository(
     suspend fun retry(id: String) {
         val m = db.messages().get(id) ?: return
         if (m.status != MessageStatus.FAILED) return
-        // A file that never finished uploading is sent again from its local copy (T2.6).
-        attachments(m).firstOrNull { it.id == AttachmentFiles.PENDING }?.let { ref ->
-            val local = files.child(ref.sha256)?.takeIf { it.exists() }
-            if (local == null) {
-                db.messages().setStatus(id, MessageStatus.FAILED, null, "The original file is no longer on this phone")
-                return
-            }
+        // Files that never finished uploading are prepared and sent again from their local copies (T2.6); the ones
+        // already uploaded aren't sent twice.
+        if (attachments(m).any { it.id == AttachmentFiles.PENDING }) {
             db.messages().setStatus(id, MessageStatus.SENDING, null, null)
-            uploadAttachment(id, m.conversationId, ref, local, m.text)
+            scope.launch { processBatch(id) }
             return
         }
         sendText(m.conversationId, m.text, m.replyToId, m.threadRootId, attachments(m), presetId = id)
@@ -381,6 +379,186 @@ class MessageRepository(
         } finally {
             enc.delete()
             _transfer.update { it - id }
+        }
+    }
+
+    // ─────────── Several photos, videos or files in one message (2026-10-17, docs/ATTACHMENTS.md) ───────────
+
+    /** One picked file for [sendBatch]: where to read it, and what [AttachmentPolicy] found when it was picked. */
+    data class BatchItem(
+        val uri: android.net.Uri,
+        val name: String,
+        val mime: String,
+        val size: Long,
+        val kind: AttachmentPolicy.Kind,
+        val sniffed: AttachmentPolicy.Sniffed?,
+    )
+
+    /** An album being prepared and sent: [done] of [total] files are uploaded; [stage] describes the current one. */
+    data class BatchProgress(val done: Int, val total: Int, val stage: String)
+
+    private val _batches = MutableStateFlow<Map<String, BatchProgress>>(emptyMap())
+    val batchProgress: StateFlow<Map<String, BatchProgress>> = _batches
+
+    /** Where each not-yet-prepared file comes from, by its placeholder's local file name (lost if the app is closed). */
+    private data class BatchSource(val uri: android.net.Uri, val quality: AttachmentPolicy.Quality, val kind: AttachmentPolicy.Kind, val sniffed: AttachmentPolicy.Sniffed?)
+    private val batchSources = java.util.concurrent.ConcurrentHashMap<String, BatchSource>()
+    private val runningBatches = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    /** At most two uploads at a time, the server's per-person limit. */
+    private val uploadSlots = kotlinx.coroutines.sync.Semaphore(2)
+
+    class MissingOriginal : Exception("Some files are no longer on this phone. Delete this message and pick them again.")
+
+    /**
+     * Sends up to [AttachmentPolicy.MAX_ITEMS] photos, videos or files as one message (an album), with one [caption].
+     * The message appears at once; each file is then prepared at [quality], encrypted and uploaded in the background (it
+     * carries on when you leave the conversation), and the message is sent once every file is uploaded. A failure leaves
+     * the message FAILED with a reason; retrying resumes with the files that aren't uploaded yet. Returns the message id.
+     */
+    suspend fun sendBatch(cid: String, items: List<BatchItem>, quality: AttachmentPolicy.Quality, caption: String, replyTo: String? = null): String {
+        val s = session.session ?: throw IllegalStateException("Not signed in")
+        require(items.size in 1..AttachmentPolicy.MAX_ITEMS) { "1 to ${AttachmentPolicy.MAX_ITEMS} files" }
+        val id = UUID.randomUUID().toString()
+        val placeholders = items.mapIndexed { i, it ->
+            val local = files.fileFor("$id-$i", it.name)
+            batchSources[local.name] = BatchSource(it.uri, quality, it.kind, it.sniffed)
+            AttachmentRef(AttachmentFiles.PENDING, it.name, AttachmentPolicy.sendMime(it.mime, it.kind, it.sniffed), it.size, "", "", local.name)
+        }
+        val now = System.currentTimeMillis()
+        db.messages().upsert(
+            MessageEntity(
+                id, cid, s.userId, s.deviceId, true, "text", caption, replyToId = replyTo, attachmentsJson = json.encodeToString(attachmentsSer, placeholders),
+                sentAt = now, sortTs = now, status = MessageStatus.SENDING,
+            ),
+        )
+        db.conversations().bumpPreview(cid, id, caption.ifBlank { AttachmentPolicy.preview(items.map { it.kind }) }, now, "You", 0, 0)
+        scope.launch { processBatch(id) }
+        return id
+    }
+
+    private suspend fun processBatch(id: String) {
+        if (!runningBatches.add(id)) return
+        val m0 = db.messages().get(id) ?: run { runningBatches.remove(id); return }
+        val cid = m0.conversationId
+        val refs = attachments(m0).toMutableList()
+        val total = refs.size
+        suspend fun save() {
+            db.messages().get(id)?.let { db.messages().upsert(it.copy(attachmentsJson = json.encodeToString(attachmentsSer, refs))) }
+        }
+        fun progress(i: Int, stage: String, fraction: Float) {
+            _batches.update { it + (id to BatchProgress(refs.count { r -> r.id != AttachmentFiles.PENDING }, total, stage)) }
+            _transfer.update { it + (id to ((i + fraction.coerceIn(0f, 1f)) / total)) }
+        }
+        try {
+            for (i in refs.indices) {
+                val pending = refs[i]
+                if (pending.id != AttachmentFiles.PENDING) continue
+                val local = files.child(pending.sha256) ?: throw MissingOriginal()
+                val what = if (total > 1) " ${i + 1} of $total" else ""
+                var ref = pending
+                if (!local.exists()) {
+                    val src = batchSources[pending.sha256] ?: throw MissingOriginal()
+                    progress(i, "Preparing$what", 0f)
+                    ref = prepare(pending, local, src) { f -> progress(i, (if (src.kind == AttachmentPolicy.Kind.VIDEO) "Compressing video" else "Preparing") + what, f * 0.5f) }
+                    batchSources.remove(pending.sha256)
+                    refs[i] = ref
+                    save()
+                }
+                progress(i, "Uploading$what", 0f)
+                val uploaded = uploadSlots.withPermit {
+                    val enc = File(context.cacheDir, "${local.name}.enc")
+                    try {
+                        val meta = withContext(Dispatchers.IO) { AttachmentCrypto.encryptFile(local, enc) }
+                        val up = TransferRetry.run { api.uploadFile("/v1/attachments?conversationId=$cid", enc) { p -> progress(i, "Uploading$what", 0.5f + p * 0.5f) } }
+                        AttachmentRef(up.id, ref.name, ref.mime, local.length(), meta.key, meta.nonce, meta.sha256, ref.voice, ref.durationMs)
+                    } finally {
+                        enc.delete()
+                    }
+                }
+                local.renameTo(files.fileFor(uploaded.id, uploaded.name))
+                refs[i] = uploaded
+                save()
+            }
+            val m = db.messages().get(id) ?: return
+            sendText(cid, m.text, replyTo = m.replyToId, attachments = refs, presetId = id)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e // left SENDING; marked interrupted at the next start (failInterruptedUploads)
+        } catch (e: ApiException) {
+            db.messages().setStatus(id, MessageStatus.FAILED, null, e.message)
+        } catch (e: AttachmentTooLarge) {
+            db.messages().setStatus(id, MessageStatus.FAILED, null, e.message)
+        } catch (e: MissingOriginal) {
+            db.messages().setStatus(id, MessageStatus.FAILED, null, e.message)
+        } catch (e: com.griipbuddy.orbit.media.MediaPrep.TooLargeAfterCompression) {
+            db.messages().setStatus(id, MessageStatus.FAILED, null, e.message)
+        } catch (e: Exception) {
+            Log.w(TAG, "attachment batch failed: ${e.javaClass.simpleName}")
+            db.messages().setStatus(id, MessageStatus.FAILED, null, if (total > 1) "Couldn't send these files" else "Couldn't send this file")
+        } finally {
+            runningBatches.remove(id)
+            _batches.update { it - id }
+            _transfer.update { it - id }
+        }
+    }
+
+    /**
+     * Writes the file to send into [local] (which appears only when complete): the picked file as it is, or a Standard/HD
+     * version of a photo or video. Returns the placeholder with its final name, type and size.
+     */
+    private suspend fun prepare(pending: AttachmentRef, local: File, src: BatchSource, onProgress: (Float) -> Unit): AttachmentRef {
+        val compress = src.quality != AttachmentPolicy.Quality.ORIGINAL && AttachmentPolicy.compressible(src.kind, src.sniffed)
+        val part = File(local.parentFile, local.name + ".part")
+        val raw = File(context.cacheDir, "prep-${local.name}")
+        try {
+            val copyTo = if (compress) raw else part
+            copyFromUri(src.uri, copyTo, if (compress) AttachmentPolicy.MAX_SOURCE_BYTES else AttachmentPolicy.MAX_FILE_BYTES)
+            // The bytes read now must still be what was checked when it was picked (a file can change after picking).
+            val head = copyTo.inputStream().use { i -> ByteArray(64).let { b -> b.copyOf(i.read(b).coerceAtLeast(0)) } }
+            val kindNow = AttachmentPolicy.kind(pending.mime, AttachmentPolicy.sniff(head))
+            var name = pending.name
+            var mime = if (kindNow == src.kind) pending.mime else AttachmentPolicy.sendMime(pending.mime, kindNow, AttachmentPolicy.sniff(head))
+            if (compress && kindNow == src.kind) {
+                val done = when (src.kind) {
+                    AttachmentPolicy.Kind.PHOTO -> com.griipbuddy.orbit.media.MediaPrep.photo(raw, part, name, src.quality)
+                    else -> com.griipbuddy.orbit.media.MediaPrep.video(context, raw, part, name, src.quality, onProgress)
+                }
+                if (done == null) {
+                    // Already within this quality: sent as it is, if it fits.
+                    if (raw.length() > AttachmentPolicy.MAX_FILE_BYTES) throw AttachmentTooLarge()
+                    if (!raw.renameTo(part)) raw.copyTo(part, overwrite = true)
+                } else {
+                    name = done.name
+                    mime = done.mime
+                }
+            } else if (compress) {
+                if (raw.length() > AttachmentPolicy.MAX_FILE_BYTES) throw AttachmentTooLarge()
+                if (!raw.renameTo(part)) raw.copyTo(part, overwrite = true)
+            }
+            if (part.length() > AttachmentPolicy.MAX_FILE_BYTES) throw AttachmentTooLarge()
+            if (!part.renameTo(local)) throw java.io.IOException("couldn't store the prepared file")
+            return pending.copy(name = name, mime = mime, size = local.length())
+        } finally {
+            part.delete()
+            raw.delete()
+        }
+    }
+
+    private suspend fun copyFromUri(uri: android.net.Uri, out: File, max: Long) = withContext(Dispatchers.IO) {
+        val input = context.contentResolver.openInputStream(uri) ?: throw MissingOriginal()
+        input.use { i ->
+            out.outputStream().use { o ->
+                val buf = ByteArray(64 * 1024)
+                var total = 0L
+                while (true) {
+                    val n = i.read(buf)
+                    if (n < 0) break
+                    total += n
+                    if (total > max) throw AttachmentTooLarge()
+                    o.write(buf, 0, n)
+                }
+                if (total == 0L) throw java.io.IOException("empty file")
+            }
         }
     }
 
@@ -591,7 +769,8 @@ class MessageRepository(
         val me = myUserId!!
         when (pl.type) {
             "text" -> {
-                val atts = pl.attachments.orEmpty()
+                // Names are cleaned for display (no hidden or direction-changing characters that could disguise a type).
+                val atts = pl.attachments.orEmpty().take(MAX_RECEIVED_ATTACHMENTS).map { it.copy(name = AttachmentPolicy.safeName(it.name)) }
                 // @everyone counts only with the server's mark on this copy, in a group or channel; a claim inside the
                 // payload alone (or from another server) is plain text (docs/MENTIONS.md).
                 val received = MentionRules.received(pl.mentions, pl.mentionAll, item.payload.mentionAll, conv?.type)
@@ -785,7 +964,7 @@ class MessageRepository(
         db.conversations().upsert(
             conv.copy(
                 lastMessageId = last?.id,
-                lastMessagePreview = last?.let { if (it.kind == "call") CallHistory.preview(callInfo(it), it.outgoing, it.text) else it.text.ifEmpty { VoiceNote.label(attachments(it)) ?: "📎 Attachment" } } ?: "Message deleted",
+                lastMessagePreview = last?.let { if (it.kind == "call") CallHistory.preview(callInfo(it), it.outgoing, it.text) else it.text.ifEmpty { attachments(it).let { a -> if (a.size > 1) AttachmentPolicy.preview(a.map { r -> AttachmentPolicy.kindOfMime(r.mime) }) else VoiceNote.label(a) ?: "📎 Attachment" } } } ?: "Message deleted",
                 lastMessageAt = last?.sortTs ?: conv.lastMessageAt,
             ),
         )
@@ -859,6 +1038,7 @@ class MessageRepository(
     }
 
     private fun preview(p: Payload): String = when {
+        !p.attachments.isNullOrEmpty() && p.text.isNullOrBlank() && p.attachments.size > 1 -> AttachmentPolicy.preview(p.attachments.map { AttachmentPolicy.kindOfMime(it.mime) })
         !p.attachments.isNullOrEmpty() && p.text.isNullOrBlank() -> VoiceNote.label(p.attachments) ?: "📎 ${p.attachments.first().name}"
         !p.attachments.isNullOrEmpty() -> "📎 ${p.text}"
         else -> p.text.orEmpty()
@@ -866,6 +1046,8 @@ class MessageRepository(
 
     companion object {
         const val MAX_ATTACHMENT_BYTES = 25L * 1024 * 1024
+        /** More than a sender can attach (10), so an older or newer app's message still shows, but bounded. */
+        const val MAX_RECEIVED_ATTACHMENTS = 20
         /** Outbox `lastError` marking a send paused by an identity change. */
         private const val HELD_REASON = "identity_changed"
         private const val HELD_RECHECK_MS = 6 * 3600_000L

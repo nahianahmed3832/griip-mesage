@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.Share
 import android.widget.Toast
 import android.os.Build
 import androidx.activity.result.PickVisualMediaRequest
+import com.griipbuddy.orbit.data.model.AttachmentPolicy
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -182,9 +183,13 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboard.current
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let { vm.attach(ctx, it) } }
-    val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { vm.attach(ctx, it) } }
+    // Up to 10 photos, videos or files at once, reviewed in the send preview (BatchComposer) before anything is uploaded.
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> if (uris.isNotEmpty()) vm.pick(ctx, uris) }
+    val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(AttachmentPolicy.MAX_ITEMS)) { uris -> if (uris.isNotEmpty()) vm.pick(ctx, uris) }
     var attachSheet by remember { mutableStateOf(false) }
+    val batch by vm.batch.collectAsStateWithLifecycle()
+    val batchNote by vm.batchNote.collectAsStateWithLifecycle()
+    val riskyOpen by vm.riskyOpen.collectAsStateWithLifecycle()
     // Photos and videos open in the in-app viewer; other files are opened explicitly with another app.
     var viewerFor by rememberSaveable { mutableStateOf<String?>(null) }
     var saveTarget by remember { mutableStateOf<AttachmentRef?>(null) }
@@ -545,13 +550,36 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     if (attachSheet) {
         GlassSheet({ attachSheet = false }, title = "Send") {
             MenuRow(
-                Icons.Outlined.Image, "Photo or video", subtitle = "Encrypted on this phone before upload · up to 25 MB",
+                Icons.Outlined.Image, "Photos and videos", subtitle = "Up to ${AttachmentPolicy.MAX_ITEMS} at once · Standard, HD or Original quality",
                 onClick = { attachSheet = false; mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }, trailing = null,
             )
             MenuRow(
-                Icons.Outlined.Description, "File", subtitle = "Any document · up to 25 MB",
+                Icons.Outlined.Description, "Files", subtitle = "Up to ${AttachmentPolicy.MAX_ITEMS} documents · 25 MB each",
                 onClick = { attachSheet = false; picker.launch("*/*") }, trailing = null,
             )
+        }
+    } else if (batch.isNotEmpty()) {
+        BatchComposer(
+            batch, batchNote, onRemove = vm::unpick, onAddMore = { attachSheet = true },
+            onSend = { q, caption -> vm.sendBatch(q, caption) }, onDismiss = vm::clearBatch,
+        )
+    }
+    riskyOpen?.let { (ref, why) ->
+        GlassSheet({ vm.riskyOpen.value = null }, title = "Open “${ref.name}”?") {
+            Text(why, style = Griip.type.body, color = Griip.colors.textPrimary)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Files are end-to-end encrypted, so the server can't scan them for viruses. Open it only if you trust the sender and expected this file.",
+                style = Griip.type.bodySmall, color = Griip.colors.textSecondary,
+            )
+            Spacer(Modifier.height(16.dp))
+            com.griipbuddy.orbit.ui.components.PillButton("Cancel", { vm.riskyOpen.value = null }, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            com.griipbuddy.orbit.ui.components.PillButton(
+                "Open anyway", { vm.riskyOpen.value = null; vm.openAttachment(ctx, ref, confirmed = true) }, Modifier.fillMaxWidth(),
+                tone = com.griipbuddy.orbit.ui.components.ButtonTone.Danger,
+            )
+            Spacer(Modifier.height(16.dp))
         }
     }
 }
