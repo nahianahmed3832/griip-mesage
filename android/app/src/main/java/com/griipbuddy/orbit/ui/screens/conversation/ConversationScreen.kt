@@ -1,5 +1,9 @@
 package com.griipbuddy.orbit.ui.screens.conversation
 
+import com.griipbuddy.orbit.data.model.MentionSpan
+import com.griipbuddy.orbit.data.model.MentionRules
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
 import com.griipbuddy.orbit.ui.media.CreateDocumentFor
@@ -163,7 +167,12 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val voicePlayer by vm.voicePlayer.collectAsStateWithLifecycle()
     var actionFor by remember { mutableStateOf<MessageEntity?>(null) }
     var infoFor by remember { mutableStateOf<MessageEntity?>(null) }
-    var text by rememberSaveable { mutableStateOf("") }
+    // Text plus cursor: the cursor says where an @mention is being typed.
+    var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
+    val text = field.text
+    fun setText(t: String) { field = TextFieldValue(t, TextRange(t.length)) }
+    val mentionMembers by vm.mentionMembers.collectAsStateWithLifecycle()
+    val canMentionAll by vm.canMentionAll.collectAsStateWithLifecycle()
     // Swipe-to-reply and the menu's "Reply" put the cursor in the composer, showing the keyboard.
     val composerFocus = remember { FocusRequester() }
     val focusComposer: () -> Unit = { runCatching { composerFocus.requestFocus() } }
@@ -220,7 +229,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     LaunchedEffect(conv != null) {
         if (!draftRestored && conv != null) {
             draftRestored = true
-            if (text.isEmpty() && editing == null) conv?.draft?.let { text = it }
+            if (text.isEmpty() && editing == null) conv?.draft?.let { setText(it) }
         }
     }
     LaunchedEffect(messages.firstOrNull()?.id) {
@@ -237,6 +246,12 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
 
     val me = vm.me
     val title = conv?.let { ConversationRepository.title(it, me) } ?: ""
+    // Mentions are drawn from the message's mentioned ids, never from the text alone (docs/MENTIONS.md).
+    fun mentionSpansFor(m: MessageEntity): List<MentionSpan> {
+        if (m.text.isEmpty() || !m.text.contains('@')) return emptyList()
+        val stored = MentionRules.fromStored(vm.c.messages.mentions(m))
+        return MentionRules.spans(m.text, stored.ids, stored.all) { id -> users[id]?.username ?: mentionMembers.firstOrNull { it.id == id }?.username }
+    }
     fun previewOf(m: MessageEntity) = m.text.ifEmpty { VoiceNote.label(vm.c.messages.attachments(m)) ?: "📎 Attachment" }
     val peer = conv?.let { ConversationRepository.peer(it, me) }
     val peerUser = peer?.let { users[it.id] }
@@ -354,6 +369,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                                 reactions = vm.c.messages.reactions(m), attachments = vm.c.messages.attachments(m),
                                 threadCount = if (threadRoot == null) threadCounts[m.id] ?: 0 else 0, isGroupConv = isGroup,
                                 replyPreview = reply?.let { previewOf(it) },
+                                mentions = mentionSpansFor(m),
                             ),
                             me = me,
                             transfer = vm.c.messages.attachments(m).firstNotNullOfOrNull { transfers[it.id] } ?: transfers[m.id],
@@ -364,6 +380,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                             onOpenThread = { nav.navigate(Routes.conversation(conversationId, m.id)) },
                             onRetry = { vm.retry(m) },
                             onReplyClick = { id -> val idx = messages.indexOfFirst { it.id == id }; if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) } },
+                            onMentionClick = { id -> nav.navigate(Routes.user(id)) },
                             voice = voicePlayer,
                             onVoiceToggle = { ref -> vm.toggleVoice(m.id, ref) },
                             onVoiceSeek = { ref, pos -> vm.seekVoice(m.id, ref, pos) },
@@ -420,14 +437,26 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 )
             }
         } else {
+            // @mention autocomplete (groups and channels): the members matching what's typed after "@".
+            val query = if (conv?.type != null && conv?.type != "DM" && field.selection.collapsed) MentionRules.activeQuery(text, field.selection.start) else null
+            val suggestions = remember(query, mentionMembers, canMentionAll) {
+                query?.let { MentionRules.suggest(mentionMembers, it.query, me, canMentionAll) }.orEmpty()
+            }
+            if (query != null && suggestions.isNotEmpty()) {
+                MentionSuggestions(suggestions) { choice ->
+                    val (t, cursor) = MentionRules.insert(text, query, choice)
+                    field = TextFieldValue(t, TextRange(cursor))
+                    vm.typingChanged(t)
+                }
+            }
             Composer(
-                text = text,
-                onText = { text = it; vm.typingChanged(it) },
+                text = field,
+                onText = { field = it; vm.typingChanged(it.text) },
                 replyLabel = replyTo?.let { "Replying to ${if (it.outgoing) "yourself" else users[it.senderUserId]?.displayName ?: ""}" to previewOf(it) }
                     ?: editing?.let { "Editing message" to it.text },
-                onCancelContext = { vm.replyTo.value = null; vm.editing.value = null; if (editing != null) text = "" },
+                onCancelContext = { vm.replyTo.value = null; vm.editing.value = null; if (editing != null) setText("") },
                 onAttach = { attachSheet = true },
-                onSend = { vm.send(text); text = "" },
+                onSend = { vm.send(text); setText("") },
                 placeholder = if (threadRoot != null) "Reply in thread…" else if (conv?.type == "CHANNEL") "Message #$title" else "Message",
                 voice = VoiceComposerState(
                     draft = voiceDraft,
@@ -467,7 +496,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     actionFor = null
                 }, trailing = null)
                 if (interactive && m.outgoing && m.status != MessageStatus.FAILED && m.status != MessageStatus.SENDING) MenuRow(Icons.Outlined.Edit, "Edit", onClick = {
-                    vm.editing.value = m; vm.replyTo.value = null; text = m.text; actionFor = null
+                    vm.editing.value = m; vm.replyTo.value = null; setText(m.text); actionFor = null
                 }, trailing = null)
                 if (interactive) MenuRow(Icons.Outlined.PushPin, if (m.pinned) "Unpin" else "Pin for everyone", tint = c.peach, tintBg = c.peachSoft, onClick = { vm.pin(m); actionFor = null }, trailing = null)
             }
@@ -561,8 +590,8 @@ private fun TypingRow(names: List<String>) {
 
 @Composable
 private fun Composer(
-    text: String,
-    onText: (String) -> Unit,
+    text: TextFieldValue,
+    onText: (TextFieldValue) -> Unit,
     replyLabel: Pair<String, String>?,
     onCancelContext: () -> Unit,
     onAttach: () -> Unit,
@@ -612,7 +641,7 @@ private fun Composer(
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     contentAlignment = Alignment.CenterStart,
                 ) {
-                    if (text.isEmpty()) Text(placeholder, style = Griip.type.body, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (text.text.isEmpty()) Text(placeholder, style = Griip.type.body, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     BasicTextField(
                         value = text, onValueChange = onText, textStyle = Griip.type.body.copy(color = c.textPrimary), cursorBrush = SolidColor(c.primary), maxLines = 6,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -620,7 +649,7 @@ private fun Composer(
                     )
                 }
                 Spacer(Modifier.width(6.dp))
-                val enabled = text.isNotBlank()
+                val enabled = text.text.isNotBlank()
                 if (!enabled && voice.available) {
                     Box(
                         Modifier.size(48.dp).clip(CircleShape).background(c.actionStart)

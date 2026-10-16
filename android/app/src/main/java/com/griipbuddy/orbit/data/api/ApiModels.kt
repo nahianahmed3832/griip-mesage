@@ -68,6 +68,8 @@ import kotlinx.serialization.json.JsonObject
     val archived: Boolean = false, val createdAt: Long = 0, val updatedAt: Long = 0, val memberCount: Int = 0,
     val members: List<UserDto>? = null, val joined: Boolean = true, val myRole: String? = null,
     val canPost: Boolean = true, val canManage: Boolean = false, val activeCall: ActiveCallDto? = null,
+    /** Whether this server lets you use @everyone here (false from older servers, which don't support it). */
+    val canMentionAll: Boolean = false,
     val federation: ConversationFederationDto? = null,
 )
 /** Servers of the people in a conversation who are on another server, as this server sees them. */
@@ -94,12 +96,16 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class SendMessageReq(
     val conversationId: String, val messageId: String, val cls: String, val sentAt: Long, val nonce: String,
     val ciphertext: String, val signature: String, val recipients: List<WireKeyWrap>,
+    /** Asks the server to attest @everyone (null: omitted). The server checks who may and how often. */
+    val mentionAll: Boolean? = null,
 )
 @Serializable data class SendMessageRes(val messageId: String, val serverTs: Long, val recipientCount: Int, val duplicate: Boolean = false)
 @Serializable data class QueuePayload(
     val v: Int? = null, val cls: String? = null, val sentAt: Long? = null, val serverTs: Long? = null, val nonce: String? = null,
     val ciphertext: String? = null, val signature: String? = null, val enc: String? = null, val wrappedKey: String? = null,
     val status: String? = null, val at: Long? = null,
+    /** The server attested @everyone on this copy (servers from 2026-10-17). */
+    val mentionAll: Boolean? = null,
 )
 @Serializable data class QueueItem(
     val id: Long, val kind: String, val conversationId: String, val messageId: String, val senderUserId: String,

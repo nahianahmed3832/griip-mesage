@@ -77,6 +77,8 @@ export interface DecryptedMessage {
   cls: string;
   sentAt: number;
   payload: any;
+  /** The server attested @everyone on this copy (docs/MENTIONS.md). */
+  mentionAllAttested?: boolean;
 }
 
 /** Sending or opening is paused: these users' identity keys differ from the ones pinned on first contact (T1.2). */
@@ -256,6 +258,7 @@ export class GriipClient {
           this.receipts.push(it);
         } else {
           const m = await this.decrypt(it);
+          m.mentionAllAttested = it.payload?.mentionAll === true;
           if (!this.received.some((r) => r.messageId === m.messageId)) this.received.push(m);
         }
         ackIds.push(it.id);
@@ -312,7 +315,7 @@ export class GriipClient {
   }
 
   /** Encrypt to every member device (refetching keys once on device_mismatch) and submit. */
-  async send(conversationId: string, payload: unknown, cls: "message" | "control" = "message", messageId?: string) {
+  async send(conversationId: string, payload: unknown, cls: "message" | "control" = "message", messageId?: string, extra: { mentionAll?: boolean } = {}) {
     const id = messageId ?? crypto.randomUUID();
     for (let attempt = 0; attempt < 2; attempt++) {
       const users = await this.conversationKeys(conversationId);
@@ -321,7 +324,7 @@ export class GriipClient {
       const devices = users.flatMap((u) => this.verifiedDevices(u)).filter((d) => d.id !== this.deviceId);
       const env = await this.encrypt(conversationId, payload, cls, devices, id);
       try {
-        return await this.req("POST", "/v1/messages", env);
+        return await this.req("POST", "/v1/messages", { ...env, ...extra });
       } catch (e) {
         if (e instanceof ApiFailure && e.status === 409 && e.body?.error?.code === "device_mismatch" && attempt === 0) continue;
         throw e;

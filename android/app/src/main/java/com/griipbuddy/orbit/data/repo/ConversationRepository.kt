@@ -55,6 +55,7 @@ class ConversationRepository(
         d.members?.forEach { users.remember(it) }
         val members = d.members.orEmpty().map { MemberSummary(it.id, it.username, it.displayName, it.avatarColor, it.role, it.online, it.homeServer) }
         _federation.update { m -> if (d.federation != null) m + (d.id to d.federation) else m - d.id }
+        _mentionAll.update { m -> if (d.canMentionAll) m + (d.id to true) else m - d.id }
         val local = db.conversations().get(d.id)
         val e = ConversationEntity(
             id = d.id, type = d.type, orgId = d.orgId, scope = d.scope, scopeId = d.scopeId, scopeName = d.scopeName, kind = d.kind,
@@ -76,6 +77,22 @@ class ConversationRepository(
         upsertFromServer(api.post<GroupReq, ConversationRes>("/v1/conversations/group", GroupReq(name, memberIds)).conversation)
 
     suspend fun members(id: String) = api.get<UsersRes>("/v1/conversations/$id/members").members.also { it.forEach { u -> users.remember(u) } }
+
+    private val _mentionAll = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+
+    /** Conversations where the server lets this account use @everyone (refreshed with the conversation). */
+    val mentionAll: StateFlow<Map<String, Boolean>> = _mentionAll
+
+    /**
+     * The people a mention can point at: the conversation's full member list from the server, or (offline) the members
+     * stored with it. Ids are the mention targets; usernames are what the text shows.
+     */
+    suspend fun mentionMembers(id: String): List<com.griipbuddy.orbit.data.model.MentionMember> {
+        val remote = runCatching { members(id) }.getOrNull()
+        if (remote != null) return remote.map { com.griipbuddy.orbit.data.model.MentionMember(it.id, it.username, it.displayName) }
+        val conv = db.conversations().get(id) ?: return emptyList()
+        return ConversationRepository.members(conv).map { com.griipbuddy.orbit.data.model.MentionMember(it.id, it.username, it.displayName) }
+    }
 
     suspend fun update(id: String, name: String? = null, topic: String? = null, archived: Boolean? = null) =
         upsertFromServer(api.patch<PatchConversationReq, ConversationRes>("/v1/conversations/$id", PatchConversationReq(name, topic, archived)).conversation)

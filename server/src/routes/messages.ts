@@ -4,6 +4,7 @@ import { type AppContext, me, parse, requireAuth, zB64, zKey, zSig } from "../co
 import { canonical, verifyEd25519 } from "../crypto.js";
 import { type QueueItemRow, queueItemToWire } from "../hub.js";
 import { ApiError, conflict, forbidden, now } from "../util.js";
+import { MENTION_ALL_MESSAGES, mentionAllPermission, mentionAllRateLimited } from "../mentions.js";
 
 const MAX_CIPHERTEXT_B64 = 128 * 1024; // ≈ 96 KiB of ciphertext per message (attachments go via /v1/attachments)
 
@@ -18,6 +19,11 @@ const zEnvelope = z.object({
   recipients: z
     .array(z.object({ deviceId: z.string().max(64), enc: zKey, wrappedKey: z.string().length(64).regex(/^[A-Za-z0-9+/]+={0,2}$/) }))
     .max(1000),
+  /**
+   * The sender asks for @everyone (docs/MENTIONS.md). Content stays encrypted: the server only checks its policy and
+   * marks the recipients' copies, and recipients treat @everyone as a mention only with that mark.
+   */
+  mentionAll: z.boolean().optional(),
 });
 
 export default async function messageRoutes(app: FastifyInstance, ctx: AppContext) {
@@ -64,6 +70,14 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
       throw new ApiError(400, "bad_signature", "Envelope signature does not verify against the sending device");
     }
 
+    // @everyone: only for messages, only where the policy allows, at most mentionAllPerHour new ones an hour. A retry of
+    // an accepted message returned above (duplicate) and is never counted twice.
+    const mentionAll = e.mentionAll === true && e.cls === "message";
+    if (mentionAll) {
+      const refusal = mentionAllPermission(ctx, conv, userId) ?? (mentionAllRateLimited(ctx, conv.id, userId) ? "mention_all_rate_limited" : null);
+      if (refusal) throw new ApiError(refusal === "mention_all_rate_limited" ? 429 : 403, refusal, MENTION_ALL_MESSAGES[refusal]);
+    }
+
     // The recipient set must equal the active devices of current members (minus this device).
     const expected = db
       .prepare(
@@ -95,6 +109,9 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
       db.prepare(
         "INSERT INTO submitted_messages (message_id, sender_device_id, sender_user_id, conversation_id, recipient_count, server_ts, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       ).run(e.messageId, deviceId, userId, conv.id, e.recipients.length, t, expiresAt);
+      if (mentionAll) {
+        db.prepare("INSERT INTO mention_all_events (conversation_id, user_id, message_id, at) VALUES (?, ?, ?, ?)").run(conv.id, userId, e.messageId, t);
+      }
       const ins = db.prepare(
         `INSERT INTO delivery_queue (recipient_device_id, kind, conversation_id, message_id, sender_user_id, sender_device_id, payload, created_at, expires_at)
          VALUES (?, 'envelope', ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
@@ -111,6 +128,8 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
           signature: e.signature,
           enc: r.enc,
           wrappedKey: r.wrappedKey,
+          // Server-attested @everyone: omitted otherwise, so ordinary messages keep their exact queue payload.
+          ...(mentionAll ? { mentionAll: true } : {}),
         });
         const home = homeOf.get(r.deviceId);
         if (home) {

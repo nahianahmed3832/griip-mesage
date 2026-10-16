@@ -14,6 +14,9 @@ import com.griipbuddy.orbit.voice.AndroidAudioRecorder
 import com.griipbuddy.orbit.voice.VoiceDraftController
 import com.griipbuddy.orbit.voice.VoiceNote
 import com.griipbuddy.orbit.data.model.AttachmentRef
+import com.griipbuddy.orbit.data.model.MentionMember
+import com.griipbuddy.orbit.data.model.MentionRules
+import com.griipbuddy.orbit.data.model.MentionSet
 import com.griipbuddy.orbit.di.AppContainer
 import com.griipbuddy.orbit.ui.friendly
 import com.griipbuddy.orbit.ui.media.MediaExport
@@ -57,6 +60,19 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     val connection = c.realtime.state
     val call = c.calls.state
 
+    /** Who `@` can mention here (full member list; ids are the targets) and whether @everyone is allowed. */
+    val mentionMembers = MutableStateFlow<List<MentionMember>>(emptyList())
+    val canMentionAll = c.conversations.mentionAll.map { it[conversationId] == true }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun loadMentionMembers() = viewModelScope.launch {
+        val conv = c.db.conversations().get(conversationId)
+        if (conv?.type == "DM") return@launch
+        mentionMembers.value = c.conversations.mentionMembers(conversationId)
+    }
+
+    /** What [text] mentions, resolved against this conversation's members only. */
+    fun mentionsIn(text: String): MentionSet = MentionRules.resolve(text, mentionMembers.value, canMentionAll.value, me)
+
     val replyTo = MutableStateFlow<MessageEntity?>(null)
     val editing = MutableStateFlow<MessageEntity?>(null)
     val error = MutableStateFlow<String?>(null)
@@ -70,7 +86,7 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     private val playedKeys = HashSet<String>()
 
     init {
-        viewModelScope.launch { c.conversations.refreshOne(conversationId) }
+        viewModelScope.launch { c.conversations.refreshOne(conversationId); loadMentionMembers() }
         viewModelScope.launch { runCatching { memberIds.value = c.directory.conversationMemberIds(conversationId) } }
         viewModelScope.launch {
             val conv = c.db.conversations().get(conversationId)
@@ -181,8 +197,10 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
         val ed = editing.value
         viewModelScope.launch {
             runCatching {
-                if (ed != null) c.messages.edit(ed, t)
-                else c.messages.sendText(conversationId, t, replyTo = replyTo.value?.id, threadRoot = threadRoot)
+                // Resolved from the loaded member list; if it hasn't loaded yet the repository resolves it itself.
+                val resolved = if (mentionMembers.value.isNotEmpty()) mentionsIn(t) else null
+                if (ed != null) c.messages.edit(ed, t, resolved)
+                else c.messages.sendText(conversationId, t, replyTo = replyTo.value?.id, threadRoot = threadRoot, mentions = resolved)
             }.onFailure { error.value = it.friendly() }
             replyTo.value = null
             editing.value = null

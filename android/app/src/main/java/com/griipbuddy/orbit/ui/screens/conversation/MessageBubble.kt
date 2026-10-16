@@ -1,5 +1,9 @@
 package com.griipbuddy.orbit.ui.screens.conversation
 
+import com.griipbuddy.orbit.data.model.MentionSpan
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -87,6 +91,8 @@ data class BubbleModel(
     val threadCount: Int,
     val isGroupConv: Boolean,
     val replyPreview: String? = null,
+    /** Where the text mentions people (from the message's mentioned ids, docs/MENTIONS.md). */
+    val mentions: List<MentionSpan> = emptyList(),
 )
 
 /**
@@ -109,6 +115,7 @@ fun MessageBubble(
     voice: VoicePlayer.State = VoicePlayer.State(),
     onVoiceToggle: (AttachmentRef) -> Unit = {},
     onVoiceSeek: (AttachmentRef, Long) -> Unit = { _, _ -> },
+    onMentionClick: (String) -> Unit = {},
 ) {
     val c = Griip.colors
     val m = b.m
@@ -179,7 +186,7 @@ fun MessageBubble(
                             } else AttachmentView(a, out, transfer, localFile(a), onOpenAttachment)
                             if (m.text.isNotEmpty()) Spacer(Modifier.height(6.dp))
                         }
-                        if (m.text.isNotEmpty()) Text(richText(m.text, out), style = Griip.type.body, color = fg)
+                        if (m.text.isNotEmpty()) Text(richText(m.text, out, b.mentions, me, onMentionClick), style = Griip.type.body, color = fg)
                     }
                 }
                 Row(Modifier.align(Alignment.End).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -249,16 +256,29 @@ private fun StatusIcon(status: String, tint: Color) {
     }
 }
 
+/**
+ * Message text with its mentions drawn: only spans that resolve to the message's mentioned ids (a stray "@word" stays
+ * plain). A mention of you is highlighted; tapping a person's mention opens their profile.
+ */
 @Composable
-private fun richText(text: String, out: Boolean): AnnotatedString {
+private fun richText(text: String, out: Boolean, spans: List<MentionSpan>, me: String?, onMentionClick: (String) -> Unit): AnnotatedString {
     val c = Griip.colors
-    val mention = Regex("@[a-z0-9._]{3,24}", RegexOption.IGNORE_CASE)
+    if (spans.isEmpty()) return AnnotatedString(text)
+    val base = SpanStyle(fontWeight = FontWeight.SemiBold, color = if (out) c.onBubbleOutgoing else c.primaryDeep)
+    val mine = base.copy(background = c.primary.copy(alpha = if (out) 0.18f else 0.16f))
     return buildAnnotatedString {
         var last = 0
-        for (mt in mention.findAll(text)) {
-            append(text.substring(last, mt.range.first))
-            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = c.primaryDeep)) { append(mt.value) }
-            last = mt.range.last + 1
+        for (sp in spans.sortedBy { it.start }) {
+            if (sp.start < last || sp.end > text.length) continue
+            append(text.substring(last, sp.start))
+            val style = if (sp.userId == null || sp.userId == me) mine else base
+            val id = sp.userId
+            if (id != null) {
+                withLink(LinkAnnotation.Clickable("mention:$id", TextLinkStyles(style)) { onMentionClick(id) }) { append(text.substring(sp.start, sp.end)) }
+            } else {
+                withStyle(style) { append(text.substring(sp.start, sp.end)) }
+            }
+            last = sp.end
         }
         append(text.substring(last))
     }

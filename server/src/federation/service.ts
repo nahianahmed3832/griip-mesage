@@ -3,6 +3,7 @@
  * core nodes, signed requests to peers, global address lookup, remote users ("shadows"), the outbox and inbound
  * delivery. It never sees message content: it moves the same ciphertext envelopes the local queue holds.
  */
+import { withoutMentionAll } from "../mentions.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -560,7 +561,8 @@ export class Federation {
               `INSERT OR IGNORE INTO delivery_queue (recipient_device_id, kind, conversation_id, message_id, sender_user_id, sender_device_id, payload, created_at, expires_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
             )
-            .get(it.recipientDeviceId, it.kind, convId, it.messageId, it.senderUserId, it.senderDeviceId, it.payload, t, expiresAt) as QueueItemRow | undefined;
+            // A peer can't attest @everyone for this server's members: the mark is removed (docs/MENTIONS.md).
+            .get(it.recipientDeviceId, it.kind, convId, it.messageId, it.senderUserId, it.senderDeviceId, withoutMentionAll(it.payload), t, expiresAt) as QueueItemRow | undefined;
           if (row) queued.push(row);
           if (it.kind === "envelope" && payload.cls === "message") db.prepare("UPDATE conversations SET updated_at = ? WHERE id = ?").run(t, convId);
         }

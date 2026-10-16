@@ -32,6 +32,9 @@ import com.griipbuddy.orbit.data.model.AttachmentRef
 import com.griipbuddy.orbit.voice.VoiceNote
 import com.griipbuddy.orbit.data.model.CallInfo
 import com.griipbuddy.orbit.data.model.MessageStatus
+import com.griipbuddy.orbit.data.model.MentionNotify
+import com.griipbuddy.orbit.data.model.MentionRules
+import com.griipbuddy.orbit.data.model.MentionSet
 import com.griipbuddy.orbit.data.model.Payload
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -160,16 +163,26 @@ class MessageRepository(
 
     // ─────────────────────────── Sending ───────────────────────────
 
-    suspend fun sendText(cid: String, text: String, replyTo: String? = null, threadRoot: String? = null, attachments: List<AttachmentRef> = emptyList(), presetId: String? = null): String {
+    /**
+     * [mentions]: what the composer resolved against the conversation's members (docs/MENTIONS.md). Without it (a reply
+     * from a notification) the text is resolved here against the members known for the conversation.
+     */
+    suspend fun sendText(
+        cid: String, text: String, replyTo: String? = null, threadRoot: String? = null, attachments: List<AttachmentRef> = emptyList(),
+        presetId: String? = null, mentions: MentionSet? = null,
+    ): String {
         val s = session.session ?: error("not signed in")
         val id = presetId ?: UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
-        val mentionIds = resolveMentions(text)
-        val payload = Payload(type = "text", text = text, replyTo = replyTo, threadRoot = threadRoot, mentions = mentionIds.ifEmpty { null }, attachments = attachments.ifEmpty { null })
+        val m = mentions ?: resolveMentions(cid, text)
+        val payload = Payload(
+            type = "text", text = text, replyTo = replyTo, threadRoot = threadRoot, mentions = m.ids.ifEmpty { null },
+            mentionAll = if (m.all) true else null, attachments = attachments.ifEmpty { null },
+        )
         val existing = db.messages().get(id)
         val msg = MessageEntity(
             id = id, conversationId = cid, senderUserId = s.userId, senderDeviceId = s.deviceId, outgoing = true, kind = "text", text = text,
-            replyToId = replyTo, threadRootId = threadRoot, mentionsJson = json.encodeToString(listOfStrings, mentionIds),
+            replyToId = replyTo, threadRootId = threadRoot, mentionsJson = json.encodeToString(listOfStrings, MentionRules.stored(m)),
             attachmentsJson = json.encodeToString(attachmentsSer, attachments), sentAt = existing?.sentAt ?: now, sortTs = existing?.sortTs ?: now, status = MessageStatus.SENDING,
         )
         db.messages().upsert(msg)
@@ -179,11 +192,17 @@ class MessageRepository(
         return id
     }
 
-    private suspend fun resolveMentions(text: String): List<String> {
-        val names = Regex("@([a-z0-9._]{3,24})").findAll(text.lowercase()).map { it.groupValues[1] }.distinct().toList()
-        val ids = ArrayList<String>()
-        for (n in names) db.users().byUsername(n)?.id?.let { ids += it }
-        return ids
+    /**
+     * Resolves `@username` tokens against this conversation's members only. It used to look usernames up among every
+     * user the phone knew, so a token could point at someone outside the conversation, or `@ann:other.server` at a
+     * local "ann" (docs/MENTIONS.md).
+     */
+    private suspend fun resolveMentions(cid: String, text: String): MentionSet {
+        if (!text.contains('@')) return MentionSet.NONE
+        val conv = db.conversations().get(cid) ?: return MentionSet.NONE
+        if (conv.type == "DM") return MentionSet.NONE
+        val members = conversations.mentionMembers(cid)
+        return MentionRules.resolve(text, members, conversations.mentionAll.value[cid] == true, myUserId)
     }
 
     private suspend fun sendControl(cid: String, payload: Payload) {
@@ -208,10 +227,13 @@ class MessageRepository(
         sendControl(m.conversationId, Payload(type = "reaction", target = m.id, emoji = emoji, add = add))
     }
 
-    suspend fun edit(m: MessageEntity, newText: String) {
+    /** Edits keep mention targets in step with the text (members only); @everyone stays as it was sent. */
+    suspend fun edit(m: MessageEntity, newText: String, resolved: MentionSet? = null) {
         if (!m.outgoing || !canSendIn(m.conversationId)) return
-        db.messages().upsert(m.copy(text = newText, editedAt = System.currentTimeMillis()))
-        sendControl(m.conversationId, Payload(type = "edit", target = m.id, text = newText))
+        val ids = (resolved ?: resolveMentions(m.conversationId, newText)).ids
+        val stored = MentionRules.stored(MentionSet(ids, MentionRules.fromStored(mentions(m)).all))
+        db.messages().upsert(m.copy(text = newText, editedAt = System.currentTimeMillis(), mentionsJson = json.encodeToString(listOfStrings, stored)))
+        sendControl(m.conversationId, Payload(type = "edit", target = m.id, text = newText, mentions = ids))
     }
 
     suspend fun delete(m: MessageEntity) {
@@ -415,9 +437,14 @@ class MessageRepository(
                 val now = System.currentTimeMillis()
                 val sentAt = if (now - item.createdAt > 20 * 3600_000L) now else item.createdAt
                 val sealed = crypto.seal(EnvelopeHeader(item.messageId, item.conversationId, s.userId, s.deviceId, sentAt, item.cls), item.payloadJson.toByteArray(), recips)
+                // @everyone asks the server for its attestation, on every attempt (a retry of an accepted message is a duplicate there).
+                val mentionAll = item.cls == "message" && runCatching { json.decodeFromString(Payload.serializer(), item.payloadJson).mentionAll == true }.getOrDefault(false)
                 val res = api.post<SendMessageReq, SendMessageRes>(
                     "/v1/messages",
-                    SendMessageReq(item.conversationId, item.messageId, item.cls, sentAt, sealed.nonce, sealed.ciphertext, sealed.signature, sealed.recipients.map { WireKeyWrap(it.deviceId, it.enc, it.wrappedKey) }),
+                    SendMessageReq(
+                        item.conversationId, item.messageId, item.cls, sentAt, sealed.nonce, sealed.ciphertext, sealed.signature,
+                        sealed.recipients.map { WireKeyWrap(it.deviceId, it.enc, it.wrappedKey) }, mentionAll = if (mentionAll) true else null,
+                    ),
                 )
                 db.outbox().remove(item.messageId)
                 if (item.visible) db.messages().markSent(item.messageId, res.serverTs)
@@ -561,17 +588,22 @@ class MessageRepository(
         when (pl.type) {
             "text" -> {
                 val atts = pl.attachments.orEmpty()
+                // @everyone counts only with the server's mark on this copy, in a group or channel; a claim inside the
+                // payload alone (or from another server) is plain text (docs/MENTIONS.md).
+                val received = MentionRules.received(pl.mentions, pl.mentionAll, item.payload.mentionAll, conv?.type)
                 val m = MessageEntity(
                     id = item.messageId, conversationId = item.conversationId, senderUserId = item.senderUserId, senderDeviceId = item.senderDeviceId,
                     outgoing = mine, kind = "text", text = pl.text.orEmpty(), replyToId = pl.replyTo, threadRootId = pl.threadRoot,
-                    mentionsJson = json.encodeToString(listOfStrings, pl.mentions.orEmpty()), attachmentsJson = json.encodeToString(attachmentsSer, atts),
+                    mentionsJson = json.encodeToString(listOfStrings, MentionRules.stored(received)), attachmentsJson = json.encodeToString(attachmentsSer, atts),
                     sentAt = item.payload.sentAt ?: serverTs, serverTs = serverTs, sortTs = serverTs,
                     status = if (mine) MessageStatus.SENT else MessageStatus.RECEIVED,
                 )
                 if (db.messages().insertIgnore(m) == -1L) return
                 replayPending(item.conversationId, item.messageId, conv, me)
                 val viewing = appState.foreground.value && appState.viewingConversation.value == item.conversationId
-                val mention = !mine && (me in pl.mentions.orEmpty())
+                val mention = !mine && (me in received.ids || received.all)
+                // A muted conversation still notifies when someone mentions you by name; @everyone respects the mute.
+                val personalMention = !mine && me in received.ids
                 val unread = if (!mine && !viewing) 1 else 0
                 val senderName = if (mine) "You" else db.users().get(item.senderUserId)?.displayName ?: "Someone"
                 if (pl.threadRoot == null) {
@@ -579,7 +611,7 @@ class MessageRepository(
                 } else if (unread > 0) db.conversations().bumpUnread(item.conversationId, 0, if (mention) 1 else 0)
                 if (viewing && !mine) scope.launch { markConversationRead(item.conversationId) }
                 val muted = conv?.muted == true
-                if (!mine && !viewing && settings.current.notifications && (!muted || mention)) {
+                if (!mine && !viewing && MentionNotify.shouldNotify(settings.current.notifications, muted, mention, personalMention)) {
                     val title = conv?.let { ConversationRepository.title(it, me) } ?: senderName
                     notify(Notice(item.conversationId, if (conv?.type == "CHANNEL") "#$title" else title, senderName, preview(pl), mention, conv?.type != "DM", canReply = conv?.canPost != false))
                 }
@@ -587,7 +619,11 @@ class MessageRepository(
             "edit" -> {
                 val t = target(pl, item, serverTs) ?: return
                 if (t.senderUserId == item.senderUserId && !t.deleted) {
-                    db.messages().upsert(t.copy(text = pl.text.orEmpty(), editedAt = serverTs))
+                    // New text, new mention targets (no new notification); @everyone stays as it was when sent.
+                    val mentionsJson = pl.mentions?.let { ids ->
+                        json.encodeToString(listOfStrings, MentionRules.stored(MentionSet(ids.distinct(), MentionRules.fromStored(mentions(t)).all)))
+                    } ?: t.mentionsJson
+                    db.messages().upsert(t.copy(text = pl.text.orEmpty(), editedAt = serverTs, mentionsJson = mentionsJson))
                     if (db.conversations().get(t.conversationId)?.lastMessageId == t.id) refreshPreview(t.conversationId)
                 }
             }

@@ -43,6 +43,13 @@ export interface Config {
   callRecordRetentionDays: number;
   /** Audit-log rows older than this are deleted (RETENTION.md). */
   auditRetentionDays: number;
+  /**
+   * @everyone policy (docs/MENTIONS.md). Group admins and channel managers may always mention everyone; other members
+   * only in conversations with at most this many members (0: admins and managers only).
+   */
+  mentionAllMemberLimit: number;
+  /** @everyone messages one person may send per conversation per hour (any role). */
+  mentionAllPerHour: number;
   livekit: {
     /** URL clients use to reach LiveKit (ws:// or wss://). */
     publicUrl: string;
@@ -139,6 +146,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ringTimeoutSeconds: int("RING_TIMEOUT_SECONDS", 45),
     callRecordRetentionDays: Math.max(int("CALL_RECORD_RETENTION_DAYS", 90), 1),
     auditRetentionDays: Math.max(int("AUDIT_RETENTION_DAYS", 365), 30),
+    mentionAllMemberLimit: Math.max(int("MENTION_ALL_MEMBER_LIMIT", 10), 0),
+    mentionAllPerHour: Math.max(int("MENTION_ALL_PER_HOUR", 5), 1),
     livekit:
       lkKey && lkSecret && lkPublic
         ? {

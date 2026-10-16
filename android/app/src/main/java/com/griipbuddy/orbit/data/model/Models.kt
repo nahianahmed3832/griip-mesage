@@ -10,6 +10,8 @@ data class Payload(
     val replyTo: String? = null,
     val threadRoot: String? = null,
     val mentions: List<String>? = null,
+    /** @everyone (docs/MENTIONS.md). Omitted unless true, so other messages keep their exact wire format. */
+    val mentionAll: Boolean? = null,
     val attachments: List<AttachmentRef>? = null,
     val target: String? = null,
     val emoji: String? = null,

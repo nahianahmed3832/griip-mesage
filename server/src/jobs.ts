@@ -9,6 +9,8 @@ export interface CleanupResult {
   challenges: number;
   sessions: number;
   pairing: number;
+  /** @everyone counters older than a day (only the last hour is ever consulted). */
+  mentionAll: number;
   attachments: number;
   /** Expired federation nonces, inbox dedupe keys and outbox items. */
   federation: number;
@@ -32,6 +34,7 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     challenges: db.prepare("DELETE FROM auth_challenges WHERE expires_at <= ?").run(t).changes,
     sessions: db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(t).changes,
     pairing: db.prepare("DELETE FROM pairing_requests WHERE expires_at <= ?").run(t).changes,
+    mentionAll: db.prepare("DELETE FROM mention_all_events WHERE at <= ?").run(t - 86_400_000).changes,
     attachments: purgeExpiredAttachments(ctx),
     federation: ctx.federation ? Object.values(ctx.federation.cleanup(t)).reduce((a, b) => a + b, 0) : 0,
     callsTimedOut: 0,

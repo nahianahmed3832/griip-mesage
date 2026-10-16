@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { mentionAllPermission } from "../mentions.js";
 import { z } from "zod";
 import type { ConversationRow } from "../authz.js";
 import { type AppContext, me, parse, requireAuth, zText } from "../context.js";
@@ -49,6 +50,8 @@ export function conversationView(ctx: AppContext, c: ConversationRow, userId: st
     myRole,
     canPost: authz.canPost(c, userId),
     canManage: authz.canManageConversation(c, userId),
+    // Whether the app should offer @everyone here (the hourly limit is checked when sending).
+    canMentionAll: mentionAllPermission(ctx, c, userId) === null,
     activeCall: call ? { id: call.id, video: !!call.video, state: call.state, startedAt: call.created_at } : null,
     federation: federationInfo(ctx, c.id),
   };
