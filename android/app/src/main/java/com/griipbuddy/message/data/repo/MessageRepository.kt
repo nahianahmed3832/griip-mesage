@@ -32,6 +32,7 @@ import com.griipbuddy.message.data.model.CallInfo
 import com.griipbuddy.message.data.model.MessageStatus
 import com.griipbuddy.message.data.model.Payload
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -43,6 +44,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -209,6 +211,17 @@ class MessageRepository(
     suspend fun retry(id: String) {
         val m = db.messages().get(id) ?: return
         if (m.status != MessageStatus.FAILED) return
+        // A file that never finished uploading is sent again from its local copy (T2.6).
+        attachments(m).firstOrNull { it.id == AttachmentFiles.PENDING }?.let { ref ->
+            val local = files.child(ref.sha256)?.takeIf { it.exists() }
+            if (local == null) {
+                db.messages().setStatus(id, MessageStatus.FAILED, null, "The original file is no longer on this phone")
+                return
+            }
+            db.messages().setStatus(id, MessageStatus.SENDING, null, null)
+            uploadAttachment(id, m.conversationId, ref.name, ref.mime, local, m.text)
+            return
+        }
         sendText(m.conversationId, m.text, m.replyToId, m.threadRootId, attachments(m), presetId = id)
     }
 
@@ -244,26 +257,66 @@ class MessageRepository(
 
     // ─────────── Attachments (encrypted before upload) ───────────
 
-    suspend fun sendAttachment(cid: String, name: String, mime: String, bytes: ByteArray, caption: String) {
+    /** The picked file is larger than attachments may be (25 MB). */
+    class AttachmentTooLarge : Exception("Files up to 25 MB can be shared in this beta.")
+
+    /**
+     * Copies the picked file into app storage (streamed, never whole in memory), then encrypts and uploads
+     * it (T2.6). The local copy is the retry source until the upload succeeds.
+     */
+    suspend fun sendAttachment(cid: String, name: String, mime: String, input: java.io.InputStream, caption: String) {
         val s = session.session ?: return
         val id = UUID.randomUUID().toString()
+        val local = files.fileFor(id, name)
+        withContext(Dispatchers.IO) {
+            try {
+                local.outputStream().use { out ->
+                    val buf = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        total += n
+                        if (total > MAX_ATTACHMENT_BYTES) throw AttachmentTooLarge()
+                        out.write(buf, 0, n)
+                    }
+                }
+            } catch (e: Exception) {
+                local.delete()
+                throw e
+            }
+        }
         val now = System.currentTimeMillis()
-        val local = files.fileFor(id, name).apply { writeBytes(bytes) }
-        val placeholder = AttachmentRef(AttachmentFiles.PENDING, name, mime, bytes.size.toLong(), "", "", local.name)
+        val placeholder = AttachmentRef(AttachmentFiles.PENDING, name, mime, local.length(), "", "", local.name)
         db.messages().upsert(
             MessageEntity(id, cid, s.userId, s.deviceId, true, "text", caption, attachmentsJson = json.encodeToString(attachmentsSer, listOf(placeholder)), sentAt = now, sortTs = now, status = MessageStatus.SENDING),
         )
         db.conversations().bumpPreview(cid, id, "📎 $name", now, "You", 0, 0)
+        uploadAttachment(id, cid, name, mime, local, caption)
+    }
+
+    /**
+     * Encrypts [local] to a temporary file and uploads it, retrying transient failures. Any failure
+     * leaves the message FAILED with a reason (never stuck in SENDING); the local copy stays for a retry.
+     */
+    private suspend fun uploadAttachment(id: String, cid: String, name: String, mime: String, local: File, caption: String) {
+        val enc = File(context.cacheDir, "$id.enc")
+        _transfer.update { it + (id to 0f) }
         try {
-            val enc = AttachmentCrypto.encrypt(bytes)
-            _transfer.update { it + (id to 0f) }
-            val up = api.upload("/v1/attachments?conversationId=$cid", enc.bytes) { p -> _transfer.update { it + (id to p) } }
-            val ref = AttachmentRef(up.id, name, mime, bytes.size.toLong(), enc.key, enc.nonce, enc.sha256)
-            files.fileFor(id, name).renameTo(files.fileFor(up.id, name))
+            val meta = withContext(Dispatchers.IO) { AttachmentCrypto.encryptFile(local, enc) }
+            val up = TransferRetry.run { api.uploadFile("/v1/attachments?conversationId=$cid", enc) { p -> _transfer.update { it + (id to p) } } }
+            val ref = AttachmentRef(up.id, name, mime, local.length(), meta.key, meta.nonce, meta.sha256)
+            local.renameTo(files.fileFor(up.id, name))
             sendText(cid, caption, attachments = listOf(ref), presetId = id)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e // left SENDING; marked interrupted at the next start (failInterruptedUploads)
         } catch (e: ApiException) {
             db.messages().setStatus(id, MessageStatus.FAILED, null, e.message)
+        } catch (e: Exception) {
+            Log.w(TAG, "attachment send failed: ${e.javaClass.simpleName}")
+            db.messages().setStatus(id, MessageStatus.FAILED, null, "Couldn't send this file")
         } finally {
+            enc.delete()
             _transfer.update { it - id }
         }
     }
@@ -271,13 +324,28 @@ class MessageRepository(
     fun localAttachment(ref: AttachmentRef): File? =
         files.fileFor(ref.id, ref.name).takeIf { it.exists() } ?: files.child(ref.sha256)?.takeIf { ref.id == AttachmentFiles.PENDING && it.exists() }
 
+    /**
+     * Downloads the ciphertext to a partial file (resumed after an interruption), checks its hash, and
+     * decrypts it next to the other attachments (T2.6). A corrupt partial file is discarded.
+     */
     suspend fun downloadAttachment(ref: AttachmentRef): File {
         localAttachment(ref)?.let { return it }
+        val part = File(context.cacheDir, "dl-${ref.id.replace(Regex("[^A-Za-z0-9_-]"), "_")}.part")
         _transfer.update { it + (ref.id to 0f) }
         try {
-            val ct = api.download("/v1/attachments/${ref.id}") { p -> _transfer.update { it + (ref.id to p) } }
-            val plain = AttachmentCrypto.decrypt(ct, ref.key, ref.nonce, ref.sha256)
-            return files.fileFor(ref.id, ref.name).apply { writeBytes(plain) }
+            TransferRetry.run { api.downloadTo("/v1/attachments/${ref.id}", part) { p -> _transfer.update { it + (ref.id to p) } } }
+            val out = files.fileFor(ref.id, ref.name)
+            try {
+                withContext(Dispatchers.IO) { AttachmentCrypto.decryptFile(part, ref.key, ref.nonce, ref.sha256, out) }
+            } catch (e: EnvelopeException) {
+                part.delete() // start over next time rather than resume corrupt bytes
+                throw e
+            }
+            part.delete()
+            return out
+        } catch (e: ApiException) {
+            if (e.status == 404) part.delete()
+            throw e
         } finally {
             _transfer.update { it - ref.id }
         }
@@ -404,6 +472,9 @@ class MessageRepository(
      */
     private suspend fun retrySetAside() = processLock.withLock {
         pending.purgeExpired()
+        // Uploads cut off by the app being killed: offer a retry instead of "sending" forever (T2.6).
+        db.messages().failInterruptedUploads("Upload interrupted · tap to retry")
+        context.cacheDir.listFiles { f -> f.name.endsWith(".enc") }?.forEach { it.delete() }
         for (q in db.quarantine().setAside()) {
             val item = runCatching { json.decodeFromString(QueueItem.serializer(), q.itemJson) }.getOrNull() ?: continue
             if (runCatching { handleItem(item) }.isSuccess) db.quarantine().remove(q.queueId)
@@ -646,6 +717,7 @@ class MessageRepository(
     }
 
     companion object {
+        const val MAX_ATTACHMENT_BYTES = 25L * 1024 * 1024
         /** Outbox `lastError` marking a send paused by an identity change. */
         private const val HELD_REASON = "identity_changed"
         private const val HELD_RECHECK_MS = 6 * 3600_000L

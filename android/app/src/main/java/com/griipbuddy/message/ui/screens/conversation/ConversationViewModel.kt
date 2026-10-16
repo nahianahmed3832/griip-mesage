@@ -116,12 +116,11 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
                 return@launch
             }
             val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
-            val bytes = withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri)?.use { it.readBytes() } } ?: return@launch
-            if (bytes.size > MAX_ATTACHMENT) {
-                error.value = "Files up to 25 MB can be shared in this beta."
-                return@launch
-            }
-            c.messages.sendAttachment(conversationId, name, mime, bytes, "")
+            // Streamed into app storage by the repository; the whole file is never held in memory (T2.6).
+            val input = withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri) } ?: return@launch
+            input.use { c.messages.sendAttachment(conversationId, name, mime, it, "") }
+        } catch (e: com.griipbuddy.message.data.repo.MessageRepository.AttachmentTooLarge) {
+            error.value = e.message
         } catch (e: Exception) {
             error.value = "Couldn't read that file"
         }

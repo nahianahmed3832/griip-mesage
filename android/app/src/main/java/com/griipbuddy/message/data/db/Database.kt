@@ -87,6 +87,10 @@ interface MessageDao {
     @Query("UPDATE messages SET status = 'SENT', serverTs = :serverTs, sortTs = :serverTs, errorText = NULL WHERE id = :id AND status IN ('SENDING','FAILED','HELD')")
     suspend fun markSent(id: String, serverTs: Long)
 
+    /** Outgoing files still "sending" when the app starts were cut off: let the user retry them (T2.6). */
+    @Query("UPDATE messages SET status = 'FAILED', errorText = :reason WHERE status = 'SENDING' AND outgoing = 1 AND attachmentsJson LIKE '%\"id\":\"pending\"%'")
+    suspend fun failInterruptedUploads(reason: String)
+
     /** Messages paused by an identity change go back to "sending" once the user accepts the key (T1.2). */
     @Query("UPDATE messages SET status = 'SENDING', errorText = NULL WHERE status = 'HELD'")
     suspend fun resumeHeld()

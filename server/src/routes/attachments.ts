@@ -103,9 +103,25 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     if (!a || a.expires_at <= now() || !ctx.authz.isMember(a.conversation_id, userId)) throw notFound("Attachment not found or expired");
     const file = fileFor(a.id);
     if (!fs.existsSync(file)) throw notFound("Attachment not found or expired");
+    reply.header("cache-control", "private, no-store");
+    reply.header("accept-ranges", "bytes");
+    // Resumable downloads (T2.6): a single "bytes=start-[end]" range, checked after membership.
+    const range = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range ?? ""));
+    if (req.headers.range !== undefined && range) {
+      const start = Number(range[1]);
+      const end = range[2] === "" ? a.size - 1 : Math.min(Number(range[2]), a.size - 1);
+      if (start >= a.size || start > end) {
+        reply.header("content-range", `bytes */${a.size}`);
+        return reply.code(416).send({ error: { code: "range_not_satisfiable", message: "Requested range is outside the file" } });
+      }
+      reply.code(206);
+      reply.header("content-type", "application/octet-stream");
+      reply.header("content-range", `bytes ${start}-${end}/${a.size}`);
+      reply.header("content-length", String(end - start + 1));
+      return reply.send(fs.createReadStream(file, { start, end }));
+    }
     reply.header("content-type", "application/octet-stream");
     reply.header("content-length", String(a.size));
-    reply.header("cache-control", "private, no-store");
     return reply.send(fs.createReadStream(file));
   });
 }

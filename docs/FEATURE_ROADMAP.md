@@ -174,7 +174,7 @@ Extend these, don't replace them:
 - **Acceptance:** after a reboot or OS kill, a message or call arrives within the agreed time with the chosen mechanism.
 - **Verification:** a device run (can't be done locally until a second phone is available).
 
-### T2.6 Attachment robustness
+### T2.6 Attachment robustness. **Done 2026-10-16** (server Range not deployed; device check pending)
 - Stream uploads and downloads (no whole-file `ByteArray`). Mark any failure as FAILED. Resume or retry. Delete failed placeholders.
 - **Verification:** server vitest for streaming; Android JVM tests.
 

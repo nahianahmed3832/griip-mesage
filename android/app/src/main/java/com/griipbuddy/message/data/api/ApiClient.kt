@@ -13,6 +13,8 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -64,19 +66,23 @@ class ApiClient(
         return decode(res, de)
     }
 
-    /** Upload raw bytes (already encrypted) with progress callback. */
-    suspend fun upload(path: String, bytes: ByteArray, onProgress: (Float) -> Unit): AttachmentUploadRes {
+    /** Streams an already-encrypted file to the relay with progress; nothing is held in memory (T2.6). */
+    suspend fun uploadFile(path: String, file: File, onProgress: (Float) -> Unit): AttachmentUploadRes {
+        val total = file.length()
         val body = object : RequestBody() {
             override fun contentType() = "application/octet-stream".toMediaType()
-            override fun contentLength() = bytes.size.toLong()
+            override fun contentLength() = total
             override fun writeTo(sink: BufferedSink) {
-                val chunk = 16 * 1024
-                var off = 0
-                while (off < bytes.size) {
-                    val n = minOf(chunk, bytes.size - off)
-                    sink.write(bytes, off, n)
-                    off += n
-                    onProgress(off.toFloat() / bytes.size)
+                file.inputStream().use { input ->
+                    val buf = ByteArray(64 * 1024)
+                    var sent = 0L
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        sink.write(buf, 0, n)
+                        sent += n
+                        onProgress(if (total > 0) sent.toFloat() / total else 1f)
+                    }
                 }
             }
         }
@@ -85,36 +91,52 @@ class ApiClient(
         return decode(res, AttachmentUploadRes.serializer())
     }
 
-    suspend fun download(path: String, onProgress: (Float) -> Unit): ByteArray = withContext(Dispatchers.IO) {
-        suspend fun once(): Pair<Int, ByteArray?> {
-            val req = Request.Builder().url(baseUrl().trimEnd('/') + path).get().apply { token()?.let { header("Authorization", "Bearer $it") } }.build()
+    /**
+     * Downloads into [dest], streaming to disk and resuming from what [dest] already holds with an HTTP
+     * Range request (T2.6). A server that ignores the range (200) restarts the file; 416 means [dest] is
+     * already complete (or wrong; the caller's hash check decides).
+     */
+    suspend fun downloadTo(path: String, dest: File, onProgress: (Float) -> Unit) = withContext(Dispatchers.IO) {
+        fun once(): Int {
+            val have = if (dest.exists()) dest.length() else 0L
+            val req = Request.Builder().url(baseUrl().trimEnd('/') + path).get().apply {
+                token()?.let { header("Authorization", "Bearer $it") }
+                if (have > 0) header("Range", "bytes=$have-")
+            }.build()
             return try {
                 http.newCall(req).execute().use { r ->
-                    if (!r.isSuccessful) return r.code to null
-                    val total = r.body?.contentLength() ?: -1L
-                    val src = r.body!!.byteStream()
-                    val out = java.io.ByteArrayOutputStream(if (total > 0) total.toInt() else 64 * 1024)
-                    val buf = ByteArray(32 * 1024)
-                    var read = 0L
-                    while (true) {
-                        val n = src.read(buf)
-                        if (n < 0) break
-                        out.write(buf, 0, n)
-                        read += n
-                        if (total > 0) onProgress(read.toFloat() / total)
+                    when {
+                        r.code == 416 -> 416
+                        !r.isSuccessful -> r.code
+                        else -> {
+                            val append = r.code == 206
+                            val total = (if (append) have else 0L) + (r.body?.contentLength() ?: -1L)
+                            var written = if (append) have else 0L
+                            FileOutputStream(dest, append).use { out ->
+                                val src = r.body!!.byteStream()
+                                val buf = ByteArray(64 * 1024)
+                                while (true) {
+                                    val n = src.read(buf)
+                                    if (n < 0) break
+                                    out.write(buf, 0, n)
+                                    written += n
+                                    if (total > 0) onProgress(written.toFloat() / total)
+                                }
+                            }
+                            200
+                        }
                     }
-                    200 to out.toByteArray()
                 }
             } catch (e: IOException) {
-                0 to null
+                0
             }
         }
-        var (code, bytes) = once()
-        if (code == 401 && reauthLock.withLock { reauth() }) once().also { code = it.first; bytes = it.second }
-        when {
-            bytes != null -> bytes!!
-            code == 0 -> throw ApiException(0, "network", "Can't reach the server")
-            code == 404 -> throw ApiException(404, "not_found", "This file has expired or you no longer have access")
+        var code = once()
+        if (code == 401 && reauthLock.withLock { reauth() }) code = once()
+        when (code) {
+            200, 416 -> Unit
+            0 -> throw ApiException(0, "network", "Can't reach the server")
+            404 -> throw ApiException(404, "not_found", "This file has expired or you no longer have access")
             else -> throw ApiException(code, "http_$code", "Download failed ($code)")
         }
     }

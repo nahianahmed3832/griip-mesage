@@ -74,7 +74,7 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
 - **No conversation history fetch from the server.** If a device is offline for more than 7 days, it misses messages permanently (`RETENTION.md`).
 - Read receipts are sent only in DMs and groups of 20 or fewer. Channels show "sent" and no per-reader receipts.
 - Large channels fan out one envelope per member device. That's fine for tens to hundreds of members but isn't optimised for thousands.
-- Attachments are limited to 25 MB and kept for 7 days. Uploads and downloads aren't resumable (an interrupted transfer restarts). Sent and received files are
+- Attachments are limited to 25 MB and kept for 7 days. Downloads resume after an interruption (2026-10-16, T2.6; the server half isn't deployed yet). Uploads retry automatically but restart from zero. Sent and received files are
   stored in app-private storage, not inside SQLCipher.
 - There's no in-app QR *scanner* yet. Invites can be shared as a QR code image, a text code, or a `griip://invite/…` link.
 - Group calls with three or more participants haven't been exercised on real devices. Capacity on the shared 2-vCPU VPS hasn't been benchmarked.

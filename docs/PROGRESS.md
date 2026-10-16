@@ -24,6 +24,34 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
 
+### T2.6 Reliable encrypted attachment transfers (2026-10-16)
+
+- **Defects:**
+  - Files were read whole into memory on both sides.
+  - Only `ApiException` was handled, so an I/O or memory error left a message stuck in SENDING.
+  - Interrupted transfers restarted from zero, and a failed upload couldn't be retried properly: the retry re-sent a `pending` reference.
+- **Telegram reference (behaviour only):** chunked transfers with part files that resume, and bounded retries. Adapted to Griip's existing format, which is unchanged: one AES-256-GCM blob plus the SHA-256 of the ciphertext inside the E2EE message. No Telegram code was used.
+- **Change (app):**
+  - Picking a file streams it into app storage, with the 25 MB cap enforced while copying.
+  - `AttachmentCrypto.encryptFile` encrypts file to file in 64 KiB steps. The output is byte-identical to the one-shot format.
+  - `ApiClient.uploadFile` streams from disk.
+  - `TransferRetry` retries network errors, busy-server (`too_many_uploads`) and 5xx 3 times (2 s, 5 s, 15 s). It never retries size, quota or storage refusals, or lost access.
+  - Every failure ends FAILED with a reason. *Retry* re-uploads the kept local copy.
+  - At start-up, uploads cut off by the app being killed become *Upload interrupted · tap to retry*, and stray temporary files are deleted.
+  - Downloads stream to `cacheDir/dl-<id>.part` and resume with a `Range` request. The SHA-256 is verified streaming, then `decryptFile` writes to a temp file that becomes the attachment only after the GCM tag verifies. A corrupt part file is discarded.
+- **Change (server):** `GET /v1/attachments/:id` supports a single `bytes=start-[end]` range (206 or 416) after the membership check.
+- **Tests:**
+  - App, 11 new:
+    - `AttachmentFileCryptoTest` (4): a 5 MB+ file round trip compatible with the one-shot format; a tampered file or wrong key gives no output and no temp file;
+    - `TransferRetryTest` (3);
+    - `ResumableDownloadTest` (4, MockWebServer): resume appends after the `Range` header; a server ignoring the range restarts; a fresh download sends no range; 404.
+  - Server: `registration_quotas.test.ts` › resumable downloads (2): partial content is correct, membership is still enforced, and 416 is returned past the end.
+  - Totals: Android **67/67**, server **74/74**.
+- **Not done:**
+  - Resumable *uploads* (needs an upload-session protocol).
+  - Constant-memory GCM decryption (needs a chunked format version).
+  - Device verification.
+
 ### T2.2 Realtime frames are never dropped (2026-10-16)
 
 - **Defect:** `RealtimeClient` emitted frames into a `MutableSharedFlow` with a 256-frame buffer using `tryEmit`. A burst arriving while the app was busy, for example fetching keys, silently dropped frames, including `queue` frames.

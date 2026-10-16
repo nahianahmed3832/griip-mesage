@@ -176,3 +176,40 @@ describe("upload limits (T1.6)", () => {
     expect(fs.readdirSync(dir).sort()).toEqual(kept.sort());
   });
 });
+
+describe("resumable downloads (T2.6)", () => {
+  let h: Harness;
+  let alice: GriipClient, bob: GriipClient, eve: GriipClient;
+  let id: string;
+  const blob = crypto.randomBytes(300_000);
+  const get = (who: GriipClient, range?: string) =>
+    fetch(`${h.baseUrl}/v1/attachments/${id}`, { headers: { authorization: `Bearer ${who.token}`, ...(range ? { range } : {}) } });
+
+  beforeAll(async () => {
+    h = await startServer();
+    alice = await h.client("rngalice");
+    bob = await h.client("rngbob");
+    eve = await h.client("rngeve");
+    const dm = (await alice.req("POST", "/v1/conversations/dm", { userId: bob.userId })).conversation.id;
+    id = (await alice.req("POST", `/v1/attachments?conversationId=${dm}`, undefined, blob)).id;
+  });
+  afterAll(async () => h.close());
+
+  it("serves the rest of a file from an offset, so an interrupted download resumes", async () => {
+    const r = await get(bob, "bytes=100000-");
+    expect(r.status).toBe(206);
+    expect(r.headers.get("content-range")).toBe(`bytes 100000-299999/300000`);
+    const tail = Buffer.from(await r.arrayBuffer());
+    expect(Buffer.concat([blob.subarray(0, 100000), tail]).equals(blob)).toBe(true);
+    const mid = await get(bob, "bytes=10-19");
+    expect(Buffer.from(await mid.arrayBuffer()).equals(blob.subarray(10, 20))).toBe(true);
+  });
+
+  it("still checks membership, and rejects a range past the end", async () => {
+    expect((await get(eve, "bytes=0-")).status).toBe(404);
+    const r = await get(bob, "bytes=300000-");
+    expect(r.status).toBe(416);
+    expect(r.headers.get("content-range")).toBe("bytes */300000");
+    expect((await get(bob)).status).toBe(200);
+  });
+});
