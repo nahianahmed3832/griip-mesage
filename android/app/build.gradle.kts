@@ -17,12 +17,12 @@ val localProps = Properties().apply {
 val defaultServer: String = localProps.getProperty("griip.serverUrl") ?: "https://msg.griipbuddy.cloud"
 
 android {
-    namespace = "com.griipbuddy.message"
+    namespace = "com.griipbuddy.orbit"
     compileSdk = 36
 
     defaultConfig {
-        // Orbit (2026-10-16 rebrand). A new application id installs as a separate app beside Griip Message; nothing
-        // migrates between them. The Kotlin namespace (and so R/BuildConfig) stays com.griipbuddy.message.
+        // Orbit (2026-10-16 rebrand). A new application id installs as a separate app beside Griip Message
+        // (com.griipbuddy.message); nothing migrates between them. The code's namespace is com.griipbuddy.orbit.
         // Capital O on purpose: it must equal the Play Console app's package name exactly (package names are
         // case-sensitive and permanent on Play). Builds before 2026-10-17 used com.griipbuddy.orbit.
         applicationId = "com.griipbuddy.Orbit"

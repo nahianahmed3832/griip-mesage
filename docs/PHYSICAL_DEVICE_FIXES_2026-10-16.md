@@ -55,7 +55,8 @@ No wire format, encryption, message id, reply id or federation change.
 - Application id **`com.griipbuddy.Orbit`** (capital O, matching the Play Console app; the 2026-10-16 testing APK used `com.griipbuddy.orbit`, and earlier builds `com.griipbuddy.message`). It installs as a **separate app**: the old
   app, its identity keys, history and settings stay where they are; nothing migrates. On Orbit, sign in by linking
   the device or restoring with a recovery key, or register.
-- Unchanged on purpose: Kotlin namespace `com.griipbuddy.message` (R/BuildConfig), server protocols, `griip://invite/`
+- Code namespace (Kotlin packages, R, BuildConfig) renamed to `com.griipbuddy.orbit` on 2026-10-17; the Room schema folder moved with it.
+- Unchanged on purpose: server protocols, `griip://invite/`
   links (both apps register it; Android asks which to open if both are installed), notification channel ids,
   Docker project and service names.
 - Launcher: adaptive icon (foreground, deep-green background, monochrome for themed icons), notification icon,

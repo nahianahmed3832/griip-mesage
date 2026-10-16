@@ -1,7 +1,7 @@
 # kotlinx.serialization
 -keepattributes *Annotation*, InnerClasses
--keepclassmembers class com.griipbuddy.message.** { *** Companion; }
--keepclasseswithmembers class com.griipbuddy.message.** { kotlinx.serialization.KSerializer serializer(...); }
+-keepclassmembers class com.griipbuddy.orbit.** { *** Companion; }
+-keepclasseswithmembers class com.griipbuddy.orbit.** { kotlinx.serialization.KSerializer serializer(...); }
 # BouncyCastle HPKE / Ed25519 (reflection-free, but keep providers intact)
 -keep class org.bouncycastle.** { *; }
 -dontwarn org.bouncycastle.**
