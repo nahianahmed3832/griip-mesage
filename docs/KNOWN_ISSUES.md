@@ -45,6 +45,8 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
   - ~~Deleted messages leave decrypted files on the device (T1.10).~~ Fixed 2026-10-16.
   - ~~Backlog and live deliveries interleave and duplicate (P6, T2.1).~~ Fixed 2026-10-16. The server change (not yet deployed) keeps live items behind the backlog. The app holds controls that arrive before their target.
   - ~~Realtime frames can be dropped under load (T2.2).~~ Fixed 2026-10-16 (bounded ordered inbox; a stall reconnects instead of dropping frames).
+  - ~~Any member could set the media key for someone else's call (D8).~~ Fixed in the app 2026-10-16 (T5.2): keys only from the call's creator. Device check pending.
+  - ~~Thread view showed replies from other conversations; reactions, pins, edits and deletes in announcement channels changed only this phone.~~ Fixed in the app 2026-10-16 (Phase 14). Device check pending.
 - The release (R8) build compiles but has never been run on a device.
 
 ## Calls (open, 2026-10-16)
@@ -76,11 +78,13 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
 - Large channels fan out one envelope per member device. That's fine for tens to hundreds of members but isn't optimised for thousands.
 - Attachments are limited to 25 MB and kept for 7 days. Downloads resume after an interruption (2026-10-16, T2.6; the server half isn't deployed yet). Uploads retry automatically but restart from zero. Sent and received files are
   stored in app-private storage, not inside SQLCipher.
-- There's no in-app QR *scanner* yet. Invites can be shared as a QR code image, a text code, or a `griip://invite/…` link.
+- The in-app QR scanner (T4.2, 2026-10-16) hasn't been run on a device. Invites can also be shared as a QR code image, a text code, or a `griip://invite/…` link.
+- A late joiner gets a running call's key only while one of the call creator's devices is online (T5.3). Otherwise joining is still refused after 10 s.
+- Message search is a plain `LIKE` scan (no index). FTS was deferred: SQLite's `unicode61` tokenizer splits Bengali words at vowel signs, and FTS5 availability in SQLCipher on the phone is unverified (`FEATURE_ROADMAP.md` T4.3).
 - Group calls with three or more participants haven't been exercised on real devices. Capacity on the shared 2-vCPU VPS hasn't been benchmarked.
 - Audio route selection is limited to a speaker toggle. Bluetooth and wired devices follow LiveKit's AudioSwitch defaults.
-- Cold start on a debug build is about 2 s on the test phone. A release (R8) build hasn't been built yet.
-- Call records (`calls`, `call_participants`) are never pruned on the server.
+- Cold start on a debug build is about 2 s on the test phone. The release (R8) build compiles but hasn't been run on a device.
+- ~~Call records are never pruned on the server.~~ Ended calls older than 90 days are pruned (2026-10-16, not yet deployed).
 
 ## Operations
 - LiveKit warns that the host's UDP receive buffer is small (425 KB, recommended 5 MB). Raising `net.core.rmem_max` is a host-wide change and was left alone.
@@ -92,4 +96,4 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
 ## Not done in this session
 - Full screenshot-based visual review of every screen. Welcome, Home, Conversation and Call were reviewed on real hardware.
 - An instrumented Android UI test suite. Verification was manual, on the phone with the bot as the second participant.
-- Commits. The git repository is initialised but nothing has been committed.
+- ~~Commits.~~ Work is committed per task on `internal-beta` and pushed (2026-10-16).

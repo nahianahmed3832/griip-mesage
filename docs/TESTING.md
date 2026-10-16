@@ -29,9 +29,9 @@ There was no second physical phone. Every two-party test used the phone plus the
 | Release (R8) build | NOT VERIFIED | Configured but not built in this session |
 | Android unit tests | PASS | `./gradlew :app:testDebugUnitTest` → `VideoSinkBindingTest` 8/8 (renderer lifetime, sink ordering, track switching, stop/start, release) |
 
-## 2. Backend (vitest: 69 tests, all PASS on 2026-10-16)
+## 2. Backend (vitest: 87 tests, all PASS on 2026-10-16)
 
-`cd server && npm test` gives 10 files and 69 tests passed. Earlier results on this list were recorded on older builds (32, then 36).
+`cd server && npm test` gives 15 files and 87 tests passed, and `tsc --noEmit` is clean. Earlier results on this list were recorded on older builds (32, 36, 69, 81).
 Suites added in the 2026-10-16 feature pass. For each, the tests failed with the fix removed, except where noted:
 
 | Suite | Tests | Covers |
@@ -47,6 +47,8 @@ Suites added in the 2026-10-16 feature pass. For each, the tests failed with the
 | `authz_edges.test.ts` | 4 | T3.1 invites stop working when their creator loses the right to issue them; T3.3 CLI-disabled accounts are disconnected; T3.2 archived scopes are read-only until unarchived (all fail without the fix) |
 | `ops_hygiene.test.ts` | 3 | Tier 7: `/healthz` shows no usage numbers; `secure_delete` on; old call and audit records pruned, recent and live ones kept |
 | `identity_pinning.test.ts` | 4 | T1.2 against a relay that swaps a contact's identity and device keys (the reference client refuses to send, holds forged messages, and resumes only for the accepted key) |
+| `messaging.test.ts` › announcement controls | 1 | Phase 14: members' reactions and pins are refused in announcement channels; the manager's pin is accepted (contract the app now mirrors) |
+| `departments.test.ts` | 5 | Tier 7 department editing: manager-only rename, regrouping limited to the team's branch, delete keeps teams, archived branch refused, audit visible to admins only (4 of 5 fail without the change) |
 The 2026-10-16 audit also ran 7 probe scenarios against the API. All confirmed defects: see `FEATURE_INVENTORY.md`.
 
 | Area | Status | Covered by |
@@ -176,8 +178,14 @@ with no device or emulator. `crypto/Bytes.kt` uses `java.util.Base64`, so the re
 | `data/repo/PendingControlsTest` | 5 | PASS | T2.1: early edits, deletions, reactions and pins are replayed in order; duplicates held once; same-conversation only; bounded; expiring |
 | `data/repo/QueueProcessorTest` | 8 | PASS | T1.4: acknowledge only after a local commit; database error, cancellation, malformed envelope, network error, quarantine, poison-item bound |
 | `data/repo/KeyDirectoryTest` | 7 | PASS | T1.2 pinning: TOFU; a substituted key pauses sending to the whole conversation; a forged sender is held; an uncertified device is rejected; accepting the reviewed key resumes; a second swap is caught; reverting clears the warning |
+| `data/repo/CallKeyVerifierTest` | 5 | PASS | T5.2: a call key is accepted only from the call's creator in its own conversation; unknown call refused; server failure propagates (redelivery) |
+| `data/model/PayloadVectorsTest` | 3 | PASS | Phase 14: every payload type round-trips unchanged against `griip-payload-v1-vectors.json` (renaming `replyTo` failed 2 of 3); newer clients' unknown types still decode |
+| `ui/scan/InviteScanTest` | 5 | PASS | T4.2: only Griip invite codes accepted (web links refused); decodes the QR the invite screen draws, including a padded camera row |
+| `data/repo/CallKeyRequestsTest` | 4 | PASS | T5.3: grace period, request pacing over a 10 s wait, per-call answer pacing, bounded state |
+| `notify/NotificationHistoryTest` | 4 | PASS | T4.4: last few lines per conversation, cleared on read or erase, bounded |
+| `data/api/ScopeRequestsTest` | 3 | PASS | Clearing a team's department or a description sends an explicit JSON null |
 
-Not yet covered: the key directory, outbox and queue processing. Each gets tests together with the change that needs them (T1.2, T1.4).
+**Totals (2026-10-16):** 92/92 in the working tree. That includes `call/FrameCryptorGuardTest` (6), which belongs to another session's uncommitted call work; the committed tree alone has 86. The outbox and the repository's receive wiring still have no JVM tests (D35, D36).
 **Device check of the Base64 change: BLOCKED.** The phone refused the USB install (`INSTALL_FAILED_ABORTED: User rejected permissions`,
 which needs the owner to confirm on screen).
 

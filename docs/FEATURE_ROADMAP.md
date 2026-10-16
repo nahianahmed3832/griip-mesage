@@ -194,7 +194,7 @@ Extend these, don't replace them:
 |---|---|---|
 | T4.1 Verify the interaction features | Threads, replies, reactions, mentions, edit, delete and pins each covered by a reference-client interop test, plus a device pass with Griip Bot | vitest + bot |
 | T4.2 In-app QR scanner for invites — **done in code 2026-10-16 (CameraX 1.4.2); device check pending** | Scan → preview → join, using the existing zxing core and CameraX (or the system code scanner, without Google Play services) | device |
-| T4.3 Search | Indexed full-text search (SQLite FTS4/5 inside SQLCipher) over messages and attachment names | JVM/instrumented test |
+| T4.3 Search — **deferred 2026-10-16** | Indexed full-text search (SQLite FTS4/5 inside SQLCipher) over messages and attachment names. Deferred because FTS4's `unicode61` tokenizer treats combining marks as separators, which splits Bengali words that `LIKE` matches today, and FTS5 (whose `trigram` tokenizer would keep substring search) isn't confirmed in SQLCipher Android on the phone. A failed migration there would lock users out of their history. Prerequisites: confirm `PRAGMA compile_options` lists FTS5 on the phone, then add a v5 migration with a trigram index, covered by `MigrationsTest` | device + JVM `MigrationsTest` |
 | T4.4 Notifications — **done in code 2026-10-16; device check pending** | Message history per conversation in `MessagingStyle`; reply action | device |
 
 ## Tier 5: voice, video and screen sharing
