@@ -215,9 +215,9 @@ Signed group state (MLS or a signed membership log) so clients don't trust serve
 
 ## Tier 7: secondary
 
-- Prune `calls`, `call_participants` and `audit_log` with documented retention.
-- `PRAGMA secure_delete = ON` (measure the cost).
-- Remove `onlineDevices` from public `/healthz`.
+- ~~Prune `calls`, `call_participants` and `audit_log` with documented retention.~~ Done 2026-10-16 (90 / 365 days).
+- ~~`PRAGMA secure_delete = ON`~~ Done 2026-10-16.
+- ~~Remove `onlineDevices` from public `/healthz`.~~ Done 2026-10-16.
 - The notification Answer action accepts directly.
 - Release (R8) build smoke test on a device.
 - Backups policy for org metadata (not the queue).

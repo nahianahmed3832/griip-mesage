@@ -92,7 +92,8 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
 
   app.get("/healthz", async () => {
     db.prepare("SELECT 1").get();
-    return { ok: true, version: VERSION, time: now(), livekit: !!ctx.livekit, onlineDevices: ctx.hub.onlineDeviceCount() };
+    // Public: says nothing about usage (the online-device count was removed, D28).
+    return { ok: true, version: VERSION, time: now(), livekit: !!ctx.livekit };
   });
 
   // Public, non-sensitive server info for client setup screens.

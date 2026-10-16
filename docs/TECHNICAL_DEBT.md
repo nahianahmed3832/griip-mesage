@@ -28,11 +28,11 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 | D13 | ~~Room `version = 1` with no migrations~~ **Fixed 2026-10-16 (T2.3):** explicit migration steps, no destructive upgrade fallback, JVM `MigrationsTest` (D-13) | `Database.kt`, `Migrations.kt` | High (before any schema change) |
 | D14 | Channel fan-out stores the **full ciphertext once per recipient device**: up to 1,000 recipients × 128 KiB per message. Storage grows with members × devices | `routes/messages.ts`, `delivery_queue.payload` | Medium |
 | D15 | ~~Attachments are buffered fully in memory~~ **Fixed 2026-10-16:** server uploads stream (T1.6). The client streams pick, encrypt, upload and download (T2.6). Remaining: GCM decryption buffers one ≤ 25 MB file inside the cipher. Constant memory needs a chunked attachment format version | `AttachmentCrypto`, `ApiClient` | Low |
-| D16 | `calls`, `call_participants` and `audit_log` are never pruned | `jobs.ts` | Low |
-| D17 | No `PRAGMA secure_delete`. Deleted ciphertext lingers in free pages and the WAL | `db.ts` | Low |
+| D16 | ~~`calls`, `call_participants` and `audit_log` are never pruned~~ **Fixed 2026-10-16:** 90-day and 365-day retention in the cleanup job | `jobs.ts` | Low |
+| D17 | ~~No `PRAGMA secure_delete`~~ **Fixed 2026-10-16** (WAL note in `RETENTION.md`) | `db.ts` | Low |
 | D18 | ~~Decrypted attachment files survive message deletion~~ **Fixed 2026-10-16 (T1.10)** | `AttachmentFiles.kt`, `MessageRepository` | Medium (T1.10) |
 | D19 | ~~`setInterval` cleanup can overlap itself~~ **Fixed 2026-10-16** with T1.3: in-flight guard, and LiveKit calls time out after 5 s | `jobs.ts`, `livekit.ts` | Low |
-| D20 | `lastTyping` map in `ws.ts` grows without bound | `ws.ts` | Low |
+| D20 | ~~`lastTyping` map in `ws.ts` grows without bound~~ **Fixed 2026-10-16:** pruned past 5,000 entries | `ws.ts` | Low |
 
 ## Testing and verification
 
@@ -50,7 +50,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 |---|---|---|
 | D26 | ~~Compose limits memory only~~ **`cpus` and `pids_limit` added 2026-10-16 (T1.6), not deployed.** No Docker volume quota is possible here, so attachment caps plus `verify.sh` disk warning stand in | Medium (T1.6) |
 | D27 | No TURN, so restricted networks can't place calls | Medium (T5.1) |
-| D28 | Public `/healthz` reveals the online device count | Low |
+| D28 | ~~Public `/healthz` reveals the online device count~~ **Fixed 2026-10-16** | Low |
 | D29 | ~~Admin CLI `disable` can't close live sockets~~ **Fixed 2026-10-16 (T3.3), not deployed:** the API's cleanup job closes sockets of disabled accounts (within 60 s) | Low (T3.3) |
 | D30 | No backups of permanent org metadata | Medium (owner decision) |
 | D31 | Single process with an in-memory hub, so it can't scale horizontally | Low for the beta |

@@ -92,6 +92,7 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
           const last = lastTyping.get(key) ?? 0;
           if (msg.on && now() - last < 1500) break; // rate-limit
           lastTyping.set(key, now());
+          if (lastTyping.size > 5000) for (const [k, at] of lastTyping) if (now() - at > 10_000) lastTyping.delete(k); // bounded (D20)
           const conv = authz.conversation(convId);
           if (!conv || !authz.isMember(conv.id, auth.userId)) break;
           const members = (db.prepare("SELECT user_id FROM conversation_members WHERE conversation_id = ?").all(conv.id) as { user_id: string }[])

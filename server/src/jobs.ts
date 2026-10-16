@@ -13,6 +13,8 @@ export interface CleanupResult {
   callsTimedOut: number;
   callEvictions: number;
   disabledDisconnected: number;
+  callRecordsPruned: number;
+  auditPruned: number;
 }
 
 /**
@@ -32,7 +34,22 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     callsTimedOut: 0,
     callEvictions: 0,
     disabledDisconnected: 0,
+    callRecordsPruned: 0,
+    auditPruned: 0,
   };
+  // Operational history (RETENTION.md, D16): ended calls and old audit rows don't accumulate forever.
+  const callCutoff = t - ctx.config.callRecordRetentionDays * 86_400_000;
+  const oldCalls = db.prepare("SELECT id FROM calls WHERE state = 'ENDED' AND COALESCE(ended_at, created_at) <= ?").all(callCutoff) as { id: string }[];
+  if (oldCalls.length) {
+    db.transaction(() => {
+      for (const c of oldCalls) {
+        db.prepare("DELETE FROM call_participants WHERE call_id = ?").run(c.id);
+        db.prepare("DELETE FROM calls WHERE id = ?").run(c.id);
+      }
+    })();
+    r.callRecordsPruned = oldCalls.length;
+  }
+  r.auditPruned = db.prepare("DELETE FROM audit_log WHERE at <= ?").run(t - ctx.config.auditRetentionDays * 86_400_000).changes;
   // Accounts disabled with the admin CLI (a separate process) keep receive-only sockets open, because
   // sessions are only re-checked on client frames. Close them here (T3.3).
   const online = ctx.hub.connectedUserIds();

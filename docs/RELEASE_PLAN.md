@@ -24,6 +24,7 @@ Production runs Compose project `griip-internal-messaging` in `/opt/griip-intern
 | T2.6 (server) Resumable attachment downloads (HTTP Range) | see `git log -- server/src/routes/attachments.ts` | `routes/attachments.ts` | none | **Pending approval.** Old apps ignore it; new apps fall back to full downloads against an old server. Tests: 74/74 |
 | T3.1 Invites re-checked against the creator's rights; T3.3 CLI-disabled accounts disconnected | see `git log -- server/test/authz_edges.test.ts` | `authz.ts`, `invites.ts`, `routes/orgs.ts`, `routes/auth.ts`, `hub.ts`, `jobs.ts` | none | **Pending approval.** Note: invites created by `admin.js invite` belong to the org's creator and stop working if that person can no longer issue them. Tests: 77/77 |
 | T3.2 Archived branches and teams are read-only (D-14) | see `git log -- server/src/authz.ts` | `authz.ts`, `invites.ts`, `routes/orgs.ts`, `routes/messages.ts`, `routes/calls.ts` | none | **Pending approval.** Behaviour change: currently archived scopes become read-only on deploy. Tests: 78/78 |
+| Tier 7 hygiene: prune call records (90 d) and audit rows (365 d); `secure_delete`; `/healthz` without usage numbers; bounded typing map | see `git log -- server/test/ops_hygiene.test.ts` | `jobs.ts`, `db.ts`, `config.ts`, `app.ts`, `ws.ts` | none (pragma at open) | **Pending approval.** The first run after deploy deletes ended calls older than 90 days and audit rows older than 365 days. Tests: 81/81 |
 
 Later tasks append rows here as they land.
 

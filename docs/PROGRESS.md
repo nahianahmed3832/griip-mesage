@@ -24,6 +24,17 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **T2.3 Room migration policy** | ✅ | See below |
 | **Task 1: Android video calls and screen sharing** | ✅ phone + bot | See below. Two-phone Android ↔ Android still needs testers |
 
+### Route audit and Tier 7 server hygiene (2026-10-16)
+
+- **Route audit:** every server route was listed with its authorisation calls. No unauthenticated or unchecked resource route was found. Two deliberate openings are recorded in `SECURITY.md` §8: group creation without consent, and global device-key lookup.
+- **Hygiene:**
+  - Ended calls older than 90 days and audit rows older than 365 days are pruned by the cleanup job. Both periods are configurable and documented in `RETENTION.md`.
+  - `PRAGMA secure_delete = ON`, with the WAL caveat documented.
+  - `/healthz` no longer shows the online-device count.
+  - The `lastTyping` map is bounded.
+- **Tests:** `server/test/ops_hygiene.test.ts` has 3 tests: health output, the pragma, and pruning, which keeps recent and live records. `npm test` gives **81/81**.
+- **Not deployed.**
+
 ### T3.2 Archived branches and teams are read-only; T3.5 departments decided (2026-10-16)
 
 - **Gap:** archiving only hid a branch or team from lists. Its channels, memberships and invites kept working.

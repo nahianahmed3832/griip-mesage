@@ -142,6 +142,10 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
   - Org invites are minted only by authenticated org managers.
   - Codes are 60-bit random and stored as SHA-256 hashes. Uses and expiry are bounded and enforced inside the registration transaction.
   - Residual risk: anyone who can create an org can invite people into it, and so let them register.
+- **Route audit (2026-10-16):** every route requires a session except registration, login, challenge, device-pairing bootstrap and the
+  signature-checked LiveKit webhook. Each resource route checks membership or role in `authz.ts`. Two deliberate openings to revisit:
+  - anyone can add any user to a new group without consent;
+  - device public keys can be looked up for any user id. They are public key material by design, but they reveal how many devices a user has.
 - **Presence privacy (T1.7):** online state and last-seen are shown only to the person, to anyone sharing a conversation
   with them, and to non-guest members of a shared org (`Authz.canSeePresence`). Knowing a username or id reveals nothing;
   realtime presence events go only to DM and group peers.

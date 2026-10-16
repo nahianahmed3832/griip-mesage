@@ -15,6 +15,9 @@ export function openDatabase(file: string): DB {
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");
   db.pragma("synchronous = NORMAL");
+  // Deleted rows (acknowledged envelopes, expired sessions) are overwritten with zeros instead of
+  // lingering in free pages (D17). In WAL mode the zeroed pages reach the main file at checkpoint.
+  db.pragma("secure_delete = ON");
   migrate(db);
   return db;
 }

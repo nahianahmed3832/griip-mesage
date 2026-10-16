@@ -39,6 +39,10 @@ export interface Config {
   sessionTtlSeconds: number;
   cleanupIntervalSeconds: number;
   ringTimeoutSeconds: number;
+  /** Ended calls (and their participant rows) older than this are deleted (RETENTION.md). */
+  callRecordRetentionDays: number;
+  /** Audit-log rows older than this are deleted (RETENTION.md). */
+  auditRetentionDays: number;
   livekit: {
     /** URL clients use to reach LiveKit (ws:// or wss://). */
     publicUrl: string;
@@ -80,6 +84,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     sessionTtlSeconds: int("SESSION_TTL_SECONDS", 7 * 24 * 3600),
     cleanupIntervalSeconds: Math.max(int("CLEANUP_INTERVAL_SECONDS", 60), 1),
     ringTimeoutSeconds: int("RING_TIMEOUT_SECONDS", 45),
+    callRecordRetentionDays: Math.max(int("CALL_RECORD_RETENTION_DAYS", 90), 1),
+    auditRetentionDays: Math.max(int("AUDIT_RETENTION_DAYS", 365), 30),
     livekit:
       lkKey && lkSecret && lkPublic
         ? {

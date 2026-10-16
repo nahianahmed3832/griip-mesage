@@ -11,8 +11,9 @@ The relay is **not** a message archive. Conversation history exists only on user
 | Auth challenges | 2 minutes | cleanup job / consumed on use |
 | Sessions (hashed tokens) | 7 days | cleanup job / logout / device revocation |
 | Pairing requests | 10 minutes | cleanup job |
-| Call records (`calls`, `call_participants`) | kept for operations (no media, no content) | not yet pruned; see KNOWN_ISSUES |
-| Org structure, memberships, directory, audit log (no content) | permanent while the org exists | admin actions |
+| Call records (`calls`, `call_participants`) | 90 days after the call ended (`CALL_RECORD_RETENTION_DAYS`) | cleanup job, every 60 s (since 2026-10-16) |
+| Audit log (no content) | 365 days (`AUDIT_RETENTION_DAYS`, minimum 30) | cleanup job, every 60 s (since 2026-10-16) |
+| Org structure, memberships, directory | permanent while the org exists | admin actions |
 
 Queue backups are **not configured**. Don't back up `delivery_queue` or `/data/attachments`. If you back up the volume,
 exclude `/data/attachments` and run `node dist/admin.js cleanup` first.
@@ -29,3 +30,9 @@ lost first (the sender's device is wiped before sending, or the queue is lost), 
 Verified by `server/test/messaging.test.ts`. That test covers ack deletion, a 1-second TTL (items stop being served immediately and
 are removed by cleanup), and the 7-day cap. Attachment expiry is covered by `server/test/calls_attachments.test.ts`.
 On production, `admin.js stats` showed 0 queued envelopes after the smoke test, because all of them were acknowledged and deleted.
+
+**Physical deletion (2026-10-16):**
+- The server database runs with `PRAGMA secure_delete = ON`. Deleted rows (acknowledged envelopes, expired sessions, pruned records)
+  are overwritten with zeros rather than left in free pages.
+- In WAL mode the zeroed pages reach the main database file at the next checkpoint. Until then, the old page images can remain in the
+  `-wal` file, which SQLite truncates and reuses.
