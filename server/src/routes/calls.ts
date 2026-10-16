@@ -21,6 +21,42 @@ export interface CallRow {
   host_server_id: string | null;
 }
 
+/**
+ * Who took part in an ended call, one entry per person (2026-10-17 call history): when they first connected, when they
+ * last left, and how long they were connected in total (overlapping devices counted once). Built from the server's
+ * own connection records, so it never includes anyone who only rang. Reconnecting on the same device keeps a single
+ * record, so a person's time is a close lower bound rather than an exact sum.
+ */
+export function callAttendance(ctx: AppContext, c: CallRow) {
+  const rows = ctx.db.prepare("SELECT user_id, joined_at, left_at FROM call_participants WHERE call_id = ? ORDER BY joined_at").all(c.id) as {
+    user_id: string;
+    joined_at: number;
+    left_at: number | null;
+  }[];
+  const end = c.ended_at ?? now();
+  const byUser = new Map<string, [number, number][]>();
+  for (const r of rows) {
+    const to = Math.max(r.joined_at, Math.min(r.left_at ?? end, end));
+    const list = byUser.get(r.user_id) ?? [];
+    list.push([r.joined_at, to]);
+    byUser.set(r.user_id, list);
+  }
+  return [...byUser.entries()].map(([userId, spans]) => {
+    spans.sort((a, b) => a[0] - b[0]);
+    let total = 0;
+    let [from, to] = spans[0];
+    for (const [a, b] of spans.slice(1)) {
+      if (a <= to) to = Math.max(to, b);
+      else {
+        total += to - from;
+        [from, to] = [a, b];
+      }
+    }
+    total += to - from;
+    return { userId, joinedAt: spans[0][0], leftAt: Math.max(...spans.map((x) => x[1])), seconds: Math.floor(total / 1000) };
+  });
+}
+
 export function callView(ctx: AppContext, c: CallRow) {
   const participants = ctx.db
     .prepare("SELECT user_id, device_id, joined_at FROM call_participants WHERE call_id = ? AND left_at IS NULL")
@@ -39,6 +75,8 @@ export function callView(ctx: AppContext, c: CallRow) {
     endedAt: c.ended_at,
     endReason: c.end_reason,
     participants: participants.map((p) => ({ userId: p.user_id, deviceId: p.device_id, joinedAt: p.joined_at })),
+    // Ended calls only (older apps ignore it): who connected, for the call history line in the conversation.
+    ...(c.state === "ENDED" ? { attended: callAttendance(ctx, c) } : {}),
   };
 }
 
@@ -321,6 +359,20 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
          WHERE m.user_id = ? AND c.state != 'ENDED' ORDER BY c.created_at DESC`,
       )
       .all(userId) as CallRow[];
+    return { calls: rows.map((c) => callView(ctx, c)) };
+  });
+
+  // Call history of one conversation (2026-10-17), newest first: calls since the caller became a member, live and ended.
+  // Only call metadata the server already has (who started it, when, who connected); nothing from encrypted messages.
+  app.get("/v1/conversations/:id/calls", auth, async (req) => {
+    const { userId } = me(req);
+    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const q = parse(z.object({ before: z.coerce.number().int().positive().optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }), req.query ?? {});
+    authz.requireMember(id, userId);
+    const since = (db.prepare("SELECT joined_at FROM conversation_members WHERE conversation_id = ? AND user_id = ?").get(id, userId) as { joined_at: number }).joined_at;
+    const rows = db
+      .prepare(`SELECT * FROM calls WHERE conversation_id = ? AND created_at >= ? AND created_at < ? ORDER BY created_at DESC LIMIT ?`)
+      .all(id, since, q.before ?? Number.MAX_SAFE_INTEGER, q.limit) as CallRow[];
     return { calls: rows.map((c) => callView(ctx, c)) };
   });
 
