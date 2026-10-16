@@ -4,7 +4,7 @@
 # Reports: resources, Docker/Compose versions, existing Compose projects, port conflicts,
 # whether /opt/griip-internal-messaging already exists, and reverse-proxy candidates.
 set -u
-DIR=/opt/griip-internal-messaging
+DIR="${GRIIP_DIR:-/opt/griip-internal-messaging}"   # override for a deployment elsewhere
 PROJECT=griip-internal-messaging
 ENVF="$DIR/.env"; [ -f "$ENVF" ] && . "$ENVF"
 PORTS_TCP="${API_HOST_PORT:-18080} ${LIVEKIT_SIGNAL_HOST_PORT:-17880} ${LIVEKIT_RTC_TCP_PORT:-7881}"

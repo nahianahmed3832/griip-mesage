@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Post-deploy verification on the VPS. Read-only.
 set -u
-DIR=/opt/griip-internal-messaging
+DIR="${GRIIP_DIR:-/opt/griip-internal-messaging}"   # override for a deployment elsewhere
 PROJECT=griip-internal-messaging
 cd "$DIR" || exit 1
 . ./.env

@@ -14,11 +14,16 @@
  *   cleanup                        run the retention job now
  *   backup <file>                  consistent snapshot of the live database (never overwrites)
  *   verify-backup <file>           read-only check that a snapshot is intact and this server can use it
+ *   fed-status                     federation identity, domain, known peers and queued deliveries
+ *   fed-rotate-key                 add a new server key signed by the current one (stop the server first; the id stays)
+ *   fed-decommission <reason> --yes  permanently retire this server id on the core network (can't be undone)
+ *   fed-block <serverId> [reason]  refuse federation with a server; fed-unblock <serverId> lifts it
  */
 import { Authz } from "./authz.js";
 import { backupDatabase, verifyBackup } from "./backup.js";
 import { loadConfig } from "./config.js";
 import { openDatabase } from "./db.js";
+import { ServerIdentity } from "./federation/identity.js";
 import { Hub } from "./hub.js";
 import { createRegistrationInvite } from "./invites.js";
 import { runCleanup } from "./jobs.js";
@@ -133,9 +138,52 @@ switch (cmd) {
     }
     break;
   }
+  case "fed-status": {
+    if (!cfg.federation) {
+      console.log("federation: off (FEDERATION_DOMAIN not set)");
+      break;
+    }
+    const id = ServerIdentity.loadOrCreate(cfg.federation.keyDir);
+    console.log(JSON.stringify({ serverId: id.serverId, domain: cfg.federation.domain, publicUrl: cfg.federation.publicUrl, keys: id.publicChain().length + 1, coreNodes: cfg.federation.coreNodes.length, quorum: cfg.federation.coreQuorum }, null, 2));
+    console.table(db.prepare("SELECT server_id, domain, state, agreeing, datetime(verified_at / 1000, 'unixepoch') verified FROM federation_peers ORDER BY domain").all());
+    console.table(db.prepare("SELECT peer_server_id, kind, COUNT(*) n, MAX(attempts) attempts FROM federation_outbox GROUP BY peer_server_id, kind").all());
+    break;
+  }
+  case "fed-rotate-key": {
+    if (!cfg.federation) throw new Error("federation is off");
+    const id = ServerIdentity.loadOrCreate(cfg.federation.keyDir);
+    id.rotateKey();
+    console.log(`rotated: server ${id.serverId} now signs with key #${id.publicChain().length}. Start the server: it reissues its descriptor and re-announces.`);
+    break;
+  }
+  case "fed-decommission": {
+    if (!cfg.federation) throw new Error("federation is off");
+    if (!rest[0] || rest[1] !== "--yes") {
+      console.error('usage: fed-decommission "<reason>" --yes   (permanent: this server id can never federate again)');
+      process.exit(2);
+    }
+    const id = ServerIdentity.loadOrCreate(cfg.federation.keyDir);
+    const rec = id.selfSigned({ t: "griip.server.decommission" as const, reason: rest[0], at: Date.now() });
+    for (const c of cfg.federation.coreNodes) {
+      const r = await fetch(`${c.url.replace(/\/$/, "")}/core/v1/decommission`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(rec) }).catch((e) => e as Error);
+      console.log(c.url, r instanceof Error ? r.message : r.status);
+    }
+    break;
+  }
+  case "fed-block":
+  case "fed-unblock": {
+    if (!/^gs1[a-z2-7]{26}$/.test(rest[0] ?? "")) {
+      console.error(`usage: ${cmd} <serverId> [reason]`);
+      process.exit(2);
+    }
+    if (cmd === "fed-block") db.prepare("INSERT OR REPLACE INTO federation_blocks (server_id, reason, created_at) VALUES (?, ?, ?)").run(rest[0], rest.slice(1).join(" ") || null, now());
+    else db.prepare("DELETE FROM federation_blocks WHERE server_id = ?").run(rest[0]);
+    console.log(`${cmd === "fed-block" ? "blocked" : "unblocked"} ${rest[0]}`);
+    break;
+  }
   default:
     console.log(
-      "commands: stats | users | invite <orgSlug> [role] [uses] | reg-invite [uses] [days] [note] | reg-invites | reg-invite-revoke <hint|id> | disable <username> | enable <username> | cleanup | backup <file> | verify-backup <file>",
+      "commands: stats | users | invite <orgSlug> [role] [uses] | reg-invite [uses] [days] [note] | reg-invites | reg-invite-revoke <hint|id> | disable <username> | enable <username> | cleanup | backup <file> | verify-backup <file> | fed-status | fed-rotate-key | fed-decommission <reason> --yes | fed-block <serverId> [reason] | fed-unblock <serverId>",
     );
 }
 db.close();
