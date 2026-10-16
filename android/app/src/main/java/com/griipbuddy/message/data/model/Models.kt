@@ -30,6 +30,10 @@ data class AttachmentRef(
     val key: String,
     val nonce: String,
     val sha256: String,
+    // Voice messages (2026-10-16). Optional and omitted when absent, so other attachments keep their exact wire
+    // format; older clients ignore these and show the clip as an ordinary audio file.
+    val voice: Boolean? = null,
+    val durationMs: Long? = null,
 )
 
 @Serializable

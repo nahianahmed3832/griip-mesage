@@ -40,6 +40,12 @@ class PayloadVectorsTest {
         assertEquals("m-1", byName.getValue("reply").replyTo)
         assertEquals(false, byName.getValue("reaction remove").add)
         assertEquals(1234L, byName.getValue("attachment").attachments!!.single().size)
+        assertEquals(null, byName.getValue("attachment").attachments!!.single().voice) // ordinary files carry no voice fields
+        byName.getValue("voice message").attachments!!.single().let {
+            assertEquals(true, it.voice)
+            assertEquals(7300L, it.durationMs)
+            assertEquals("audio/mp4", it.mime)
+        }
         assertEquals(1760600000000L, byName.getValue("read receipt").upTo)
         assertEquals(true, byName.getValue("pin").pinned)
     }

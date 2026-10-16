@@ -45,6 +45,7 @@ class AppContainer(val app: Application) {
     val messages = MessageRepository(app, db, api, realtime, session, crypto, directory, conversations, users, settings, appState, scope) { notifier.show(it) }
     val orgs = OrgRepository(api, db, conversations, users)
     val calls = CallManager(app, api, db, session, messages, conversations, settings, scope)
+    val voicePlayer = com.griipbuddy.message.voice.VoicePlayer(app)
 
     init {
         messages.start()
@@ -58,6 +59,7 @@ class AppContainer(val app: Application) {
     }
 
     fun close() {
+        voicePlayer.stop()
         realtime.stop()
         scope.cancel()
         db.close()

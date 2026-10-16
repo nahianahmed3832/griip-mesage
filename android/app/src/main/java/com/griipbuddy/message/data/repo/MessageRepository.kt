@@ -29,6 +29,7 @@ import com.griipbuddy.message.data.db.MessageEntity
 import com.griipbuddy.message.data.db.OutboxEntity
 import com.griipbuddy.message.data.db.QuarantineEntity
 import com.griipbuddy.message.data.model.AttachmentRef
+import com.griipbuddy.message.voice.VoiceNote
 import com.griipbuddy.message.data.model.CallInfo
 import com.griipbuddy.message.data.model.MessageStatus
 import com.griipbuddy.message.data.model.Payload
@@ -237,7 +238,7 @@ class MessageRepository(
                 return
             }
             db.messages().setStatus(id, MessageStatus.SENDING, null, null)
-            uploadAttachment(id, m.conversationId, ref.name, ref.mime, local, m.text)
+            uploadAttachment(id, m.conversationId, ref, local, m.text)
             return
         }
         sendText(m.conversationId, m.text, m.replyToId, m.threadRootId, attachments(m), presetId = id)
@@ -294,9 +295,10 @@ class MessageRepository(
 
     /**
      * Copies the picked file into app storage (streamed, never whole in memory), then encrypts and uploads
-     * it (T2.6). The local copy is the retry source until the upload succeeds.
+     * it (T2.6). The local copy is the retry source until the upload succeeds. A voice message passes
+     * [voiceDurationMs] and travels as an ordinary encrypted attachment marked as voice.
      */
-    suspend fun sendAttachment(cid: String, name: String, mime: String, input: java.io.InputStream, caption: String) {
+    suspend fun sendAttachment(cid: String, name: String, mime: String, input: java.io.InputStream, caption: String, voiceDurationMs: Long? = null) {
         val s = session.session ?: return
         val id = UUID.randomUUID().toString()
         val local = files.fileFor(id, name)
@@ -319,25 +321,27 @@ class MessageRepository(
             }
         }
         val now = System.currentTimeMillis()
-        val placeholder = AttachmentRef(AttachmentFiles.PENDING, name, mime, local.length(), "", "", local.name)
+        val voice = voiceDurationMs?.let { true }
+        val placeholder = AttachmentRef(AttachmentFiles.PENDING, name, mime, local.length(), "", "", local.name, voice, voiceDurationMs)
         db.messages().upsert(
             MessageEntity(id, cid, s.userId, s.deviceId, true, "text", caption, attachmentsJson = json.encodeToString(attachmentsSer, listOf(placeholder)), sentAt = now, sortTs = now, status = MessageStatus.SENDING),
         )
-        db.conversations().bumpPreview(cid, id, "📎 $name", now, "You", 0, 0)
-        uploadAttachment(id, cid, name, mime, local, caption)
+        db.conversations().bumpPreview(cid, id, VoiceNote.label(listOf(placeholder)) ?: "📎 $name", now, "You", 0, 0)
+        uploadAttachment(id, cid, placeholder, local, caption)
     }
 
     /**
      * Encrypts [local] to a temporary file and uploads it, retrying transient failures. Any failure
      * leaves the message FAILED with a reason (never stuck in SENDING); the local copy stays for a retry.
      */
-    private suspend fun uploadAttachment(id: String, cid: String, name: String, mime: String, local: File, caption: String) {
+    private suspend fun uploadAttachment(id: String, cid: String, pending: AttachmentRef, local: File, caption: String) {
+        val name = pending.name
         val enc = File(context.cacheDir, "$id.enc")
         _transfer.update { it + (id to 0f) }
         try {
             val meta = withContext(Dispatchers.IO) { AttachmentCrypto.encryptFile(local, enc) }
             val up = TransferRetry.run { api.uploadFile("/v1/attachments?conversationId=$cid", enc) { p -> _transfer.update { it + (id to p) } } }
-            val ref = AttachmentRef(up.id, name, mime, local.length(), meta.key, meta.nonce, meta.sha256)
+            val ref = AttachmentRef(up.id, name, pending.mime, local.length(), meta.key, meta.nonce, meta.sha256, pending.voice, pending.durationMs)
             local.renameTo(files.fileFor(up.id, name))
             sendText(cid, caption, attachments = listOf(ref), presetId = id)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
@@ -688,7 +692,7 @@ class MessageRepository(
         db.conversations().upsert(
             conv.copy(
                 lastMessageId = last?.id,
-                lastMessagePreview = last?.let { if (it.kind == "call") "📞 ${it.text}" else it.text.ifEmpty { "📎 Attachment" } } ?: "Message deleted",
+                lastMessagePreview = last?.let { if (it.kind == "call") "📞 ${it.text}" else it.text.ifEmpty { VoiceNote.label(attachments(it)) ?: "📎 Attachment" } } ?: "Message deleted",
                 lastMessageAt = last?.sortTs ?: conv.lastMessageAt,
             ),
         )
@@ -762,7 +766,7 @@ class MessageRepository(
     }
 
     private fun preview(p: Payload): String = when {
-        !p.attachments.isNullOrEmpty() && p.text.isNullOrBlank() -> "📎 ${p.attachments.first().name}"
+        !p.attachments.isNullOrEmpty() && p.text.isNullOrBlank() -> VoiceNote.label(p.attachments) ?: "📎 ${p.attachments.first().name}"
         !p.attachments.isNullOrEmpty() -> "📎 ${p.text}"
         else -> p.text.orEmpty()
     }

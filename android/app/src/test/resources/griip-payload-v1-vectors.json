@@ -5,6 +5,7 @@
     { "name": "reply", "json": { "type": "text", "text": "Agreed", "replyTo": "m-1" } },
     { "name": "thread reply with mentions", "json": { "type": "text", "text": "@Sam can you check?", "threadRoot": "m-1", "mentions": ["u-sam"] } },
     { "name": "attachment", "json": { "type": "text", "text": "", "attachments": [ { "id": "att-1", "name": "plan.pdf", "mime": "application/pdf", "size": 1234, "key": "a2V5", "nonce": "bm9uY2U", "sha256": "abcd" } ] } },
+    { "name": "voice message", "json": { "type": "text", "text": "", "attachments": [{ "id": "att-2", "name": "voice-20261016-120000.m4a", "mime": "audio/mp4", "size": 52000, "key": "a2V5", "nonce": "bm9uY2U", "sha256": "abcd", "voice": true, "durationMs": 7300 }] } },
     { "name": "edit", "json": { "type": "edit", "target": "m-1", "text": "Hello team (edited)" } },
     { "name": "delete", "json": { "type": "delete", "target": "m-1" } },
     { "name": "reaction add", "json": { "type": "reaction", "target": "m-1", "emoji": "👍", "add": true } },

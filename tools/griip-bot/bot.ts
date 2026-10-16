@@ -19,6 +19,11 @@
  *   GRIIP_BOT_CHURN_MS=n     every n ms unpublish and republish those tone tracks (remote unpublish on the peer).
  *   GRIIP_BOT_END_FIRST=1    at the deadline, end the call through the API and keep sending media for 5 s,
  *                            so the peer tears its room down while frames are still arriving.
+ * Voice messages (docs/VOICE_MESSAGES.md):
+ *   GRIIP_BOT_SEND_VOICE=<file.m4a>  in chat mode, also send this clip as an encrypted voice message (same
+ *                            format as the app: AES-256-GCM, ciphertext ‖ tag, SHA-256 of the ciphertext).
+ *   GRIIP_BOT_VOICE_MS=<n>   the clip's length in ms, sent as durationMs (default 3000).
+ * Received voice messages are decrypted and verified like any attachment, and their voice fields are logged.
  */
 import {
   AudioFrame, AudioSource, AudioStream, dispose, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, TrackKind,
@@ -91,6 +96,23 @@ async function findPeer(bot: GriipClient, username: string) {
   return u;
 }
 
+/** Encrypts and uploads [file] like the app does, then sends it as a voice message. */
+async function sendVoice(bot: GriipClient, dm: string, file: string, durationMs: number) {
+  const plain = fs.readFileSync(file);
+  const key = crypto.randomBytes(32);
+  const nonce = crypto.randomBytes(12);
+  const c = crypto.createCipheriv("aes-256-gcm", key, nonce);
+  const ct = Buffer.concat([c.update(plain), c.final(), c.getAuthTag()]);
+  const up = await bot.req("POST", `/v1/attachments?conversationId=${dm}`, undefined, ct);
+  const ref = {
+    id: up.id, name: `voice-bot-${Date.now()}.m4a`, mime: "audio/mp4", size: plain.length,
+    key: key.toString("base64"), nonce: nonce.toString("base64"), sha256: crypto.createHash("sha256").update(ct).digest("base64"),
+    voice: true, durationMs,
+  };
+  const sent = await bot.send(dm, { type: "text", text: "", attachments: [ref] });
+  log(`🎤 sent voice message ${sent.messageId}: ${plain.length} B audio, ${ct.length} B ciphertext, ${durationMs} ms`);
+}
+
 async function chat(peerName: string, seconds: number) {
   const bot = await loadBot();
   const peer = await findPeer(bot, peerName);
@@ -102,6 +124,8 @@ async function chat(peerName: string, seconds: number) {
   const greeting = await bot.send(dm, { type: "text", text: `👋 Hi ${peer.displayName}! Griip Bot is online. I echo messages and auto-answer voice/video calls with a test pattern + tone — call me to test calling and screen sharing.` });
   log(`sent greeting ${greeting.messageId} (relay accepted at ${greeting.serverTs})`);
   }
+  const voiceFile = process.env.GRIIP_BOT_SEND_VOICE;
+  if (voiceFile) await sendVoice(bot, dm, voiceFile, Number(process.env.GRIIP_BOT_VOICE_MS ?? 3000));
   const seen = new Set<string>();
   const answered = new Set<string>();
   const deadline = Date.now() + seconds * 1000;
@@ -122,6 +146,7 @@ async function chat(peerName: string, seconds: number) {
             const plain = Buffer.concat([d.update(body), d.final()]);
             const magic = plain.subarray(0, 4).toString("hex");
             log(`📎 ${a.name}: ${ct.length} B ciphertext, hash ${okHash ? "ok" : "MISMATCH"}, decrypted ${plain.length} B (magic ${magic})`);
+            if (a.voice) log(`🎤 voice message: durationMs=${a.durationMs} mime=${a.mime} size field=${a.size} (matches decrypted: ${a.size === plain.length})`);
             await bot.send(dm, { type: "text", text: `📎 Got "${a.name}" — ${plain.length} bytes, integrity ${okHash ? "verified" : "FAILED"}, decrypted on my side (${a.mime}).`, replyTo: m.messageId });
           } catch (e) {
             log("✗ attachment failed:", String(e));

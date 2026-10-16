@@ -7,7 +7,12 @@ import android.provider.OpenableColumns
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.os.SystemClock
+import com.griipbuddy.message.call.CallPhase
 import com.griipbuddy.message.data.db.MessageEntity
+import com.griipbuddy.message.voice.AndroidAudioRecorder
+import com.griipbuddy.message.voice.VoiceDraftController
+import com.griipbuddy.message.voice.VoiceNote
 import com.griipbuddy.message.data.model.AttachmentRef
 import com.griipbuddy.message.di.AppContainer
 import com.griipbuddy.message.ui.friendly
@@ -16,6 +21,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -54,6 +60,14 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     val editing = MutableStateFlow<MessageEntity?>(null)
     val error = MutableStateFlow<String?>(null)
 
+    /** Voice messages: the composer's draft, and the app-wide player that bubbles and the draft share. */
+    val voiceDraft = VoiceDraftController(
+        File(c.app.cacheDir, "voice"), AndroidAudioRecorder(c.app), SystemClock::elapsedRealtime, System::currentTimeMillis,
+    ) { error.value = it }
+    val voicePlayer = c.voicePlayer.state
+    val draftKey = "draft:$conversationId:$threadRoot"
+    private val playedKeys = HashSet<String>()
+
     init {
         viewModelScope.launch { c.conversations.refreshOne(conversationId) }
         viewModelScope.launch { runCatching { memberIds.value = c.directory.conversationMemberIds(conversationId) } }
@@ -62,6 +76,88 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
             val ids = conv?.let { com.griipbuddy.message.data.repo.ConversationRepository.members(it).map { m -> m.id } }.orEmpty()
             runCatching { c.users.refreshPresence(ids.filter { it != me }) }
         }
+        // A call takes the microphone and the speaker: stop recording (the clip so far stays as a draft) and pause playback.
+        viewModelScope.launch {
+            c.calls.state.map { it.phase != CallPhase.Idle }.distinctUntilChanged().collect { inCall ->
+                if (inCall) interruptVoice()
+            }
+        }
+    }
+
+    private val inCall get() = c.calls.state.value.phase != CallPhase.Idle
+
+    fun startVoice() {
+        if (inCall) {
+            error.value = "You can't record a voice message during a call."
+            return
+        }
+        c.voicePlayer.pause()
+        voiceDraft.start()
+    }
+
+    fun stopVoice() = voiceDraft.stop()
+
+    fun cancelVoice() {
+        c.voicePlayer.stop { it == draftKey }
+        voiceDraft.cancel()
+    }
+
+    /** The screen left the foreground or a call started: nothing records or plays in the background. */
+    fun interruptVoice() {
+        if (voiceDraft.recording) voiceDraft.stop()
+        c.voicePlayer.pause()
+    }
+
+    fun sendVoice() {
+        c.voicePlayer.stop { it == draftKey }
+        val clip = voiceDraft.take() ?: return
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { clip.file.inputStream() }.use {
+                    c.messages.sendAttachment(conversationId, VoiceNote.fileName(System.currentTimeMillis()), VoiceNote.MIME, it, "", voiceDurationMs = clip.durationMs)
+                }
+            } catch (e: Exception) {
+                error.value = "Couldn't send the voice message"
+            } finally {
+                clip.file.delete() // the repository keeps its own copy for upload and retry
+            }
+        }
+    }
+
+    fun toggleDraftPlayback() {
+        val clip = voiceDraft.state.value as? VoiceDraftController.Draft.Ready ?: return
+        if (!c.voicePlayer.toggle(draftKey, clip.file)) error.value = "Couldn't play the recording"
+    }
+
+    fun seekDraft(positionMs: Long) {
+        val clip = voiceDraft.state.value as? VoiceDraftController.Draft.Ready ?: return
+        c.voicePlayer.seek(draftKey, clip.file, positionMs)
+    }
+
+    /** Plays a voice message in message [messageId], downloading and decrypting it first if needed. */
+    fun toggleVoice(messageId: String, ref: AttachmentRef) = viewModelScope.launch {
+        if (inCall) {
+            error.value = "Voice messages can't play during a call."
+            return@launch
+        }
+        if (voiceDraft.recording) return@launch
+        val file = runCatching { c.messages.downloadAttachment(ref) }.getOrElse {
+            error.value = it.friendly()
+            return@launch
+        }
+        playedKeys += messageId
+        if (!c.voicePlayer.toggle(messageId, file)) error.value = "Couldn't play this voice message"
+    }
+
+    fun seekVoice(messageId: String, ref: AttachmentRef, positionMs: Long) {
+        if (inCall || voiceDraft.recording) return
+        playedKeys += messageId
+        c.voicePlayer.seek(messageId, c.messages.localAttachment(ref), positionMs)
+    }
+
+    override fun onCleared() {
+        voiceDraft.close()
+        c.voicePlayer.stop { it == draftKey || it in playedKeys }
     }
 
     fun loadMore() {

@@ -65,6 +65,8 @@ import com.griipbuddy.message.ui.components.Avatar
 import com.griipbuddy.message.ui.components.pressable
 import com.griipbuddy.message.ui.theme.Griip
 import com.griipbuddy.message.ui.theme.Shapes
+import com.griipbuddy.message.voice.VoiceNote
+import com.griipbuddy.message.voice.VoicePlayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -81,6 +83,7 @@ data class BubbleModel(
     val attachments: List<AttachmentRef>,
     val threadCount: Int,
     val isGroupConv: Boolean,
+    val replyPreview: String? = null,
 )
 
 /**
@@ -100,6 +103,9 @@ fun MessageBubble(
     onOpenThread: (() -> Unit)?,
     onRetry: () -> Unit,
     onReplyClick: (String) -> Unit,
+    voice: VoicePlayer.State = VoicePlayer.State(),
+    onVoiceToggle: (AttachmentRef) -> Unit = {},
+    onVoiceSeek: (AttachmentRef, Long) -> Unit = { _, _ -> },
 ) {
     val c = Griip.colors
     val m = b.m
@@ -152,7 +158,7 @@ fun MessageBubble(
                         Box(Modifier.width(3.dp).fillMaxHeight().background(c.primary))
                         Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
                             Text(b.replySender ?: "", style = Griip.type.caption.copy(fontWeight = FontWeight.Bold), color = c.primaryDeep, maxLines = 1)
-                            Text(if (b.reply.deleted) "Deleted message" else b.reply.text.ifEmpty { "📎 Attachment" }, style = Griip.type.caption, color = if (out) c.bubbleOutgoingMeta else c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(if (b.reply.deleted) "Deleted message" else b.reply.text.ifEmpty { b.replyPreview ?: "📎 Attachment" }, style = Griip.type.caption, color = if (out) c.bubbleOutgoingMeta else c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -165,7 +171,9 @@ fun MessageBubble(
                     m.deleted -> Text("This message was deleted", style = Griip.type.bodySmall.copy(fontStyle = FontStyle.Italic), color = c.textSecondary)
                     else -> {
                         b.attachments.forEach { a ->
-                            AttachmentView(a, out, transfer, localFile(a), onOpenAttachment)
+                            if (VoiceNote.isVoice(a)) {
+                                VoiceMessageView(a, out, transfer, voice.takeIf { it.key == m.id }, { onVoiceToggle(a) }, { onVoiceSeek(a, it) })
+                            } else AttachmentView(a, out, transfer, localFile(a), onOpenAttachment)
                             if (m.text.isNotEmpty()) Spacer(Modifier.height(6.dp))
                         }
                         if (m.text.isNotEmpty()) Text(richText(m.text, out), style = Griip.type.body, color = fg)

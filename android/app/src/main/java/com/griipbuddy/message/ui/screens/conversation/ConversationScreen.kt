@@ -11,7 +11,10 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.semantics.heading
+import android.Manifest
 import android.content.ClipData
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -61,6 +64,7 @@ import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.GppMaybe
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -116,6 +120,8 @@ import com.griipbuddy.message.ui.screens.chats.ConversationAvatar
 import com.griipbuddy.message.ui.screens.home.ConnectionBanner
 import com.griipbuddy.message.ui.theme.Griip
 import com.griipbuddy.message.ui.theme.Shapes
+import com.griipbuddy.message.voice.VoiceDraftController
+import com.griipbuddy.message.voice.VoiceNote
 import kotlinx.coroutines.launch
 
 private val QUICK_REACTIONS = listOf("👍", "❤️", "😂", "🎉", "😮", "🙏")
@@ -140,6 +146,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val error by vm.error.collectAsStateWithLifecycle()
     val changedMembers by vm.changedMembers.collectAsStateWithLifecycle()
     val heldIncoming by vm.heldIncoming.collectAsStateWithLifecycle()
+    val voiceDraft by vm.voiceDraft.state.collectAsStateWithLifecycle()
+    val voicePlayer by vm.voicePlayer.collectAsStateWithLifecycle()
     var actionFor by remember { mutableStateOf<MessageEntity?>(null) }
     var infoFor by remember { mutableStateOf<MessageEntity?>(null) }
     var text by rememberSaveable { mutableStateOf("") }
@@ -151,12 +159,20 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     var attachSheet by remember { mutableStateOf(false) }
     val showJump by remember { derivedStateOf { listState.firstVisibleItemIndex > 4 } }
     val permission = com.griipbuddy.message.ui.screens.calls.rememberCallPermission()
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) vm.startVoice() else vm.error.value = VoiceDraftController.PERMISSION
+    }
+    val onMic = {
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) vm.startVoice()
+        else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+    }
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         val obs = LifecycleEventObserver { _, e ->
             if (e == Lifecycle.Event.ON_RESUME) vm.onVisible()
             if (e == Lifecycle.Event.ON_PAUSE) vm.onHidden()
+            if (e == Lifecycle.Event.ON_STOP) vm.interruptVoice()
         }
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs); vm.onHidden() }
@@ -183,6 +199,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
 
     val me = vm.me
     val title = conv?.let { ConversationRepository.title(it, me) } ?: ""
+    fun previewOf(m: MessageEntity) = m.text.ifEmpty { VoiceNote.label(vm.c.messages.attachments(m)) ?: "📎 Attachment" }
     val peer = conv?.let { ConversationRepository.peer(it, me) }
     val peerUser = peer?.let { users[it.id] }
     val isGroup = conv?.type != "DM"
@@ -243,7 +260,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             ) {
                 Icon(Icons.Outlined.PushPin, null, tint = c.primary, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("${pinned.size} pinned · ${pinned.first().text.ifEmpty { "Attachment" }}", style = Griip.type.label, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${pinned.size} pinned · ${pinned.first().let { p -> p.text.ifEmpty { VoiceNote.label(vm.c.messages.attachments(p)) ?: "Attachment" } }}", style = Griip.type.label, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             HorizontalDivider(thickness = 1.dp, color = c.border)
         }
@@ -273,6 +290,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                                 replySender = reply?.let { if (it.outgoing) "You" else users[it.senderUserId]?.displayName },
                                 reactions = vm.c.messages.reactions(m), attachments = vm.c.messages.attachments(m),
                                 threadCount = if (threadRoot == null) threadCounts[m.id] ?: 0 else 0, isGroupConv = isGroup,
+                                replyPreview = reply?.let { previewOf(it) },
                             ),
                             me = me,
                             transfer = vm.c.messages.attachments(m).firstNotNullOfOrNull { transfers[it.id] } ?: transfers[m.id],
@@ -283,6 +301,9 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                             onOpenThread = { nav.navigate(Routes.conversation(conversationId, m.id)) },
                             onRetry = { vm.retry(m) },
                             onReplyClick = { id -> val idx = messages.indexOfFirst { it.id == id }; if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) } },
+                            voice = voicePlayer,
+                            onVoiceToggle = { ref -> vm.toggleVoice(m.id, ref) },
+                            onVoiceSeek = { ref, pos -> vm.seekVoice(m.id, ref, pos) },
                         )
                     }
                 }
@@ -293,6 +314,9 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                                 MessageBubble(
                                     BubbleModel(r, users[r.senderUserId], true, true, true, null, null, vm.c.messages.reactions(r), vm.c.messages.attachments(r), 0, isGroup),
                                     me, null, { vm.c.messages.localAttachment(it) }, { actionFor = r }, { vm.react(r, it) }, { vm.openAttachment(ctx, it) }, null, { vm.retry(r) }, {},
+                                    voice = voicePlayer,
+                                    onVoiceToggle = { ref -> vm.toggleVoice(r.id, ref) },
+                                    onVoiceSeek = { ref, pos -> vm.seekVoice(r.id, ref, pos) },
                                 )
                             }
                             Text("${messages.size} ${if (messages.size == 1) "reply" else "replies"}", style = Griip.type.label, color = c.textTertiary, modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp), textAlign = TextAlign.Center)
@@ -335,12 +359,24 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             Composer(
                 text = text,
                 onText = { text = it; vm.typingChanged(it) },
-                replyLabel = replyTo?.let { "Replying to ${if (it.outgoing) "yourself" else users[it.senderUserId]?.displayName ?: ""}" to it.text.ifEmpty { "📎 Attachment" } }
+                replyLabel = replyTo?.let { "Replying to ${if (it.outgoing) "yourself" else users[it.senderUserId]?.displayName ?: ""}" to previewOf(it) }
                     ?: editing?.let { "Editing message" to it.text },
                 onCancelContext = { vm.replyTo.value = null; vm.editing.value = null; if (editing != null) text = "" },
                 onAttach = { attachSheet = true },
                 onSend = { vm.send(text); text = "" },
                 placeholder = if (threadRoot != null) "Reply in thread…" else if (conv?.type == "CHANNEL") "Message #$title" else "Message",
+                voice = VoiceComposerState(
+                    draft = voiceDraft,
+                    // Voice messages go to the conversation itself, like files, so the microphone isn't offered in a thread.
+                    available = threadRoot == null && editing == null,
+                    playback = voicePlayer.takeIf { it.key == vm.draftKey },
+                ),
+                onMic = onMic,
+                onStopRecording = vm::stopVoice,
+                onCancelVoice = vm::cancelVoice,
+                onSendVoice = vm::sendVoice,
+                onToggleDraft = vm::toggleDraftPlayback,
+                onSeekDraft = vm::seekDraft,
             )
         }
     }
@@ -447,8 +483,26 @@ private fun Composer(
     onAttach: () -> Unit,
     onSend: () -> Unit,
     placeholder: String,
+    voice: VoiceComposerState,
+    onMic: () -> Unit,
+    onStopRecording: () -> Unit,
+    onCancelVoice: () -> Unit,
+    onSendVoice: () -> Unit,
+    onToggleDraft: () -> Unit,
+    onSeekDraft: (Long) -> Unit,
 ) {
     val c = Griip.colors
+    when (val d = voice.draft) {
+        is VoiceDraftController.Draft.Recording -> {
+            VoiceRecordingBar(d.startedAt, onCancelVoice, onStopRecording)
+            return
+        }
+        is VoiceDraftController.Draft.Ready -> {
+            VoicePreviewBar(d, voice.playback, onCancelVoice, onToggleDraft, onSeekDraft, onSendVoice)
+            return
+        }
+        VoiceDraftController.Draft.Idle -> Unit
+    }
     Column(Modifier.fillMaxWidth().background(c.surface)) {
         HorizontalDivider(thickness = 1.dp, color = c.border)
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp)) {
@@ -481,6 +535,15 @@ private fun Composer(
                 }
                 Spacer(Modifier.width(6.dp))
                 val enabled = text.isNotBlank()
+                if (!enabled && voice.available) {
+                    Box(
+                        Modifier.size(48.dp).clip(CircleShape).background(c.actionStart)
+                            .pressable(onMic, onClickLabel = "Record a voice message")
+                            .semantics { contentDescription = "Record a voice message" },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Rounded.Mic, null, tint = c.onAction, modifier = Modifier.size(24.dp)) }
+                    return@Row
+                }
                 Box(
                     Modifier.size(48.dp).clip(CircleShape)
                         .background(if (enabled) c.actionStart else c.surfaceVariant)
