@@ -4,6 +4,11 @@ deploy/.env
 deploy/livekit/livekit.yaml
 android/local.properties
 tools/griip-bot/bot-identity*.json
+# Play upload / signing keys and their passwords: never in this (public) repository
+signed_file/
+*.jks
+*.keystore
+keystore.properties
 
 # Build outputs
 node_modules/
@@ -14,6 +19,8 @@ android/build/
 android/app/build/
 android/.kotlin/
 *.apk
+*.aab
+android/app/release/
 !artifacts/.keep
 
 # OS / IDE
