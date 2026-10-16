@@ -39,6 +39,7 @@ class GriipApp : Application() {
     fun eraseEverything() {
         PersistentConnection.stop(this)
         container?.let {
+            it.notifier.clearAll() // decrypted message text must not stay in the notification shade
             it.identity.clearAll()
             it.close()
         }

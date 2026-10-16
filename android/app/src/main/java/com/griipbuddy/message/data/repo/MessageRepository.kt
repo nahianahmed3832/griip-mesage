@@ -53,7 +53,7 @@ import kotlinx.serialization.builtins.serializer
 import java.io.File
 import java.util.UUID
 
-data class Notice(val conversationId: String, val title: String, val sender: String, val text: String, val mention: Boolean, val isGroup: Boolean)
+data class Notice(val conversationId: String, val title: String, val sender: String, val text: String, val mention: Boolean, val isGroup: Boolean, val canReply: Boolean = true)
 data class IncomingCallKey(val callId: String, val conversationId: String, val fromUserId: String, val video: Boolean)
 
 /** Live UI context used to decide notifications / read receipts. */
@@ -576,7 +576,7 @@ class MessageRepository(
                 val muted = conv?.muted == true
                 if (!mine && !viewing && settings.current.notifications && (!muted || mention)) {
                     val title = conv?.let { ConversationRepository.title(it, me) } ?: senderName
-                    notify(Notice(item.conversationId, if (conv?.type == "CHANNEL") "#$title" else title, senderName, preview(pl), mention, conv?.type != "DM"))
+                    notify(Notice(item.conversationId, if (conv?.type == "CHANNEL") "#$title" else title, senderName, preview(pl), mention, conv?.type != "DM", canReply = conv?.canPost != false))
                 }
             }
             "edit" -> {

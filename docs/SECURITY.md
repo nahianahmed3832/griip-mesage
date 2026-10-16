@@ -110,6 +110,10 @@ The fingerprint of an identity key is `SHA-256(identityKey)`, split into six 5-b
 - Downloaded and sent attachments are written to app-private storage (`filesDir/attachments`). They rely on Android
   file-based encryption, not SQLCipher. "Sign out & erase" first revokes the device on the server (T1.9), so contacts stop encrypting to it, then deletes the keys, the database and the attachments. If the revocation can't be confirmed, the user is told and decides whether to erase anyway.
 - Plaintext of unsent messages lives only in the encrypted database's outbox table.
+- **Notifications (T4.4):** message notifications show decrypted text and are private on the lock screen ("New message" only).
+  The few recent lines a notification shows are held in memory, never on disk. *Reply* and *Mark as read* require the phone to be
+  unlocked, go only to the app's own non-exported receiver, and *Reply* is offered only where the user may post. "Sign out & erase"
+  now also removes message notifications, so decrypted text doesn't stay in the shade.
 
 ## 6b. Scanned QR codes
 

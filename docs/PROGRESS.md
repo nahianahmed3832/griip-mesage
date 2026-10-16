@@ -27,6 +27,22 @@ Plan: `FEATURE_ROADMAP.md`. Status of every feature: `FEATURE_INVENTORY.md`. Deb
 | **Phase 14 collaboration check** | ✅ 2 fixes + wire-format tests (device check pending) | See below |
 | **T4.2 In-app invite QR scanner** | ✅ code + JVM (device check pending) | See below |
 | **T5.3 Late joiners get the call key** | ✅ code + JVM (device check pending) | See below |
+| **T4.4 Notification history and actions** | ✅ code + JVM (device check pending) | See below |
+
+### T4.4 Message notifications: history, Reply, Mark as read (2026-10-16)
+
+- **Gap:** a notification showed only the latest message and had no actions. "Sign out & erase" left decrypted message text in the
+  notification shade.
+- **Added:**
+  - **History:** each conversation's notification shows its last 6 notified messages (`NotificationHistory`, in memory only,
+    cleared when the conversation is opened or read from the notification).
+  - **Reply** (`RemoteInput`) and **Mark as read**, handled by a non-exported `MessageActionReceiver`. Both require the phone to be
+    unlocked. *Reply* appears only where the user may post. The reply goes through the normal encrypted outbox, then the
+    conversation is marked read. If it can't be queued, a "Reply not sent" notification replaces the original, so a reply is never
+    lost silently.
+  - **Erase** now removes message notifications first. Call notifications are left to the call code.
+- **Tests:** `NotificationHistoryTest` (4). Android **89/89**; `lintDebug` reports no errors (dependency-age warnings only, recorded as D37).
+- **NOT VERIFIED on a device:** the actions, the unlock requirement and the "Reply not sent" path need the phone.
 
 ### T5.3 Late joiners and new devices get the call key (2026-10-16)
 

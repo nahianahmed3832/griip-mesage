@@ -195,7 +195,7 @@ Extend these, don't replace them:
 | T4.1 Verify the interaction features | Threads, replies, reactions, mentions, edit, delete and pins each covered by a reference-client interop test, plus a device pass with Griip Bot | vitest + bot |
 | T4.2 In-app QR scanner for invites — **done in code 2026-10-16 (CameraX 1.4.2); device check pending** | Scan → preview → join, using the existing zxing core and CameraX (or the system code scanner, without Google Play services) | device |
 | T4.3 Search | Indexed full-text search (SQLite FTS4/5 inside SQLCipher) over messages and attachment names | JVM/instrumented test |
-| T4.4 Notifications | Message history per conversation in `MessagingStyle`; reply action | device |
+| T4.4 Notifications — **done in code 2026-10-16; device check pending** | Message history per conversation in `MessagingStyle`; reply action | device |
 
 ## Tier 5: voice, video and screen sharing
 

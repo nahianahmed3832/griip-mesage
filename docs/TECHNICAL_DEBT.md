@@ -54,6 +54,7 @@ Items already scheduled as features are cross-referenced to `FEATURE_ROADMAP.md`
 | D29 | ~~Admin CLI `disable` can't close live sockets~~ **Fixed 2026-10-16 (T3.3), not deployed:** the API's cleanup job closes sockets of disabled accounts (within 60 s) | Low (T3.3) |
 | D30 | No backups of permanent org metadata | Medium (owner decision) |
 | D31 | Single process with an in-memory hub, so it can't scale horizontally | Low for the beta |
+| D37 | Android dependencies trail current releases (lint, 2026-10-16): among them SQLCipher 4.12 → 4.19, Bouncy Castle 1.79 → 1.86, OkHttp 4 → 5, AGP 8.13 → 9.4. SQLCipher and Bouncy Castle carry the crypto, so review their changelogs first. Upgrade in a dedicated task with a device check, not mixed with features | Medium |
 
 ## Code structure
 
