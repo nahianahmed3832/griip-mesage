@@ -72,6 +72,8 @@ data class IncomingCallKey(val callId: String, val conversationId: String, val f
 class AppState {
     val foreground = MutableStateFlow(false)
     val viewingConversation = MutableStateFlow<String?>(null)
+    /** Push wake-up fetches in progress ([WakeFetch]): the relay connection stays open while above zero. */
+    val wakeHolds = MutableStateFlow(0)
 }
 
 /**

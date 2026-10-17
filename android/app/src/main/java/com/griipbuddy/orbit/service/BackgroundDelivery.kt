@@ -7,25 +7,31 @@ import com.griipbuddy.orbit.GriipApp
 import com.griipbuddy.orbit.data.repo.SessionState
 
 /**
- * How the app keeps receiving messages and calls while it isn't on screen (T2.5). Today there's one
- * mechanism: a persistent relay connection in a foreground service. A wake-up push (self-hosted
- * UnifiedPush, or FCM) would be another implementation (docs/BACKGROUND_DELIVERY.md). Whatever the
- * mechanism, no push may ever carry message content, private keys or call keys.
+ * How the app keeps receiving messages and calls while it isn't on screen (T2.5). Two mechanisms, each with its own
+ * setting, which may run side by side (docs/BACKGROUND_DELIVERY.md):
+ * - [PersistentConnection], "Stay connected" (on by default): the relay connection kept open in a foreground service;
+ * - [UnifiedPushDelivery], wake-ups through a UnifiedPush distributor (off by default).
+ * Whatever the mechanism, no push may ever carry message content, sender or conversation ids, private keys or call keys.
  */
 interface BackgroundDelivery {
     fun start(context: Context)
     fun stop(context: Context)
 
     companion object {
-        /** Runs only for a signed-in user who left "Stay connected" on. */
+        /** A mechanism runs only for a signed-in user who left its setting on. */
         fun shouldRun(signedIn: Boolean, enabled: Boolean) = signedIn && enabled
 
-        /** Applies the current session and setting: starts or stops [mechanism]. */
-        fun sync(context: Context, mechanism: BackgroundDelivery = PersistentConnection) {
+        /** Applies the current session and settings: starts or stops each mechanism. */
+        fun sync(context: Context) {
             val c = (context.applicationContext as GriipApp).container ?: return
-            if (shouldRun(c.session.state.value is SessionState.SignedIn, c.settings.current.backgroundConnection)) mechanism.start(context)
-            else mechanism.stop(context)
+            val signedIn = c.session.state.value is SessionState.SignedIn
+            val s = c.settings.current
+            apply(context, PersistentConnection, shouldRun(signedIn, s.backgroundConnection))
+            apply(context, UnifiedPushDelivery, shouldRun(signedIn, s.pushWakeups))
         }
+
+        private fun apply(context: Context, mechanism: BackgroundDelivery, run: Boolean) =
+            if (run) mechanism.start(context) else mechanism.stop(context)
     }
 }
 
@@ -42,12 +48,15 @@ object PersistentConnection : BackgroundDelivery {
 
 /**
  * The connection service used to stay off after a reboot or an app update until the app was opened.
- * Both broadcasts allow starting a foreground service from the background.
+ * Both broadcasts allow starting a foreground service from the background. With wake-ups on, the app also fetches
+ * once: wake-ups sent while the phone was off may have expired at the push server.
  */
 class BackgroundDeliveryRestartReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             BackgroundDelivery.sync(context)
+            val c = (context.applicationContext as GriipApp).container ?: return
+            if (BackgroundDelivery.shouldRun(c.session.state.value is SessionState.SignedIn, c.settings.current.pushWakeups)) WakeWorker.wake(context, c)
         }
     }
 }

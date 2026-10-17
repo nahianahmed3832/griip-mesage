@@ -137,8 +137,13 @@ dependencies {
     implementation(libs.media3.common)
     // Links open in a Custom Tab: the person's own browser, with its safe-browsing and TLS checks (no embedded WebView).
     implementation(libs.androidx.browser)
-    // Automatic encrypted backups (docs/BACKUP.md).
+    // Automatic encrypted backups (docs/BACKUP.md), and fetching after a push wake-up.
     implementation(libs.androidx.work)
+    // Push wake-ups through a UnifiedPush distributor such as ntfy (docs/BACKGROUND_DELIVERY.md). Apache-2.0. The
+    // connector asks for Tink's JVM build, which brings full protobuf-java and clashes with LiveKit's protobuf-javalite;
+    // it only uses Tink's subtle primitives (WebPush keys), so Tink's Android build (no protobuf at all) stands in.
+    implementation(libs.unifiedpush.connector) { exclude(group = "com.google.crypto.tink", module = "tink") }
+    implementation(libs.tink.android)
     // Message translation on the phone (docs/LANGUAGES.md › Translation): message text never leaves the device; only the
     // language models are downloaded, after the person agrees.
     implementation(libs.mlkit.translate)

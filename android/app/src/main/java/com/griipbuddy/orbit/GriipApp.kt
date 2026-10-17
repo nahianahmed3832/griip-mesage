@@ -11,6 +11,10 @@ import com.griipbuddy.orbit.di.AppContainer
 import com.griipbuddy.orbit.notify.Channels
 import com.griipbuddy.orbit.service.BackgroundDelivery
 import com.griipbuddy.orbit.service.PersistentConnection
+import com.griipbuddy.orbit.service.UnifiedPushDelivery
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.File
 
@@ -19,6 +23,8 @@ class GriipApp : Application() {
         private set
     /** Bumped when the container is recreated so the UI rebinds. */
     val generation = MutableStateFlow(0)
+    /** Work that outlives a profile's container (telling a server to stop wake-ups after switching away from it). */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     lateinit var profiles: ProfileRegistry
         private set
 
@@ -52,6 +58,7 @@ class GriipApp : Application() {
         PersistentConnection.stop(this)
         val storage = container?.profile ?: ProfileStorage.of(profiles.current.active)
         container?.let {
+            UnifiedPushDelivery.endLocally(this, it.profile.id) // the server's copy went with the device's revocation
             it.notifier.clearAll() // decrypted message text must not stay in the notification shade
             it.identity.clearAll()
             it.close()
@@ -70,6 +77,7 @@ class GriipApp : Application() {
         if (current?.profile?.id == id || !profiles.current.has(id)) return
         PersistentConnection.stop(this)
         current?.let {
+            UnifiedPushDelivery.release(it, appScope) // only the active profile is woken; switching back registers again
             it.notifier.clearAll() // notifications belong to the profile that showed them
             it.close()
         }
@@ -95,6 +103,7 @@ class GriipApp : Application() {
         val l = profiles.current
         if (id == ProfileStorage.DEFAULT || id == l.active || !l.has(id)) return
         val storage = ProfileStorage.of(id)
+        UnifiedPushDelivery.endLocally(this, id)
         IdentityStore(this, storage.identityPrefs, storage.keystoreAlias).clearAll()
         deleteProfileFiles(storage)
         deleteSharedPreferences(storage.identityPrefs)

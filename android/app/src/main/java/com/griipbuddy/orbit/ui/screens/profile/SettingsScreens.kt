@@ -356,6 +356,7 @@ fun NotificationSettingsScreen(nav: NavHostController) {
                 MenuRow(Icons.Outlined.SyncAlt, stringResource(R.string.notif_background), subtitle = stringResource(R.string.notif_background_sub), trailing = {
                     GriipSwitch(s.backgroundConnection, { v -> update { it.copy(backgroundConnection = v) } })
                 })
+                PushWakeupRow(s, ::update)
                 MenuRow(Icons.Outlined.NotificationsActive, stringResource(R.string.notif_system), subtitle = stringResource(R.string.notif_system_sub), onClick = {
                     val i = if (Build.VERSION.SDK_INT >= 26) Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(AndroidSettings.EXTRA_APP_PACKAGE, ctx.packageName)
                     else Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(android.net.Uri.parse("package:" + ctx.packageName))
@@ -363,6 +364,7 @@ fun NotificationSettingsScreen(nav: NavHostController) {
                 })
             }
         }
+        item { PushExplainer(Modifier.padding(start = Space.gutter, end = Space.gutter, top = 10.dp)) }
         item {
             val problems = com.griipbuddy.orbit.ui.screens.home.rememberNotificationProblems(s)
             if (problems.isNotEmpty()) com.griipbuddy.orbit.ui.screens.home.NotificationProblems(problems, Modifier.padding(horizontal = Space.gutter, vertical = 10.dp))

@@ -16,8 +16,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.griipbuddy.orbit.data.repo.PushState
 import com.griipbuddy.orbit.data.repo.Settings
 import com.griipbuddy.orbit.notify.NotificationHealth
+import com.griipbuddy.orbit.ui.LocalContainer
 import com.griipbuddy.orbit.ui.components.BannerKind
 import com.griipbuddy.orbit.ui.components.StatusBanner
 
@@ -32,8 +35,10 @@ fun rememberNotificationProblems(settings: Settings): List<NotificationHealth.Pr
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs) }
     }
-    return remember(tick, settings.notifications, settings.backgroundConnection) {
-        runCatching { NotificationHealth.problems(NotificationHealth.read(ctx, settings.notifications, settings.backgroundConnection)) }.getOrDefault(emptyList())
+    val push by LocalContainer.current.push.state.collectAsStateWithLifecycle()
+    val pushActive = settings.pushWakeups && push is PushState.Active
+    return remember(tick, settings.notifications, settings.backgroundConnection, pushActive) {
+        runCatching { NotificationHealth.problems(NotificationHealth.read(ctx, settings.notifications, settings.backgroundConnection, pushActive)) }.getOrDefault(emptyList())
     }
 }
 

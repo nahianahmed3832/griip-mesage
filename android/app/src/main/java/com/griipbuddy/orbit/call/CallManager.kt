@@ -127,6 +127,9 @@ class CallManager(
 ) {
     private val _state = MutableStateFlow(CallUiState())
     val state: StateFlow<CallUiState> = _state
+    private val _ringChecks = MutableStateFlow(0)
+    /** Ring-recovery checks finished (each drained backlog runs one): a push wake-up waits for its check. */
+    val ringChecks: StateFlow<Int> = _ringChecks
     private val _room = MutableStateFlow<Room?>(null)
     /** Observed by the call UI; set to null first on teardown so video sinks detach before native release. */
     val roomFlow: StateFlow<Room?> = _room
@@ -183,14 +186,18 @@ class CallManager(
     }
 
     private suspend fun recoverRinging() {
-        val calls = runCatching { api.get<CallsRes>("/v1/calls/active").calls }.getOrNull() ?: return
-        val me = session.session?.userId
-        val now = System.currentTimeMillis()
-        for (c in calls) {
-            if (RingRecovery.shouldRing(c, me, now, synchronized(handled) { handled.toSet() }, idle = _state.value.phase == CallPhase.Idle)) {
-                Log.i(TAG, "ring recovered after reconnect")
-                onRing(c)
+        try {
+            val calls = runCatching { api.get<CallsRes>("/v1/calls/active").calls }.getOrNull() ?: return
+            val me = session.session?.userId
+            val now = System.currentTimeMillis()
+            for (c in calls) {
+                if (RingRecovery.shouldRing(c, me, now, synchronized(handled) { handled.toSet() }, idle = _state.value.phase == CallPhase.Idle)) {
+                    Log.i(TAG, "ring recovered after reconnect")
+                    onRing(c)
+                }
             }
+        } finally {
+            _ringChecks.update { it + 1 }
         }
     }
 

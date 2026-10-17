@@ -2,10 +2,17 @@ package com.griipbuddy.orbit.di
 
 import android.app.Application
 import com.griipbuddy.orbit.call.CallManager
+import com.griipbuddy.orbit.call.CallPhase
 import com.griipbuddy.orbit.crypto.EnvelopeV1
 import com.griipbuddy.orbit.crypto.IdentityStore
 import com.griipbuddy.orbit.data.api.ApiClient
+import com.griipbuddy.orbit.data.api.ConnState
 import com.griipbuddy.orbit.data.api.RealtimeClient
+import com.griipbuddy.orbit.data.repo.ApiPushServer
+import com.griipbuddy.orbit.data.repo.PrefsPushStore
+import com.griipbuddy.orbit.data.repo.PushRegistrar
+import com.griipbuddy.orbit.data.repo.WakeFetch
+import com.griipbuddy.orbit.service.ConnectorDistributor
 import com.griipbuddy.orbit.data.db.GriipDatabase
 import com.griipbuddy.orbit.data.repo.AppState
 import com.griipbuddy.orbit.data.repo.ConversationRepository
@@ -24,6 +31,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -64,6 +72,13 @@ class AppContainer(
     val backups = com.griipbuddy.orbit.data.repo.BackupManager(app, db, session, java.io.File(app.filesDir, profile.attachmentsDir), profile.id)
     val calls = CallManager(app, api, db, session, messages, conversations, settings, scope)
     val voicePlayer = com.griipbuddy.orbit.voice.VoicePlayer(app)
+    /** Push wake-ups for this profile (docs/BACKGROUND_DELIVERY.md); the profile id is the UnifiedPush instance. */
+    val push = PushRegistrar(
+        profile.id, PrefsPushStore(app), ApiPushServer(api, features),
+        ConnectorDistributor(app) { "Orbit · " + (runCatching { java.net.URI(session.serverUrl).host }.getOrNull() ?: session.serverUrl) },
+    )
+    /** What a wake-up does: hold the relay connection until the backlog drained and ringing calls were looked up. */
+    val wakeFetch = WakeFetch(scope, appState.wakeHolds, messages.backlogDrained, calls.ringChecks, calls.state.map { it.phase == CallPhase.Incoming })
 
     init {
         messages.start()
@@ -72,10 +87,12 @@ class AppContainer(
         scope.launch { orgs.loadSelection() }
         scope.launch { messages.orgDeleted.collect { runCatching { orgs.forget(it) } } }
         scope.launch {
-            combine(session.state, appState.foreground, settings.state, calls.state) { s, fg, st, call ->
-                s is SessionState.SignedIn && (fg || st.backgroundConnection || call.phase != com.griipbuddy.orbit.call.CallPhase.Idle)
+            combine(session.state, appState.foreground, settings.state, calls.state, appState.wakeHolds) { s, fg, st, call, wake ->
+                s is SessionState.SignedIn && (fg || st.backgroundConnection || call.phase != CallPhase.Idle || wake > 0)
             }.collect { want -> if (want) realtime.start() else realtime.stop() }
         }
+        // An endpoint the server couldn't be told about (it was unreachable) goes as soon as the app connects again.
+        scope.launch { realtime.state.collect { if (it == ConnState.Connected) push.retryPending() } }
     }
 
     fun close() {

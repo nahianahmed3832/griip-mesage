@@ -22,9 +22,13 @@ work = "2.10.5"
 mlkitTranslate = "17.0.3"
 mlkitLanguageId = "17.0.6"
 iconsExtended = "1.7.8"
+unifiedpush = "3.3.5"
+tink = "1.23.0"
 
 [libraries]
 androidx-work = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+unifiedpush-connector = { module = "org.unifiedpush.android:connector", version.ref = "unifiedpush" }
+tink-android = { module = "com.google.crypto.tink:tink-android", version.ref = "tink" }
 mlkit-translate = { module = "com.google.mlkit:translate", version.ref = "mlkitTranslate" }
 mlkit-language-id = { module = "com.google.mlkit:language-id", version.ref = "mlkitLanguageId" }
 androidx-browser = { module = "androidx.browser:browser", version.ref = "browser" }

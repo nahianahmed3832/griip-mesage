@@ -79,6 +79,16 @@
             android:name=".notify.NotificationActionReceiver"
             android:exported="false" />
 
+        <!-- Push wake-ups from a UnifiedPush distributor such as ntfy (docs/BACKGROUND_DELIVERY.md). Not exported: the
+             connector library's own receiver takes the distributor's broadcasts and binds to it within the app. -->
+        <service
+            android:name=".service.OrbitPushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- Restarts "stay connected" after a reboot or an app update (T2.5). System broadcasts only. -->
         <receiver
             android:name=".service.BackgroundDeliveryRestartReceiver"

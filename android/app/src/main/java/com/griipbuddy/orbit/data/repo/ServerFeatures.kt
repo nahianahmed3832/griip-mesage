@@ -12,12 +12,12 @@ import kotlinx.coroutines.sync.withLock
  */
 class ServerFeatures(private val api: ApiClient, private val clock: () -> Long = System::currentTimeMillis) {
     private val lock = Mutex()
-    private var cached: Set<String>? = null
+    private var cached: ServerInfo? = null
     private var at = 0L
 
-    suspend fun get(): Set<String>? = lock.withLock {
+    private suspend fun info(): ServerInfo? = lock.withLock {
         if (cached != null && clock() - at < TTL_MS) return cached
-        val fresh = runCatching { api.get<ServerInfo>("/v1/server-info").features.orEmpty().toSet() }.getOrNull()
+        val fresh = runCatching { api.get<ServerInfo>("/v1/server-info") }.getOrNull()
         if (fresh != null) {
             cached = fresh
             at = clock()
@@ -25,8 +25,13 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         cached
     }
 
+    suspend fun get(): Set<String>? = info()?.let { it.features.orEmpty().toSet() }
+
     /** true / false once known; null when the server couldn't be asked. */
     suspend fun has(feature: String): Boolean? = get()?.contains(feature)
+
+    /** The push servers this server sends wake-ups to (empty: none; null: unknown for now). */
+    suspend fun pushHosts(): List<String>? = info()?.let { it.push?.unifiedPushHosts.orEmpty() }
 
     fun forget() {
         cached = null
@@ -39,6 +44,7 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val ATTACHMENT_KEEP = "attachment-keep"
         const val ORG_DELETE = "org-delete"
         const val DIRECT_UPLOAD = "direct-upload"
+        const val PUSH_UNIFIEDPUSH = "push-unifiedpush"
         private const val TTL_MS = 5 * 60_000L
     }
 }

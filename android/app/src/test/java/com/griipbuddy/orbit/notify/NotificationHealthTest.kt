@@ -54,4 +54,15 @@ class NotificationHealthTest {
         assertFalse(battery.severe)
         assertFalse(NotificationHealth.problems(state(inApp = false)).single().severe)
     }
+
+    @Test
+    fun activeWakeupsReplaceTheBackgroundConnectionChecks() {
+        assertTrue(NotificationHealth.problems(state(background = false).copy(pushWakeups = true)).isEmpty())
+        assertTrue(NotificationHealth.problems(state(battery = true).copy(pushWakeups = true)).isEmpty())
+        // Showing notifications still matters with wake-ups.
+        assertEquals(
+            NotificationHealth.Fix.AppNotificationSettings,
+            NotificationHealth.problems(state(permission = false, background = false).copy(pushWakeups = true)).single().fix,
+        )
+    }
 }

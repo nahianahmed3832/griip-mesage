@@ -26,7 +26,17 @@ import kotlinx.serialization.json.JsonObject
     // 2026-10-17: what the server supports beyond API 1 ("profiles", "profile-photos", "history", "attachment-keep",
     // "org-delete", …). Absent on older servers: they support none of these.
     val features: List<String>? = null,
+    // Push wake-ups (docs/BACKGROUND_DELIVERY.md): the push servers this server sends wake-ups to. Null: none.
+    val push: ServerPushInfo? = null,
 )
+
+@Serializable data class ServerPushInfo(val unifiedPushHosts: List<String> = emptyList())
+
+// ───────── Push wake-ups (docs/BACKGROUND_DELIVERY.md) ─────────
+@Serializable data class PushEndpointReq(val kind: String, val endpoint: String)
+@Serializable data class PushRegistrationDto(val kind: String, val host: String, val updatedAt: Long)
+@Serializable data class PushEndpointRes(val push: PushRegistrationDto)
+@Serializable data class PushRemoveRes(val ok: Boolean = true, val removed: Boolean = false)
 
 // ───────── Encrypted message history (docs/MESSAGE_HISTORY.md) ─────────
 @Serializable data class HistoryItemDto(val tag: String, val conv: String, val ts: Long, val body: String? = null, val seq: Long = 0)

@@ -11,6 +11,11 @@ data class Settings(
     val theme: ThemeMode,
     val notifications: Boolean,
     val backgroundConnection: Boolean,
+    /**
+     * Wake-ups through a UnifiedPush distributor such as ntfy (docs/BACKGROUND_DELIVERY.md). Off by default: it needs the
+     * distributor app and a server that offers it. "Stay connected" stays available beside it as the fallback.
+     */
+    val pushWakeups: Boolean = false,
     val readReceipts: Boolean,
     val typingIndicators: Boolean,
     val mediaE2ee: Boolean,
@@ -68,6 +73,7 @@ class SettingsStore(
         theme = runCatching { ThemeMode.valueOf(prefs.getString("theme", "SYSTEM")!!) }.getOrDefault(ThemeMode.SYSTEM),
         notifications = prefs.getBoolean("notifications", true),
         backgroundConnection = prefs.getBoolean("backgroundConnection", true),
+        pushWakeups = prefs.getBoolean("pushWakeups", false),
         readReceipts = prefs.getBoolean("readReceipts", true),
         typingIndicators = prefs.getBoolean("typingIndicators", true),
         mediaE2ee = prefs.getBoolean("mediaE2ee", true),
@@ -95,6 +101,7 @@ class SettingsStore(
             .putString("theme", n.theme.name)
             .putBoolean("notifications", n.notifications)
             .putBoolean("backgroundConnection", n.backgroundConnection)
+            .putBoolean("pushWakeups", n.pushWakeups)
             .putBoolean("readReceipts", n.readReceipts)
             .putBoolean("typingIndicators", n.typingIndicators)
             .putBoolean("mediaE2ee", n.mediaE2ee)

@@ -31,6 +31,8 @@ object NotificationHealth {
         val batteryOptimized: Boolean?,
         val inAppNotifications: Boolean,
         val backgroundConnection: Boolean,
+        /** Push wake-ups are active (docs/BACKGROUND_DELIVERY.md): delivery no longer depends on Orbit's own connection. */
+        val pushWakeups: Boolean = false,
     )
 
     enum class Fix { AppNotificationSettings, ChannelSettings, BatterySettings, InAppSetting }
@@ -66,10 +68,11 @@ object NotificationHealth {
                     )
             }
         }
+        if (s.pushWakeups) return out // the distributor app wakes Orbit; its own connection may stop
         if (!s.backgroundConnection) {
             out += Problem(
                 "Background connection is off",
-                "Orbit doesn't use a push service, so messages and calls only arrive while the app is open. Turn on \"Stay connected in background\".",
+                "Without it, or wake-ups through UnifiedPush, messages and calls only arrive while the app is open. Turn on \"Stay connected in background\".",
                 Fix.InAppSetting,
             )
         } else if (s.batteryOptimized == true) {
@@ -82,7 +85,7 @@ object NotificationHealth {
         return out
     }
 
-    fun read(context: Context, inAppNotifications: Boolean, backgroundConnection: Boolean): State {
+    fun read(context: Context, inAppNotifications: Boolean, backgroundConnection: Boolean, pushWakeups: Boolean = false): State {
         val nm = context.getSystemService(NotificationManager::class.java)
         val permission = Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
@@ -98,6 +101,7 @@ object NotificationHealth {
             batteryOptimized = power?.let { !it.isIgnoringBatteryOptimizations(context.packageName) },
             inAppNotifications = inAppNotifications,
             backgroundConnection = backgroundConnection,
+            pushWakeups = pushWakeups,
         )
     }
 
