@@ -6,6 +6,7 @@ import type { DB } from "./db.js";
 import type { Hub } from "./hub.js";
 import type { Federation } from "./federation/service.js";
 import type { LiveKitService } from "./livekit.js";
+import type { BlobStore } from "./storage/index.js";
 import { ApiError, badRequest, now, sha256Hex, unauthorized } from "./util.js";
 
 export interface AppContext {
@@ -14,6 +15,8 @@ export interface AppContext {
   authz: Authz;
   hub: Hub;
   livekit: LiveKitService | null;
+  /** Attachment and profile-photo bytes: the server's disk or S3 (docs/STORAGE_AND_DATA.md). */
+  blobs: BlobStore;
   /** Present when FEDERATION_DOMAIN is configured (docs/FEDERATION_PROTOCOL.md). */
   federation?: Federation;
   log: FastifyBaseLogger;

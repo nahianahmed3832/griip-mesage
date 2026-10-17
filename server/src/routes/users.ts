@@ -1,8 +1,10 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { deleteBlobNow } from "./attachments.js";
 import { type AppContext, me, parse, requireAuth, zName } from "../context.js";
 import { keyFingerprint } from "../crypto.js";
 import {
@@ -60,9 +62,9 @@ export function deviceDirectory(ctx: AppContext, userIds: string[]) {
 export default async function userRoutes(app: FastifyInstance, ctx: AppContext) {
   const auth = { preHandler: requireAuth(ctx) };
 
-  const photoDir = ctx.config.profilePhotoDir;
-  fs.mkdirSync(photoDir, { recursive: true });
-  const photoFile = (id: string) => path.join(photoDir, `${id.replace(/[^A-Za-z0-9_-]/g, "")}.jpg`);
+  // Photos are stored per revision ("<userId>-<rev>"), so a replaced photo is never served under the new revision.
+  // Photos saved before 2026-10-17 are under "<userId>" alone and are still found.
+  const photoId = (userId: string, rev: number) => `${userId.replace(/[^A-Za-z0-9_-]/g, "")}-${rev}`;
   const meView = (u: any) => ({
     ...profileView(u, { self: true, contact: true, blockedByTarget: false }),
     identityKey: u.identity_key,
@@ -180,18 +182,31 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
     }
     const buf = Buffer.concat(chunks);
     if (!isJpeg(buf)) throw badRequest("Profile photos must be JPEG");
-    const tmp = `${photoFile(userId)}.part`;
+    const previous = (ctx.db.prepare("SELECT photo_rev FROM users WHERE id = ?").get(userId) as { photo_rev: number | null } | undefined)?.photo_rev ?? null;
+    const rev = Math.max(now(), (previous ?? 0) + 1);
+    const tmp = path.join(ctx.blobs.spoolDir, `photo-${photoId(userId, rev)}.part`);
     await fs.promises.writeFile(tmp, buf, { mode: 0o600 });
-    await fs.promises.rename(tmp, photoFile(userId));
-    const rev = now();
+    try {
+      await ctx.blobs.putFile("profile-photos", photoId(userId, rev), tmp, buf.length, crypto.createHash("sha256").update(buf).digest("hex"));
+    } catch (e) {
+      await fs.promises.rm(tmp, { force: true });
+      ctx.log.error({ err: e }, "profile photo store write failed");
+      throw new ApiError(503, "storage_unavailable", "The server couldn't store the photo. Try again in a moment.");
+    }
     ctx.db.prepare("UPDATE users SET photo_rev = ?, updated_at = ? WHERE id = ?").run(rev, rev, userId);
+    if (previous) {
+      await deleteBlobNow(ctx, "profile-photos", photoId(userId, previous));
+      await deleteBlobNow(ctx, "profile-photos", userId);
+    }
     return { photoRev: rev };
   });
 
   app.delete("/v1/users/me/photo", auth, async (req) => {
     const { userId } = me(req);
-    await fs.promises.rm(photoFile(userId), { force: true });
+    const previous = (ctx.db.prepare("SELECT photo_rev FROM users WHERE id = ?").get(userId) as { photo_rev: number | null } | undefined)?.photo_rev ?? null;
     ctx.db.prepare("UPDATE users SET photo_rev = NULL, updated_at = ? WHERE id = ?").run(now(), userId);
+    if (previous) await deleteBlobNow(ctx, "profile-photos", photoId(userId, previous));
+    await deleteBlobNow(ctx, "profile-photos", userId);
     return { photoRev: null };
   });
 
@@ -200,13 +215,13 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
     const u = ctx.db.prepare("SELECT * FROM users WHERE id = ? AND disabled_at IS NULL").get(id) as ProfileRow | undefined;
     // Same answer for "no photo" and "not allowed to see it".
     if (!u?.photo_rev || !allows(privacyOf(u).photo, relation(ctx, me(req).userId, u.id))) throw notFound("No photo");
-    const file = photoFile(u.id);
-    if (!fs.existsSync(file)) throw notFound("No photo");
+    const stream = (await ctx.blobs.get("profile-photos", photoId(u.id, u.photo_rev))) ?? (await ctx.blobs.get("profile-photos", u.id));
+    if (!stream) throw notFound("No photo");
     return reply
       .header("content-type", "image/jpeg")
       .header("cache-control", "private, max-age=3600")
       .header("etag", `"${u.photo_rev}"`)
-      .send(fs.createReadStream(file));
+      .send(stream);
   });
 
   // Find someone by their exact phone number, if they allow it. Never a list or a partial match, and the same answer

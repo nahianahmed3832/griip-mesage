@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { S3Config } from "./storage/s3.js";
 
 const SEVEN_DAYS_S = 7 * 24 * 3600;
 const MiB = 1024 * 1024;
@@ -38,6 +39,22 @@ export interface Config {
   attachmentMaxConcurrentPerUser: number;
   attachmentMaxConcurrent: number;
   attachmentMaxPendingBytes: number;
+  /**
+   * Durable files (2026-10-17): an attachment a member keeps for their encrypted history (POST /v1/attachments/:id/keep)
+   * stays this many days instead of the 7-day relay window (0: files are never kept longer). Kept bytes count against
+   * the uploader's own quota for kept files, not the 7-day one.
+   */
+  attachmentKeepDays: number;
+  attachmentUserKeptBytes: number;
+  /** Where files live: the server's disk (default) or Amazon S3 / a compatible store (docs/STORAGE_AND_DATA.md). */
+  storage: { backend: "local" } | { backend: "s3"; s3: S3Config };
+  /** Encrypted message history kept for each account (docs/MESSAGE_HISTORY.md). */
+  history: { enabled: boolean; maxItemsPerUser: number; maxBytesPerUser: number; maxItemBytes: number; tombstoneDays: number };
+  /**
+   * Direct uploads from the app to S3 (2026-10-17). How long an upload URL may be started with, how long an upload may
+   * take before it counts as abandoned (its object or parts are then deleted), and how many a person may have open.
+   */
+  directUploads: { urlTtlSeconds: number; sessionSeconds: number; maxPendingPerUser: number };
   /** "invite" (default): registering needs a registration or org invite code. "open": anyone may register. */
   registrationMode: "invite" | "open";
   sessionTtlSeconds: number;
@@ -148,6 +165,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     attachmentMaxConcurrentPerUser: int("ATTACHMENT_MAX_CONCURRENT_PER_USER", 2),
     attachmentMaxConcurrent: int("ATTACHMENT_MAX_CONCURRENT", 8),
     attachmentMaxPendingBytes: int("ATTACHMENT_MAX_PENDING_BYTES", 1024 * MiB),
+    attachmentKeepDays: Math.max(int("ATTACHMENT_KEEP_DAYS", 365), 0),
+    attachmentUserKeptBytes: int("ATTACHMENT_USER_KEPT_BYTES", 10 * 1024 * MiB),
+    storage: storageConfig(env, dataDir, int),
+    directUploads: {
+      urlTtlSeconds: Math.min(Math.max(int("S3_UPLOAD_URL_TTL_SECONDS", 900), 60), 3600),
+      sessionSeconds: Math.min(Math.max(int("DIRECT_UPLOAD_SESSION_SECONDS", 6 * 3600), 600), 7 * 86_400),
+      maxPendingPerUser: Math.max(int("DIRECT_UPLOAD_MAX_PENDING_PER_USER", 10), 1),
+    },
+    history: {
+      enabled: env.HISTORY_ENABLED !== "false",
+      maxItemsPerUser: Math.max(int("HISTORY_MAX_ITEMS_PER_USER", 500_000), 0),
+      maxBytesPerUser: Math.max(int("HISTORY_MAX_BYTES_PER_USER", 1024 * MiB), 0),
+      maxItemBytes: Math.min(Math.max(int("HISTORY_MAX_ITEM_BYTES", 64 * 1024), 1024), 1024 * 1024),
+      tombstoneDays: Math.max(int("HISTORY_TOMBSTONE_DAYS", 90), 1),
+    },
     registrationMode: registrationMode(env.REGISTRATION_MODE),
     sessionTtlSeconds: int("SESSION_TTL_SECONDS", 7 * 24 * 3600),
     cleanupIntervalSeconds: Math.max(int("CLEANUP_INTERVAL_SECONDS", 60), 1),
@@ -171,4 +203,53 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     logLevel: env.LOG_LEVEL ?? "info",
     rateLimitPerMinute: int("RATE_LIMIT_PER_MINUTE", 600),
   };
+}
+
+/**
+ * STORAGE_BACKEND=s3 stores attachments and profile photos in a private S3 bucket instead of DATA_DIR. Credentials come
+ * from S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY, or else from the AWS SDK's default chain (AWS_* variables, AWS_PROFILE,
+ * or a `credential_process` such as IAM Roles Anywhere's signing helper); never from clients. Missing settings stop the
+ * server at startup rather than silently falling back to disk.
+ */
+function storageConfig(env: NodeJS.ProcessEnv, dataDir: string, int: (n: string, d: number) => number): Config["storage"] {
+  const backend = (env.STORAGE_BACKEND ?? "local").trim();
+  if (backend === "" || backend === "local") return { backend: "local" };
+  if (backend !== "s3") throw new Error("STORAGE_BACKEND must be local or s3");
+  const need = (name: string, v: string | undefined) => {
+    if (!v || !v.trim()) throw new Error(`STORAGE_BACKEND=s3 needs ${name}`);
+    return v.trim();
+  };
+  const sse = (env.S3_SSE ?? "AES256").trim();
+  if (sse !== "AES256" && sse !== "aws:kms" && sse !== "none") throw new Error("S3_SSE must be AES256, aws:kms or none");
+  const prefix = (env.S3_PREFIX ?? "orbit/").trim();
+  if (prefix && !/^[A-Za-z0-9_\-/.]{1,64}$/.test(prefix)) throw new Error("S3_PREFIX may only use letters, digits, _ - . /");
+  const partSize = Math.max(int("S3_PART_SIZE", 16 * MiB), 5 * MiB);
+  return {
+    backend: "s3",
+    s3: {
+      bucket: need("S3_BUCKET", env.S3_BUCKET),
+      region: need("S3_REGION", env.S3_REGION ?? env.AWS_REGION),
+      endpoint: env.S3_ENDPOINT?.trim() || null,
+      forcePathStyle: env.S3_FORCE_PATH_STYLE === "true",
+      prefix: prefix && !prefix.endsWith("/") ? prefix + "/" : prefix,
+      credentials: s3Credentials(env),
+      sse: sse === "none" ? null : sse,
+      kmsKeyId: env.S3_KMS_KEY_ID?.trim() || null,
+      // On by default with S3: downloads go straight from S3 after the server's checks (5-minute links).
+      presignedDownloads: env.S3_PRESIGNED_DOWNLOADS !== "false",
+      presignTtlSeconds: Math.min(Math.max(int("S3_PRESIGN_TTL_SECONDS", 300), 30), 3600),
+      multipartThreshold: Math.max(int("S3_MULTIPART_THRESHOLD", 64 * MiB), partSize),
+      partSize,
+      spoolDir: env.S3_SPOOL_DIR ?? path.join(dataDir, "upload-spool"),
+    },
+  };
+}
+
+/** Static keys when both are set (one without the other is a mistake); null: the AWS SDK's default credential chain. */
+function s3Credentials(env: NodeJS.ProcessEnv): S3Config["credentials"] {
+  const id = env.S3_ACCESS_KEY_ID?.trim();
+  const secret = env.S3_SECRET_ACCESS_KEY?.trim();
+  if (!id && !secret) return null;
+  if (!id || !secret) throw new Error("Set both S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY, or neither (to use the AWS default credential chain)");
+  return { accessKeyId: id, secretAccessKey: secret, sessionToken: env.S3_SESSION_TOKEN?.trim() || undefined };
 }

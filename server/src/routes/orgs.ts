@@ -6,6 +6,7 @@ import { memberView } from "../profile.js";
 import { ApiError, badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex } from "../util.js";
 import { INVITE_PROBLEMS, inviteAlreadySatisfied, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../invites.js";
 import { userSummary } from "./auth.js";
+import { processBlobDeletes, queueBlobDelete } from "./attachments.js";
 import { evictRemovedMember } from "./calls.js";
 import { conversationView } from "./conversations.js";
 
@@ -180,6 +181,86 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     ctx.audit({ actorId: userId, orgId, action: "org.update" });
     notifyOrg(ctx, orgId);
     return { org: orgSummary(ctx, db.prepare("SELECT * FROM orgs WHERE id = ?").get(orgId), userId) };
+  });
+
+  // ───────────── Deleting an organization (2026-10-17, docs/WORKSPACES.md › Deleting a workspace) ─────────────
+  // Owners only, after typing the organization's exact name. One immediate transaction removes the organization with
+  // its branches, departments, teams, invitations, memberships and channels (and the channels' calls, queued messages
+  // and files); people's accounts, direct messages, groups and other organizations are untouched. A retried request
+  // with the same requestId gets the same answer; anything else afterwards gets 404.
+  app.delete("/v1/orgs/:orgId", auth, async (req) => {
+    const actor = me(req).userId;
+    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const body = parse(z.object({ confirmName: z.string().max(200), requestId: z.string().min(8).max(64).optional() }), req.body ?? {});
+    const previous = () =>
+      db.prepare("SELECT * FROM org_deletions WHERE org_id = ?").get(orgId) as
+        | { deleted_by: string; request_id: string | null; members: number; channels: number; files: number }
+        | undefined;
+    const replay = () => {
+      const d = previous();
+      if (d && body.requestId && d.request_id === body.requestId && d.deleted_by === actor) {
+        return { deleted: true, orgId, members: d.members, channels: d.channels, files: d.files };
+      }
+      throw notFound("Organization not found");
+    };
+    if (previous()) return replay();
+    const role = authz.requireOrgMember(orgId, actor);
+    if (role !== "OWNER") throw forbidden("Only an owner can delete the organization");
+    const org = db.prepare("SELECT name FROM orgs WHERE id = ?").get(orgId) as { name: string };
+    if (body.confirmName.trim() !== org.name.trim()) throw new ApiError(400, "confirm_mismatch", "Type the organization's name exactly as it appears to delete it");
+
+    const result = db
+      .transaction(() => {
+        // Checked again inside the write lock: a concurrent delete may have just finished.
+        if (!db.prepare("SELECT 1 FROM orgs WHERE id = ?").get(orgId)) return null;
+        if (authz.orgRole(orgId, actor) !== "OWNER") return null;
+        const members = (db.prepare("SELECT user_id FROM org_members WHERE org_id = ?").all(orgId) as { user_id: string }[]).map((r) => r.user_id);
+        const channels = (db.prepare("SELECT id FROM conversations WHERE org_id = ?").all(orgId) as { id: string }[]).map((r) => r.id);
+        const channelMembers = new Map<string, string[]>();
+        const files: string[] = [];
+        const rooms: string[] = [];
+        for (const c of channels) {
+          channelMembers.set(c, (db.prepare("SELECT user_id FROM conversation_members WHERE conversation_id = ?").all(c) as { user_id: string }[]).map((r) => r.user_id));
+          files.push(...(db.prepare("SELECT id FROM attachments WHERE conversation_id = ?").all(c) as { id: string }[]).map((r) => r.id));
+          rooms.push(...(db.prepare("SELECT room_name FROM calls WHERE conversation_id = ? AND state != 'ENDED'").all(c) as { room_name: string }[]).map((r) => r.room_name));
+          // Rows without a foreign key to the conversation.
+          db.prepare("DELETE FROM delivery_queue WHERE conversation_id = ?").run(c);
+          db.prepare("DELETE FROM submitted_messages WHERE conversation_id = ?").run(c);
+          db.prepare("DELETE FROM mention_all_events WHERE conversation_id = ?").run(c);
+        }
+        for (const f of files) queueBlobDelete(ctx, "attachments", f);
+        // Direct uploads still open in its channels: their objects or parts are removed by the retention job.
+        for (const c of channels) {
+          db.prepare(
+            "INSERT OR IGNORE INTO abandoned_uploads (id, multipart_id, attempts, next_at) SELECT id, multipart_id, 0, 0 FROM attachment_uploads WHERE conversation_id = ?",
+          ).run(c);
+        }
+        // Cascades to org_members, branches (and their members), departments, teams (and members), invitations and
+        // the organization's conversations (members, attachment rows, calls and call participants).
+        db.prepare("DELETE FROM orgs WHERE id = ?").run(orgId);
+        db.prepare(
+          "INSERT INTO org_deletions (org_id, name_sha256, deleted_by, deleted_at, request_id, members, channels, files) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ).run(orgId, sha256Hex(org.name), actor, now(), body.requestId ?? null, members.length, channels.length, files.length);
+        return { members, channelMembers, files, rooms };
+      })
+      .immediate();
+    if (!result) return replay();
+
+    ctx.audit({
+      actorId: actor,
+      orgId,
+      action: "org.delete",
+      target: orgId,
+      detail: JSON.stringify({ members: result.members.length, channels: result.channelMembers.size, files: result.files.length }),
+    });
+    // Every device updates: apps from before this change refresh the organization list and each channel (now 404, so
+    // they show it as left); newer apps also get org.deleted.
+    for (const [c, ids] of result.channelMembers) ctx.hub.sendToUsers(new Set(ids), { t: "conv.updated", conversationId: c });
+    ctx.hub.sendToUsers(new Set(result.members), { t: "org.updated", orgId });
+    ctx.hub.sendToUsers(new Set(result.members), { t: "org.deleted", orgId });
+    for (const room of result.rooms) await ctx.livekit?.deleteRoom(room).catch(() => {});
+    await processBlobDeletes(ctx).catch(() => 0);
+    return { deleted: true, orgId, members: result.members.length, channels: result.channelMembers.size, files: result.files.length };
   });
 
   // ───────────── Branches & departments ─────────────

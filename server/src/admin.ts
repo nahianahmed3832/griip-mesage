@@ -20,6 +20,9 @@
  *   fed-block <serverId> [reason]  refuse federation with a server; fed-unblock <serverId> lifts it
  *   org-duplicates                 list workspaces one person owns under the same name, with what each holds (counts only)
  *   org-delete-empty <orgId> [--yes]  remove one provably empty duplicate (dry run without --yes; back up first)
+ *   storage-check                  which file store is configured and whether it answers (no secrets printed)
+ *   storage-orphans [--delete]     stored files no record refers to, older than a day (dry run; --delete queues them
+ *                                  for the retention job)
  */
 import { Authz } from "./authz.js";
 import { backupDatabase, verifyBackup } from "./backup.js";
@@ -31,6 +34,7 @@ import { createRegistrationInvite } from "./invites.js";
 import { runCleanup } from "./jobs.js";
 import { deleteEmptyOrg, findDuplicateOrgs, keepReason, orgFootprint } from "./orgRepair.js";
 import { humanCode, newId, now, sha256Hex } from "./util.js";
+import { createBlobStore } from "./storage/index.js";
 
 const [cmd, ...rest] = process.argv.slice(2);
 // verify-backup only reads the snapshot: it must not open (or migrate) the live database.
@@ -123,7 +127,7 @@ switch (cmd) {
     break;
   }
   case "cleanup": {
-    const r = await runCleanup({ db, config: cfg, authz: new Authz(db), hub: new Hub(db), livekit: null, log: console as any, audit: () => {} });
+    const r = await runCleanup({ db, config: cfg, authz: new Authz(db), hub: new Hub(db), livekit: null, blobs: createBlobStore(cfg), log: console as any, audit: () => {} });
     console.table(r);
     break;
   }
@@ -219,6 +223,42 @@ switch (cmd) {
     if (cmd === "fed-block") db.prepare("INSERT OR REPLACE INTO federation_blocks (server_id, reason, created_at) VALUES (?, ?, ?)").run(rest[0], rest.slice(1).join(" ") || null, now());
     else db.prepare("DELETE FROM federation_blocks WHERE server_id = ?").run(rest[0]);
     console.log(`${cmd === "fed-block" ? "blocked" : "unblocked"} ${rest[0]}`);
+    break;
+  }
+  case "storage-check": {
+    const blobs = createBlobStore(cfg);
+    const s3 = cfg.storage.backend === "s3" ? cfg.storage.s3 : null;
+    console.log(`backend: ${blobs.backend}${s3 ? ` · bucket ${s3.bucket} · region ${s3.region} · prefix "${s3.prefix}" · credentials: ${s3.credentials ? "S3_ACCESS_KEY_ID" : "AWS default chain"} · direct uploads: on · presigned downloads: ${s3.presignedDownloads ? "on" : "off"}` : ""}`);
+    try {
+      let n = 0;
+      for await (const _ of blobs.listIds("attachments")) if (++n >= 1) break;
+      console.log("store reachable: yes (listing works)");
+    } catch (e) {
+      console.error(`store reachable: NO (${(e as Error).message})`);
+      process.exitCode = 1;
+    }
+    break;
+  }
+  case "storage-orphans": {
+    const blobs = createBlobStore(cfg);
+    const cutoff = now() - 86_400_000;
+    const orphans: { kind: "attachments" | "profile-photos"; id: string; size: number }[] = [];
+    const attachment = db.prepare("SELECT 1 FROM attachments WHERE id = ? UNION SELECT 1 FROM attachment_uploads WHERE id = ?");
+    for await (const o of blobs.listIds("attachments")) {
+      if (o.modifiedAt < cutoff && !attachment.get(o.id, o.id)) orphans.push({ kind: "attachments", id: o.id, size: o.size });
+    }
+    const photo = db.prepare("SELECT 1 FROM users WHERE id = ? AND photo_rev IS NOT NULL AND (? = id || '-' || photo_rev OR ? = id)");
+    for await (const o of blobs.listIds("profile-photos")) {
+      const user = o.id.replace(/-\d+$/, "");
+      if (o.modifiedAt < cutoff && !photo.get(user, o.id, o.id)) orphans.push({ kind: "profile-photos", id: o.id, size: o.size });
+    }
+    const bytes = orphans.reduce((a, o) => a + o.size, 0);
+    console.log(`${orphans.length} orphaned file(s), ${bytes} bytes, older than a day (${blobs.backend})`);
+    if (rest.includes("--delete")) {
+      const q = db.prepare("INSERT OR IGNORE INTO pending_blob_deletes (kind, blob_id, attempts, next_at) VALUES (?, ?, 0, 0)");
+      for (const o of orphans) q.run(o.kind, o.id);
+      console.log("queued for deletion; they're removed by the next retention run (or run: cleanup)");
+    } else if (orphans.length) console.log("dry run: nothing deleted. Re-run with --delete to remove them.");
     break;
   }
   default:

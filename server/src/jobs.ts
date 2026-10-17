@@ -1,5 +1,6 @@
 import type { AppContext } from "./context.js";
-import { purgeExpiredAttachments } from "./routes/attachments.js";
+import { expireDirectUploads, processAbandonedUploads, processBlobDeletes, purgeExpiredAttachments } from "./routes/attachments.js";
+import { purgeHistoryTombstones } from "./routes/history.js";
 import { broadcastCall, type CallRow, endCallRow, evictFromCall, loadCall } from "./routes/calls.js";
 import { now } from "./util.js";
 
@@ -12,6 +13,13 @@ export interface CleanupResult {
   /** @everyone counters older than a day (only the last hour is ever consulted). */
   mentionAll: number;
   attachments: number;
+  /** Stored files (disk or S3) removed after their rows were deleted. */
+  blobsDeleted: number;
+  /** Direct uploads that ran out of time, and abandoned uploads whose object or parts were removed from the store. */
+  uploadsExpired: number;
+  uploadsCleaned: number;
+  /** History deletion markers older than HISTORY_TOMBSTONE_DAYS. */
+  historyTombstones: number;
   /** Expired federation nonces, inbox dedupe keys and outbox items. */
   federation: number;
   callsTimedOut: number;
@@ -36,6 +44,10 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     pairing: db.prepare("DELETE FROM pairing_requests WHERE expires_at <= ?").run(t).changes,
     mentionAll: db.prepare("DELETE FROM mention_all_events WHERE at <= ?").run(t - 86_400_000).changes,
     attachments: purgeExpiredAttachments(ctx),
+    blobsDeleted: 0,
+    uploadsExpired: expireDirectUploads(ctx),
+    uploadsCleaned: 0,
+    historyTombstones: purgeHistoryTombstones(ctx, t),
     federation: ctx.federation ? Object.values(ctx.federation.cleanup(t)).reduce((a, b) => a + b, 0) : 0,
     callsTimedOut: 0,
     callEvictions: 0,
@@ -56,6 +68,8 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     r.callRecordsPruned = oldCalls.length;
   }
   r.auditPruned = db.prepare("DELETE FROM audit_log WHERE at <= ?").run(t - ctx.config.auditRetentionDays * 86_400_000).changes;
+  r.blobsDeleted = await processBlobDeletes(ctx);
+  r.uploadsCleaned = await processAbandonedUploads(ctx);
   // Accounts disabled with the admin CLI (a separate process) keep receive-only sockets open, because
   // sessions are only re-checked on client frames. Close them here (T3.3).
   const online = ctx.hub.connectedUserIds();

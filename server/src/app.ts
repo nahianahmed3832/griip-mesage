@@ -9,10 +9,12 @@ import { type AppContext, authenticateToken, bearer } from "./context.js";
 import { type DB, openDatabase } from "./db.js";
 import { Hub } from "./hub.js";
 import { LiveKitService } from "./livekit.js";
+import { createBlobStore } from "./storage/index.js";
 import attachmentRoutes from "./routes/attachments.js";
 import authRoutes from "./routes/auth.js";
 import callRoutes from "./routes/calls.js";
 import conversationRoutes from "./routes/conversations.js";
+import historyRoutes from "./routes/history.js";
 import messageRoutes from "./routes/messages.js";
 import orgRoutes from "./routes/orgs.js";
 import userRoutes from "./routes/users.js";
@@ -56,6 +58,7 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
     authz: new Authz(db),
     hub: new Hub(db),
     livekit: config.livekit ? new LiveKitService(config.livekit) : null,
+    blobs: createBlobStore(config),
     log: app.log,
     audit: (e) => {
       db.prepare("INSERT INTO audit_log (at, actor_id, org_id, action, target, detail) VALUES (?, ?, ?, ?, ?, ?)").run(
@@ -124,9 +127,15 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
     attachmentMaxBytes: config.attachmentMaxBytes,
     attachmentTtlSeconds: config.attachmentTtlSeconds,
     encryption: "griip-envelope-v1 (HPKE X25519/HKDF-SHA256/AES-256-GCM + Ed25519)",
+    // What this server supports beyond API 1, so apps can say "this server needs an update" instead of failing
+    // (servers before 2026-10-17 have no list). Additive: names are never reused.
+    features: serverFeatures(config, ctx.blobs.direct !== null),
+    // Encrypted message history and kept files (docs/MESSAGE_HISTORY.md). Says nothing about where files are stored.
+    history: config.history.enabled ? { maxItemBytes: config.history.maxItemBytes } : null,
+    attachmentKeepDays: config.attachmentKeepDays,
   }));
 
-  for (const r of [authRoutes, userRoutes, orgRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, wsRoutes]) {
+  for (const r of [authRoutes, userRoutes, orgRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, wsRoutes]) {
     await app.register(async (scope) => r(scope, ctx));
   }
   const fed = ctx.federation;
@@ -135,4 +144,13 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
     await app.register(async (scope) => federationClientRoutes(scope, ctx, fed));
   }
   return { app, ctx };
+}
+
+/** Feature names in /v1/server-info (2026-10-17 onwards). */
+export function serverFeatures(config: Config, directUploads = false): string[] {
+  const f = ["profiles", "profile-photos", "privacy", "phone-lookup", "chunked-attachments", "call-reconnect", "org-delete"];
+  if (directUploads) f.push("direct-upload");
+  if (config.history.enabled) f.push("history");
+  if (config.attachmentKeepDays > 0) f.push("attachment-keep");
+  return f;
 }

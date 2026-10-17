@@ -13,6 +13,7 @@ import type { AppContext } from "../context.js";
 import { canonical, isValidPublicKey, verifyEd25519 } from "../crypto.js";
 import type { QueueItemRow } from "../hub.js";
 import { type CallRow, callView } from "../routes/calls.js";
+import { readAll } from "../storage/blobstore.js";
 import { ApiError, now } from "../util.js";
 import { type ServerDescriptor, ServerIdentity, verifyServerText } from "./identity.js";
 import { FederationError, type ResolvedServer, Resolver } from "./resolver.js";
@@ -438,12 +439,12 @@ export class Federation {
 
   private async sendAttachment(peer: ResolvedServer, row: any) {
     const meta = JSON.parse(row.body) as FedAttachmentMeta;
-    const file = path.join(this.ctx.config.attachmentDir, meta.id);
-    if (!fs.existsSync(file)) {
+    const stored = await this.ctx.blobs.get("attachments", meta.id);
+    if (!stored) {
       this.ctx.db.prepare("DELETE FROM federation_outbox WHERE id = ?").run(row.id); // expired locally: nothing to send
       return;
     }
-    const data = await fs.promises.readFile(file);
+    const data = await readAll(stored);
     const r = await this.request(peer, "POST", "/fed/v1/attachments", undefined, data, { "x-griip-attachment": JSON.stringify(meta) });
     if (r.status !== 200 && r.status !== 409) {
       if (r.status >= 400 && r.status < 500 && r.status !== 429) {
@@ -605,8 +606,7 @@ export class Federation {
       .prepare("SELECT SUM(a.size) n FROM attachments a JOIN users u ON u.id = a.uploader_user_id WHERE u.home_server_id = ? AND a.expires_at > ?")
       .get(peer.serverId, now()) as { n: number | null }).n ?? 0;
     if (fromPeer + meta.size > config.attachmentUserStoredBytes) return { status: 429, code: "quota_exceeded" };
-    const file = path.join(config.attachmentDir, meta.id);
-    const tmp = `${file}.part`;
+    const tmp = path.join(this.ctx.blobs.spoolDir, `${meta.id}.fed.part`);
     const hash = crypto.createHash("sha256");
     let size = 0;
     try {
@@ -622,8 +622,14 @@ export class Federation {
         out.on("finish", resolve);
         stream.pipe(out);
       });
-      if (size !== meta.size || hash.digest("base64") !== expectedHash) throw new Error("size or hash mismatch");
-      await fs.promises.rename(tmp, file);
+      const digest = hash.digest();
+      if (size !== meta.size || digest.toString("base64") !== expectedHash) throw new Error("size or hash mismatch");
+      try {
+        await this.ctx.blobs.putFile("attachments", meta.id, tmp, size, digest.toString("hex"));
+      } catch {
+        await fs.promises.rm(tmp, { force: true });
+        return { status: 503, code: "storage_unavailable" };
+      }
     } catch (e) {
       await fs.promises.rm(tmp, { force: true });
       return { status: 400, code: "bad_body" };
