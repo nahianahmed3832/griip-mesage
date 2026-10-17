@@ -35,16 +35,28 @@ object ProfileRules {
 
     private val USERNAME = Regex("^[a-z0-9](?:[a-z0-9._]{1,22})[a-z0-9]$")
 
+    /** What is wrong with a username (screens word it in the person's language). */
+    enum class UsernameIssue { TOO_SHORT, TOO_LONG, CHARACTERS, DOUBLE_DOT }
+
     /** Why a username can't be used, or null (same rule as the server's). */
-    fun usernameProblem(u: String): String? {
+    fun usernameIssue(u: String): UsernameIssue? {
         val v = u.trim().lowercase()
         return when {
-            v.length < 3 -> "At least 3 characters"
-            v.length > 24 -> "At most 24 characters"
-            !USERNAME.matches(v) -> "Letters a–z, digits, dots and underscores; start and end with a letter or digit"
-            ".." in v -> "No two dots in a row"
+            v.length < 3 -> UsernameIssue.TOO_SHORT
+            v.length > 24 -> UsernameIssue.TOO_LONG
+            !USERNAME.matches(v) -> UsernameIssue.CHARACTERS
+            ".." in v -> UsernameIssue.DOUBLE_DOT
             else -> null
         }
+    }
+
+    /** [usernameIssue] in English. */
+    fun usernameProblem(u: String): String? = when (usernameIssue(u)) {
+        UsernameIssue.TOO_SHORT -> "At least 3 characters"
+        UsernameIssue.TOO_LONG -> "At most 24 characters"
+        UsernameIssue.CHARACTERS -> "Letters a–z, digits, dots and underscores; start and end with a letter or digit"
+        UsernameIssue.DOUBLE_DOT -> "No two dots in a row"
+        null -> null
     }
 
     /** "+880 1712-345678" → "+8801712345678"; null when it isn't an international number. Empty stays empty. */

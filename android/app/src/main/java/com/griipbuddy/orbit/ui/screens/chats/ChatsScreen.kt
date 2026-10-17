@@ -1,6 +1,22 @@
 package com.griipbuddy.orbit.ui.screens.chats
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import com.griipbuddy.orbit.ui.components.AccentChip
+import com.griipbuddy.orbit.ui.theme.CocoaColors
+import com.griipbuddy.orbit.ui.theme.DarkSurfaceSystemBars
+import com.griipbuddy.orbit.ui.theme.Motion
+import com.griipbuddy.orbit.ui.theme.ProvideGriipPalette
 import androidx.compose.ui.Alignment
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.outlined.NotificationsActive
@@ -87,8 +103,20 @@ import kotlinx.coroutines.flow.stateIn
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 
+/**
+ * The home screen: the chat list in the Cocoa palette (UI-002), whatever the app theme. Light system-bar icons while
+ * it is shown; the floating tab bar is drawn by MainNav over it.
+ */
 @Composable
 fun ChatsScreen(nav: NavHostController) {
+    ProvideGriipPalette(CocoaColors) {
+        DarkSurfaceSystemBars()
+        ChatsHome(nav)
+    }
+}
+
+@Composable
+private fun ChatsHome(nav: NavHostController) {
     val container = LocalContainer.current
     val c = Griip.colors
     val me = container.session.session?.userId
@@ -118,6 +146,7 @@ fun ChatsScreen(nav: NavHostController) {
     val filters = listOf(R.string.filter_all, R.string.filter_unread, R.string.filter_direct, R.string.filter_groups, R.string.filter_channels).map { stringResource(it) }
     val shown = ChatListRules.visible(convs, filter, query, archivedView) { ConversationRepository.title(it, me) }
     val archivedInfo = ChatListRules.archived(convs)
+    val people = remember(convs, users, me) { HomeRules.quickContacts(convs, users.associateBy { it.id }, me) }
     fun toggleRead(conv: ConversationEntity) {
         scope.launch {
             if (ChatListRules.swipeMarksRead(conv)) {
@@ -136,45 +165,60 @@ fun ChatsScreen(nav: NavHostController) {
     }
     val online = users.associate { it.id to it.online }
     val liveCall = if (call.phase == CallPhase.Idle) convs.firstOrNull { it.activeCallId != null } else null
+    // The overflow menu holds what the app already does; a new chat is the floating "+".
+    val menu = listOf(
+        HomeMenuItem(stringResource(R.string.chats_new_group), Icons.Outlined.GroupAdd) { nav.navigate(Routes.NEW_CHAT + "?mode=group") },
+        HomeMenuItem(stringResource(R.string.home_start_call), Icons.Outlined.Call) { nav.navigate(Routes.NEW_CHAT + "?mode=call") },
+        HomeMenuItem(stringResource(R.string.contacts_invite), Icons.Outlined.QrCodeScanner) { nav.navigate(Routes.JOIN + "?code=") },
+    )
+    val list = rememberLazyListState()
+    val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0 } }
 
-    Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + com.griipbuddy.orbit.ui.LocalTabBarPadding.current)) {
-            if (archivedView) item {
-                GriipTopBar(
-                    stringResource(R.string.chats_archived_title), subtitle = stringResource(R.string.chats_archived_sub),
-                    onBack = { archivedView = false },
-                )
-            } else item {
-                // New conversations start from the top bar (no floating button over the list).
-                LargeHeader(stringResource(R.string.chats_title)) {
-                    CircleIconButton(Icons.Rounded.Search, stringResource(R.string.chats_search), { nav.navigate(Routes.SEARCH) })
-                    CircleIconButton(Icons.Outlined.EditNote, stringResource(R.string.chats_new_chat), { nav.navigate(Routes.NEW_CHAT + "?mode=dm") })
-                    CircleIconButton(Icons.Outlined.GroupAdd, stringResource(R.string.chats_new_group), { nav.navigate(Routes.NEW_CHAT + "?mode=group") })
+    Box(Modifier.fillMaxSize().background(c.background)) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 24.dp + com.griipbuddy.orbit.ui.LocalTabBarPadding.current)) {
+            if (archivedView) {
+                item(key = "archived-bar") {
+                    GriipTopBar(
+                        stringResource(R.string.chats_archived_title), subtitle = stringResource(R.string.chats_archived_sub),
+                        onBack = { archivedView = false },
+                    )
+                }
+                item(key = "archived-filter") { SearchPill(query, { query = it }, stringResource(R.string.chats_filter_hint), Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
+            } else item(key = "header") {
+                // A warm cocoa glow behind the header that settles into the list's background (the reference's backdrop).
+                Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(c.canvasTop, c.canvasMid, c.background)))) {
+                    HomeTopBar(stringResource(R.string.chats_title), onSearch = { nav.navigate(Routes.SEARCH) }, menu = menu)
+                    SearchPill(query, { query = it }, stringResource(R.string.chats_filter_hint), Modifier.padding(horizontal = Space.gutter, vertical = 6.dp))
+                    if (people.isNotEmpty() && query.isBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        QuickContactsStrip(
+                            people, onNew = { nav.navigate(Routes.NEW_CHAT + "?mode=dm") },
+                            onOpen = { nav.navigate(Routes.conversation(it.conversationId)) },
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    ChipRow {
+                        filters.forEachIndexed { i, f ->
+                            AccentChip(f, filter == i, { filter = i }, count = if (i == ChatListRules.UNREAD) ChatListRules.unreadCount(convs) else null)
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
                 }
             }
-            item { ConnectionBanner(conn, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) { container.realtime.reconnectNow() } }
-            item {
+            item(key = "connection") { ConnectionBanner(conn, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) { container.realtime.reconnectNow() } }
+            item(key = "notification-problems") {
                 // Blocked or silenced notifications are the first thing to fix: shown here, at most one at a time.
                 val settings by container.settings.state.collectAsStateWithLifecycle()
                 val problems = com.griipbuddy.orbit.ui.screens.home.rememberNotificationProblems(settings)
                 com.griipbuddy.orbit.ui.screens.home.NotificationProblems(problems, Modifier.padding(horizontal = Space.gutter), onlySevere = true, max = 1)
             }
-            if (liveCall != null) item {
+            if (liveCall != null) item(key = "live-call") {
                 val title = ConversationRepository.title(liveCall, me).let { if (liveCall.type == "CHANNEL") "#$it" else it }
                 StatusBanner(
                     "${if (liveCall.activeCallVideo) "Video" else "Voice"} call in progress · $title", BannerKind.Success,
                     Modifier.padding(horizontal = Space.gutter, vertical = 4.dp), icon = Icons.Rounded.Call, action = "Join",
                     onAction = { permission(liveCall.activeCallVideo) { scope.launch { container.calls.join(liveCall.id, liveCall.activeCallId!!, liveCall.activeCallVideo) } } },
                 )
-            }
-            item { SearchPill(query, { query = it }, stringResource(R.string.chats_filter_hint), Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
-            if (!archivedView) item {
-                ChipRow {
-                    filters.forEachIndexed { i, f ->
-                        PillChip(f, filter == i, { filter = i }, count = if (i == ChatListRules.UNREAD) ChatListRules.unreadCount(convs) else null)
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
             }
             if (!archivedView && query.isBlank() && archivedInfo.chats > 0) item(key = "archived") {
                 ListCard(
@@ -186,9 +230,9 @@ fun ChatsScreen(nav: NavHostController) {
                     onClick = { archivedView = true },
                 )
             }
-            if (loaded == null || (refreshing && convs.isEmpty())) item { ShimmerList(6, Modifier.padding(top = 8.dp)) }
+            if (loaded == null || (refreshing && convs.isEmpty())) item(key = "loading") { ShimmerList(6, Modifier.padding(top = 8.dp)) }
             else if (shown.isEmpty()) {
-                item {
+                item(key = "empty") {
                     EmptyState(
                         Icons.Outlined.ChatBubbleOutline,
                         when {
@@ -229,6 +273,9 @@ fun ChatsScreen(nav: NavHostController) {
                 }
             }
         }
+        // Once the list scrolls under the transparent status bar, a scrim keeps the clock and icons readable.
+        val scrim by animateFloatAsState(if (scrolled) 0.94f else 0f, Motion.quick(), label = "statusScrim")
+        Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).graphicsLayer { alpha = scrim }.background(c.background))
         undo?.let { conv ->
             val title = ConversationRepository.title(conv, me).let { if (conv.type == "CHANNEL") "#$it" else it }
             com.griipbuddy.orbit.ui.components.UndoBar(

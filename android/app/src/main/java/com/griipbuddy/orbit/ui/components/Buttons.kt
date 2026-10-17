@@ -24,23 +24,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.griipbuddy.orbit.ui.theme.Griip
 import com.griipbuddy.orbit.ui.theme.Shapes
 
-/** Primary: solid emerald. Glass: outlined secondary. Danger: tinted destructive. */
+/** Primary: the palette's action fill (solid, or its gradient). Glass: outlined secondary. Danger: tinted destructive. */
 enum class ButtonTone { Primary, Glass, Danger }
 
 /**
- * The app's button: a pill with centred label (and optional leading icon or progress). Solid emerald for
- * the main action, outlined for secondary ones, red-tinted for destructive ones. [showKnob] is accepted for
- * older call sites; the redesign dropped the arrow knob.
+ * The app's button: a pill with centred label (and optional leading icon or progress). The palette's action fill for
+ * the main action (emerald, charcoal on ivory, peach → pink on cocoa), outlined for secondary ones, red-tinted for
+ * destructive ones. [height] is the minimum: the pill grows with large font sizes instead of clipping its label.
+ * [showKnob] is accepted for older call sites; the redesign dropped the arrow knob.
  */
 @Composable
 fun PillButton(
@@ -56,23 +59,27 @@ fun PillButton(
 ) {
     val c = Griip.colors
     val active = enabled && !loading
-    val (bg, fg) = when (tone) {
-        ButtonTone.Primary -> c.actionStart to c.onAction
-        ButtonTone.Danger -> c.dangerSoft to c.danger
-        ButtonTone.Glass -> c.surface to c.primary
+    val fill: Modifier = when (tone) {
+        ButtonTone.Primary -> Modifier.background(Brush.horizontalGradient(listOf(c.actionStart, c.actionEnd)))
+        ButtonTone.Danger -> Modifier.background(c.dangerSoft)
+        ButtonTone.Glass -> Modifier.background(c.surface).border(1.dp, c.outline, Shapes.pill)
+    }
+    val fg = when (tone) {
+        ButtonTone.Primary -> c.onAction
+        ButtonTone.Danger -> c.danger
+        ButtonTone.Glass -> c.primary
     }
     Box(
         modifier
             .heightIn(min = maxOf(height, 44.dp))
-            .height(maxOf(height, 44.dp))
             .alpha(if (enabled) 1f else 0.45f)
             .clip(Shapes.pill)
-            .background(bg)
-            .then(if (tone == ButtonTone.Glass) Modifier.border(1.dp, c.border, Shapes.pill) else Modifier)
-            .pressable(if (active) onClick else null, enabled = active),
+            .then(fill)
+            // Always clickable-with-role, so TalkBack says "button, disabled" while it can't be used.
+            .pressable(onClick, enabled = active),
         contentAlignment = Alignment.Center,
     ) {
-        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             if (loading) {
                 CircularProgressIndicator(Modifier.size(18.dp), color = fg, strokeWidth = 2.dp)
                 Spacer(Modifier.width(10.dp))
@@ -80,7 +87,7 @@ fun PillButton(
                 Icon(leadingIcon, null, tint = fg, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
             }
-            Text(text, style = Griip.type.button, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text, style = Griip.type.button, color = fg, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
         }
     }
 }
@@ -123,7 +130,7 @@ fun CircleIconButton(
                 .clip(CircleShape)
                 .background(background)
                 .alpha(if (enabled) 1f else 0.4f)
-                .pressable(if (enabled) onClick else null, onClickLabel = contentDescription)
+                .pressable(onClick, enabled = enabled, onClickLabel = contentDescription) // disabled: TalkBack says "disabled"
                 .semantics { this.contentDescription = contentDescription },
             contentAlignment = Alignment.Center,
         ) {

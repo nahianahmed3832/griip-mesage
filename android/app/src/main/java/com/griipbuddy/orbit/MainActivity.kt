@@ -22,6 +22,8 @@ import com.griipbuddy.orbit.data.repo.SessionState
 import com.griipbuddy.orbit.ui.AppRoot
 import com.griipbuddy.orbit.ui.scan.InviteCodes
 import com.griipbuddy.orbit.ui.theme.GriipTheme
+import com.griipbuddy.orbit.ui.theme.LocalSystemBarRequests
+import com.griipbuddy.orbit.ui.theme.SystemBarRequests
 import com.griipbuddy.orbit.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
@@ -68,12 +70,18 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.LIGHT -> false
                 ThemeMode.SYSTEM -> (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
             }
-            androidx.compose.runtime.LaunchedEffect(dark) {
+            // Signed out, the onboarding is always ivory (docs/DESIGN_SYSTEM.md): dark status and navigation icons.
+            // Signed in, a Cocoa screen (the chat list) asks for light icons in either theme.
+            val session by container.session.state.collectAsStateWithLifecycle()
+            val barRequests = androidx.compose.runtime.remember { SystemBarRequests() }
+            val darkBars = session !is SessionState.SignedOut && (dark || barRequests.darkSurfaces > 0)
+            androidx.compose.runtime.LaunchedEffect(darkBars) {
                 enableEdgeToEdge(
-                    statusBarStyle = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
-                    navigationBarStyle = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+                    statusBarStyle = if (darkBars) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+                    navigationBarStyle = if (darkBars) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
                 )
             }
+            androidx.compose.runtime.CompositionLocalProvider(LocalSystemBarRequests provides barRequests) {
             GriipTheme(settings.theme, settings.accent) {
                 // A new container (erase, or a switch to another server profile) gets a fresh UI tree:
                 // navigation, view models and remembered state never carry over between profiles.
@@ -83,6 +91,7 @@ class MainActivity : ComponentActivity() {
                         pendingInvite = null
                     }
                 }
+            }
             }
         }
         // Keep the picture-in-picture settings in step with the call (auto-enter only while one is on).

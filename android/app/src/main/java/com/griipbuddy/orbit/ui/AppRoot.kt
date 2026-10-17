@@ -28,6 +28,9 @@ import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Add
+import com.griipbuddy.orbit.ui.theme.CocoaColors
+import com.griipbuddy.orbit.ui.theme.ProvideGriipPalette
 import androidx.compose.material.icons.rounded.Workspaces
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -50,7 +53,8 @@ import com.griipbuddy.orbit.call.CallPhase
 import com.griipbuddy.orbit.data.repo.SessionState
 import com.griipbuddy.orbit.di.AppContainer
 import com.griipbuddy.orbit.ui.components.AppBackground
-import com.griipbuddy.orbit.ui.components.GriipNavigationBar
+import com.griipbuddy.orbit.ui.components.FloatingNavBar
+import com.griipbuddy.orbit.ui.components.NavAction
 import com.griipbuddy.orbit.ui.components.NavItem
 import com.griipbuddy.orbit.ui.screens.calls.CallOverlay
 import com.griipbuddy.orbit.ui.screens.calls.CallsScreen
@@ -208,17 +212,28 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
         }
         }
         if (route in Routes.tabs || route == Routes.HOME) {
-            GriipNavigationBar(
-                items = listOf(
-                    NavItem(Routes.CHATS, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_chats), Icons.AutoMirrored.Outlined.Chat, Icons.AutoMirrored.Rounded.Chat, badge = unread),
-                    NavItem(Routes.CALLS, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_calls), Icons.Outlined.Call, Icons.Rounded.Call),
-                    NavItem(Routes.CONTACTS, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_contacts), Icons.Outlined.People, Icons.Rounded.People),
-                    NavItem(Routes.PROFILE, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_settings), Icons.Outlined.Settings, Icons.Rounded.Settings),
-                ),
-                selectedRoute = if (route == Routes.HOME) Routes.CHATS else route,
-                onSelect = { item -> nav.switchTab(item.route) },
-                modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { barHeight = it.height },
-            )
+            val tab = if (route == Routes.HOME) Routes.CHATS else route
+            // The floating bar is drawn in the Cocoa palette on every tab (UI-002); its action starts what the tab is
+            // about through the existing flows: a call on Calls, a new chat everywhere else.
+            val action = if (tab == Routes.CALLS) {
+                NavAction(Icons.Rounded.Add, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.home_start_call)) { nav.navigate(Routes.NEW_CHAT + "?mode=call") }
+            } else {
+                NavAction(Icons.Rounded.Add, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.chats_new_chat)) { nav.navigate(Routes.NEW_CHAT + "?mode=dm") }
+            }
+            ProvideGriipPalette(CocoaColors) {
+                FloatingNavBar(
+                    items = listOf(
+                        NavItem(Routes.CHATS, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_chats), Icons.AutoMirrored.Outlined.Chat, Icons.AutoMirrored.Rounded.Chat, badge = unread),
+                        NavItem(Routes.CALLS, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_calls), Icons.Outlined.Call, Icons.Rounded.Call),
+                        NavItem(Routes.CONTACTS, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_contacts), Icons.Outlined.People, Icons.Rounded.People),
+                        NavItem(Routes.PROFILE, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_settings), Icons.Outlined.Settings, Icons.Rounded.Settings),
+                    ),
+                    selectedRoute = tab,
+                    onSelect = { item -> nav.switchTab(item.route) },
+                    action = action,
+                    modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { barHeight = it.height },
+                )
+            }
         }
     }
 }

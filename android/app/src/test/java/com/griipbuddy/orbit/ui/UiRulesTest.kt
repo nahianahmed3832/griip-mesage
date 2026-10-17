@@ -91,6 +91,10 @@ class UiRulesTest {
             Regex("""<string name="([a-z0-9_]+)">(.*?)</string>""").findAll(File(res, "$folder/strings.xml").readText()).associate { it.groupValues[1] to it.groupValues[2] }
         val en = strings("values")
         val placeholders = Regex("""%\d\$[ds]""")
+        for (folder in listOf("values", "values-zh-rCN", "values-bn")) {
+            // A value starting with @ or ? is read as a resource reference ("@%1$s is available"): gen.py escapes it.
+            strings(folder).forEach { (k, v) -> assertFalse("$folder/$k starts with an unescaped @ or ?", v.startsWith("@") || v.startsWith("?")) }
+        }
         for (folder in listOf("values-zh-rCN", "values-bn")) {
             val other = strings(folder)
             val missing = en.keys - other.keys - setOf("app_name", "brand_attribution")

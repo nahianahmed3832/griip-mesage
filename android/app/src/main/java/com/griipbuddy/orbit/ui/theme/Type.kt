@@ -23,6 +23,8 @@ val Jakarta = FontFamily(jakarta(400), jakarta(500), jakarta(600), jakarta(700),
 
 @Immutable
 data class GriipType(
+    /** Welcome and sign-in headlines: the largest type in the app, used once per screen. */
+    val hero: TextStyle,
     val display: TextStyle,
     val headline: TextStyle,
     val title: TextStyle,
@@ -38,6 +40,7 @@ data class GriipType(
 
 /** Type scale: compact titles for ordinary screens (no oversized headings), 16 sp message text for readability. */
 val GriipTypography = GriipType(
+    hero = TextStyle(fontFamily = Jakarta, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp, lineHeight = 38.sp, letterSpacing = (-0.025).em),
     display = TextStyle(fontFamily = Jakarta, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 34.sp, letterSpacing = (-0.02).em),
     headline = TextStyle(fontFamily = Jakarta, fontWeight = FontWeight.Bold, fontSize = 22.sp, lineHeight = 28.sp, letterSpacing = (-0.01).em),
     title = TextStyle(fontFamily = Jakarta, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, lineHeight = 24.sp),

@@ -48,6 +48,21 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalDensity
 import com.griipbuddy.orbit.ui.theme.Griip
 import com.griipbuddy.orbit.ui.theme.Motion
 import com.griipbuddy.orbit.ui.theme.Shapes
@@ -88,6 +103,38 @@ fun PillChip(
             Box(
                 Modifier.clip(Shapes.pill).background(if (selected) c.primary else c.surfaceVariant).padding(horizontal = 6.dp, vertical = 1.dp),
             ) { Text(if (count > 99) "99+" else "$count", style = Griip.type.caption, color = if (selected) c.onPrimary else c.textSecondary) }
+        }
+    }
+}
+
+/**
+ * Filter chip in the Orbit direction (home, UI-002): the selected chip is filled with the palette's accent gradient,
+ * the others are a quiet raised fill without a border. A tab for TalkBack, with its selected state.
+ */
+@Composable
+fun AccentChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    count: Int? = null,
+) {
+    val c = Griip.colors
+    val fg by animateColorAsState(if (selected) c.onAccent else c.textSecondary, Motion.quick(), label = "accentChipFg")
+    Row(
+        modifier
+            .heightIn(min = 40.dp)
+            .clip(Shapes.pill)
+            .background(if (selected) Brush.horizontalGradient(listOf(c.accentStart, c.accentEnd)) else SolidColor(c.surface))
+            .pressable(onClick, role = Role.Tab)
+            .semantics { this.selected = selected }
+            .padding(horizontal = 16.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text, style = Griip.type.label.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium), color = fg, maxLines = 1)
+        if (count != null && count > 0) {
+            Spacer(Modifier.width(6.dp))
+            Text(if (count > 99) "99+" else "$count", style = Griip.type.caption.copy(fontWeight = FontWeight.Bold), color = fg)
         }
     }
 }
@@ -175,7 +222,10 @@ fun SearchPill(
     }
 }
 
-/** Outlined text field with label above, helper/error text below and optional leading icon. */
+/**
+ * Outlined text field with label above, helper/error text below and optional leading icon. The outline darkens to the
+ * primary colour while focused and turns red with an error; the error is also announced (TalkBack) as the field's error.
+ */
 @Composable
 fun GriipTextField(
     value: String,
@@ -193,40 +243,62 @@ fun GriipTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    shape: Shape = Shapes.tile,
+    textStyle: TextStyle = Griip.type.body,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val c = Griip.colors
-    Column(modifier.fillMaxWidth()) {
+    var focused by remember { mutableStateOf(false) }
+    // Compose scrolls only the cursor line into view; this keeps the whole field and its helper text above the
+    // keyboard and any bar pinned over it, also while the keyboard is still opening.
+    val bringIntoView = remember { BringIntoViewRequester() }
+    val imeBottom = if (focused) WindowInsets.ime.getBottom(LocalDensity.current) else 0
+    LaunchedEffect(focused, imeBottom) { if (focused) bringIntoView.bringIntoView() }
+    val outline by animateColorAsState(
+        when {
+            error != null -> c.danger
+            focused -> c.primary
+            else -> c.outline
+        },
+        Motion.quick(), label = "fieldOutline",
+    )
+    Column(modifier.fillMaxWidth().bringIntoViewRequester(bringIntoView)) {
         Text(label, style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
         Row(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 52.dp)
-                .clip(Shapes.tile)
+                .clip(shape)
                 .background(c.surface)
-                .border(if (error != null) 1.5.dp else 1.dp, if (error != null) c.danger else c.border, Shapes.tile)
+                .border(if (error != null || focused) 1.5.dp else 1.dp, outline, shape)
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = if (singleLine) Alignment.CenterVertically else Alignment.Top,
         ) {
             if (leadingIcon != null) {
-                Icon(leadingIcon, null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
+                Icon(leadingIcon, null, tint = if (focused) c.primary else c.textSecondary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
             }
-            if (prefix != null) Text(prefix, style = Griip.type.body, color = c.textTertiary)
+            if (prefix != null) Text(prefix, style = textStyle, color = c.textTertiary)
             Box(Modifier.weight(1f)) {
-                if (value.isEmpty() && placeholder.isNotEmpty()) Text(placeholder, style = Griip.type.body, color = c.textTertiary, maxLines = if (singleLine) 1 else minLines)
+                if (value.isEmpty() && placeholder.isNotEmpty()) Text(placeholder, style = textStyle, color = c.textTertiary, maxLines = if (singleLine) 1 else minLines)
                 BasicTextField(
                     value = value,
                     onValueChange = onValueChange,
                     enabled = enabled,
                     singleLine = singleLine,
                     minLines = minLines,
-                    textStyle = Griip.type.body.copy(color = c.textPrimary),
+                    textStyle = textStyle.copy(color = c.textPrimary),
                     cursorBrush = SolidColor(c.primary),
                     keyboardOptions = keyboardOptions,
                     keyboardActions = keyboardActions,
                     visualTransformation = visualTransformation,
-                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { focused = it.isFocused }
+                        .semantics {
+                            contentDescription = label
+                            if (error != null) error(error)
+                        },
                 )
             }
             if (trailing != null) {
@@ -236,7 +308,11 @@ fun GriipTextField(
         }
         val support = error ?: helper
         if (support != null) {
-            Text(support, style = Griip.type.caption, color = if (error != null) c.danger else c.textSecondary, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
+            Text(
+                support, style = Griip.type.caption, color = if (error != null) c.danger else c.textSecondary,
+                modifier = Modifier.padding(start = 4.dp, top = 6.dp)
+                    .then(if (error != null) Modifier.semantics { liveRegion = LiveRegionMode.Polite } else Modifier),
+            )
         }
     }
 }

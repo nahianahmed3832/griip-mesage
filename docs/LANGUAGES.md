@@ -13,8 +13,8 @@ Strings live in `res/values{,-zh-rCN,-bn}/strings.xml`, generated from one table
 
 **Coverage (honest):** translated: the bottom navigation, the Settings tab and every settings screen added this round
 (Chats, Notifications & Sounds, Calls, Language, Accounts), the chat list (header, filters, archive, swipe labels, empty
-state), the composer's attach sheet and the message menu, Contacts, and translation. Still English: conversation details,
-the call screen, onboarding, workspace screens, profile editing and privacy, many messages and errors. Notification text on
+state), the composer's attach sheet and the message menu, Contacts, translation, and (2026-10-18) welcome, sign-up, log in, restore, link and the server sheet. Still English: conversation details,
+the call screen, workspace screens, profile editing and privacy, many messages and errors. Notification text on
 Android 12 and older follows the phone's language. The Chinese and Bengali text was written for this round and should be
 reviewed by native speakers before release.
 

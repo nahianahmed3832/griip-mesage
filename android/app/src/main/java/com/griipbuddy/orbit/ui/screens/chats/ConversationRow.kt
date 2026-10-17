@@ -47,6 +47,7 @@ import com.griipbuddy.orbit.ui.components.IconTile
 import com.griipbuddy.orbit.ui.components.TagPill
 import com.griipbuddy.orbit.ui.theme.Griip
 import com.griipbuddy.orbit.ui.theme.Shapes
+import com.griipbuddy.orbit.ui.theme.Space
 
 fun channelIcon(kind: String?): ImageVector = when (kind) {
     "PRIVATE" -> Icons.Outlined.Lock
@@ -110,7 +111,13 @@ data class ChatPreview(val prefix: String?, val text: String, val kind: Kind) {
     }
 }
 
-/** A dense, flat chat-list row: avatar, name, time, preview, and the indicators that apply. */
+private val RowAvatar = 56.dp
+private val RowMinHeight = 80.dp
+
+/**
+ * A chat-list row: avatar, name, time, preview, and the indicators that apply (live call, muted, @mention, unread).
+ * Since UI-002 (Cocoa home) rows are separated by space rather than dividers; [showDivider] keeps the old look on demand.
+ */
 @Composable
 fun ConversationRow(
     conv: ConversationEntity,
@@ -120,7 +127,7 @@ fun ConversationRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
-    showDivider: Boolean = true,
+    showDivider: Boolean = false,
 ) {
     val c = Griip.colors
     val title = ConversationRepository.title(conv, myUserId).let { if (conv.type == "CHANNEL") "#$it" else it }
@@ -129,7 +136,7 @@ fun ConversationRow(
     val stamp = TimeFmt.listStamp(if (conv.lastMessageAt > 0) conv.lastMessageAt else conv.serverUpdatedAt)
     Column(modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 72.dp)
+            Modifier.fillMaxWidth().heightIn(min = RowMinHeight)
                 .combinedClickable(
                     interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                     indication = ripple(),
@@ -137,10 +144,10 @@ fun ConversationRow(
                     onLongClick = onLongClick,
                     onLongClickLabel = if (onLongClick != null) "More actions" else null,
                 )
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = Space.gutter + 4.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ConversationAvatar(conv, myUserId, online = online)
+            ConversationAvatar(conv, myUserId, size = RowAvatar, online = online)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -162,7 +169,7 @@ fun ConversationRow(
                     Spacer(Modifier.width(8.dp))
                     Text(stamp, style = Griip.type.caption.copy(fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Medium), color = if (unread && !conv.muted) c.primary else c.textSecondary)
                 }
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val line = buildAnnotatedString {
                         preview.prefix?.let { p ->
@@ -192,7 +199,7 @@ fun ConversationRow(
                 }
             }
         }
-        if (showDivider) HorizontalDivider(Modifier.padding(start = 16.dp + 52.dp + 14.dp), thickness = 1.dp, color = c.border)
+        if (showDivider) HorizontalDivider(Modifier.padding(start = Space.gutter + 4.dp + RowAvatar + 14.dp), thickness = 1.dp, color = c.border)
     }
 }
 

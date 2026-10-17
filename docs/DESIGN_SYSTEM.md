@@ -3,6 +3,21 @@
 > **2026-10-16 redesign:** the glass, gradient and teal/lavender/peach language below was replaced by a flat emerald-on-neutral
 > system (tokens in `ui/theme/Color.kt`, components in `ui/components`). See `UI_REDESIGN.md` for the current system. The rest
 > of this file is the original rationale, kept for history.
+>
+> **2026-10-18 (UI-001), the Orbit direction:** two new palettes in `ui/theme/OrbitPalettes.kt`, both complete `GriipColors`
+> sets so every component draws in them:
+> - **Ivory** (`IvoryColors`): warm ivory `#F7F2ED`, dark type `#1C1716`, charcoal buttons `#221B1A`, 3:1 input outlines.
+>   Welcome, sign-up and sign-in always use it (light and dark mode alike), with dark status-bar icons.
+> - **Cocoa** (`CocoaColors`): background `#171313`, raised surface `#292120`, text `#FFF8F3` / `#B8AAA5`, a peach `#F6A585`
+>   → pink `#EE8AA6` accent. Ready for the home, chat and profile screens (UI-002, UI-003); nothing signed-in uses it yet.
+>
+> New tokens: `outline`, `accentStart`, `accentEnd`, `onAccent` (every palette), `Griip.type.hero` (32/38 ExtraBold),
+> `Space.screen` (24 dp), `Shapes.field` (16 dp) and `Shapes.panel` (24 dp). `ProvideGriipPalette(colors) { }` draws a
+> subtree in one palette; `accentBrush()` gives the accent gradient. Components: `PillButton` fills with the palette's
+> action gradient and grows with font size; `GriipTextField` gains a focus outline, a `shape`, a `textStyle` and sets its
+> error in semantics; `ChoiceCard` (icon, title, explanation, chevron). Contrast is unit-tested in `OrbitPalettesTest`;
+> the ivory auth screens were reviewed on one phone (HONOR, Android 16, dark mode); Cocoa hasn't been seen on a device.
+> Details: `ORBIT_UI001_DESIGN_SYSTEM_AUTH_2026-10-18.md`.
 
 ## 1. Reference analysed
 

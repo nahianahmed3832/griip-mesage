@@ -17,15 +17,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,7 +33,9 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.griipbuddy.orbit.R
 import com.griipbuddy.orbit.ui.theme.Griip
 import com.griipbuddy.orbit.ui.theme.Shapes
 import com.griipbuddy.orbit.ui.theme.Space
@@ -59,7 +55,7 @@ fun GriipTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (onBack != null) {
-            CircleIconButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack)
+            CircleIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.common_back), onBack)
             Spacer(Modifier.width(4.dp))
         }
         Column(Modifier.weight(1f)) {
@@ -92,36 +88,6 @@ fun LargeHeader(
 }
 
 data class NavItem(val route: String, val label: String, val icon: ImageVector, val selectedIcon: ImageVector, val badge: Int = 0)
-
-/** Docked bottom navigation: surface bar, top divider, emerald indicator behind the selected icon. */
-@Composable
-fun GriipNavigationBar(items: List<NavItem>, selectedRoute: String?, onSelect: (NavItem) -> Unit, modifier: Modifier = Modifier) {
-    val c = Griip.colors
-    Column(modifier.fillMaxWidth()) {
-        HorizontalDivider(thickness = 1.dp, color = c.border)
-        NavigationBar(containerColor = c.surface, tonalElevation = 0.dp) {
-            items.forEach { item ->
-                val sel = item.route == selectedRoute
-                NavigationBarItem(
-                    selected = sel,
-                    onClick = { onSelect(item) },
-                    icon = {
-                        BadgedBox(badge = {
-                            if (item.badge > 0) Badge(containerColor = c.primary, contentColor = c.onAction) {
-                                Text(if (item.badge > 99) "99+" else "${item.badge}", style = Griip.type.caption.copy(fontWeight = FontWeight.Bold))
-                            }
-                        }) { Icon(if (sel) item.selectedIcon else item.icon, contentDescription = null) }
-                    },
-                    label = { Text(item.label, style = Griip.type.label.copy(fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Medium), maxLines = 1) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = c.primaryDeep, selectedTextColor = c.textPrimary, indicatorColor = c.navIndicator,
-                        unselectedIconColor = c.textSecondary, unselectedTextColor = c.textSecondary,
-                    ),
-                )
-            }
-        }
-    }
-}
 
 @Composable
 fun ConfirmDialog(

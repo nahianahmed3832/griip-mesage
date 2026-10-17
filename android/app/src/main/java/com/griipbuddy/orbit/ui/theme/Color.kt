@@ -67,6 +67,12 @@ data class GriipColors(
     val readReceipt: Color,
     /** Selected bottom-navigation pill. */
     val navIndicator: Color,
+    /** Boundary of inputs and other controls that must stand out from their fill (3:1 where it carries meaning). */
+    val outline: Color,
+    /** The accent gradient (start → end): highlights, accent text and accent fills carrying [onAccent]. */
+    val accentStart: Color,
+    val accentEnd: Color,
+    val onAccent: Color,
 )
 
 private val EmeraldLight = Color(0xFF087F56)
@@ -118,6 +124,10 @@ val LightColors = GriipColors(
     bubbleOutgoingMeta = Color(0xFF4A6B5C),
     readReceipt = Color(0xFF0B8FD9),
     navIndicator = Color(0xFFDCF0E5),
+    outline = Color(0xFFE1E6E3),
+    accentStart = EmeraldLight,
+    accentEnd = Color(0xFF06633F),
+    onAccent = Color.White,
 )
 
 val DarkColors = GriipColors(
@@ -166,6 +176,10 @@ val DarkColors = GriipColors(
     bubbleOutgoingMeta = Color(0xFFA7CDBB),
     readReceipt = Color(0xFF6CC7FF),
     navIndicator = Color(0xFF173E2E),
+    outline = Color(0xFF2A322F),
+    accentStart = EmeraldDark,
+    accentEnd = Color(0xFF72DDB2),
+    onAccent = Color(0xFF03241A),
 )
 
 val LocalGriipColors = staticCompositionLocalOf { LightColors }

@@ -15,6 +15,8 @@ object Space {
     val xxl = 24.dp
     val xxxl = 32.dp
     val gutter = 16.dp
+    /** Side margin of focused, single-task screens (welcome, sign-up, sign-in): more air than a list screen. */
+    val screen = 24.dp
 }
 
 /** Consistent, modest radii: 16 dp for prominent surfaces, 12 dp for cards and fields, 8 dp for small parts. */
@@ -24,6 +26,10 @@ object Shapes {
     val tile = RoundedCornerShape(12.dp)
     val iconTile = RoundedCornerShape(12.dp)
     val small = RoundedCornerShape(8.dp)
+    /** Inputs on focused forms (sign-up, sign-in). */
+    val field = RoundedCornerShape(16.dp)
+    /** Large panels and choice cards in the Orbit direction (2026-10-18). */
+    val panel = RoundedCornerShape(24.dp)
     val pill = RoundedCornerShape(percent = 50)
     val sheet = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     /** Message bubbles: 18 dp, with a 6 dp corner toward the sender on the first bubble of a run. */

@@ -34,6 +34,16 @@ class ProfileRulesTest {
     }
 
     @Test
+    fun usernameIssuesNameWhatIsWrong() {
+        assertNull(ProfileRules.usernameIssue("nahian.ahmed"))
+        assertEquals(ProfileRules.UsernameIssue.TOO_SHORT, ProfileRules.usernameIssue("ab"))
+        assertEquals(ProfileRules.UsernameIssue.TOO_LONG, ProfileRules.usernameIssue("x".repeat(25)))
+        assertEquals(ProfileRules.UsernameIssue.CHARACTERS, ProfileRules.usernameIssue(".nahian"))
+        assertEquals(ProfileRules.UsernameIssue.DOUBLE_DOT, ProfileRules.usernameIssue("na..hian"))
+        assertEquals("No two dots in a row", ProfileRules.usernameProblem("na..hian")) // the English wording is unchanged
+    }
+
+    @Test
     fun phonesNeedTheCountryCode() {
         assertEquals("+8801712345678", ProfileRules.normalizePhone("+880 1712-345678"))
         assertEquals("+14155550123", ProfileRules.normalizePhone("+1 (415) 555.0123"))

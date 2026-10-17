@@ -7,6 +7,8 @@ def esc(v):
     v = v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     v = re.sub(r'(?<!\\)"', r'\\"', v)
     v = re.sub(r"(?<!\\)'", r"\\'", v)
+    if v[:1] in ("@", "?"):  # a leading @ or ? would make Android read the value as a resource reference
+        v = "\\" + v
     return v
 brand = {
   "en": ("Private by design. Connected by everyone.",),

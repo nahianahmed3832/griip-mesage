@@ -14,6 +14,18 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -77,4 +89,40 @@ fun GlassCard(
             .padding(contentPadding),
         content = content,
     )
+}
+
+/**
+ * A large tappable option: icon tile, title, one-line explanation and a chevron, on a card. For short lists of
+ * choices such as how to sign in. TalkBack reads it as one button.
+ */
+@Composable
+fun ChoiceCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = Griip.colors
+    Row(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp)
+            .clip(Shapes.panel)
+            .background(c.surface)
+            .border(1.dp, c.border, Shapes.panel)
+            .pressable(onClick)
+            .padding(horizontal = Space.lg, vertical = Space.lg),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconTile(icon, c.primary, c.primarySoft, size = 44.dp)
+        Spacer(Modifier.width(Space.md))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = Griip.type.titleSmall, color = c.textPrimary)
+            Spacer(Modifier.height(2.dp))
+            Text(subtitle, style = Griip.type.bodySmall, color = c.textSecondary)
+        }
+        Spacer(Modifier.width(Space.sm))
+        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = c.textTertiary)
+    }
 }

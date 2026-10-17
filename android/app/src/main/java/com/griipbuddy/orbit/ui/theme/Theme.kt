@@ -1,6 +1,7 @@
 package com.griipbuddy.orbit.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -27,31 +28,46 @@ fun GriipTheme(mode: ThemeMode = ThemeMode.SYSTEM, accent: String = Accents.DEFA
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    val c = Accents.apply(if (dark) DarkColors else LightColors, accent, dark)
-    // Material 3 supplies low-level widgets (text fields, dialogs, menus, switches, sheets); its scheme is
-    // derived from the same tokens so they match the Griip components.
-    val scheme = if (dark) {
-        darkColorScheme(
-            primary = c.primary, onPrimary = c.onPrimary, primaryContainer = c.primarySoft, onPrimaryContainer = c.primaryDeep,
-            secondary = c.lavender, tertiary = c.peach, error = c.danger,
-            background = c.background, onBackground = c.textPrimary, surface = c.surface, onSurface = c.textPrimary,
-            surfaceVariant = c.surfaceVariant, onSurfaceVariant = c.textSecondary, outline = c.border, outlineVariant = c.border,
-            surfaceContainerLowest = c.background, surfaceContainerLow = c.surface, surfaceContainer = c.surface,
-            surfaceContainerHigh = c.glassStrong, surfaceContainerHighest = c.surfaceVariant,
-        )
-    } else {
-        lightColorScheme(
-            primary = c.primary, onPrimary = c.onPrimary, primaryContainer = c.primarySoft, onPrimaryContainer = c.primaryDeep,
-            secondary = c.lavender, tertiary = c.peach, error = c.danger,
-            background = c.background, onBackground = c.textPrimary, surface = c.surface, onSurface = c.textPrimary,
-            surfaceVariant = c.surfaceVariant, onSurfaceVariant = c.textSecondary, outline = c.border, outlineVariant = c.border,
-            surfaceContainerLowest = c.surface, surfaceContainerLow = c.surface, surfaceContainer = c.surface,
-            surfaceContainerHigh = c.surface, surfaceContainerHighest = c.surfaceVariant,
-        )
+    CompositionLocalProvider(LocalGriipType provides GriipTypography) {
+        ProvideGriipPalette(Accents.apply(if (dark) DarkColors else LightColors, accent, dark), content)
     }
-    CompositionLocalProvider(LocalGriipColors provides c, LocalGriipType provides GriipTypography) {
-        MaterialTheme(colorScheme = scheme, content = content)
+}
+
+/**
+ * Draws [content] in one fixed palette, whatever the app's theme setting: [IvoryColors] for sign-in and sign-up,
+ * [CocoaColors] for the premium dark surfaces (docs/DESIGN_SYSTEM.md). Every Griip component and the Material widgets
+ * underneath follow it.
+ */
+@Composable
+fun ProvideGriipPalette(colors: GriipColors, content: @Composable () -> Unit) {
+    // Type and Material shapes/typography carry over from the enclosing theme; only the colours change.
+    CompositionLocalProvider(LocalGriipColors provides colors) {
+        MaterialTheme(colorScheme = griipColorScheme(colors), content = content)
     }
+}
+
+/**
+ * Material 3 supplies low-level widgets (text fields, dialogs, menus, switches, sheets); its scheme is derived from the
+ * same tokens so they match the Griip components.
+ */
+fun griipColorScheme(c: GriipColors): ColorScheme = if (c.isDark) {
+    darkColorScheme(
+        primary = c.primary, onPrimary = c.onPrimary, primaryContainer = c.primarySoft, onPrimaryContainer = c.primaryDeep,
+        secondary = c.lavender, tertiary = c.peach, error = c.danger,
+        background = c.background, onBackground = c.textPrimary, surface = c.surface, onSurface = c.textPrimary,
+        surfaceVariant = c.surfaceVariant, onSurfaceVariant = c.textSecondary, outline = c.outline, outlineVariant = c.border,
+        surfaceContainerLowest = c.background, surfaceContainerLow = c.surface, surfaceContainer = c.surface,
+        surfaceContainerHigh = c.glassStrong, surfaceContainerHighest = c.surfaceVariant,
+    )
+} else {
+    lightColorScheme(
+        primary = c.primary, onPrimary = c.onPrimary, primaryContainer = c.primarySoft, onPrimaryContainer = c.primaryDeep,
+        secondary = c.lavender, tertiary = c.peach, error = c.danger,
+        background = c.background, onBackground = c.textPrimary, surface = c.surface, onSurface = c.textPrimary,
+        surfaceVariant = c.surfaceVariant, onSurfaceVariant = c.textSecondary, outline = c.outline, outlineVariant = c.border,
+        surfaceContainerLowest = c.surface, surfaceContainerLow = c.surface, surfaceContainer = c.surface,
+        surfaceContainerHigh = c.surface, surfaceContainerHighest = c.surfaceVariant,
+    )
 }
 
 /**
@@ -81,10 +97,12 @@ object Accents {
             primary = androidx.compose.ui.graphics.Color(a.dark), primaryDeep = androidx.compose.ui.graphics.Color(a.darkDeep),
             primarySoft = androidx.compose.ui.graphics.Color(a.darkSoft), actionStart = androidx.compose.ui.graphics.Color(a.darkAction),
             actionEnd = androidx.compose.ui.graphics.Color(a.darkAction), bubbleOutgoing = androidx.compose.ui.graphics.Color(a.darkBubble),
+            accentStart = androidx.compose.ui.graphics.Color(a.dark), accentEnd = androidx.compose.ui.graphics.Color(a.darkDeep),
         ) else base.copy(
             primary = androidx.compose.ui.graphics.Color(a.light), primaryDeep = androidx.compose.ui.graphics.Color(a.lightDeep),
             primarySoft = androidx.compose.ui.graphics.Color(a.lightSoft), actionStart = androidx.compose.ui.graphics.Color(a.light),
             actionEnd = androidx.compose.ui.graphics.Color(a.light), bubbleOutgoing = androidx.compose.ui.graphics.Color(a.lightBubble),
+            accentStart = androidx.compose.ui.graphics.Color(a.light), accentEnd = androidx.compose.ui.graphics.Color(a.lightDeep),
         )
     }
 }
