@@ -1,14 +1,21 @@
 # Connecting the Hostinger backend to AWS storage (2026-10-17)
 
-**Status: built and tested against a real, isolated S3 test bucket with synthetic data (§6).** Production is
-untouched: no production bucket or user, nothing deployed, and no user data has left Hostinger. GriipBuddy's AWS
-account, region Singapore (`ap-southeast-1`).
+**Status (2026-10-17): production stores new files in S3.** The bucket is `griipbuddy-orbit-media-sg` in Singapore,
+and the API is 0.2.0 on the Hostinger VPS. Messages, accounts and every record stay in SQLite on the VPS. The
+deployment, verification, rollback and risks are in **docs/ORBIT_AWS_PRODUCTION_2026-10-17.md**. This plan keeps the
+design, costs and test-stack results.
 
-**Created with your approval (2026-10-17):**
+**In GriipBuddy's AWS account (`ap-southeast-1`), all approved:**
 
-- the test stack `orbit-storage-test`: bucket `griipbuddy-orbit-media-sg-test` and IAM user
-  `orbit-api-test-ap-southeast-1` with one access key;
+- `orbit-storage-prod`: bucket `griipbuddy-orbit-media-sg` and runtime user `orbit-api-prod-ap-southeast-1`, created
+  by `orbit-ops-admin`;
+- `orbit-ops-admin`: an operations user limited to Orbit, so Orbit needs no root credentials. The root user created
+  it once;
+- `orbit-storage-test`: bucket `griipbuddy-orbit-media-sg-test` and user `orbit-api-test-ap-southeast-1`, kept for
+  automated tests;
 - the budget alarm `orbit-monthly-10usd`.
+
+Sections 1, 3, 7 and 8 below describe the state before the deployment, as planned.
 
 ## 1. Where data lives today
 
@@ -65,10 +72,11 @@ it expires, quotas, messages, accounts) stays in SQLite on Hostinger. S3 isn't a
   resume from what S3 has, link renewal and cancellation on failure. Otherwise it uses the original upload.
 - **No Orbit token reaches S3**, and presigned URLs are never logged.
 
-### Infrastructure (test stack only; nothing for production yet)
+### Infrastructure
 
-`deploy/aws/orbit-storage.yaml` (CloudFormation, checked with `validate-template`). The **test** stack exists since
-2026-10-17 (§6). There is no production bucket or user yet.
+`deploy/aws/orbit-storage.yaml` (CloudFormation): the test stack and, since 2026-10-17, the production stack. Created
+by `orbit-ops-admin` (`deploy/aws/orbit-ops-admin.yaml`) with the permissions boundary `orbit-runtime-boundary` on the
+runtime user.
 
 - **Bucket:**
   - private, with all public access blocked;
