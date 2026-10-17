@@ -98,6 +98,19 @@ else
   ok "federation off (standalone server)"
 fi
 
+if [ -n "${PUSH_UNIFIEDPUSH_HOSTS:-}" ]; then
+  for h in $(echo "$PUSH_UNIFIEDPUSH_HOSTS" | tr ',' ' '); do
+    case "$h" in
+      *://*|*/*) err "PUSH_UNIFIEDPUSH_HOSTS takes host names such as ntfy.example.net, not URLs: $h" ;;
+      *example.com*|*example.org*) err "PUSH_UNIFIEDPUSH_HOSTS is still the example value ($h)" ;;
+      *:443) err "PUSH_UNIFIEDPUSH_HOSTS: leave out :443 ($h)" ;;
+      *) ok "push wake-ups go to https://$h only (payload-free; docs/BACKGROUND_DELIVERY.md)" ;;
+    esac
+  done
+else
+  ok "push wake-ups off (PUSH_UNIFIEDPUSH_HOSTS empty)"
+fi
+
 LK="$DIR/livekit/livekit.yaml"
 if [ ! -f "$LK" ]; then
   err "livekit/livekit.yaml is missing: run scripts/gen-config.sh to render it"

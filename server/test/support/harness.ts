@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { buildApp, type BuiltApp } from "../../src/app.js";
 import { loadConfig } from "../../src/config.js";
+import type { PushDeps } from "../../src/push/service.js";
 import { GriipClient } from "./griipClient.js";
 
 export interface Harness extends BuiltApp {
@@ -14,7 +15,8 @@ export interface Harness extends BuiltApp {
 
 let counter = 0;
 
-export async function startServer(env: Record<string, string> = {}): Promise<Harness> {
+/** [push]: replaces DNS and the network for push wake-ups (test/push_wakeup.test.ts). */
+export async function startServer(env: Record<string, string> = {}, opts: { push?: PushDeps } = {}): Promise<Harness> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "griip-test-"));
   const config = loadConfig({
     DATA_DIR: dir,
@@ -27,7 +29,7 @@ export async function startServer(env: Record<string, string> = {}): Promise<Har
     REGISTRATION_MODE: "open",
     ...env,
   } as NodeJS.ProcessEnv);
-  const built = await buildApp(config, { logger: false });
+  const built = await buildApp(config, { logger: false, push: opts.push });
   await built.app.listen({ host: "127.0.0.1", port: 0 });
   const addr = built.app.server.address();
   const port = typeof addr === "object" && addr ? addr.port : 0;

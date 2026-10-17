@@ -90,8 +90,43 @@ export interface Config {
   instanceName: string | null;
   /** Federation with other Griip servers (docs/FEDERATION_PROTOCOL.md). Null when FEDERATION_DOMAIN isn't set. */
   federation: FederationConfig | null;
+  /** Payload-free push wake-ups (docs/BACKGROUND_DELIVERY.md). Null (off) unless PUSH_UNIFIEDPUSH_HOSTS is set. */
+  push: PushConfig | null;
   logLevel: string;
   rateLimitPerMinute: number;
+}
+
+export interface PushConfig {
+  /**
+   * The only push servers wake-ups are sent to: host names, or host:port for a port other than 443. Devices can
+   * register endpoints on these hosts only, and every request also has to reach a public address (no SSRF).
+   */
+  unifiedPushHosts: string[];
+  /** At most one wake-up per device in this window; a later request waits for its end instead of being dropped. */
+  wakeIntervalMs: number;
+  /** A ring is urgent: it waits at most this long after the device's previous wake-up. */
+  urgentWakeIntervalMs: number;
+  /** Deadline for one wake-up request, connecting included. */
+  timeoutMs: number;
+}
+
+const PUSH_HOST = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?::\d{1,5})?$/;
+
+function pushConfig(env: NodeJS.ProcessEnv, int: (n: string, d: number) => number): PushConfig | null {
+  const hosts = [...new Set((env.PUSH_UNIFIEDPUSH_HOSTS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean))];
+  if (hosts.length === 0) return null;
+  for (const h of hosts) {
+    const port = h.includes(":") ? Number(h.split(":")[1]) : 443;
+    if (!PUSH_HOST.test(h) || port < 1 || port > 65535 || h.endsWith(":443")) {
+      throw new Error(`PUSH_UNIFIEDPUSH_HOSTS takes host names such as ntfy.example.com (host:port only for a port other than 443), without https:// or a path; got "${h}"`);
+    }
+  }
+  return {
+    unifiedPushHosts: hosts,
+    wakeIntervalMs: Math.min(Math.max(int("PUSH_WAKE_INTERVAL_SECONDS", 30), 5), 600) * 1000,
+    urgentWakeIntervalMs: 5000,
+    timeoutMs: Math.min(Math.max(int("PUSH_TIMEOUT_MS", 5000), 1000), 15_000),
+  };
 }
 
 export interface FederationConfig {
@@ -206,6 +241,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     trustProxy: env.TRUST_PROXY === "true",
     instanceName: (env.INSTANCE_NAME ?? "").trim().slice(0, 80) || null,
     federation: federationConfig(env, dataDir, int),
+    push: pushConfig(env, int),
     logLevel: env.LOG_LEVEL ?? "info",
     rateLimitPerMinute: int("RATE_LIMIT_PER_MINUTE", 600),
   };

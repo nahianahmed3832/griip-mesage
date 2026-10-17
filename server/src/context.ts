@@ -6,6 +6,7 @@ import type { DB } from "./db.js";
 import type { Hub } from "./hub.js";
 import type { Federation } from "./federation/service.js";
 import type { LiveKitService } from "./livekit.js";
+import type { PushService } from "./push/service.js";
 import type { BlobStore } from "./storage/index.js";
 import { ApiError, badRequest, now, sha256Hex, unauthorized } from "./util.js";
 
@@ -19,6 +20,8 @@ export interface AppContext {
   blobs: BlobStore;
   /** Present when FEDERATION_DOMAIN is configured (docs/FEDERATION_PROTOCOL.md). */
   federation?: Federation;
+  /** Present when PUSH_UNIFIEDPUSH_HOSTS is configured (docs/BACKGROUND_DELIVERY.md). */
+  push?: PushService;
   log: FastifyBaseLogger;
   audit: (e: { actorId?: string | null; orgId?: string | null; action: string; target?: string | null; detail?: string | null }) => void;
 }

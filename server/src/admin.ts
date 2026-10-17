@@ -63,6 +63,8 @@ switch (cmd) {
       oldestQueuedHours: Math.round((now() - (one("SELECT COALESCE(MIN(created_at), 0) n FROM delivery_queue") || now())) / 3600_000),
       attachments: one("SELECT COUNT(*) n FROM attachments"),
       liveCalls: one("SELECT COUNT(*) n FROM calls WHERE state != 'ENDED'"),
+      pushEndpoints: one("SELECT COUNT(*) n FROM push_endpoints"),
+      pushEndpointsFailing: one("SELECT COUNT(*) n FROM push_endpoints WHERE failing_since IS NOT NULL"),
     });
     break;
   case "users":

@@ -324,6 +324,8 @@ export function notifyCallUser(ctx: AppContext, c: CallRow, userId: string, even
     return;
   }
   ctx.hub.sendToUser(userId, { t: "call", event, call: callView(ctx, c), ...extra });
+  // A ring also wakes their devices that have no open socket (payload-free; the app finds the ringing call itself).
+  if (event === "ring") ctx.push?.ring(userId);
 }
 
 export default async function callRoutes(app: FastifyInstance, ctx: AppContext) {

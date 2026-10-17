@@ -1,5 +1,6 @@
 import type { AppContext } from "./context.js";
 import { expireDirectUploads, processAbandonedUploads, processBlobDeletes, purgeExpiredAttachments } from "./routes/attachments.js";
+import { purgeRevokedPushEndpoints } from "./push/service.js";
 import { purgeHistoryTombstones } from "./routes/history.js";
 import { broadcastCall, type CallRow, endCallRow, evictFromCall, loadCall } from "./routes/calls.js";
 import { now } from "./util.js";
@@ -22,6 +23,8 @@ export interface CleanupResult {
   historyTombstones: number;
   /** Expired federation nonces, inbox dedupe keys and outbox items. */
   federation: number;
+  /** Push endpoints of revoked devices. */
+  pushEndpoints: number;
   callsTimedOut: number;
   callEvictions: number;
   disabledDisconnected: number;
@@ -49,6 +52,7 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     uploadsCleaned: 0,
     historyTombstones: purgeHistoryTombstones(ctx, t),
     federation: ctx.federation ? Object.values(ctx.federation.cleanup(t)).reduce((a, b) => a + b, 0) : 0,
+    pushEndpoints: purgeRevokedPushEndpoints(db),
     callsTimedOut: 0,
     callEvictions: 0,
     disabledDisconnected: 0,

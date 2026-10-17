@@ -762,12 +762,16 @@ export class Federation {
       const local = this.ctx.db
         .prepare("SELECT 1 FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? AND m.user_id = ? AND u.home_server_id IS NULL")
         .get(c.conversation_id, body.targetUserId);
-      if (local) this.ctx.hub.sendToUser(body.targetUserId, msg);
+      if (local) {
+        this.ctx.hub.sendToUser(body.targetUserId, msg);
+        if (body.event === "ring") this.ctx.push?.ring(body.targetUserId); // devices with no open socket (payload-free)
+      }
     } else {
       const members = (this.ctx.db
         .prepare("SELECT m.user_id FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? AND u.home_server_id IS NULL")
         .all(c.conversation_id) as { user_id: string }[]).map((r) => r.user_id);
       this.ctx.hub.sendToUsers(members, msg);
+      if (body.event === "ring") for (const m of members) this.ctx.push?.ring(m);
     }
   }
 

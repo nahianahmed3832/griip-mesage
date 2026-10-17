@@ -39,6 +39,8 @@ export interface Conn {
    * message can't overtake (or duplicate) the backlog (P6).
    */
   flushing: boolean;
+  /** When this socket opened: when it closes, items queued since then may still be unacknowledged (push wake-ups). */
+  openedAt: number;
 }
 
 /**
@@ -50,11 +52,15 @@ export class Hub {
   private byUser = new Map<string, Set<string>>();
   private lastSeen = new Map<string, number>();
   onPresenceChange: (userId: string, online: boolean) => void = () => {};
+  /** An envelope was queued for a device with no open socket (src/push sends it a wake-up). */
+  onQueuedOffline: (deviceId: string) => void = () => {};
+  /** A device's last socket closed; [openedAt] is when that socket opened. */
+  onDeviceOffline: (deviceId: string, openedAt: number) => void = () => {};
 
   constructor(private db: DB) {}
 
   add(ws: WebSocket, userId: string, deviceId: string): Conn {
-    const conn: Conn = { ws, userId, deviceId, flushing: true }; // its backlog flush starts right after "hello"
+    const conn: Conn = { ws, userId, deviceId, flushing: true, openedAt: now() }; // its backlog flush starts right after "hello"
     let set = this.byDevice.get(deviceId);
     if (!set) this.byDevice.set(deviceId, (set = new Set()));
     set.add(conn);
@@ -79,12 +85,17 @@ export class Hub {
           this.lastSeen.set(conn.userId, now());
           this.onPresenceChange(conn.userId, false);
         }
+        this.onDeviceOffline(conn.deviceId, conn.openedAt);
       }
     }
   }
 
   isUserOnline(userId: string): boolean {
     return (this.byUser.get(userId)?.size ?? 0) > 0;
+  }
+
+  isDeviceOnline(deviceId: string): boolean {
+    return (this.byDevice.get(deviceId)?.size ?? 0) > 0;
   }
 
   lastSeenAt(userId: string): number | null {
@@ -134,9 +145,16 @@ export class Hub {
     }
   }
 
-  /** Push freshly queued items to a device's sockets whose backlog has drained (fire and forget). */
+  /**
+   * Push freshly queued items to a device's sockets whose backlog has drained (fire and forget). A device with no
+   * socket is offered a wake-up instead, for envelopes only: delivery receipts wait until the app next connects.
+   */
   pushQueued(deviceId: string, rows: QueueItemRow[]): void {
     if (rows.length === 0) return;
+    if (!this.isDeviceOnline(deviceId)) {
+      if (rows.some((r) => r.kind === "envelope")) this.onQueuedOffline(deviceId);
+      return;
+    }
     const data = JSON.stringify({ t: "queue", items: rows.map(queueItemToWire), more: false });
     for (const c of this.byDevice.get(deviceId) ?? []) if (!c.flushing && c.ws.readyState === 1) c.ws.send(data);
   }

@@ -9,6 +9,7 @@ import { type AppContext, authenticateToken, bearer } from "./context.js";
 import { type DB, openDatabase } from "./db.js";
 import { Hub } from "./hub.js";
 import { LiveKitService } from "./livekit.js";
+import { type PushDeps, PushService } from "./push/service.js";
 import { createBlobStore } from "./storage/index.js";
 import attachmentRoutes from "./routes/attachments.js";
 import authRoutes from "./routes/auth.js";
@@ -17,6 +18,7 @@ import conversationRoutes from "./routes/conversations.js";
 import historyRoutes from "./routes/history.js";
 import messageRoutes from "./routes/messages.js";
 import orgRoutes from "./routes/orgs.js";
+import pushRoutes from "./routes/push.js";
 import userRoutes from "./routes/users.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
@@ -36,7 +38,7 @@ export interface BuiltApp {
   ctx: AppContext;
 }
 
-export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean } = {}): Promise<BuiltApp> {
+export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean; push?: PushDeps } = {}): Promise<BuiltApp> {
   const app = Fastify({
     logger:
       opts.logger === false
@@ -73,6 +75,17 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
   };
 
   if (config.federation) ctx.federation = new Federation(ctx, config.federation);
+  if (config.push) {
+    const push = new PushService(ctx, config.push, opts.push);
+    ctx.push = push;
+    ctx.hub.onQueuedOffline = (deviceId) => push.queued(deviceId);
+    ctx.hub.onDeviceOffline = (deviceId, openedAt) => push.disconnected(deviceId, openedAt);
+    // Added before the WebSocket plugin's own preClose, which closes every socket: shutting down wakes nobody.
+    app.addHook("preClose", (done) => {
+      push.stop();
+      done();
+    });
+  }
 
   // Attachment uploads are streamed to disk by their route (size and quota enforced while reading),
   // so the raw request stream is passed through instead of being buffered in memory.
@@ -133,9 +146,11 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
     // Encrypted message history and kept files (docs/MESSAGE_HISTORY.md). Says nothing about where files are stored.
     history: config.history.enabled ? { maxItemBytes: config.history.maxItemBytes } : null,
     attachmentKeepDays: config.attachmentKeepDays,
+    // Push wake-ups (docs/BACKGROUND_DELIVERY.md): the push servers a device's distributor app must use.
+    push: config.push ? { unifiedPushHosts: config.push.unifiedPushHosts } : null,
   }));
 
-  for (const r of [authRoutes, userRoutes, orgRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, wsRoutes]) {
+  for (const r of [authRoutes, userRoutes, orgRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, wsRoutes]) {
     await app.register(async (scope) => r(scope, ctx));
   }
   const fed = ctx.federation;
@@ -152,5 +167,6 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
   if (directUploads) f.push("direct-upload");
   if (config.history.enabled) f.push("history");
   if (config.attachmentKeepDays > 0) f.push("attachment-keep");
+  if (config.push) f.push("push-unifiedpush");
   return f;
 }

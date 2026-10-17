@@ -5,6 +5,7 @@ import { type AppContext, bearer, me, parse, requireAuth, zKey, zName, zSig } fr
 import { privacyOf } from "../profile.js";
 import { canonical, isValidPublicKey, keyFingerprint, verifyEd25519 } from "../crypto.js";
 import { findOrgInvite, findRegistrationInvite, INVITE_PROBLEMS, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../invites.js";
+import { removePushEndpoint } from "../push/service.js";
 import { ApiError, badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex, unauthorized } from "../util.js";
 import { evictUserDevicesFromCalls } from "./calls.js";
 import { notifyOrg } from "./orgs.js";
@@ -225,6 +226,8 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
   app.post("/v1/auth/logout", { preHandler: requireAuth(ctx) }, async (req) => {
     const token = bearer(req)!;
     ctx.db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(sha256Hex(token));
+    // A signed-out device isn't woken any more; signing in again, the app registers its endpoint again.
+    removePushEndpoint(ctx.db, me(req).deviceId);
     return { ok: true };
   });
 
@@ -346,6 +349,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
       ctx.db.prepare("UPDATE devices SET revoked_at = ? WHERE id = ?").run(t, id);
       ctx.db.prepare("DELETE FROM sessions WHERE device_id = ?").run(id);
       ctx.db.prepare("DELETE FROM delivery_queue WHERE recipient_device_id = ?").run(id);
+      removePushEndpoint(ctx.db, id);
     })();
     ctx.audit({ actorId: userId, action: "device.revoke", target: id, detail: id === deviceId ? "self" : null });
     ctx.hub.disconnectDevice(id, "device revoked");
