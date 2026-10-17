@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SSH="ssh -o BatchMode=yes $TARGET"
 
 echo "→ preflight (read-only)"
-$SSH "mkdir -p $DIR/scripts && chmod 750 $DIR"
+$SSH "mkdir -p $DIR/scripts $DIR/ntfy && chmod 750 $DIR"
 scp -q "$ROOT/deploy/scripts/preflight.sh" "$TARGET:$DIR/scripts/preflight.sh"
 $SSH "bash $DIR/scripts/preflight.sh" || { echo "Preflight failed; not deploying."; exit 1; }
 
@@ -19,6 +19,7 @@ rsync -az --delete --exclude node_modules --exclude dist --exclude data --exclud
   "$ROOT/server/" "$TARGET:$DIR/server/"
 rsync -az "$ROOT/deploy/compose.yaml" "$ROOT/deploy/.env.example" "$TARGET:$DIR/"
 rsync -az "$ROOT/deploy/livekit/livekit.yaml.template" "$TARGET:$DIR/livekit/"
+rsync -az "$ROOT/deploy/ntfy/server.yml" "$TARGET:$DIR/ntfy/"
 rsync -az "$ROOT/deploy/scripts/" "$TARGET:$DIR/scripts/"
 
 echo "→ config"

@@ -13,7 +13,7 @@ It only wakes the app, which then fetches its encrypted queue over its own authe
 | A. "Stay connected" (persistent connection) | In production since 2026-10-16. Default on |
 | B. Self-hosted UnifiedPush wake-ups, server | **Built and tested locally** (`server/test/push_wakeup.test.ts`, `push_transport.test.ts`). Off unless `PUSH_UNIFIEDPUSH_HOSTS` is set. **Not deployed** |
 | B. App | **Built and tested on the JVM** (`PushRegistrarTest`, `WakeFetchTest`, `PushContractTest`). Off by default. **Never run on a phone** |
-| B. Push server (ntfy), DNS name, TLS route | **Not set up.** A production change that needs the owner's approval (§ Deploying) |
+| B. Push server (ntfy), DNS name, TLS route | **Prepared, not set up:** compose service, config, nginx site and runbook (`PUSH_SERVER.md`). Each production step needs the owner's approval |
 | C. FCM | Not started |
 
 The 2026-10-16 evaluation of the options follows at the end.
@@ -137,31 +137,26 @@ Endpoints are also removed on device revocation, on sign-out (`POST /v1/auth/log
 
 ## Deploying (needs the owner's approval; nothing below has been done)
 
-1. **ntfy container** in Compose project `griip-internal-messaging`. Its `server.yml`:
-   ```yaml
-   base-url: "https://ntfy.griipbuddy.cloud"
-   listen-http: ":80"                     # published on 127.0.0.1 only; TLS at the host nginx
-   behind-proxy: true
-   cache-file: "/var/cache/ntfy/cache.db"
-   cache-duration: "12h"
-   auth-file: "/var/lib/ntfy/user.db"
-   auth-default-access: "deny-all"
-   visitor-subscriber-rate-limiting: true # UnifiedPush topics are rate-limited per subscribing phone, not per publisher
-   enable-signup: false
-   enable-login: false
-   ```
-   Then allow UnifiedPush topics only:
-   ```bash
-   ntfy access everyone 'up*' read-write
-   ```
+The exact production steps, their checks and rollback are in `PUSH_SERVER.md`. In short:
+
+1. **ntfy service** `ntfy` in `deploy/compose.yaml` (Compose project `griip-internal-messaging`): a pinned image,
+   published on `127.0.0.1:${NTFY_HOST_PORT:-18081}` only, with resource limits like the other services. Its config is
+   `deploy/ntfy/server.yml`:
+   - `base-url` `https://ntfy.griipbuddy.cloud`, `behind-proxy`, a 12 h cache;
+   - `auth-default-access: deny-all` plus `auth-access: everyone:up*:rw`, the declarative form of
+     `ntfy access everyone 'up*' read-write`, applied at every start;
+   - `visitor-subscriber-rate-limiting: true`: UnifiedPush topics are rate-limited per subscribing phone, not per publisher;
+   - sign-up, login, reservations and the web app off.
+
    Topics are random (`up` + 12 characters). Wake-ups carry nothing, so someone who learned a topic could only see wake-up times.
 2. **DNS:** an `A` record `ntfy.griipbuddy.cloud` → the VPS address.
-3. **Host nginx:** a TLS site for that name proxying to the container. Subscriptions are long-lived streams:
-   `proxy_buffering off`, `proxy_read_timeout` of about 1 h, WebSocket upgrade headers.
+3. **Host nginx:** a TLS site for that name proxying to the container (`deploy/nginx/griip-ntfy.conf`). Subscriptions are
+   long-lived streams: `proxy_buffering off`, `proxy_read_timeout` of 1 h, WebSocket upgrade headers.
 4. **API:** deploy an image that contains this code (migration 011 runs on start), set
    `PUSH_UNIFIEDPUSH_HOSTS=ntfy.griipbuddy.cloud` in `.env`, then recreate `api`.
    - The API reaches ntfy through the public HTTPS address (it never connects to private addresses), so the firewall must allow
-     the host to reach its own public address on 443.
+     the host to reach its own public address on 443. On the production VPS it does (checked 2026-10-17 from inside the
+     `api` container).
    - `scripts/validate-env.sh` then reports the push host, and `/v1/server-info` lists `push-unifiedpush`.
 5. **Phones:**
    - install ntfy (Play, F-Droid, or the APK from ntfy's GitHub releases on phones without Play);

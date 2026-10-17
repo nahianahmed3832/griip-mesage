@@ -8,7 +8,7 @@ services:
   api:
     build:
       context: ./server
-    image: griip-internal-messaging-api:0.2.0
+    image: griip-internal-messaging-api:0.3.0
     restart: unless-stopped
     env_file: .env
     environment:
@@ -67,5 +67,38 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "5" }
 
+  # Push server for the optional payload-free wake-ups (docs/BACKGROUND_DELIVERY.md, docs/PUSH_SERVER.md): phones' ntfy
+  # apps subscribe here. The API doesn't use this network to reach it: it posts to the public https:// name only.
+  ntfy:
+    image: binwiederhier/ntfy:v2.31.1@sha256:91bb7fa607b02006c119bb4a31032923b414a713a032ecb40f0c5d6bfd5b7e40
+    restart: unless-stopped
+    command: ["serve"]
+    volumes:
+      - ./ntfy/server.yml:/etc/ntfy/server.yml:ro
+      - ntfy-cache:/var/cache/ntfy
+      - ntfy-auth:/var/lib/ntfy
+    ports:
+      # Loopback only: the host's reverse proxy terminates TLS for the push server's name and forwards here.
+      - "127.0.0.1:${NTFY_HOST_PORT:-18081}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:80/v1/health | grep -q '\"healthy\":true'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+          pids: 128
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
 volumes:
   api-data: {}
+  ntfy-cache: {}   # wake-ups held up to 12 h for phones that were offline; safe to lose
+  ntfy-auth: {}    # ntfy's access database, rebuilt from server.yml at every start; safe to lose

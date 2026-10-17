@@ -1,0 +1,31 @@
+# ntfy: the UnifiedPush server for Orbit's payload-free wake-ups (docs/BACKGROUND_DELIVERY.md, docs/PUSH_SERVER.md).
+# Phones' ntfy apps hold one connection here. The Orbit API sends a phone's topic an empty POST that only wakes Orbit.
+# Mounted read-only into the ntfy service of compose.yaml. It holds no secrets. Another deployment changes base-url only.
+base-url: "https://ntfy.griipbuddy.cloud"
+listen-http: ":80"           # inside the container; published on 127.0.0.1 only, TLS at the host nginx
+behind-proxy: true           # a visitor is the right-most X-Forwarded-For address, the one the host nginx adds
+
+# A phone that was briefly offline still receives the wake-ups sent meanwhile when its ntfy app reconnects.
+cache-file: "/var/cache/ntfy/cache.db"
+cache-duration: "12h"
+
+# Access: nothing by default. Anyone may publish and subscribe to UnifiedPush topics ("up" + 12 random characters).
+# This is the declarative form of `ntfy access everyone 'up*' read-write`, applied again at every start. Read-write,
+# not ntfy's usual write-only: phones subscribe without an account, and only a subscriber with write access becomes
+# the topic's "rate visitor" (below).
+auth-file: "/var/lib/ntfy/user.db"
+auth-default-access: "deny-all"
+auth-access:
+  - "everyone:up*:rw"
+enable-signup: false
+enable-login: false
+enable-reservations: false
+web-root: "disable"          # no web app; the ntfy apps use only the topic URLs
+
+# UnifiedPush topics are rate-limited per subscribing phone, not per publisher. Every wake-up comes from the one Orbit
+# API, which would otherwise share a single budget. A publish to an "up" topic with no recent subscriber gets HTTP 507:
+# Orbit logs a failed wake-up, and the next message or call sends another.
+visitor-subscriber-rate-limiting: true
+
+# Not set, on purpose: attachment-cache-dir (no attachments), upstream-base-url (iOS only; it would send poll requests
+# to ntfy.sh), smtp-*, web-push-*, firebase-key-file.

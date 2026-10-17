@@ -17,6 +17,15 @@ done
 echo "api health: ${st:-unknown}"
 echo "== API /healthz";   curl -fsS "http://127.0.0.1:${API_HOST_PORT:-18080}/healthz"; echo
 echo "== LiveKit signal"; curl -fsS "http://127.0.0.1:${LIVEKIT_SIGNAL_HOST_PORT:-17880}/" ; echo
+echo "== ntfy (push server) /v1/health"; curl -fsS "http://127.0.0.1:${NTFY_HOST_PORT:-18081}/v1/health"; echo
+if [ -n "${PUSH_UNIFIEDPUSH_HOSTS:-}" ]; then
+  echo "== push wake-ups"
+  curl -fsS "http://127.0.0.1:${API_HOST_PORT:-18080}/v1/server-info" | grep -o '"push-unifiedpush"' || echo "!! /v1/server-info doesn't list push-unifiedpush"
+  # The way a wake-up travels: from the api container to the push server's public https:// name, TLS checked by Node.
+  for h in $(echo "$PUSH_UNIFIEDPUSH_HOSTS" | tr ',' ' '); do
+    dc exec -T api node -e 'fetch(process.argv[1], { signal: AbortSignal.timeout(5000) }).then((r) => { console.log(process.argv[1], "HTTP", r.status); process.exit(r.ok ? 0 : 1); }, (e) => { console.log("!!", process.argv[1], "unreachable:", (e.cause && e.cause.code) || e.name); process.exit(1); })' "https://$h/v1/health"
+  done
+fi
 echo "== resource usage"; docker stats --no-stream $(dc ps -q)
 echo "== disk (attachments are capped by ATTACHMENT_TOTAL_BYTES; warn below 5 GB free)"
 free_kb=$(df -Pk /var/lib/docker 2>/dev/null | awk 'NR==2{print $4}')

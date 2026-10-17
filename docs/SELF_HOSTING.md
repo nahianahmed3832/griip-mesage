@@ -25,6 +25,7 @@ without accounts there. A standalone server (federation off) works exactly as be
 |---|---|---|---|
 | `api` | built from `server/` (`server/Dockerfile`, Node 22, non-root) | `127.0.0.1:${API_HOST_PORT:-18080}` → 8080 | volume `griip-internal-messaging_api-data` at `/data`: `griip.sqlite` (WAL) and `attachments/` (ciphertext only, ≤ 7 days) |
 | `livekit` | `livekit/livekit-server:v1.13.10` | signalling `127.0.0.1:${LIVEKIT_SIGNAL_HOST_PORT:-17880}` → 7880; media `7881/tcp`, `7882/udp` | none (stateless) |
+| `ntfy` | `binwiederhier/ntfy:v2.31.1` (pinned by digest) | `127.0.0.1:${NTFY_HOST_PORT:-18081}` → 80 | volumes `…_ntfy-cache`, `…_ntfy-auth` (safe to lose). Only used for optional push wake-ups; set `base-url` in `ntfy/server.yml` to your push server's name (`PUSH_SERVER.md`) |
 
 The Compose project name is fixed (`griip-internal-messaging`): every container, network and volume is prefixed with it, so the
 deployment never touches other projects on the host. Run Compose only with `-p griip-internal-messaging`.
@@ -78,7 +79,8 @@ GRIIP_DIR=/opt/griip-internal-messaging bash scripts/verify.sh
 
 `validate-env.sh` is read-only. It reports each setting without printing secrets and fails on: example URLs left in place, URLs without
 `https://`/`wss://` (plain `http`/`ws` is a warning: only debug app builds accept it), a missing or short LiveKit secret, an unknown
-registration mode, invalid or duplicate ports, and a `livekit.yaml` rendered from different keys or ports than `.env`.
+registration mode, invalid or duplicate ports, a `livekit.yaml` rendered from different keys or ports than `.env`, and a missing
+`ntfy/server.yml`.
 
 `verify.sh` and `preflight.sh` default to `/opt/griip-internal-messaging`; set `GRIIP_DIR` to use another directory.
 
@@ -201,7 +203,7 @@ data volume; take a backup first. Neither touches other Compose projects. Remove
 
 - One API process (in-memory WebSocket routing) and SQLite: fine for tens to low hundreds of users, not horizontally scalable.
 - No Google push service. Android phones receive messages while the app or its optional "stay connected" service runs. Optional
-  payload-free wake-ups through your own ntfy server (UnifiedPush) need an ntfy container, a DNS name, a proxy site and
+  payload-free wake-ups through your own ntfy server (UnifiedPush) need the `ntfy` service, a DNS name, a proxy site and
   `PUSH_UNIFIEDPUSH_HOSTS` (`BACKGROUND_DELIVERY.md` § Deploying). A phone whose app was force-stopped gets nothing until it's opened.
 - Federation v1 covers direct messages, attachments, voice messages and 1:1 calls; groups and channels stay server-local (§12).
 

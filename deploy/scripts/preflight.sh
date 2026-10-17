@@ -7,7 +7,7 @@ set -u
 DIR="${GRIIP_DIR:-/opt/griip-internal-messaging}"   # override for a deployment elsewhere
 PROJECT=griip-internal-messaging
 ENVF="$DIR/.env"; [ -f "$ENVF" ] && . "$ENVF"
-PORTS_TCP="${API_HOST_PORT:-18080} ${LIVEKIT_SIGNAL_HOST_PORT:-17880} ${LIVEKIT_RTC_TCP_PORT:-7881}"
+PORTS_TCP="${API_HOST_PORT:-18080} ${LIVEKIT_SIGNAL_HOST_PORT:-17880} ${LIVEKIT_RTC_TCP_PORT:-7881} ${NTFY_HOST_PORT:-18081}"
 PORTS_UDP="${LIVEKIT_RTC_UDP_PORT:-7882}"
 fail=0
 echo "== host";      hostname; uname -srm; uptime

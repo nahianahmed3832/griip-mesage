@@ -48,8 +48,9 @@ case "${REGISTRATION_MODE:-invite}" in
   *) err "REGISTRATION_MODE must be invite or open (is ${REGISTRATION_MODE})" ;;
 esac
 
+NTFY_HOST_PORT="${NTFY_HOST_PORT:-18081}"   # compose.yaml's default; .env files from before the ntfy service lack it
 ports=()
-for name in API_HOST_PORT LIVEKIT_SIGNAL_HOST_PORT LIVEKIT_RTC_TCP_PORT LIVEKIT_RTC_UDP_PORT; do
+for name in API_HOST_PORT LIVEKIT_SIGNAL_HOST_PORT LIVEKIT_RTC_TCP_PORT LIVEKIT_RTC_UDP_PORT NTFY_HOST_PORT; do
   v="${!name:-}"
   case "$v" in
     ''|*[!0-9]*) err "$name must be a port number (is '${v}')"; continue ;;
@@ -109,6 +110,25 @@ if [ -n "${PUSH_UNIFIEDPUSH_HOSTS:-}" ]; then
   done
 else
   ok "push wake-ups off (PUSH_UNIFIEDPUSH_HOSTS empty)"
+fi
+
+# compose.yaml mounts ntfy/server.yml into the ntfy service; without it Docker would mount an empty directory instead.
+NT="$DIR/ntfy/server.yml"
+if [ ! -f "$NT" ]; then
+  err "ntfy/server.yml is missing: copy deploy/ntfy/server.yml next to compose.yaml (scripts/bundle.sh does)"
+else
+  base=$(sed -n 's/^base-url:[[:space:]]*"\{0,1\}\([^"#[:space:]]*\)"\{0,1\}.*/\1/p' "$NT" | head -1)
+  ntfy_host="${base#https://}"; ntfy_host="${ntfy_host%/}"
+  case "$base" in
+    https://*) ok "ntfy/server.yml base-url = $base" ;;
+    *) err "ntfy/server.yml base-url must be the push server's public https:// address (is '${base}')" ;;
+  esac
+  if [ -n "${PUSH_UNIFIEDPUSH_HOSTS:-}" ]; then
+    case ",$(echo "$PUSH_UNIFIEDPUSH_HOSTS" | tr -d ' ' | tr 'A-Z' 'a-z')," in
+      *",$ntfy_host,"*) ok "PUSH_UNIFIEDPUSH_HOSTS includes this deployment's ntfy ($ntfy_host)" ;;
+      *) warn "PUSH_UNIFIEDPUSH_HOSTS doesn't include $ntfy_host (ntfy/server.yml base-url): wake-ups to it would be refused" ;;
+    esac
+  fi
 fi
 
 LK="$DIR/livekit/livekit.yaml"
