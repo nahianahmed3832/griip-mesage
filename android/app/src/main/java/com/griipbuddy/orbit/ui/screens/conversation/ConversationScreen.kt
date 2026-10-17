@@ -430,7 +430,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     if (remoteMembers.isNotEmpty()) {
                         "${remoteMembers.first().displayName} is on another server (${GlobalAddress.serverOf(remoteMembers.first().username) ?: "elsewhere"}). Messages are end-to-end encrypted on your device; both servers only relay encrypted copies, kept for at most 7 days until delivered."
                     } else {
-                        "Messages here are end-to-end encrypted on your device and stored only on members' devices. The relay keeps encrypted copies for at most 7 days until delivered."
+                        "Messages here are end-to-end encrypted on your device. The server relays encrypted copies and, if members keep their history there, stores it encrypted with keys only their own devices have."
                     },
                     modifier = Modifier.align(Alignment.Center),
                 )

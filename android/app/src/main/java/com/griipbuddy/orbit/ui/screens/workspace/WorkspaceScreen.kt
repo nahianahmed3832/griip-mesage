@@ -129,6 +129,7 @@ class WorkspaceViewModel(val c: AppContainer) : ViewModel() {
 fun WorkspaceScreen(nav: NavHostController) {
     val vm = containerViewModel { WorkspaceViewModel(it) }
     val c = Griip.colors
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val orgs by vm.orgs.collectAsStateWithLifecycle()
     val detail by vm.detail.collectAsStateWithLifecycle()
     val channels by vm.channels.collectAsStateWithLifecycle()
@@ -303,7 +304,7 @@ fun WorkspaceScreen(nav: NavHostController) {
                     item {
                         GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), contentPadding = PaddingValues(6.dp)) {
                             MenuRow(
-                                Icons.Outlined.DeleteForever, "Delete workspace", subtitle = "Not available yet in this beta",
+                                Icons.Outlined.DeleteForever, "Delete workspace", subtitle = "For every member. Can't be undone.",
                                 tint = c.danger, tintBg = c.dangerSoft, onClick = { sheet = "delete" },
                             )
                         }
@@ -324,7 +325,11 @@ fun WorkspaceScreen(nav: NavHostController) {
             "department" -> CreateDepartmentSheet(det, { sheet = null }) { vm.refresh() }
             "team" -> CreateTeamSheet(det, branchFilter, { sheet = null }) { vm.refresh() }
             "channel" -> CreateChannelSheet(det, branchFilter, { sheet = null }) { id -> vm.refresh(); nav.navigate(Routes.conversation(id)) }
-            "delete" -> if (DeleteWorkspaceRules.visible(det.org.myRole)) DeleteWorkspaceSheet(det) { sheet = null }
+            "delete" -> if (DeleteWorkspaceRules.visible(det.org.myRole)) DeleteWorkspaceSheet(det, onDismiss = { sheet = null }, onDeleted = { name ->
+                sheet = null
+                android.widget.Toast.makeText(ctx, "Deleted “$name”", android.widget.Toast.LENGTH_SHORT).show()
+                vm.refresh()
+            })
             else -> sheet?.removePrefix("dept:")?.takeIf { sheet!!.startsWith("dept:") }?.let { id ->
                 det.departments.firstOrNull { it.id == id }?.let { dep -> EditDepartmentSheet(det, dep, { sheet = null }) { vm.refresh() } }
             }

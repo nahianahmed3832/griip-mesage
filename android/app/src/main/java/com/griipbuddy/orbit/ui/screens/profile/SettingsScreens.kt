@@ -132,7 +132,7 @@ fun SettingsHub(nav: NavHostController) {
     var versionTaps by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + com.griipbuddy.orbit.ui.LocalTabBarPadding.current)) {
         item { LargeHeader(stringResource(R.string.settings_title)) }
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), onClick = { nav.navigate(Routes.EDIT_PROFILE) }, contentPadding = PaddingValues(14.dp)) {

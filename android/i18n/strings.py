@@ -13,7 +13,7 @@ S = {
 "settings_calls": ("Calls", "通话", "কল"),
 "settings_calls_sub": ("Call encryption and echo cancellation", "通话加密与回声消除", "কল এনক্রিপশন ও ইকো বাতিল"),
 "settings_storage": ("Data & Storage", "数据与存储", "ডেটা ও স্টোরেজ"),
-"settings_storage_sub": ("Encrypted backup, storage used on this phone", "加密备份、本机已用存储", "এনক্রিপ্টেড ব্যাকআপ, এই ফোনে ব্যবহৃত স্টোরেজ"),
+"settings_storage_sub": ("Message history on the server, encrypted backup, storage on this phone", "服务器上的消息记录、加密备份、本机存储", "সার্ভারে বার্তার ইতিহাস, এনক্রিপ্টেড ব্যাকআপ, এই ফোনের স্টোরেজ"),
 "settings_language": ("Language", "语言", "ভাষা"),
 "settings_address_sub": ("Your address on the Orbit network. Share it so people on other servers can message you. Tap to copy.", "你在 Orbit 网络上的地址。分享给其他服务器上的人，他们就能给你发消息。点按复制。", "Orbit নেটওয়ার্কে আপনার ঠিকানা। অন্য সার্ভারের মানুষ যাতে মেসেজ করতে পারে, এটি শেয়ার করুন। কপি করতে চাপুন।"),
 "settings_about": ("About Orbit", "关于 Orbit", "Orbit সম্পর্কে"),

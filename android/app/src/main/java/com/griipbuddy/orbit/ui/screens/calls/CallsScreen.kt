@@ -81,7 +81,7 @@ fun CallsScreen(nav: NavHostController) {
     fun callBack(conversationId: String, video: Boolean) = permission(video) { scope.launch { container.calls.startCall(conversationId, video) } }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp + com.griipbuddy.orbit.ui.LocalTabBarPadding.current)) {
             item { LargeHeader("Calls") }
             if (live.isNotEmpty()) {
                 item { SectionHeader("Active now", Modifier.padding(top = 4.dp, bottom = 4.dp)) }
@@ -151,7 +151,7 @@ fun CallsScreen(nav: NavHostController) {
             icon = { Icon(Icons.Rounded.AddIcCall, null) },
             text = { Text("New call", style = Griip.type.button) },
             containerColor = c.actionStart, contentColor = c.onAction,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(Space.gutter),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(Space.gutter).padding(bottom = com.griipbuddy.orbit.ui.LocalTabBarPadding.current),
         )
     }
 }

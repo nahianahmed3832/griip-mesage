@@ -35,6 +35,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.Alignment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -69,6 +73,9 @@ import com.griipbuddy.orbit.ui.screens.workspace.TeamScreen
 import com.griipbuddy.orbit.ui.screens.workspace.WorkspaceScreen
 
 val LocalContainer = staticCompositionLocalOf<AppContainer> { error("no container") }
+
+/** Space the tab bar covers at the bottom of the tab screens (Chats, Calls, Contacts, Settings); 0 elsewhere. */
+val LocalTabBarPadding = androidx.compose.runtime.compositionLocalOf { 0.dp }
 
 object Routes {
     /** Kept for old deep links and back stacks: it now opens the chat list. */
@@ -151,12 +158,19 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    // The tab bar is drawn over the screens, not beside them, so every screen keeps the same height whether or not the
+    // bar shows. (Before 2026-10-17 the bar's space came and went with it: opening a chat made the chat list taller for
+    // a moment, which clamped its scroll position near the end, and the list came back shifted.) Tab screens add
+    // LocalTabBarPadding below their content instead.
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var barHeight by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    Box(Modifier.fillMaxSize()) {
         val motion = rememberNavMotion()
+        androidx.compose.runtime.CompositionLocalProvider(LocalTabBarPadding provides with(density) { barHeight.toDp() }) {
         NavHost(
             nav,
             startDestination = Routes.CHATS,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.fillMaxSize(),
             enterTransition = { motion.enter(this, forward = true) },
             exitTransition = { motion.exit(this, forward = true) },
             popEnterTransition = { motion.enter(this, forward = false) },
@@ -192,6 +206,7 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             composable(Routes.PRIVACY) { com.griipbuddy.orbit.ui.screens.profile.PrivacyScreen(nav) }
             composable(Routes.BLOCKED) { com.griipbuddy.orbit.ui.screens.profile.BlockedUsersScreen(nav) }
         }
+        }
         if (route in Routes.tabs || route == Routes.HOME) {
             GriipNavigationBar(
                 items = listOf(
@@ -202,6 +217,7 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
                 ),
                 selectedRoute = if (route == Routes.HOME) Routes.CHATS else route,
                 onSelect = { item -> nav.switchTab(item.route) },
+                modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { barHeight = it.height },
             )
         }
     }

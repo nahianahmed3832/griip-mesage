@@ -92,6 +92,8 @@ class MessageRepository(
     private val appState: AppState,
     private val scope: CoroutineScope,
     attachmentsDir: File = File(context.filesDir, "attachments"),
+    /** Direct uploads to the server's file store when it offers them; the original upload otherwise. */
+    private val uploader: AttachmentUploader = AttachmentUploader(api, null),
     private val notify: (Notice) -> Unit,
 ) {
     private val json = GriipJson
@@ -120,6 +122,8 @@ class MessageRepository(
     val callFrames: SharedFlow<RealtimeFrame> = _callFrames
     private val _orgEvents = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val orgEvents: SharedFlow<String> = _orgEvents
+    private val _orgDeleted = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    val orgDeleted: SharedFlow<String> = _orgDeleted
     private val _transfer = MutableStateFlow<Map<String, Float>>(emptyMap())
     val transferProgress: StateFlow<Map<String, Float>> = _transfer
     val backlogDrained = MutableStateFlow(false)
@@ -374,7 +378,7 @@ class MessageRepository(
         _transfer.update { it + (id to 0f) }
         try {
             val meta = withContext(Dispatchers.IO) { AttachmentCrypto.encryptFile(local, enc) }
-            val up = TransferRetry.run { api.uploadFile("/v1/attachments?conversationId=$cid", enc) { p -> _transfer.update { it + (id to p) } } }
+            val up = uploader.upload(cid, enc, meta.sha256) { p -> _transfer.update { it + (id to p) } }
             val ref = AttachmentRef(up.id, name, pending.mime, local.length(), meta.key, meta.nonce, meta.sha256, pending.voice, pending.durationMs)
             local.renameTo(files.fileFor(up.id, name))
             sendText(cid, caption, replyTo = db.messages().get(id)?.replyToId, attachments = listOf(ref), presetId = id)
@@ -546,7 +550,7 @@ class MessageRepository(
                         val meta = withContext(Dispatchers.IO) {
                             if (chunked) ChunkedAttachmentCrypto.encryptFile(local, enc) else AttachmentCrypto.encryptFile(local, enc)
                         }
-                        val up = TransferRetry.run { api.uploadFile("/v1/attachments?conversationId=$cid", enc) { p -> progress(i, "Uploading$what", 0.5f + p * 0.5f) } }
+                        val up = uploader.upload(cid, enc, meta.sha256) { p -> progress(i, "Uploading$what", 0.5f + p * 0.5f) }
                         AttachmentRef(
                             up.id, ref.name, ref.mime, local.length(), meta.key, meta.nonce, meta.sha256, ref.voice, ref.durationMs,
                             chunk = if (chunked) ChunkedAttachmentCrypto.DEFAULT_CHUNK else null,
@@ -765,6 +769,11 @@ class MessageRepository(
             "org.updated" -> {
                 f.orgId?.let { _orgEvents.tryEmit(it) }
                 runCatching { conversations.refresh() }
+            }
+            // 2026-10-17: an owner deleted the organization (servers before then only send org.updated).
+            "org.deleted" -> f.orgId?.let { id ->
+                _orgDeleted.tryEmit(id)
+                _orgEvents.tryEmit(id)
             }
             "devices.changed" -> f.userId?.let { directory.invalidateUser(it) }
             "call" -> _callFrames.tryEmit(f)

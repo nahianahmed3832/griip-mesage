@@ -311,7 +311,7 @@ private fun RestoreScreen(onBack: () -> Unit) {
                     IconTile(Icons.Outlined.Key, c.lavender, c.lavenderSoft, size = 40.dp)
                     Spacer(Modifier.width(12.dp))
                     Text(
-                        "Use the recovery key you saved from Profile → Security. This signs this phone into your account with your existing identity. Messages from your old device can't be restored — history is stored only on devices.",
+                        "Use the recovery key you saved from Profile → Security. This signs this phone into your account with your existing identity. If your server keeps your encrypted message history, your messages come back too; otherwise only new messages arrive.",
                         style = Griip.type.bodySmall, color = c.textSecondary,
                     )
                 }

@@ -15,7 +15,7 @@
     <string name="settings_calls">通话</string>
     <string name="settings_calls_sub">通话加密与回声消除</string>
     <string name="settings_storage">数据与存储</string>
-    <string name="settings_storage_sub">加密备份、本机已用存储</string>
+    <string name="settings_storage_sub">服务器上的消息记录、加密备份、本机存储</string>
     <string name="settings_language">语言</string>
     <string name="settings_address_sub">你在 Orbit 网络上的地址。分享给其他服务器上的人，他们就能给你发消息。点按复制。</string>
     <string name="settings_about">关于 Orbit</string>

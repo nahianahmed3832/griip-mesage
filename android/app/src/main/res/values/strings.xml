@@ -17,7 +17,7 @@
     <string name="settings_calls">Calls</string>
     <string name="settings_calls_sub">Call encryption and echo cancellation</string>
     <string name="settings_storage">Data &amp; Storage</string>
-    <string name="settings_storage_sub">Encrypted backup, storage used on this phone</string>
+    <string name="settings_storage_sub">Message history on the server, encrypted backup, storage on this phone</string>
     <string name="settings_language">Language</string>
     <string name="settings_address_sub">Your address on the Orbit network. Share it so people on other servers can message you. Tap to copy.</string>
     <string name="settings_about">About Orbit</string>

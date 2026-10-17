@@ -1,8 +1,5 @@
 package com.griipbuddy.orbit.call
 
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
-
 /**
  * A call's verification code (2026-10-17, docs/CALLING_AND_E2EE.md › Verifying a call). Unit-tested in
  * `CallVerificationTest`.
@@ -37,22 +34,9 @@ object CallVerification {
         return Code(emoji, "%03d %03d".format(digits / 1000, digits % 1000))
     }
 
-    /** RFC 5869 HKDF with SHA-256. */
-    fun hkdf(ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {
-        val prk = hmac(salt, ikm)
-        val out = java.io.ByteArrayOutputStream()
-        var t = ByteArray(0)
-        var i = 1
-        while (out.size() < length) {
-            t = hmac(prk, t + info + byteArrayOf(i.toByte()))
-            out.write(t)
-            i++
-        }
-        return out.toByteArray().copyOf(length)
-    }
-
-    private fun hmac(key: ByteArray, data: ByteArray): ByteArray =
-        Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(if (key.isEmpty()) ByteArray(32) else key, "HmacSHA256")) }.doFinal(data)
+    /** RFC 5869 HKDF with SHA-256 (shared with the message history keys). */
+    fun hkdf(ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray =
+        com.griipbuddy.orbit.crypto.Hkdf.derive(ikm, salt, info, length)
 }
 
 /**

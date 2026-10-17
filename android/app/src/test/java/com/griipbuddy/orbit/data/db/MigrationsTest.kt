@@ -77,6 +77,48 @@ class MigrationsTest {
         }
     }
 
+    @Test
+    fun historyQueueFollowsMeaningfulChangesOnly() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { c ->
+            create(c, schema(6))
+            Fixtures.insert(c, 6)
+            Migrations.steps.getValue(6).forEach { c.createStatement().execute(it) }
+            val s = c.createStatement()
+            fun queued(key: String): Long? = s.executeQuery("SELECT queuedAt FROM history_outbox WHERE `key` = '$key'").use { if (it.next()) it.getLong(1) else null }
+            // Rows that existed before the upgrade aren't queued by the migration (HistorySync queues them when history is on).
+            assertEquals(null, queued("m:m1"))
+            s.execute(
+                "INSERT INTO messages (id, conversationId, senderUserId, senderDeviceId, outgoing, kind, text, mentionsJson, attachmentsJson, sentAt, sortTs, status, deleted, pinned, reactionsJson, readByJson, deliveredToJson, forwarded) " +
+                    "VALUES ('m2','c1','u1','d1',1,'text','new','[]','[]',2,2,'SENDING',0,0,'{}','[]','[]',0)",
+            )
+            val first = queued("m:m2")!!
+            // Receipts don't count; sending finishing, edits and deletions do (each with a higher version).
+            s.execute("UPDATE messages SET readByJson = '[\"u2\"]', deliveredToJson = '[\"u2\"]' WHERE id = 'm2'")
+            assertEquals(first, queued("m:m2"))
+            // Room rewrites whole rows: writing the same values again isn't a change either.
+            s.execute("UPDATE messages SET text = text, status = status, attachmentsJson = attachmentsJson, deleted = deleted WHERE id = 'm2'")
+            assertEquals(first, queued("m:m2"))
+            s.execute("UPDATE messages SET status = 'SENT' WHERE id = 'm2'")
+            val second = queued("m:m2")!!
+            assertTrue(second > first)
+            s.execute("UPDATE messages SET text = 'edited', editedAt = 9 WHERE id = 'm1'")
+            assertTrue(queued("m:m1")!! > second)
+            // Chats: preferences and membership count; drafts and unread counters don't.
+            s.execute("UPDATE conversations SET draft = 'x', unreadCount = 3 WHERE id = 'c1'")
+            assertEquals(null, queued("c:c1"))
+            s.execute("UPDATE conversations SET membersJson = membersJson, muted = muted, archivedAt = archivedAt, name = name WHERE id = 'c1'")
+            assertEquals(null, queued("c:c1"))
+            s.execute("UPDATE conversations SET muted = 1 WHERE id = 'c1'")
+            assertTrue(queued("c:c1") != null)
+            // Removing a row never queues anything (history is never deleted from the server by accident).
+            s.execute("DELETE FROM history_outbox")
+            s.execute("DELETE FROM messages WHERE id = 'm2'")
+            assertEquals(0, count(c, "history_outbox"))
+            // The triggers are idempotent: the app recreates them on every open.
+            HistoryTriggers.sql.forEach { s.execute(it) }
+        }
+    }
+
     private fun create(c: Connection, db: JsonObject) {
         for (e in db["entities"]!!.jsonArray.map { it.jsonObject }) {
             val table = e["tableName"]!!.jsonPrimitive.content
@@ -117,6 +159,12 @@ private object Fixtures {
     fun insert(c: Connection, version: Int): Map<String, Int> {
         val s = c.createStatement()
         when (version) {
+            6 -> {
+                val base = insert(c, 5)
+                s.execute("UPDATE users SET photoRev = 3 WHERE id = 'u1'")
+                s.execute("UPDATE messages SET richJson = '{\"animoji\":\"🎉\"}', forwarded = 1 WHERE id = 'm1'")
+                return base
+            }
             5 -> {
                 val base = insert(c, 4)
                 s.execute("UPDATE conversations SET archivedAt = 5 WHERE id = 'c1'")

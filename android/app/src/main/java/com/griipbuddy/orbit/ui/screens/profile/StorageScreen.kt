@@ -14,6 +14,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Backup
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Folder
@@ -101,6 +104,9 @@ fun StorageScreen(nav: NavHostController) {
         }
     }
     val openRestore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) { target = uri; flow = Flow.RESTORE } }
+    val history by container.history.state.collectAsStateWithLifecycle()
+    var confirmDeleteHistory by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { container.history.summary() }
     val fileName = "orbit-backup-${container.session.session?.username ?: "account"}-${java.time.LocalDate.now()}.orbitbackup"
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
@@ -120,6 +126,62 @@ fun StorageScreen(nav: NavHostController) {
                     }
                 })
             }
+        }
+        // Encrypted history on the server (docs/MESSAGE_HISTORY.md): what survives a reinstall or a new phone.
+        item { SectionHeader("Message history on the server", Modifier.padding(top = 16.dp, bottom = 6.dp)) }
+        item {
+            GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
+                val server = history.server
+                MenuRow(
+                    Icons.Outlined.CloudSync, "Keep my messages on the server",
+                    subtitle = when {
+                        history.supported == false -> "Your server doesn't keep message history yet (it needs an update). Messages stay only on your phones."
+                        !history.enabled -> "Off. Messages stay only on this phone and in your backups."
+                        history.restoring -> "Downloading your history…"
+                        history.error != null -> history.error
+                        history.pending > 0 -> "Encrypting and uploading ${history.pending} change${if (history.pending == 1) "" else "s"}…"
+                        server != null -> "On · ${server.items} item${if (server.items == 1L) "" else "s"}, ${AttachmentPolicy.sizeLabel(server.bytes)}, encrypted" +
+                            (history.lastUploadAt?.let { " · backed up ${TimeFmt.relative(it)}" } ?: "")
+                        else -> "On"
+                    },
+                    trailing = {
+                        GriipSwitch(history.enabled, { on -> scope.launch { container.history.setEnabled(on); container.history.summary() } }, enabled = history.supported != false)
+                    },
+                )
+                if (history.enabled && history.supported != false) {
+                    MenuRow(Icons.Outlined.Restore, "Restore history from the server", subtitle = "Adds any messages this phone is missing. Nothing on this phone is replaced.", onClick = {
+                        scope.launch {
+                            busy = true
+                            val r = runCatching { container.history.catchUp(fromStart = true) }
+                            val unreadable = container.history.state.value.unreadable
+                            status = r.fold(
+                                { n ->
+                                    (if (n == 0) "Nothing was missing on this phone" else "Restored $n message${if (n == 1) "" else "s"} and chats") +
+                                        (if (unreadable > 0) ". $unreadable item(s) were made with a different identity key and can't be read." else "") to true
+                                },
+                                { e -> (if (e is com.griipbuddy.orbit.data.api.ApiException) e.message else "Couldn't restore history") to false },
+                            )
+                            container.history.summary()
+                            busy = false
+                        }
+                    })
+                }
+                if (server != null && server.items > 0) {
+                    MenuRow(
+                        Icons.Outlined.DeleteForever, "Delete my history from the server",
+                        subtitle = "Turns this off and deletes the server's encrypted copy. Messages on your phones stay.",
+                        tint = c.danger, tintBg = c.dangerSoft, onClick = { confirmDeleteHistory = true },
+                    )
+                }
+            }
+        }
+        item {
+            Text(
+                "Messages are encrypted on your phone with a key from your account's identity before they're uploaded; the server " +
+                    "can't read them. Your other devices and your recovery key can. If you lose every device and your recovery key, " +
+                    "nobody can decrypt this history. Files you send or receive are kept with it, encrypted, for as long as the server keeps them.",
+                style = Griip.type.caption, color = c.textTertiary, modifier = Modifier.padding(horizontal = Space.gutter + 4.dp, vertical = 8.dp),
+            )
         }
         item { SectionHeader("Encrypted backup", Modifier.padding(top = 16.dp, bottom = 6.dp)) }
         item {
@@ -158,6 +220,24 @@ fun StorageScreen(nav: NavHostController) {
                 )
             }
         }
+    }
+
+    if (confirmDeleteHistory) {
+        com.griipbuddy.orbit.ui.components.ConfirmDialog(
+            "Delete your history from the server?",
+            "The encrypted copy of your messages on the server is deleted and server history is turned off. Messages on this " +
+                "phone and your other phones stay. A new phone signed in to this account won't get them from the server.",
+            "Delete", onConfirm = {
+                confirmDeleteHistory = false
+                scope.launch {
+                    status = runCatching { container.history.deleteFromServer() }.fold(
+                        { "Deleted your history from the server" to true },
+                        { e -> (if (e is com.griipbuddy.orbit.data.api.ApiException) e.message else "Couldn't delete it") to false },
+                    )
+                }
+            },
+            onDismiss = { confirmDeleteHistory = false }, destructive = true,
+        )
     }
 
     val f = flow

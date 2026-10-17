@@ -122,6 +122,12 @@ private fun EditProfileForm(u: UserDto, onSaved: (UserDto) -> Unit, onPrivacy: (
     var photoRev by remember { mutableStateOf(u.photoRev) }
     var photoBusy by remember { mutableStateOf(false) }
     var pickDate by remember { mutableStateOf(false) }
+    // What the server can store (2026-10-17): an older server has no photos or extended profile fields, and used to
+    // answer a photo upload with a bare "Not found". null while unknown (then everything is offered).
+    var features by remember { mutableStateOf<Set<String>?>(null) }
+    LaunchedEffect(Unit) { features = container.features.get() }
+    val photosSupported = features?.contains(com.griipbuddy.orbit.data.repo.ServerFeatures.PROFILE_PHOTOS) != false
+    val profilesSupported = features?.contains(com.griipbuddy.orbit.data.repo.ServerFeatures.PROFILES) != false
     // Username: checked against the server as it's typed (only when it changed).
     var usernameNote by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(username) {
@@ -154,7 +160,7 @@ private fun EditProfileForm(u: UserDto, onSaved: (UserDto) -> Unit, onPrivacy: (
                     PillButton(
                         if (photoRev == null) "Add photo" else "Change photo",
                         { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        tone = ButtonTone.Glass, height = 40.dp, leadingIcon = Icons.Outlined.PhotoCamera, loading = photoBusy,
+                        tone = ButtonTone.Glass, height = 40.dp, leadingIcon = Icons.Outlined.PhotoCamera, loading = photoBusy, enabled = photosSupported,
                     )
                     if (photoRev != null) PillButton(
                         "Remove", {
@@ -173,6 +179,13 @@ private fun EditProfileForm(u: UserDto, onSaved: (UserDto) -> Unit, onPrivacy: (
                 )
                 if (photoRev == null) ChipRow(Modifier.padding(top = 6.dp)) { (0..7).forEach { i -> PillChip("${i + 1}", color == i, { color = i }) } }
             }
+        }
+        if (!profilesSupported || !photosSupported) item {
+            StatusBanner(
+                "Your server is older than this version of Orbit, so profile photos, first and last names, birthday and phone " +
+                    "can't be saved there yet. Your display name, username and bio still work. Whoever runs the server needs to update it.",
+                BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp),
+            )
         }
         error?.let { item { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) } }
         if (saved) item { StatusBanner("Profile saved", BannerKind.Success, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) }

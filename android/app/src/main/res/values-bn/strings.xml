@@ -15,7 +15,7 @@
     <string name="settings_calls">কল</string>
     <string name="settings_calls_sub">কল এনক্রিপশন ও ইকো বাতিল</string>
     <string name="settings_storage">ডেটা ও স্টোরেজ</string>
-    <string name="settings_storage_sub">এনক্রিপ্টেড ব্যাকআপ, এই ফোনে ব্যবহৃত স্টোরেজ</string>
+    <string name="settings_storage_sub">সার্ভারে বার্তার ইতিহাস, এনক্রিপ্টেড ব্যাকআপ, এই ফোনের স্টোরেজ</string>
     <string name="settings_language">ভাষা</string>
     <string name="settings_address_sub">Orbit নেটওয়ার্কে আপনার ঠিকানা। অন্য সার্ভারের মানুষ যাতে মেসেজ করতে পারে, এটি শেয়ার করুন। কপি করতে চাপুন।</string>
     <string name="settings_about">Orbit সম্পর্কে</string>

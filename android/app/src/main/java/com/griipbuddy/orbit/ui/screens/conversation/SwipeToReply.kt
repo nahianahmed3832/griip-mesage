@@ -22,6 +22,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -76,7 +78,12 @@ fun SwipeToReply(enabled: Boolean, onReply: () -> Unit, content: @Composable () 
     val offset = remember { Animatable(0f) }
     var drag = remember { floatArrayOf(0f) }
     var armed = remember { booleanArrayOf(false) }
+    // A drag that starts in Android's Back-gesture edge is Back, not a reply (2026-10-17).
+    val edge = remember { booleanArrayOf(false) }
+    val gestures = androidx.compose.foundation.layout.WindowInsets.systemGestures
+    var width = remember { intArrayOf(0) }
     val state = rememberDraggableState { delta ->
+        if (edge[0]) return@rememberDraggableState
         drag[0] = (drag[0] + delta).coerceAtLeast(0f)
         val o = SwipeReply.offsetFor(drag[0], threshold, max)
         val now = SwipeReply.triggers(o, threshold)
@@ -86,13 +93,19 @@ fun SwipeToReply(enabled: Boolean, onReply: () -> Unit, content: @Composable () 
     }
     Box(
         Modifier
+            .onSizeChanged { width[0] = it.width }
             .semantics { customActions = listOf(CustomAccessibilityAction("Reply") { onReply(); true }) }
             .draggable(
                 state, Orientation.Horizontal, reverseDirection = rtl,
-                onDragStarted = { drag[0] = 0f; armed[0] = false },
-                onDragStopped = {
-                    if (SwipeReply.triggers(offset.value, threshold)) onReply()
+                onDragStarted = { start ->
                     drag[0] = 0f; armed[0] = false
+                    edge[0] = com.griipbuddy.orbit.ui.screens.chats.ChatSwipe.inSystemEdge(
+                        start.x, width[0], gestures.getLeft(density, LayoutDirection.Ltr), gestures.getRight(density, LayoutDirection.Ltr),
+                    )
+                },
+                onDragStopped = {
+                    if (!edge[0] && SwipeReply.triggers(offset.value, threshold)) onReply()
+                    drag[0] = 0f; armed[0] = false; edge[0] = false
                     offset.animateTo(0f, spring(stiffness = 600f))
                 },
             ),

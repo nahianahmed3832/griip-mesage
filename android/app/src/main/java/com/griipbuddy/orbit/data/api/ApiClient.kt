@@ -56,6 +56,7 @@ class ApiClient(
     suspend inline fun <reified B, reified T> put(path: String, body: B): T = request("PUT", path, GriipJson.encodeToString(serializer<B>(), body), serializer<T>())
     suspend inline fun <reified B, reified T> patch(path: String, body: B): T = request("PATCH", path, GriipJson.encodeToString(serializer<B>(), body), serializer<T>())
     suspend inline fun <reified T> delete(path: String): T = request("DELETE", path, null, serializer<T>())
+    suspend inline fun <reified B, reified T> delete(path: String, body: B): T = request("DELETE", path, GriipJson.encodeToString(serializer<B>(), body), serializer<T>())
 
     suspend fun <T> request(method: String, path: String, body: String?, de: kotlinx.serialization.KSerializer<T>, auth: Boolean = true): T {
         val first = execute(method, path, body?.toRequestBody(jsonType), auth)
@@ -98,6 +99,50 @@ class ApiClient(
         if (res.first == 401 && reauthLock.withLock { reauth() }) res = execute("POST", path, body, true)
         return decode(res, AttachmentUploadRes.serializer())
     }
+
+    /**
+     * Sends [length] bytes of [file] from [offset] to a presigned URL (direct uploads to the server's file store),
+     * with exactly the signed [headers] and no credentials of ours. Returns the store's ETag. The URL is never logged:
+     * it grants access for a few minutes. Failures are [ApiException]s: status 0 for no connection.
+     */
+    suspend fun putPresigned(url: String, headers: Map<String, String>, file: File, offset: Long, length: Long, onProgress: (Long) -> Unit): String? =
+        withContext(Dispatchers.IO) {
+            val type = (headers["content-type"] ?: "application/octet-stream").toMediaType()
+            val body = object : RequestBody() {
+                override fun contentType() = type
+                override fun contentLength() = length
+                override fun writeTo(sink: BufferedSink) {
+                    java.io.RandomAccessFile(file, "r").use { raf ->
+                        raf.seek(offset)
+                        val buf = ByteArray(64 * 1024)
+                        var left = length
+                        var sent = 0L
+                        while (left > 0) {
+                            val n = raf.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                            if (n < 0) throw IOException("file ended early")
+                            sink.write(buf, 0, n)
+                            left -= n
+                            sent += n
+                            onProgress(sent)
+                        }
+                    }
+                }
+            }
+            val b = Request.Builder().url(url).put(body)
+            // Content-Type and Content-Length come from the body; every other signed header is sent as it is.
+            for ((k, v) in headers) if (!k.equals("content-type", true) && !k.equals("content-length", true)) b.header(k, v)
+            try {
+                http.newCall(b.build()).execute().use { r ->
+                    if (!r.isSuccessful) {
+                        val code = Regex("<Code>([^<]+)</Code>").find(r.body?.string().orEmpty())?.groupValues?.get(1) ?: "http_${r.code}"
+                        throw ApiException(r.code, "store_$code", "Upload failed (${r.code})")
+                    }
+                    r.header("ETag")
+                }
+            } catch (e: IOException) {
+                throw ApiException(0, "network", "Can't reach the server's file storage")
+            }
+        }
 
     /**
      * Downloads into [dest], streaming to disk and resuming from what [dest] already holds with an HTTP
@@ -154,7 +199,7 @@ class ApiClient(
         if (auth) token()?.let { b.header("Authorization", "Bearer $it") }
         when (method) {
             "GET" -> b.get()
-            "DELETE" -> b.delete()
+            "DELETE" -> if (body != null) b.delete(body) else b.delete()
             else -> b.method(method, body ?: "{}".toRequestBody(jsonType))
         }
         try {
@@ -177,6 +222,7 @@ class ApiClient(
                 throw ApiException(code, "decode", "Unexpected server response")
             }
         }
+        if (ApiErrors.routeMissing(code, text)) throw ApiException(code, ApiErrors.UNSUPPORTED, ApiErrors.UNSUPPORTED_MESSAGE)
         val err = runCatching { json.decodeFromString(ApiErrorBody.serializer(), text).error }.getOrNull()
         throw ApiException(code, err?.code ?: "http_$code", friendly(code, err?.message), err?.details)
     }
@@ -190,4 +236,18 @@ class ApiClient(
         code >= 500 -> "The server had a problem. Please try again."
         else -> "Request failed ($code)"
     }
+}
+
+/** Unit-tested in `ApiErrorsTest`. */
+object ApiErrors {
+    const val UNSUPPORTED = "unsupported"
+    const val UNSUPPORTED_MESSAGE = "Your server doesn't support this yet. It needs to be updated by whoever runs it."
+
+    /**
+     * A 404 for the route itself rather than for something it looked up: the server is older than the app (Fastify's
+     * own "Route GET:/v1/… not found" answer). Until 2026-10-17 this showed as a bare "Not found." (changing a profile
+     * photo on a server without photo support).
+     */
+    fun routeMissing(status: Int, body: String): Boolean =
+        status == 404 && Regex("\"message\"\\s*:\\s*\"Route [A-Z]+:/[^\"]* not found\"").containsMatchIn(body)
 }

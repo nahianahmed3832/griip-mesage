@@ -1,11 +1,14 @@
 package com.griipbuddy.orbit.ui.screens.workspace
 
+import com.griipbuddy.orbit.data.api.ApiErrors
+import com.griipbuddy.orbit.data.api.ApiException
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
-/** Delete workspace (2026-10-17): the owner sees a confirmation that deletes nothing. */
+/** Delete workspace (2026-10-17): owners only, exact name, and honest messages when nothing was deleted. */
 class DeleteWorkspaceRulesTest {
     @Test
     fun onlyTheOwnerSeesIt() {
@@ -23,13 +26,24 @@ class DeleteWorkspaceRulesTest {
     }
 
     @Test
-    fun theSheetNeverTalksToTheServer() {
-        // The confirmation is UI only: no API client, repository or HTTP call in the file, and no "deleted" success text.
-        val src = File("src/main/java/com/griipbuddy/orbit/ui/screens/workspace/DeleteWorkspace.kt").readLines()
-            .filterNot { it.startsWith("import ") || it.startsWith("package ") }.joinToString("\n")
-        listOf("api.", "ApiClient", "container", "Repository", "delete(", "post(", "LocalContainer", "launch").forEach { assertFalse("found $it", src.contains(it)) }
-        assertFalse(File("src/main/java/com/griipbuddy/orbit/ui/screens/workspace/DeleteWorkspace.kt").readText().contains("ApiClient"))
-        assertTrue(src.contains(DeleteWorkspaceRules::class.simpleName!!))
-        assertTrue(DeleteWorkspaceRules.NOT_AVAILABLE.startsWith("Deleting a workspace isn't available yet"))
+    fun onlyServersThatCanDeleteOfferIt() {
+        assertNull(DeleteWorkspaceRules.available(null)) // not asked yet: the button waits
+        assertEquals(false, DeleteWorkspaceRules.available(setOf("profiles")))
+        assertEquals(false, DeleteWorkspaceRules.available(emptySet())) // servers before 2026-10-17
+        assertEquals(true, DeleteWorkspaceRules.available(setOf("org-delete", "history")))
+    }
+
+    @Test
+    fun everyFailureSaysNothingWasDeleted() {
+        val failures = listOf(
+            ApiException(400, "confirm_mismatch", "Type the organization's name exactly"),
+            ApiException(403, "forbidden", "Only an owner can delete the organization"),
+            ApiException(404, ApiErrors.UNSUPPORTED, ApiErrors.UNSUPPORTED_MESSAGE),
+            ApiException(0, "network", "Can't reach the server"),
+            ApiException(500, "internal", "Something went wrong on the server"),
+            IllegalStateException(),
+        )
+        for (e in failures) assertTrue(DeleteWorkspaceRules.failure(e), DeleteWorkspaceRules.failure(e).contains("Nothing was deleted"))
+        assertEquals("This workspace no longer exists.", DeleteWorkspaceRules.failure(ApiException(404, "not_found", "Organization not found")))
     }
 }

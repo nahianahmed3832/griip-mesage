@@ -14,7 +14,9 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 @Dao
 interface ConversationDao {
-    @Query("SELECT * FROM conversations WHERE removed = 0 ORDER BY CASE WHEN lastMessageAt > 0 THEN lastMessageAt ELSE serverUpdatedAt END DESC")
+    // `id` breaks ties (chats with no messages created together, messages in the same millisecond), so rows never swap
+    // places between two reads of the same data.
+    @Query("SELECT * FROM conversations WHERE removed = 0 ORDER BY CASE WHEN lastMessageAt > 0 THEN lastMessageAt ELSE serverUpdatedAt END DESC, id")
     fun observeAll(): Flow<List<ConversationEntity>>
 
     @Query("SELECT * FROM conversations WHERE id = :id")
@@ -52,6 +54,10 @@ interface ConversationDao {
 
     @Query("UPDATE conversations SET removed = 1, canPost = 0 WHERE id = :id")
     suspend fun markRemoved(id: String)
+
+    /** A deleted organization's channels: kept on this phone as left, so their history stays readable. */
+    @Query("UPDATE conversations SET removed = 1, canPost = 0, activeCallId = NULL WHERE orgId = :orgId")
+    suspend fun markOrgRemoved(orgId: String)
 
     @Query("UPDATE conversations SET lastMessageId = :mid, lastMessagePreview = :preview, lastMessageAt = :at, lastSenderName = :sender, unreadCount = unreadCount + :unreadInc, mentionCount = mentionCount + :mentionInc WHERE id = :id AND lastMessageAt <= :at")
     suspend fun bumpPreview(id: String, mid: String, preview: String, at: Long, sender: String?, unreadInc: Int, mentionInc: Int): Int
@@ -258,16 +264,51 @@ interface PendingControlDao {
 }
 
 @Dao
+interface HistoryDao {
+    @Query("SELECT * FROM history_outbox ORDER BY queuedAt LIMIT :limit")
+    suspend fun next(limit: Int): List<HistoryOutboxEntity>
+
+    /** Clears an entry only if nothing changed it since it was read (a newer change keeps it queued). */
+    @Query("DELETE FROM history_outbox WHERE `key` = :key AND queuedAt = :queuedAt")
+    suspend fun done(key: String, queuedAt: Long)
+
+    @Query("DELETE FROM history_outbox WHERE `key` IN (:keys)")
+    suspend fun drop(keys: List<String>)
+
+    @Query("SELECT `key` FROM history_outbox WHERE `key` IN (:keys)")
+    suspend fun queued(keys: List<String>): List<String>
+
+    @Query("SELECT COUNT(*) FROM history_outbox")
+    fun observeCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM history_outbox")
+    suspend fun count(): Int
+
+    /** Queues everything already on the phone (history turned on, or first run after updating). */
+    @Query("INSERT OR IGNORE INTO history_outbox (`key`, queuedAt) SELECT 'm:' || id, 0 FROM messages")
+    suspend fun queueAllMessages()
+
+    @Query("INSERT OR IGNORE INTO history_outbox (`key`, queuedAt) SELECT 'c:' || id, 0 FROM conversations")
+    suspend fun queueAllConversations()
+
+    @Query("DELETE FROM history_outbox")
+    suspend fun clear()
+}
+
+@Dao
 interface KvDao {
     @Query("SELECT v FROM kv WHERE k = :k")
     suspend fun get(k: String): String?
 
     @Upsert
     suspend fun put(e: KvEntity)
+
+    @Query("DELETE FROM kv WHERE k = :k")
+    suspend fun delete(k: String)
 }
 
 @Database(
-    entities = [ConversationEntity::class, MessageEntity::class, OutboxEntity::class, UserEntity::class, CallLogEntity::class, CallKeyEntity::class, KvEntity::class, QuarantineEntity::class, PendingControlEntity::class],
+    entities = [ConversationEntity::class, MessageEntity::class, OutboxEntity::class, UserEntity::class, CallLogEntity::class, CallKeyEntity::class, KvEntity::class, QuarantineEntity::class, PendingControlEntity::class, HistoryOutboxEntity::class],
     version = GriipDatabase.VERSION,
     exportSchema = true,
 )
@@ -280,13 +321,14 @@ abstract class GriipDatabase : RoomDatabase() {
     abstract fun kv(): KvDao
     abstract fun quarantine(): QuarantineDao
     abstract fun pendingControls(): PendingControlDao
+    abstract fun history(): HistoryDao
 
     companion object {
         /**
          * Schema version. Raising it needs a matching step in [Migrations] and the exported schema
          * committed under `app/schemas` (docs/DECISIONS.md D-13); `MigrationsTest` enforces both.
          */
-        const val VERSION = 6
+        const val VERSION = 7
 
         /**
          * The database file is encrypted with SQLCipher (AES-256) using a random passphrase that is
@@ -300,6 +342,13 @@ abstract class GriipDatabase : RoomDatabase() {
                 // Upgrades never fall back to wiping: local history is the only copy. A missing migration
                 // fails loudly (and MigrationsTest fails first). Only a downgrade may recreate the file.
                 .fallbackToDestructiveMigrationOnDowngrade(true)
+                // The history triggers aren't part of Room's schema: (re)created on every open, so fresh installs
+                // and migrated databases both have them.
+                .addCallback(object : RoomDatabase.Callback() {
+                    override fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                        HistoryTriggers.sql.forEach(db::execSQL)
+                    }
+                })
                 .build()
         }
     }

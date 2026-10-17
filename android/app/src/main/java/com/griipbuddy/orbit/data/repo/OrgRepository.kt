@@ -68,6 +68,23 @@ class OrgRepository(
         db.kv().put(KvEntity("cache.org.$orgId", GriipJson.encodeToString(OrgDetailRes.serializer(), it)))
     }
 
+    /**
+     * Deletes the organization (owners only; the server checks the role and [confirmName] again). [requestId] stays the
+     * same when the person retries, so a retry after a lost answer gets the same result instead of "not found".
+     */
+    suspend fun delete(orgId: String, confirmName: String, requestId: String): com.griipbuddy.orbit.data.api.OrgDeleteRes =
+        api.delete<com.griipbuddy.orbit.data.api.OrgDeleteReq, com.griipbuddy.orbit.data.api.OrgDeleteRes>(
+            "/v1/orgs/$orgId", com.griipbuddy.orbit.data.api.OrgDeleteReq(confirmName.trim(), requestId),
+        ).also { forget(orgId) }
+
+    /** After an organization is deleted (here or on another device): its channels show as left, it's no longer selected. */
+    suspend fun forget(orgId: String) {
+        db.conversations().markOrgRemoved(orgId)
+        db.kv().delete("cache.org.$orgId")
+        cachedOrgs()?.let { list -> db.kv().put(KvEntity("cache.orgs", GriipJson.encodeToString(OrgsRes.serializer(), OrgsRes(list.filter { it.id != orgId })))) }
+        if (_selectedOrg.value == orgId) select(null)
+    }
+
     suspend fun cachedDetail(orgId: String): OrgDetailRes? =
         db.kv().get("cache.org.$orgId")?.let { runCatching { GriipJson.decodeFromString(OrgDetailRes.serializer(), it) }.getOrNull() }
 

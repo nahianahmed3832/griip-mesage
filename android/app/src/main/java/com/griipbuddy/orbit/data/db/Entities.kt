@@ -166,3 +166,12 @@ data class PendingControlEntity(
     val receivedAt: Long,
     val expiresAt: Long,
 )
+
+/**
+ * Messages and chats waiting to be added to the encrypted history on the server (docs/MESSAGE_HISTORY.md). Filled by
+ * database triggers ([HistoryTriggers]) on every insert and meaningful change, so no code path that writes a message is
+ * missed; [queuedAt] is a version that grows with every change, so an upload only clears what it actually sent.
+ * [key] is "m:<message id>" or "c:<conversation id>".
+ */
+@Entity(tableName = "history_outbox", indices = [Index("queuedAt")])
+data class HistoryOutboxEntity(@PrimaryKey val key: String, val queuedAt: Long)

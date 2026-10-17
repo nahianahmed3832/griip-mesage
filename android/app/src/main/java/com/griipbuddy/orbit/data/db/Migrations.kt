@@ -37,6 +37,12 @@ object Migrations {
             "ALTER TABLE `messages` ADD COLUMN `richJson` TEXT",
             "ALTER TABLE `messages` ADD COLUMN `forwarded` INTEGER NOT NULL DEFAULT 0",
         ),
+        // v7 (2026-10-17): the queue for the encrypted history on the server (docs/MESSAGE_HISTORY.md), and its triggers.
+        // Existing messages are queued by HistorySync when history is on, not here.
+        6 to listOf(
+            "CREATE TABLE IF NOT EXISTS `history_outbox` (`key` TEXT NOT NULL, `queuedAt` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+            "CREATE INDEX IF NOT EXISTS `index_history_outbox_queuedAt` ON `history_outbox` (`queuedAt`)",
+        ) + HistoryTriggers.sql,
     )
 
     fun all(): Array<Migration> = steps.map { (from, sql) ->
@@ -44,4 +50,34 @@ object Migrations {
             override fun migrate(db: SupportSQLiteDatabase) = sql.forEach(db::execSQL)
         }
     }.toTypedArray()
+}
+
+/**
+ * Queue every new message and chat, and every change that matters to history, for the encrypted history on the server.
+ * Receipts (readBy/deliveredTo), presence in member lists, drafts and unread counts don't. The new entry's version is one more than the highest in
+ * the queue, so a change made while an upload is running keeps its entry queued. Deletions of rows aren't queued: a
+ * message deleted for everyone is an update (its `deleted` flag), and nothing here ever removes history from the server.
+ */
+object HistoryTriggers {
+    private const val NEXT = "(SELECT COALESCE(MAX(queuedAt), 0) + 1 FROM history_outbox)"
+    private val MESSAGE_FIELDS = listOf("text", "attachmentsJson", "deleted", "editedAt", "pinned", "reactionsJson", "richJson", "status", "callJson", "forwarded", "replyToId")
+    // Not membersJson: it carries members' online flags, and the server provides current membership anyway.
+    private val CONVERSATION_FIELDS = listOf("name", "topic", "muted", "archivedAt", "removed", "type", "kind", "scopeName")
+
+    /** Room rewrites whole rows, so an update counts only when one of [fields] really changed. */
+    private fun changed(fields: List<String>) = fields.joinToString(" OR ") { "OLD.`$it` IS NOT NEW.`$it`" }
+
+    private fun queue(prefix: String) = "INSERT OR REPLACE INTO `history_outbox` (`key`, queuedAt) VALUES ('$prefix:' || NEW.id, $NEXT);"
+
+    /** Dropped and recreated on every open, so a database always has the current definitions. */
+    val sql: List<String> = listOf(
+        "DROP TRIGGER IF EXISTS `history_message_added`",
+        "DROP TRIGGER IF EXISTS `history_message_changed`",
+        "DROP TRIGGER IF EXISTS `history_conversation_added`",
+        "DROP TRIGGER IF EXISTS `history_conversation_changed`",
+        "CREATE TRIGGER `history_message_added` AFTER INSERT ON `messages` BEGIN ${queue("m")} END",
+        "CREATE TRIGGER `history_message_changed` AFTER UPDATE ON `messages` WHEN ${changed(MESSAGE_FIELDS)} BEGIN ${queue("m")} END",
+        "CREATE TRIGGER `history_conversation_added` AFTER INSERT ON `conversations` BEGIN ${queue("c")} END",
+        "CREATE TRIGGER `history_conversation_changed` AFTER UPDATE ON `conversations` WHEN ${changed(CONVERSATION_FIELDS)} BEGIN ${queue("c")} END",
+    )
 }

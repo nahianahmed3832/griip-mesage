@@ -23,7 +23,23 @@ import kotlinx.serialization.json.JsonObject
     // Added 2026-10-16 (server-info v1); absent on older servers.
     val infoVersion: Int? = null, val api: Int? = null, val minClientApi: Int? = null,
     val instanceName: String? = null, val registration: String? = null,
+    // 2026-10-17: what the server supports beyond API 1 ("profiles", "profile-photos", "history", "attachment-keep",
+    // "org-delete", …). Absent on older servers: they support none of these.
+    val features: List<String>? = null,
 )
+
+// ───────── Encrypted message history (docs/MESSAGE_HISTORY.md) ─────────
+@Serializable data class HistoryItemDto(val tag: String, val conv: String, val ts: Long, val body: String? = null, val seq: Long = 0)
+@Serializable data class HistoryPutReq(val items: List<HistoryItemDto>)
+@Serializable data class HistoryPutRes(val seq: Long, val items: Long, val bytes: Long)
+@Serializable data class HistoryPage(val items: List<HistoryItemDto>, val next: Long, val more: Boolean)
+@Serializable data class HistorySummary(val enabled: Boolean, val items: Long, val bytes: Long, val seq: Long, val maxItems: Long = 0, val maxBytes: Long = 0)
+@Serializable data class HistoryDeleteRes(val deleted: Long)
+@Serializable data class AttachmentKeepRes(val kept: Boolean, val expiresAt: Long? = null)
+
+// ───────── Deleting an organization (2026-10-17) ─────────
+@Serializable data class OrgDeleteReq(val confirmName: String, val requestId: String)
+@Serializable data class OrgDeleteRes(val deleted: Boolean, val orgId: String, val members: Int = 0, val channels: Int = 0, val files: Int = 0)
 
 @Serializable data class PairingStartReq(val deviceName: String, val signingKey: String, val encryptionKey: String, val transferKey: String)
 @Serializable data class PairingStartRes(val pairingId: String, val code: String, val expiresAt: Long)
@@ -126,6 +142,24 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class QueueRes(val items: List<QueueItem>, val more: Boolean)
 @Serializable data class AckReq(val ids: List<Long>)
 @Serializable data class AttachmentUploadRes(val id: String, val size: Long, val expiresAt: Long)
+
+// ───────── Direct uploads to the server's file store (S3), 2026-10-17 ─────────
+/** A presigned request: send it to [url] with exactly these [headers] (they're signed), and nothing else. */
+@Serializable data class PresignedRequestDto(val method: String = "PUT", val url: String, val headers: Map<String, String>, val expiresAt: Long)
+@Serializable data class DirectUploadReq(val conversationId: String, val size: Long, val sha256: String)
+@Serializable data class DirectUploadRes(
+    val uploadId: String, val mode: String, val expiresAt: Long,
+    val upload: PresignedRequestDto? = null, val partSize: Long? = null, val partCount: Int? = null,
+)
+@Serializable data class UploadUrlRes(val upload: PresignedRequestDto)
+@Serializable data class PartReq(val n: Int, val size: Long, val sha256: String)
+@Serializable data class PartsReq(val parts: List<PartReq>)
+@Serializable data class PartUrl(val n: Int, val upload: PresignedRequestDto)
+@Serializable data class PartUrlsRes(val parts: List<PartUrl>)
+@Serializable data class StoredPart(val n: Int, val etag: String, val size: Long, val sha256: String? = null)
+@Serializable data class StoredPartsRes(val parts: List<StoredPart>)
+@Serializable data class CompletedPart(val n: Int, val etag: String, val sha256: String)
+@Serializable data class CompleteUploadReq(val parts: List<CompletedPart>? = null)
 
 // ───────── Orgs ─────────
 // slug defaults to "": servers before 2026-10-16 left it out of the invite preview, and requiring it made the app

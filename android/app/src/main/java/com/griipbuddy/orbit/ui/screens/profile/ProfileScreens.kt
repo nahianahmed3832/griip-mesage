@@ -263,7 +263,7 @@ fun SecurityScreen(nav: NavHostController) {
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(6.dp)) {
                 MenuRow(Icons.Outlined.Shield, "Messages", subtitle = "Encrypted on this phone (HPKE X25519 + AES-256-GCM, Ed25519 signatures) before upload. No forward secrecy yet — see SECURITY.md.", trailing = null)
-                MenuRow(Icons.Outlined.ChatBubbleOutline, "History", subtitle = "Stored only on your devices in an encrypted database (SQLCipher). The relay deletes copies once delivered, or after 7 days.", trailing = null)
+                MenuRow(Icons.Outlined.ChatBubbleOutline, "History", subtitle = "On your devices in an encrypted database (SQLCipher), and, where your server keeps history, encrypted on the server with a key only your devices and recovery key have (Data & Storage). Relayed copies are deleted once delivered, or after 7 days.", trailing = null)
                 MenuRow(Icons.Outlined.Videocam, "Calls", subtitle = "Media is end-to-end encrypted with a per-call key sent through your encrypted messages. The call screen shows the live status.", trailing = null)
                 MenuRow(Icons.Outlined.SyncAlt, "What the server can see", subtitle = "Who talks to whom and when, message sizes, org structure, channel names and your IP address.", trailing = null)
             }

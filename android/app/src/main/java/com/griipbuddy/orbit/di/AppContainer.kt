@@ -41,6 +41,8 @@ class AppContainer(
     val identity = IdentityStore(app, profile.identityPrefs, profile.keystoreAlias)
     val session = SessionRepository(identity, settings)
     val api = ApiClient({ session.serverUrl }, { session.token }, { session.reauth() }).also { session.api = it }
+    /** What this account's server supports (server-info features, 2026-10-17). */
+    val features = com.griipbuddy.orbit.data.repo.ServerFeatures(api)
     val db: GriipDatabase = GriipDatabase.open(app, identity.databasePassphrase(), profile.dbName)
     val realtime = RealtimeClient(app, api.http, scope, { session.serverUrl }, { session.token }, { session.reauth() })
     val users = UserRepository(api, db)
@@ -49,9 +51,14 @@ class AppContainer(
     val appState = AppState()
     val notifier = MessageNotifier(app)
     val crypto = EnvelopeV1 { session.keys ?: error("no keys on this device") }
-    val messages = MessageRepository(app, db, api, realtime, session, crypto, directory, conversations, users, settings, appState, scope, java.io.File(app.filesDir, profile.attachmentsDir)) { notifier.show(it) }
+    val messages = MessageRepository(
+        app, db, api, realtime, session, crypto, directory, conversations, users, settings, appState, scope,
+        java.io.File(app.filesDir, profile.attachmentsDir), com.griipbuddy.orbit.data.repo.AttachmentUploader(api, features),
+    ) { notifier.show(it) }
     val orgs = OrgRepository(api, db, conversations, users)
     val federation = com.griipbuddy.orbit.data.repo.FederationRepository(api)
+    /** Encrypted message history on the server (docs/MESSAGE_HISTORY.md). */
+    val history = com.griipbuddy.orbit.data.repo.HistorySync(api, db, session, features, conversations, scope)
     val profiles = com.griipbuddy.orbit.data.repo.ProfileRepository(app, api, users, session, profile.id)
     val translator by lazy { com.griipbuddy.orbit.data.repo.MessageTranslator(app) }
     val backups = com.griipbuddy.orbit.data.repo.BackupManager(app, db, session, java.io.File(app.filesDir, profile.attachmentsDir), profile.id)
@@ -61,7 +68,9 @@ class AppContainer(
     init {
         messages.start()
         calls.start()
+        history.start()
         scope.launch { orgs.loadSelection() }
+        scope.launch { messages.orgDeleted.collect { runCatching { orgs.forget(it) } } }
         scope.launch {
             combine(session.state, appState.foreground, settings.state, calls.state) { s, fg, st, call ->
                 s is SessionState.SignedIn && (fg || st.backgroundConnection || call.phase != com.griipbuddy.orbit.call.CallPhase.Idle)

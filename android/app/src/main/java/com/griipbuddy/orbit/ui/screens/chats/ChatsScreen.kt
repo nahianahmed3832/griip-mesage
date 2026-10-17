@@ -83,6 +83,8 @@ import com.griipbuddy.orbit.ui.screens.home.ConnectionBanner
 import com.griipbuddy.orbit.ui.theme.Griip
 import com.griipbuddy.orbit.ui.theme.Space
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.stateIn
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 
 @Composable
@@ -90,8 +92,13 @@ fun ChatsScreen(nav: NavHostController) {
     val container = LocalContainer.current
     val c = Griip.colors
     val me = container.session.session?.userId
-    val convs by container.conversations.observeAll().collectAsStateWithLifecycle(emptyList())
-    val users by container.db.users().observeAll().collectAsStateWithLifecycle(emptyList())
+    // From a ViewModel that outlives this screen while a chat is open on top of it: coming back, the list is drawn with
+    // its rows at once, so the saved scroll position is restored. (Collected here with an empty start value, the first
+    // frame had no rows and the list jumped back to the top every time a chat was closed.)
+    val vm = com.griipbuddy.orbit.ui.containerViewModel { ChatsViewModel(it) }
+    val loaded by vm.conversations.collectAsStateWithLifecycle()
+    val convs = loaded.orEmpty()
+    val users by vm.users.collectAsStateWithLifecycle()
     val typing by container.messages.typing.collectAsStateWithLifecycle()
     val conn by container.realtime.state.collectAsStateWithLifecycle()
     val call by container.calls.state.collectAsStateWithLifecycle()
@@ -131,7 +138,7 @@ fun ChatsScreen(nav: NavHostController) {
     val liveCall = if (call.phase == CallPhase.Idle) convs.firstOrNull { it.activeCallId != null } else null
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + com.griipbuddy.orbit.ui.LocalTabBarPadding.current)) {
             if (archivedView) item {
                 GriipTopBar(
                     stringResource(R.string.chats_archived_title), subtitle = stringResource(R.string.chats_archived_sub),
@@ -179,7 +186,7 @@ fun ChatsScreen(nav: NavHostController) {
                     onClick = { archivedView = true },
                 )
             }
-            if (refreshing && convs.isEmpty()) item { ShimmerList(6, Modifier.padding(top = 8.dp)) }
+            if (loaded == null || (refreshing && convs.isEmpty())) item { ShimmerList(6, Modifier.padding(top = 8.dp)) }
             else if (shown.isEmpty()) {
                 item {
                     EmptyState(
@@ -229,7 +236,7 @@ fun ChatsScreen(nav: NavHostController) {
                     scope.launch { container.conversations.setArchived(conv.id, false) }
                     undo = null
                 },
-                Modifier.align(Alignment.BottomCenter).padding(start = Space.gutter, end = Space.gutter, bottom = 16.dp),
+                Modifier.align(Alignment.BottomCenter).padding(start = Space.gutter, end = Space.gutter, bottom = 16.dp + com.griipbuddy.orbit.ui.LocalTabBarPadding.current),
             )
         }
     }
@@ -465,3 +472,11 @@ private fun RemoteContactSheet(r: ResolveRes, call: Boolean, myKey: ByteArray?, 
 private val unusedIcon = Icons.Rounded.Videocam
 @Suppress("unused")
 private val unusedW = Modifier.width(1.dp)
+
+/** The chat list's data, kept while a chat is open on top of the list (null until the database first answers). */
+class ChatsViewModel(c: com.griipbuddy.orbit.di.AppContainer) : androidx.lifecycle.ViewModel() {
+    val conversations = c.conversations.observeAll()
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, null)
+    val users = c.db.users().observeAll()
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyList())
+}

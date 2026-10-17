@@ -72,7 +72,7 @@ fun ContactsScreen(nav: NavHostController) {
     val byId = users.associateBy { it.id }
     val people = ContactsRules.people(convs, byId, me, query)
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp + com.griipbuddy.orbit.ui.LocalTabBarPadding.current)) {
         item {
             LargeHeader(stringResource(R.string.contacts_title)) {
                 CircleIconButton(Icons.Rounded.Search, stringResource(R.string.chats_search), { nav.navigate(Routes.SEARCH) })

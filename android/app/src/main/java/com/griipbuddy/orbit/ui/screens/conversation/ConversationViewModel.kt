@@ -87,25 +87,6 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     val draftKey = "draft:$conversationId:$threadRoot"
     private val playedKeys = HashSet<String>()
 
-    init {
-        viewModelScope.launch { c.conversations.refreshOne(conversationId); loadMentionMembers() }
-        viewModelScope.launch { runCatching { memberIds.value = c.directory.conversationMemberIds(conversationId) } }
-        viewModelScope.launch { maxFile.value = c.messages.maxAttachmentBytes() }
-        // Call history: entries for calls that rang or ended while this phone was offline.
-        viewModelScope.launch { runCatching { c.messages.syncCalls(conversationId) } }
-        viewModelScope.launch {
-            val conv = c.db.conversations().get(conversationId)
-            val ids = conv?.let { com.griipbuddy.orbit.data.repo.ConversationRepository.members(it).map { m -> m.id } }.orEmpty()
-            runCatching { c.users.refreshPresence(ids.filter { it != me }) }
-        }
-        // A call takes the microphone and the speaker: stop recording (the clip so far stays as a draft) and pause playback.
-        viewModelScope.launch {
-            c.calls.state.map { it.phase != CallPhase.Idle }.distinctUntilChanged().collect { inCall ->
-                if (inCall) interruptVoice()
-            }
-        }
-    }
-
     private val inCall get() = c.calls.state.value.phase != CallPhase.Idle
 
     fun startVoice() {
@@ -506,4 +487,26 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     fun startCall(video: Boolean) = viewModelScope.launch { c.calls.startCall(conversationId, video) }
     fun joinCall(callId: String, video: Boolean) = viewModelScope.launch { c.calls.join(conversationId, callId, video) }
 
+    // Last in the class on purpose: viewModelScope runs on Dispatchers.Main.immediate, so each launch below starts inside
+    // the constructor. Properties are initialised in declaration order, and a property declared after this block would
+    // still be null there. Until 2026-10-17 `maxFile` was, and opening any chat crashed (NullPointerException on resume).
+    // Guarded by InitOrderTest.
+    init {
+        viewModelScope.launch { runCatching { c.conversations.refreshOne(conversationId) }; loadMentionMembers() }
+        viewModelScope.launch { runCatching { memberIds.value = c.directory.conversationMemberIds(conversationId) } }
+        viewModelScope.launch { maxFile.value = c.messages.maxAttachmentBytes() }
+        // Call history: entries for calls that rang or ended while this phone was offline.
+        viewModelScope.launch { runCatching { c.messages.syncCalls(conversationId) } }
+        viewModelScope.launch {
+            val conv = c.db.conversations().get(conversationId)
+            val ids = conv?.let { com.griipbuddy.orbit.data.repo.ConversationRepository.members(it).map { m -> m.id } }.orEmpty()
+            runCatching { c.users.refreshPresence(ids.filter { it != me }) }
+        }
+        // A call takes the microphone and the speaker: stop recording (the clip so far stays as a draft) and pause playback.
+        viewModelScope.launch {
+            c.calls.state.map { it.phase != CallPhase.Idle }.distinctUntilChanged().collect { inCall ->
+                if (inCall) interruptVoice()
+            }
+        }
+    }
 }

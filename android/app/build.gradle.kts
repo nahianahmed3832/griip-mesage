@@ -33,9 +33,11 @@ android {
         applicationId = "com.griipbuddy.Orbit"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.1.3-beta"
+        versionCode = 5
+        versionName = "0.1.4-beta"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Not the default "<applicationId>.test": that is the side-by-side debug build's id ("Orbit Test").
+        testApplicationId = "com.griipbuddy.orbit.androidtest"
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"$defaultServer\"")
         manifestPlaceholders["appLabel"] = "@string/app_name"
         vectorDrawables.useSupportLibrary = true
@@ -146,4 +148,13 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.sqlite.jdbc) // runs Room migration SQL on the JVM (MigrationsTest)
     testImplementation(libs.okhttp.mockwebserver) // resumable-download tests
+
+    // On-device tests (src/androidTest): run them on the emulator only, e.g. ANDROID_SERIAL=emulator-5554, because
+    // connectedAndroidTest installs this debug build and uninstalls it afterwards (docs/TESTING.md).
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.espresso)
+    debugImplementation(libs.compose.ui.test.manifest)
 }
