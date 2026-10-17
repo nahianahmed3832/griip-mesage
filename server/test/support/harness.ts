@@ -55,7 +55,11 @@ export async function startServer(env: Record<string, string> = {}, opts: { push
     close: async () => {
       built.ctx.federation?.stop();
       for (const c of clients) await c.disconnect();
-      await built.app.close();
+      // A test may leave a response unread (an aborted download, a refused upload): its connection would hold close()
+      // open until the hook times out, so drop whatever is still connected once closing has started.
+      const closing = built.app.close();
+      built.app.server.closeAllConnections();
+      await closing;
       built.ctx.db.close();
       fs.rmSync(dir, { recursive: true, force: true });
     },
