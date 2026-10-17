@@ -85,6 +85,11 @@ don't.
 
 ## 3. Public registration and storage abuse
 
+**Update (Task 003, not deployed yet):** the server now limits open registration per network and per day, gives new
+accounts smaller allowances, caps history server-wide, and reads the real client address behind nginx
+([`ABUSE_CONTROLS.md`](ABUSE_CONTROLS.md)). The steps below still apply. Invite-only registration remains the strongest
+control.
+
 **Now.**
 - **Registration.** `REGISTRATION_MODE=open` (the owner's choice): anyone who reaches `https://msg.griipbuddy.cloud` can
   create an account and upload.

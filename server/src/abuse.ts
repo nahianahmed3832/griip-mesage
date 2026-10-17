@@ -1,0 +1,90 @@
+import net from "node:net";
+import type { DB } from "./db.js";
+import { now } from "./util.js";
+
+/**
+ * Abuse controls shared by several routes (docs/ABUSE_CONTROLS.md). Counters live in memory only: they hold network
+ * addresses and user ids for at most a day, are never written to disk, and start empty after a restart.
+ */
+
+export const HOUR_MS = 3_600_000;
+export const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * The network a request comes from, for per-address limits: an IPv4 address, or the /64 an IPv6 address is in (one
+ * home or phone gets a whole /64, so counting single IPv6 addresses would be trivial to dodge).
+ */
+export function networkKey(ip: string): string {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return mapped[1];
+  if (net.isIPv4(ip)) return ip;
+  if (!net.isIPv6(ip)) return ip;
+  const [head, tail = ""] = ip.toLowerCase().split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = ip.includes("::") ? [...left, ...Array(8 - left.length - right.length).fill("0"), ...right] : left;
+  return `${groups.slice(0, 4).map((g) => g.padStart(4, "0")).join(":")}::/64`;
+}
+
+/** Counts events per key over a sliding window, remembering at most [max] events per key and [maxKeys] keys. */
+export class SlidingWindow {
+  private hits = new Map<string, number[]>();
+
+  constructor(
+    readonly max: number,
+    readonly windowMs: number,
+    private readonly maxKeys = 50_000,
+  ) {}
+
+  private recent(key: string, t: number): number[] {
+    const list = (this.hits.get(key) ?? []).filter((at) => at > t - this.windowMs);
+    if (list.length) this.hits.set(key, list);
+    else this.hits.delete(key);
+    return list;
+  }
+
+  /** Whether another event is allowed now (0 means no limit). Doesn't count it. */
+  allows(key: string, t = now()): boolean {
+    return this.max === 0 || this.recent(key, t).length < this.max;
+  }
+
+  /** Milliseconds until the oldest counted event leaves the window (0 when another is allowed). */
+  retryAfterMs(key: string, t = now()): number {
+    const list = this.recent(key, t);
+    if (this.max === 0 || list.length < this.max) return 0;
+    return Math.max(list[0] + this.windowMs - t, 0);
+  }
+
+  record(key: string, t = now()): void {
+    if (this.max === 0) return;
+    const list = this.recent(key, t);
+    this.hits.set(key, [...list, t].slice(-this.max));
+    if (this.hits.size > this.maxKeys) this.prune(t);
+  }
+
+  /** Forgets every key whose events have all left the window; if that isn't enough, the oldest keys. */
+  private prune(t: number): void {
+    for (const k of [...this.hits.keys()]) this.recent(k, t);
+    for (const k of this.hits.keys()) {
+      if (this.hits.size <= this.maxKeys) break;
+      this.hits.delete(k);
+    }
+  }
+}
+
+/** Whether an account is still under new-account limits (docs/ABUSE_CONTROLS.md › New accounts). */
+export function hasNewAccountLimits(db: DB, userId: string, t = now()): boolean {
+  const r = db.prepare("SELECT limited_until FROM users WHERE id = ?").get(userId) as { limited_until: number | null } | undefined;
+  return !!r?.limited_until && r.limited_until > t;
+}
+
+/** Ends an account's new-account limits. Returns whether it had any. */
+export function endNewAccountLimits(db: DB, userId: string): boolean {
+  return db.prepare("UPDATE users SET limited_until = NULL WHERE id = ? AND limited_until IS NOT NULL").run(userId).changes > 0;
+}
+
+/** Open registrations (no invitation) on this server in the last 24 hours, from the audit log. */
+export function openRegistrationsToday(db: DB, t = now()): number {
+  return (db.prepare("SELECT COUNT(*) n FROM audit_log WHERE action = 'user.register' AND detail IS NULL AND at > ?").get(t - DAY_MS) as { n: number }).n;
+}
+

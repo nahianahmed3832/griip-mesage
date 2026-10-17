@@ -55,7 +55,7 @@ export interface Config {
    */
   storage: { backend: StorageBackend; readFallback: StorageBackend | null; s3: S3Config | null };
   /** Encrypted message history kept for each account (docs/MESSAGE_HISTORY.md). */
-  history: { enabled: boolean; maxItemsPerUser: number; maxBytesPerUser: number; maxItemBytes: number; tombstoneDays: number };
+  history: { enabled: boolean; maxItemsPerUser: number; maxBytesPerUser: number; maxItemBytes: number; tombstoneDays: number; maxTotalBytes: number };
   /**
    * Direct uploads from the app to S3 (2026-10-17). How long an upload URL may be started with, how long an upload may
    * take before it counts as abandoned (its object or parts are then deleted), and how many a person may have open.
@@ -85,13 +85,80 @@ export interface Config {
     apiKey: string;
     apiSecret: string;
   } | null;
-  trustProxy: boolean;
+  /**
+   * Which X-Forwarded-For entries to believe for the client address (rate limits, registration limits): a list of the
+   * proxies' addresses, CIDRs or proxy-addr names (production: "loopback,uniquelocal", host nginx reaching the
+   * container through Docker's network). The client is then the last address a trusted proxy added. `true` believes
+   * every entry, including ones a client sends itself, so per-address limits can be dodged (logged at start).
+   */
+  trustProxy: boolean | string[];
+  /** Abuse controls (docs/ABUSE_CONTROLS.md). 0 turns a limit off. */
+  abuse: AbuseConfig;
   /** Optional display name for this instance, shown on client setup screens (INSTANCE_NAME). */
   instanceName: string | null;
   /** Federation with other Griip servers (docs/FEDERATION_PROTOCOL.md). Null when FEDERATION_DOMAIN isn't set. */
   federation: FederationConfig | null;
   logLevel: string;
   rateLimitPerMinute: number;
+}
+
+export interface AbuseConfig {
+  /** Accounts created by open registration (no invitation) from one network address: IPv4 address or IPv6 /64. */
+  registrationsPerAddressPerHour: number;
+  registrationsPerAddressPerDay: number;
+  /** Open registrations on the whole server in 24 hours; past it, sign-up waits (invitations still work). */
+  openRegistrationsPerDay: number;
+  /**
+   * New-account limits: an account made by open registration has smaller allowances for this many days, until it
+   * accepts an invitation from an established member, or until an administrator ends them (admin.js limits-end).
+   */
+  newAccountDays: number;
+  newAccountDailyBytes: number;
+  newAccountStoredBytes: number;
+  /** Files stored by all accounts under new-account limits together, so many new accounts can't fill the server. */
+  newAccountsTotalBytes: number;
+  newAccountHistoryBytes: number;
+  /** Files stored in one workspace's conversations (including kept files and uploads in progress). */
+  orgStoredBytes: number;
+  /** Uploads one person may start in an hour (finished, failed or cancelled), so retries can't run forever. */
+  uploadStartsPerHour: number;
+  /** Devices an account may have at once (not removed). */
+  maxDevicesPerUser: number;
+  /** Realtime frames a connection may send: a steady rate and a burst; far past the burst the connection is closed. */
+  wsFramesPerSecond: number;
+  wsFrameBurst: number;
+  /** Realtime connections per device; a newer one replaces the oldest. */
+  wsMaxSocketsPerDevice: number;
+}
+
+/** TRUST_PROXY: false | true | comma-separated proxy addresses, CIDRs or names (loopback, linklocal, uniquelocal). */
+function trustProxy(v: string | undefined): Config["trustProxy"] {
+  const s = (v ?? "").trim();
+  if (s === "" || s === "false") return false;
+  if (s === "true") return true;
+  // Fastify ignores a hop count altogether (it can't tell a proxy from a client that way), so refuse one.
+  if (/^\d+$/.test(s)) throw new Error("TRUST_PROXY takes the proxies' addresses (for example loopback,uniquelocal), not a number of hops");
+  return s.split(",").map((x) => x.trim()).filter(Boolean);
+}
+
+function abuseConfig(int: (n: string, d: number) => number): AbuseConfig {
+  const atLeast0 = (n: string, d: number) => Math.max(int(n, d), 0);
+  return {
+    registrationsPerAddressPerHour: atLeast0("REGISTRATION_PER_ADDRESS_PER_HOUR", 10),
+    registrationsPerAddressPerDay: atLeast0("REGISTRATION_PER_ADDRESS_PER_DAY", 30),
+    openRegistrationsPerDay: atLeast0("REGISTRATION_OPEN_PER_DAY", 200),
+    newAccountDays: atLeast0("NEW_ACCOUNT_LIMIT_DAYS", 7),
+    newAccountDailyBytes: atLeast0("NEW_ACCOUNT_DAILY_UPLOAD_BYTES", 256 * MiB),
+    newAccountStoredBytes: atLeast0("NEW_ACCOUNT_STORED_BYTES", 512 * MiB),
+    newAccountsTotalBytes: atLeast0("NEW_ACCOUNTS_TOTAL_STORED_BYTES", 2048 * MiB),
+    newAccountHistoryBytes: atLeast0("NEW_ACCOUNT_HISTORY_BYTES", 64 * MiB),
+    orgStoredBytes: atLeast0("ATTACHMENT_ORG_STORED_BYTES", 0),
+    uploadStartsPerHour: atLeast0("ATTACHMENT_UPLOAD_STARTS_PER_HOUR", 300),
+    maxDevicesPerUser: atLeast0("MAX_DEVICES_PER_USER", 20),
+    wsFramesPerSecond: Math.max(int("WS_FRAMES_PER_SECOND", 20), 1),
+    wsFrameBurst: Math.max(int("WS_FRAME_BURST", 100), 1),
+    wsMaxSocketsPerDevice: Math.max(int("WS_MAX_SOCKETS_PER_DEVICE", 4), 1),
+  };
 }
 
 export interface FederationConfig {
@@ -185,6 +252,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       maxBytesPerUser: Math.max(int("HISTORY_MAX_BYTES_PER_USER", 1024 * MiB), 0),
       maxItemBytes: Math.min(Math.max(int("HISTORY_MAX_ITEM_BYTES", 64 * 1024), 1024), 1024 * 1024),
       tombstoneDays: Math.max(int("HISTORY_TOMBSTONE_DAYS", 90), 1),
+      // Every account's history together: it lives in the database, on the server's own disk (0: no cap).
+      maxTotalBytes: Math.max(int("HISTORY_TOTAL_BYTES", 10 * 1024 * MiB), 0),
     },
     registrationMode: registrationMode(env.REGISTRATION_MODE),
     sessionTtlSeconds: int("SESSION_TTL_SECONDS", 7 * 24 * 3600),
@@ -203,7 +272,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
             apiSecret: lkSecret,
           }
         : null,
-    trustProxy: env.TRUST_PROXY === "true",
+    trustProxy: trustProxy(env.TRUST_PROXY),
+    abuse: abuseConfig(int),
     instanceName: (env.INSTANCE_NAME ?? "").trim().slice(0, 80) || null,
     federation: federationConfig(env, dataDir, int),
     logLevel: env.LOG_LEVEL ?? "info",

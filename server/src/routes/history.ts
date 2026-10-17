@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { hasNewAccountLimits } from "../abuse.js";
 import { type AppContext, me, parse, requireAuth } from "../context.js";
 import { ApiError, now } from "../util.js";
 
@@ -32,6 +33,10 @@ export default async function historyRoutes(app: FastifyInstance, ctx: AppContex
   const requireEnabled = () => {
     if (!cfg.enabled) throw new ApiError(403, "history_off", "This server doesn't keep message history.");
   };
+  const newAccountBytes = ctx.config.abuse.newAccountHistoryBytes;
+  /** The account's allowance: smaller while it's under new-account limits (docs/ABUSE_CONTROLS.md). */
+  const maxBytesFor = (userId: string) =>
+    newAccountBytes > 0 && hasNewAccountLimits(db, userId) ? Math.min(newAccountBytes, cfg.maxBytesPerUser) : cfg.maxBytesPerUser;
   const account = (userId: string) =>
     db.prepare("SELECT next_seq, items, bytes FROM history_accounts WHERE user_id = ?").get(userId) as
       | { next_seq: number; items: number; bytes: number }
@@ -46,7 +51,7 @@ export default async function historyRoutes(app: FastifyInstance, ctx: AppContex
       bytes: a?.bytes ?? 0,
       seq: (a?.next_seq ?? 1) - 1,
       maxItems: cfg.maxItemsPerUser,
-      maxBytes: cfg.maxBytesPerUser,
+      maxBytes: maxBytesFor(userId),
       maxItemBytes: cfg.maxItemBytes,
     };
   });
@@ -99,7 +104,13 @@ export default async function historyRoutes(app: FastifyInstance, ctx: AppContex
             bytes += i.body.length;
           }
         }
-        if (items > cfg.maxItemsPerUser || bytes > cfg.maxBytesPerUser) return null;
+        if (items > cfg.maxItemsPerUser || bytes > maxBytesFor(userId)) return "account" as const;
+        // Every account's history shares the server's disk: growth stops at the server-wide cap (changes that free
+        // space always go through).
+        if (cfg.maxTotalBytes > 0 && bytes > a.bytes) {
+          const total = (db.prepare("SELECT SUM(bytes) n FROM history_accounts").get() as { n: number | null }).n ?? 0;
+          if (total - a.bytes + bytes > cfg.maxTotalBytes) return "server" as const;
+        }
         const upsert = db.prepare(
           `INSERT INTO history_items (user_id, tag, conv_tag, seq, ts, body, size, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(user_id, tag) DO UPDATE SET conv_tag = excluded.conv_tag, seq = excluded.seq, ts = excluded.ts,
@@ -113,7 +124,8 @@ export default async function historyRoutes(app: FastifyInstance, ctx: AppContex
         return { seq: seq - 1, items, bytes };
       })
       .immediate();
-    if (!result) throw new ApiError(429, "quota_exceeded", "Your message history on this server is full.");
+    if (result === "account") throw new ApiError(429, "quota_exceeded", "Your message history on this server is full.");
+    if (result === "server") throw new ApiError(507, "history_full", "This server's message history storage is full. Try again later.");
     return result;
   });
 

@@ -99,4 +99,5 @@ cd tools/griip-bot && npm run bot -- call <yourUsername> video 120
 - [Testing](docs/TESTING.md): what passed, failed or wasn't verified, with evidence
 - [Continuous integration](docs/CI.md): the checks that run on every push to `internal-beta` and every pull request
 - [Release builds and signing](docs/RELEASE_BUILDS.md) and [operational security remediation](docs/SECURITY_REMEDIATION.md)
+- [Abuse controls](docs/ABUSE_CONTROLS.md): registration, sign-in, upload, storage and realtime limits, and how to recover from false positives
 - [Known issues](docs/KNOWN_ISSUES.md) and [Progress](docs/PROGRESS.md)

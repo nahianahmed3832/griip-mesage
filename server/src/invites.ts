@@ -1,3 +1,4 @@
+import { endNewAccountLimits, hasNewAccountLimits } from "./abuse.js";
 import type { Authz } from "./authz.js";
 import type { AppContext } from "./context.js";
 import type { DB } from "./db.js";
@@ -126,6 +127,9 @@ export function joinOrgByInvite(ctx: AppContext, inv: OrgInviteRow, userId: stri
     if (inv.team_id) db.prepare("INSERT OR IGNORE INTO team_members (team_id, user_id, role, joined_at) VALUES (?, ?, 'MEMBER', ?)").run(inv.team_id, userId, t);
   }
   db.prepare("UPDATE invitations SET uses = uses + 1 WHERE id = ?").run(inv.id);
+  // An invitation from an established member ends new-account limits (docs/ABUSE_CONTROLS.md). One from an account
+  // still under them doesn't, so nobody can vouch for their own extra accounts.
+  if (!hasNewAccountLimits(db, inv.created_by, t)) endNewAccountLimits(db, userId);
   authz.autoJoinScope(inv.org_id, userId, t);
   return { orgId: inv.org_id, inviteId: inv.id, role };
 }

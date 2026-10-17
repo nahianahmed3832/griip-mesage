@@ -63,8 +63,22 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
     }, 30_000);
     socket.on("pong", () => (alive = true));
 
+    // Frame budget (docs/ABUSE_CONTROLS.md › Realtime): a steady rate with a burst. Frames past it are ignored, and a
+    // connection that keeps sending far past it is closed. Apps send a few frames a second at most.
+    const { wsFramesPerSecond: rate, wsFrameBurst: burst } = ctx.config.abuse;
+    let budget = burst;
+    let budgetAt = now();
+
     socket.on("message", (raw: Buffer) => {
       alive = true;
+      const t = now();
+      budget = Math.min(burst, budget + ((t - budgetAt) / 1000) * rate) - 1;
+      budgetAt = t;
+      if (budget < -burst) {
+        socket.close(4429, "too many messages");
+        return;
+      }
+      if (budget < 0) return;
       if (raw.length > 64 * 1024) return;
       let msg: any;
       try {
