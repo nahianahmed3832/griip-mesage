@@ -110,8 +110,15 @@ end-to-end encryption.
 **Diagnostics.** `admin.js storage-check` reports the backend, bucket, region and whether the store answers, never
 secrets.
 
-**Not migrated.** Turning S3 on doesn't copy files already on the disk. They stay readable only on the disk backend
-until they expire (attachments) or are replaced (photos).
+**Switching without moving files.** Turning S3 on doesn't copy files already on the disk, and going back doesn't copy
+files from S3. Set `STORAGE_READ_FALLBACK` to the previous backend:
+
+- `local` when moving to S3;
+- `s3` when going back to the disk.
+
+New files go to `STORAGE_BACKEND` only. Files in the other store are still served (streamed by the server, or a
+presigned link when they're in S3) until they expire or are replaced, and deleted from wherever they are. Nothing is
+removed from either store because of the switch.
 
 ### Tests
 

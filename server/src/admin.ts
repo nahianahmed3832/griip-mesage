@@ -227,8 +227,8 @@ switch (cmd) {
   }
   case "storage-check": {
     const blobs = createBlobStore(cfg);
-    const s3 = cfg.storage.backend === "s3" ? cfg.storage.s3 : null;
-    console.log(`backend: ${blobs.backend}${s3 ? ` · bucket ${s3.bucket} · region ${s3.region} · prefix "${s3.prefix}" · credentials: ${s3.credentials ? "S3_ACCESS_KEY_ID" : "AWS default chain"} · direct uploads: on · presigned downloads: ${s3.presignedDownloads ? "on" : "off"}` : ""}`);
+    const s3 = cfg.storage.s3;
+    console.log(`backend: ${blobs.backend}${cfg.storage.readFallback ? ` · also reading: ${cfg.storage.readFallback}` : ""}${s3 ? ` · bucket ${s3.bucket} · region ${s3.region} · prefix "${s3.prefix}" · credentials: ${s3.credentials ? "S3_ACCESS_KEY_ID" : "AWS default chain"} · direct uploads: ${blobs.direct ? "on" : "off"} · presigned downloads: ${s3.presignedDownloads ? "on" : "off"}` : ""}`);
     try {
       let n = 0;
       for await (const _ of blobs.listIds("attachments")) if (++n >= 1) break;

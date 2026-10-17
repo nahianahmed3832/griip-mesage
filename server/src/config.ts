@@ -4,6 +4,8 @@ import type { S3Config } from "./storage/s3.js";
 const SEVEN_DAYS_S = 7 * 24 * 3600;
 const MiB = 1024 * 1024;
 
+export type StorageBackend = "local" | "s3";
+
 function registrationMode(v: string | undefined): "invite" | "open" {
   if (v === undefined || v === "" || v === "invite") return "invite";
   if (v === "open") return "open";
@@ -46,8 +48,12 @@ export interface Config {
    */
   attachmentKeepDays: number;
   attachmentUserKeptBytes: number;
-  /** Where files live: the server's disk (default) or Amazon S3 / a compatible store (docs/STORAGE_AND_DATA.md). */
-  storage: { backend: "local" } | { backend: "s3"; s3: S3Config };
+  /**
+   * Where files live: the server's disk (default) or Amazon S3 / a compatible store (docs/STORAGE_AND_DATA.md).
+   * [readFallback]: the other backend, still read (and deleted from) after a switch, so files stored before it stay
+   * available until they expire; new files go to [backend] only. [s3] is set whenever either one is S3.
+   */
+  storage: { backend: StorageBackend; readFallback: StorageBackend | null; s3: S3Config | null };
   /** Encrypted message history kept for each account (docs/MESSAGE_HISTORY.md). */
   history: { enabled: boolean; maxItemsPerUser: number; maxBytesPerUser: number; maxItemBytes: number; tombstoneDays: number };
   /**
@@ -210,13 +216,28 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
  * from S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY, or else from the AWS SDK's default chain (AWS_* variables, AWS_PROFILE,
  * or a `credential_process` such as IAM Roles Anywhere's signing helper); never from clients. Missing settings stop the
  * server at startup rather than silently falling back to disk.
+ *
+ * STORAGE_READ_FALLBACK names the other backend after a switch (s3 when going back to the disk, local when moving to
+ * S3): files it holds stay readable, nothing is copied or removed from it except by normal expiry.
  */
 function storageConfig(env: NodeJS.ProcessEnv, dataDir: string, int: (n: string, d: number) => number): Config["storage"] {
-  const backend = (env.STORAGE_BACKEND ?? "local").trim();
-  if (backend === "" || backend === "local") return { backend: "local" };
-  if (backend !== "s3") throw new Error("STORAGE_BACKEND must be local or s3");
+  const backend = storageBackend(env.STORAGE_BACKEND, "STORAGE_BACKEND") ?? "local";
+  const readFallback = storageBackend(env.STORAGE_READ_FALLBACK, "STORAGE_READ_FALLBACK");
+  if (readFallback === backend) throw new Error("STORAGE_READ_FALLBACK must differ from STORAGE_BACKEND");
+  const usesS3 = backend === "s3" || readFallback === "s3";
+  return { backend, readFallback, s3: usesS3 ? s3Config(env, dataDir, int) : null };
+}
+
+function storageBackend(v: string | undefined, name: string): StorageBackend | null {
+  const s = (v ?? "").trim();
+  if (s === "") return null;
+  if (s !== "local" && s !== "s3") throw new Error(`${name} must be local or s3`);
+  return s;
+}
+
+function s3Config(env: NodeJS.ProcessEnv, dataDir: string, int: (n: string, d: number) => number): S3Config {
   const need = (name: string, v: string | undefined) => {
-    if (!v || !v.trim()) throw new Error(`STORAGE_BACKEND=s3 needs ${name}`);
+    if (!v || !v.trim()) throw new Error(`S3 storage needs ${name}`);
     return v.trim();
   };
   const sse = (env.S3_SSE ?? "AES256").trim();
@@ -225,23 +246,20 @@ function storageConfig(env: NodeJS.ProcessEnv, dataDir: string, int: (n: string,
   if (prefix && !/^[A-Za-z0-9_\-/.]{1,64}$/.test(prefix)) throw new Error("S3_PREFIX may only use letters, digits, _ - . /");
   const partSize = Math.max(int("S3_PART_SIZE", 16 * MiB), 5 * MiB);
   return {
-    backend: "s3",
-    s3: {
-      bucket: need("S3_BUCKET", env.S3_BUCKET),
-      region: need("S3_REGION", env.S3_REGION ?? env.AWS_REGION),
-      endpoint: env.S3_ENDPOINT?.trim() || null,
-      forcePathStyle: env.S3_FORCE_PATH_STYLE === "true",
-      prefix: prefix && !prefix.endsWith("/") ? prefix + "/" : prefix,
-      credentials: s3Credentials(env),
-      sse: sse === "none" ? null : sse,
-      kmsKeyId: env.S3_KMS_KEY_ID?.trim() || null,
-      // On by default with S3: downloads go straight from S3 after the server's checks (5-minute links).
-      presignedDownloads: env.S3_PRESIGNED_DOWNLOADS !== "false",
-      presignTtlSeconds: Math.min(Math.max(int("S3_PRESIGN_TTL_SECONDS", 300), 30), 3600),
-      multipartThreshold: Math.max(int("S3_MULTIPART_THRESHOLD", 64 * MiB), partSize),
-      partSize,
-      spoolDir: env.S3_SPOOL_DIR ?? path.join(dataDir, "upload-spool"),
-    },
+    bucket: need("S3_BUCKET", env.S3_BUCKET),
+    region: need("S3_REGION", env.S3_REGION ?? env.AWS_REGION),
+    endpoint: env.S3_ENDPOINT?.trim() || null,
+    forcePathStyle: env.S3_FORCE_PATH_STYLE === "true",
+    prefix: prefix && !prefix.endsWith("/") ? prefix + "/" : prefix,
+    credentials: s3Credentials(env),
+    sse: sse === "none" ? null : sse,
+    kmsKeyId: env.S3_KMS_KEY_ID?.trim() || null,
+    // On by default with S3: downloads go straight from S3 after the server's checks (5-minute links).
+    presignedDownloads: env.S3_PRESIGNED_DOWNLOADS !== "false",
+    presignTtlSeconds: Math.min(Math.max(int("S3_PRESIGN_TTL_SECONDS", 300), 30), 3600),
+    multipartThreshold: Math.max(int("S3_MULTIPART_THRESHOLD", 64 * MiB), partSize),
+    partSize,
+    spoolDir: env.S3_SPOOL_DIR ?? path.join(dataDir, "upload-spool"),
   };
 }
 

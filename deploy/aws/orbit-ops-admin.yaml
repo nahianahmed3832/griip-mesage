@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Orbit operations administrator (docs/AWS_STORAGE_PLAN.md). An IAM user for creating and maintaining Orbit's storage
+  stacks from the command line instead of the root user, limited to Orbit's stacks, buckets, runtime users and budgets.
+  Runtime users it creates must carry the orbit-runtime-boundary permissions boundary, so it can't hand out more than
+  access to Orbit's buckets. Its access key is created separately and kept in the operator's local AWS config.
+
+Resources:
+  # The most any Orbit runtime user (orbit-api-*) may ever be allowed, whatever its own policy says.
+  RuntimeBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: orbit-runtime-boundary
+      Description: Permissions boundary for Orbit runtime users - objects in Orbit buckets only.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: OrbitObjects
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:DeleteObject
+              - s3:AbortMultipartUpload
+              - s3:ListMultipartUploadParts
+            Resource: arn:aws:s3:::griipbuddy-orbit-*/*
+          - Sid: OrbitListing
+            Effect: Allow
+            Action: s3:ListBucket
+            Resource: arn:aws:s3:::griipbuddy-orbit-*
+
+  OpsAdminPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: orbit-ops-admin
+      Description: Create and maintain Orbit storage stacks, buckets, runtime users and budgets.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: Discovery
+            Effect: Allow
+            Action:
+              - cloudformation:ValidateTemplate
+              - cloudformation:ListStacks
+              - cloudformation:GetTemplateSummary
+              - s3:ListAllMyBuckets
+              - ce:GetCostAndUsage
+              - ce:GetCostForecast
+              - pricing:GetProducts
+            Resource: "*"
+          - Sid: OrbitStacks
+            Effect: Allow
+            Action: cloudformation:*
+            Resource: !Sub "arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/orbit-storage-*/*"
+          - Sid: OrbitBuckets
+            Effect: Allow
+            Action: s3:*
+            Resource:
+              - arn:aws:s3:::griipbuddy-orbit-*
+              - arn:aws:s3:::griipbuddy-orbit-*/*
+          # Runtime users only with the boundary above, so their policies can't grant more than it allows.
+          - Sid: RuntimeUsersWithBoundary
+            Effect: Allow
+            Action:
+              - iam:CreateUser
+              - iam:PutUserPermissionsBoundary
+              - iam:PutUserPolicy
+              - iam:DeleteUserPolicy
+              - iam:AttachUserPolicy
+              - iam:DetachUserPolicy
+            Resource: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/orbit-api-*"
+            Condition:
+              StringEquals:
+                iam:PermissionsBoundary: !Ref RuntimeBoundary
+          - Sid: RuntimeUsersMaintenance
+            Effect: Allow
+            Action:
+              - iam:GetUser
+              - iam:DeleteUser
+              - iam:TagUser
+              - iam:UntagUser
+              - iam:ListUserTags
+              - iam:GetUserPolicy
+              - iam:ListUserPolicies
+              - iam:ListAttachedUserPolicies
+              - iam:ListGroupsForUser
+              - iam:ListAccessKeys
+              - iam:CreateAccessKey
+              - iam:UpdateAccessKey
+              - iam:DeleteAccessKey
+              - iam:GetAccessKeyLastUsed
+            Resource: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/orbit-api-*"
+          - Sid: OwnKeyRotation
+            Effect: Allow
+            Action:
+              - iam:GetUser
+              - iam:ListAccessKeys
+              - iam:CreateAccessKey
+              - iam:UpdateAccessKey
+              - iam:DeleteAccessKey
+            Resource: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/orbit-ops-admin"
+          - Sid: OrbitBudgets
+            Effect: Allow
+            Action:
+              - budgets:ViewBudget
+              - budgets:ModifyBudget
+            Resource: !Sub "arn:${AWS::Partition}:budgets::${AWS::AccountId}:budget/orbit-*"
+          - Sid: KeepTheBoundary
+            Effect: Deny
+            Action: iam:DeleteUserPermissionsBoundary
+            Resource: "*"
+
+  OpsAdminUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: orbit-ops-admin
+      ManagedPolicyArns:
+        - !Ref OpsAdminPolicy
+      Tags:
+        - Key: app
+          Value: orbit
+        - Key: role
+          Value: operations
+
+Outputs:
+  RuntimeBoundaryArn:
+    Value: !Ref RuntimeBoundary
+    Description: Pass as PermissionsBoundaryArn to orbit-storage.yaml.
+  OpsAdminUserName:
+    Value: !Ref OpsAdminUser
+    Description: Create its access key separately into the operator's AWS config; never an output here.

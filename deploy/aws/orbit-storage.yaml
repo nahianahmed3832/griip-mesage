@@ -28,6 +28,13 @@ Parameters:
     Type: Number
     Default: 30
     Description: How long a deleted or replaced object stays recoverable (versioning).
+  PermissionsBoundaryArn:
+    Type: String
+    Default: ""
+    Description: The orbit-runtime-boundary policy from orbit-ops-admin.yaml (required when that user creates the stack).
+
+Conditions:
+  HasBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
 
 Resources:
   MediaBucket:
@@ -91,6 +98,7 @@ Resources:
     Type: AWS::IAM::User
     Properties:
       UserName: !Sub "orbit-api-${Environment}-${AWS::Region}"
+      PermissionsBoundary: !If [HasBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
       Tags:
         - Key: app
           Value: orbit

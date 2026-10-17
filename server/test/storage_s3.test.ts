@@ -264,3 +264,82 @@ describe("the server on S3 storage", () => {
     await expect(startServer({ STORAGE_BACKEND: "nfs" })).rejects.toThrow(/STORAGE_BACKEND/);
   });
 });
+
+describe("switching between the disk and S3 without moving files (STORAGE_READ_FALLBACK)", () => {
+  const creds = { accessKeyId: "AKIDTESTONLY3", secretAccessKey: "switch-test-secret" };
+  let s3: FakeS3;
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "orbit-switch-"));
+  const s3env = () => ({
+    S3_BUCKET: "orbit-switch",
+    S3_REGION: "ap-southeast-1",
+    S3_ENDPOINT: s3.url,
+    S3_FORCE_PATH_STYLE: "true",
+    S3_ACCESS_KEY_ID: creds.accessKeyId,
+    S3_SECRET_ACCESS_KEY: creds.secretAccessKey,
+  });
+  beforeAll(async () => {
+    s3 = await startFakeS3("orbit-switch", "ap-southeast-1", creds);
+  });
+  afterAll(async () => {
+    await s3.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it("disk files stay readable after moving to S3, and S3 files after a rollback to the disk", async () => {
+    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), crypto.randomBytes(3000), Buffer.from([0xff, 0xd9])]);
+    // 1. On the disk, as production runs today.
+    let h = await startServer({ DATA_DIR: dataDir });
+    const alice = await h.client("alice");
+    const bob = await h.client("bob");
+    const dm = (await alice.req("POST", "/v1/conversations/dm", { userId: bob.userId })).conversation.id;
+    const onDisk = crypto.randomBytes(20_000);
+    const diskId = (await alice.req("POST", `/v1/attachments?conversationId=${dm}`, undefined, onDisk)).id;
+    await alice.req("PUT", "/v1/users/me/photo", undefined, jpeg);
+    await h.close();
+    const restart = async (env: Record<string, string>) => {
+      h = await startServer({ DATA_DIR: dataDir, ...env });
+      for (const c of [alice, bob]) c.baseUrl = h.baseUrl;
+    };
+
+    // 2. Moved to S3, still reading the disk.
+    await restart({ STORAGE_BACKEND: "s3", STORAGE_READ_FALLBACK: "local", ...s3env() });
+    expect((await alice.req("GET", "/v1/server-info")).features).toContain("direct-upload");
+    const old = await fetch(`${h.baseUrl}/v1/attachments/${diskId}`, { headers: { authorization: `Bearer ${bob.token}` }, redirect: "manual" });
+    expect(old.status).toBe(200); // streamed from the disk: S3 has no copy to link to
+    expect(Buffer.from(await old.arrayBuffer())).toEqual(onDisk);
+    const part = await fetch(`${h.baseUrl}/v1/attachments/${diskId}`, { headers: { authorization: `Bearer ${bob.token}`, range: "bytes=10-19" } });
+    expect(Buffer.from(await part.arrayBuffer())).toEqual(onDisk.subarray(10, 20));
+    expect(Buffer.from(await bob.req("GET", `/v1/users/${alice.userId}/photo`))).toEqual(jpeg);
+    const inS3 = crypto.randomBytes(15_000);
+    const s3Id = (await alice.req("POST", `/v1/attachments?conversationId=${dm}`, undefined, inS3)).id;
+    expect(s3.objects.get(`orbit/attachments/${s3Id}`)?.body).toEqual(inS3);
+    expect(fs.existsSync(path.join(dataDir, "attachments", s3Id))).toBe(false);
+    const linked = await fetch(`${h.baseUrl}/v1/attachments/${s3Id}`, { headers: { authorization: `Bearer ${bob.token}` }, redirect: "manual" });
+    expect(linked.status).toBe(302);
+    // Expiry removes a disk file too.
+    h.ctx.db.prepare("UPDATE attachments SET expires_at = ? WHERE id = ?").run(Date.now() - 1, diskId);
+    await runCleanup(h.ctx);
+    expect(fs.existsSync(path.join(dataDir, "attachments", diskId))).toBe(false);
+    await h.close();
+
+    // 3. Rolled back to the disk, still reading S3.
+    await restart({ STORAGE_BACKEND: "local", STORAGE_READ_FALLBACK: "s3", ...s3env() });
+    expect((await alice.req("GET", "/v1/server-info")).features).not.toContain("direct-upload");
+    expect(Buffer.from(await bob.req("GET", `/v1/attachments/${s3Id}`))).toEqual(inS3);
+    const back = crypto.randomBytes(5_000);
+    const localId = (await alice.req("POST", `/v1/attachments?conversationId=${dm}`, undefined, back)).id;
+    expect(s3.objects.has(`orbit/attachments/${localId}`)).toBe(false);
+    expect(Buffer.from(await bob.req("GET", `/v1/attachments/${localId}`))).toEqual(back);
+    await expectStatus((await h.client("eve")).req("GET", `/v1/attachments/${s3Id}`), 404);
+    h.ctx.db.prepare("UPDATE attachments SET expires_at = ? WHERE id = ?").run(Date.now() - 1, s3Id);
+    await runCleanup(h.ctx);
+    expect(s3.objects.has(`orbit/attachments/${s3Id}`)).toBe(false);
+    await h.close();
+  });
+
+  it("refuses a fallback that is the same store, or S3 without its settings", async () => {
+    await expect(startServer({ STORAGE_READ_FALLBACK: "local" })).rejects.toThrow(/must differ/);
+    await expect(startServer({ STORAGE_READ_FALLBACK: "s3" })).rejects.toThrow(/S3_BUCKET/);
+    await expect(startServer({ STORAGE_READ_FALLBACK: "disk" })).rejects.toThrow(/STORAGE_READ_FALLBACK/);
+  });
+});
