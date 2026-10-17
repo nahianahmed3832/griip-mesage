@@ -97,4 +97,6 @@ cd tools/griip-bot && npm run bot -- call <yourUsername> video 120
   [server lifecycle](docs/SERVER_LIFECYCLE.md), [security and privacy](docs/SECURITY_AND_PRIVACY.md), [audit and plan](docs/FEDERATION_GAP_ANALYSIS.md)
 - [Decision records](docs/decisions/README.md)
 - [Testing](docs/TESTING.md): what passed, failed or wasn't verified, with evidence
+- [Continuous integration](docs/CI.md): the checks that run on every push to `internal-beta` and every pull request
+- [Release builds and signing](docs/RELEASE_BUILDS.md) and [operational security remediation](docs/SECURITY_REMEDIATION.md)
 - [Known issues](docs/KNOWN_ISSUES.md) and [Progress](docs/PROGRESS.md)
