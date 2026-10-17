@@ -197,8 +197,9 @@ data volume; take a backup first. Neither touches other Compose projects. Remove
 ## 11. Limits
 
 - One API process (in-memory WebSocket routing) and SQLite: fine for tens to low hundreds of users, not horizontally scalable.
-- No push service: Android phones receive messages while the app or its optional "stay connected" service runs (`BACKGROUND_DELIVERY.md`).
-  A phone whose app was force-stopped gets nothing until it's opened.
+- No Google push service. Android phones receive messages while the app or its optional "stay connected" service runs. Optional
+  payload-free wake-ups through your own ntfy server (UnifiedPush) need an ntfy container, a DNS name, a proxy site and
+  `PUSH_UNIFIEDPUSH_HOSTS` (`BACKGROUND_DELIVERY.md` § Deploying). A phone whose app was force-stopped gets nothing until it's opened.
 - Federation v1 covers direct messages, attachments, voice messages and 1:1 calls; groups and channels stay server-local (§12).
 
 ## 12. Joining the federated network

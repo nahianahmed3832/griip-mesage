@@ -14,6 +14,7 @@ end-to-end encrypted (docs/MESSAGE_HISTORY.md); before that it existed only on u
 | A deleted workspace's rows and files | removed at once by the owner's deletion; `org_deletions` keeps id, hashed name, who, when and counts | `DELETE /v1/orgs/:id` (docs/WORKSPACES.md) |
 | Auth challenges | 2 minutes | cleanup job / consumed on use |
 | Sessions (hashed tokens) | 7 days | cleanup job / logout / device revocation |
+| Push endpoints (`push_endpoints`: device, endpoint URL, last wake-up time; since 2026-10-17, only with `PUSH_UNIFIEDPUSH_HOSTS`) | while the device keeps it registered | the device (`DELETE /v1/devices/current/push`), logout, device revocation, the push server answering 404/410, 7 days of failed wake-ups, its host leaving the allow-list; cleanup job for revoked devices (docs/BACKGROUND_DELIVERY.md) |
 | Pairing requests | 10 minutes | cleanup job |
 | Call records (`calls`, `call_participants`) | 90 days after the call ended (`CALL_RECORD_RETENTION_DAYS`) | cleanup job, every 60 s (since 2026-10-16) |
 | Audit log (no content) | 365 days (`AUDIT_RETENTION_DAYS`, minimum 30) | cleanup job, every 60 s (since 2026-10-16) |

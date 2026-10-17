@@ -9,7 +9,7 @@ on the phone; profile and privacy on the server).
 | Accounts | Accounts on this phone: switch, add, sign out of one, remove one |
 | Chats | Theme (system/light/dark), accent colour (5), wallpaper (5, drawn by the app), message text size (90–130 %), animated emoji, link opening and previews, automatic photo download (never / Wi-Fi / always) |
 | Privacy & Security | Recovery key and safety numbers, devices and sessions, who sees each profile field, who can find you, read receipts, typing, blocked people |
-| Notifications & Sounds | Messages, groups, message text in notifications, sound, vibration, call ringtone, background connection, Android's own settings (docs/NOTIFICATIONS.md) |
+| Notifications & Sounds | Messages, groups, message text in notifications, sound, vibration, call ringtone, background connection, wake-ups through UnifiedPush (off by default; docs/BACKGROUND_DELIVERY.md), Android's own settings (docs/NOTIFICATIONS.md) |
 | Calls | End-to-end encrypted call media, the phone's echo canceller |
 | Data & Storage | Storage used, clear cache, encrypted backup and restore (docs/BACKUP.md) |
 | Language | docs/LANGUAGES.md |

@@ -128,9 +128,12 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
 - The debug APK allows `http://` servers, with a warning.
 
 ## Functional limitations
-- **No push wake-up.** If the app is force-stopped or killed, it receives no messages or calls until reopened. The "stay connected" foreground service
+- **No push wake-up in production yet.** If the app is force-stopped or killed, it receives no messages or calls until reopened. The "stay connected" foreground service
   (on by default) keeps the socket alive in the background, but OEM battery managers (MagicOS included) may still kill it. Whitelist the app in
-  battery settings for reliable background delivery. FCM or UnifiedPush isn't implemented: `BACKGROUND_DELIVERY.md` recommends self-hosted UnifiedPush, pending owner approval. Since 2026-10-16 the service restarts after a reboot or app update (not yet verified on a device).
+  battery settings for reliable background delivery. Since 2026-10-16 the service restarts after a reboot or app update (not yet verified on a device).
+  - Self-hosted UnifiedPush wake-ups were built and tested locally on 2026-10-17 (server and app, `BACKGROUND_DELIVERY.md`).
+  - They need the ntfy container, DNS name and TLS route, which wait for owner approval, and a check on a physical phone.
+  - A force-stopped app still gets nothing, as on any Android push.
 - **No TURN server.** Calls need UDP 7882 or TCP 7881 to reach the VPS. Networks that only allow 443 (some corporate Wi-Fi) will fail to
   connect media, while messaging still works.
 - **No message history migrates between devices.** A newly linked or recovered device starts with empty history (by design: local-first).

@@ -17,10 +17,14 @@ text in notifications (off: "New message" only, no sender or text, also on the l
 call ringtone (off: calls vibrate only); per-chat mute (long-press a chat). Duplicate events never notify twice (a
 message is stored once, and each chat has one notification).
 
-## Delivery without a push service
-Orbit has no push service configured (no Firebase credentials in the app, by design). Messages and calls reach a phone
-only over its connection to the server: while Orbit is open, or with "Stay connected in background" on, which needs
-Android's ongoing "Orbit is connected" notification. Turning that off removes the notification, and then messages and
-calls arrive only when Orbit is opened. A force-stopped app gets nothing. Removing the ongoing notification without
-losing background delivery needs a push service (Firebase Cloud Messaging or UnifiedPush) and a server change; neither
-is set up. During a call, Android requires the ongoing-call notification; it stays.
+## Delivery in the background
+Orbit uses no Google push service (no Firebase credentials in the app, by design). Messages and calls reach a phone over
+its own connection to the server:
+- while Orbit is open;
+- with "Stay connected in background" on (the default), which needs Android's ongoing "Orbit is connected" notification;
+- or, since 2026-10-17, with "Wake-ups through UnifiedPush" on. A distributor app such as ntfy, set to the push server
+  your Orbit server uses, wakes Orbit with an empty message, and Orbit then fetches over its own connection. This needs a
+  server that offers it, and production doesn't yet (docs/BACKGROUND_DELIVERY.md). It hasn't been tested on a phone.
+
+With both off, messages and calls arrive only when Orbit is opened. A force-stopped app gets nothing, whatever the
+setting. During a call, Android requires the ongoing-call notification; it stays.

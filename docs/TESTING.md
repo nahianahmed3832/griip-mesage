@@ -136,7 +136,7 @@ A→B delivery (515 ms), delivery receipt, B→A, offline queue after reconnect,
 | Screen-share track E2EE | PASS (2026-10-16) | Wrong-key participant decoded 0 screen-share frames; correct-key participant decoded 2,262 at 1200×2664 (§5a) |
 | Call end/cleanup propagates | PASS | Server `ENDED reason=hangup`; bot room torn down |
 | **Incoming call → Accept on phone** (bot calls phone) | PASS | After fix: phone joined, showed bot video + self-preview + E2EE badge; bot received phone camera 360×640 + mic |
-| Background/locked incoming calls | NOT VERIFIED | Needs the "stay connected" service; no push wake-up |
+| Background/locked incoming calls | NOT VERIFIED | Needs the "stay connected" service. Push wake-ups exist since 2026-10-17 but aren't deployed or phone-tested (`BACKGROUND_DELIVERY.md` § Verification) |
 | 3-party call (phone + 2 bot devices) | PASS | Phone rendered a grid (You, bot test pattern, undecodable wrong-key bot tile) |
 | **Wrong-key participant vs phone's camera/mic** | PASS | Second bot device with a deliberately wrong media key: **0 video frames, 0 audible audio frames** from the phone (1,584 silent frames), while the correct-key bot decoded camera and mic normally; phone couldn't decode the wrong-key bot either |
 | Native crash during screen-share consent / after call end | FAIL → fixed (re-tested 2026-10-16, §5a) | `ApplicationExitInfo`: 2× SIGSEGV in `libjingle_peerconnection_so`. One was on the main thread when the consent dialog covered the call, the other on the audio playout thread after release. Fixed by ordered teardown (UI detaches sinks, then disconnect, then delayed release) and lifecycle-aware video sinks |
