@@ -57,12 +57,26 @@ export class Hub {
   /** A device's last socket closed; [openedAt] is when that socket opened. */
   onDeviceOffline: (deviceId: string, openedAt: number) => void = () => {};
 
-  constructor(private db: DB) {}
+  /** [maxSocketsPerDevice]: a device opening more connections than this closes its oldest (docs/ABUSE_CONTROLS.md). */
+  constructor(
+    private db: DB,
+    private maxSocketsPerDevice = 4,
+  ) {}
 
   add(ws: WebSocket, userId: string, deviceId: string): Conn {
     const conn: Conn = { ws, userId, deviceId, flushing: true, openedAt: now() }; // its backlog flush starts right after "hello"
     let set = this.byDevice.get(deviceId);
     if (!set) this.byDevice.set(deviceId, (set = new Set()));
+    // A reconnecting phone often still has a half-open old connection: the newest one wins, nothing is refused.
+    for (const old of set) {
+      if (set.size < this.maxSocketsPerDevice) break;
+      set.delete(old);
+      try {
+        old.ws.close(4409, "replaced by a newer connection");
+      } catch {
+        /* already closed */
+      }
+    }
     set.add(conn);
     let devs = this.byUser.get(userId);
     const wasOnline = !!devs && devs.size > 0;

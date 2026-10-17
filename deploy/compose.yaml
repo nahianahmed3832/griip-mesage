@@ -15,7 +15,9 @@ services:
       NODE_ENV: production
       DATA_DIR: /data
       PORT: "8080"
-      TRUST_PROXY: "true"
+      # The client is the last address host nginx added to X-Forwarded-For: nginx reaches the container through Docker's
+      # proxy from the network gateway (a private address). "true" would believe addresses clients write themselves.
+      TRUST_PROXY: "loopback,uniquelocal"
       LIVEKIT_API_URL: http://livekit:7880
     volumes:
       - api-data:/data

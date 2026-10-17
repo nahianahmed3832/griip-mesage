@@ -11,6 +11,8 @@
  *   reg-invite-revoke <hint|id>    revoke a registration invite
  *   disable <username>             disable an account and drop its sessions
  *   enable <username>
+ *   limits <username>              new-account limits, active devices and file use of one account (no content)
+ *   limits-end <username>          end an account's new-account limits now (docs/ABUSE_CONTROLS.md)
  *   cleanup                        run the retention job now
  *   backup <file>                  consistent snapshot of the live database (never overwrites)
  *   verify-backup <file>           read-only check that a snapshot is intact and this server can use it
@@ -30,6 +32,7 @@ import { loadConfig } from "./config.js";
 import { openDatabase } from "./db.js";
 import { ServerIdentity } from "./federation/identity.js";
 import { Hub } from "./hub.js";
+import { endNewAccountLimits } from "./abuse.js";
 import { createRegistrationInvite } from "./invites.js";
 import { runCleanup } from "./jobs.js";
 import { deleteEmptyOrg, findDuplicateOrgs, keepReason, orgFootprint } from "./orgRepair.js";
@@ -126,6 +129,35 @@ switch (cmd) {
     db.prepare("UPDATE users SET disabled_at = ? WHERE id = ?").run(cmd === "disable" ? now() : null, u.id);
     if (cmd === "disable") db.prepare("DELETE FROM sessions WHERE user_id = ?").run(u.id);
     console.log(`${cmd}d ${rest[0]}`);
+    break;
+  }
+  case "limits":
+  case "limits-end": {
+    const u = db.prepare("SELECT id, limited_until FROM users WHERE username = ?").get(rest[0]) as { id: string; limited_until: number | null } | undefined;
+    if (!u) {
+      console.error(`usage: ${cmd} <username>  (no such user)`);
+      process.exit(1);
+    }
+    if (cmd === "limits-end") {
+      console.log(endNewAccountLimits(db, u.id) ? `new-account limits ended for ${rest[0]}` : `${rest[0]} had no new-account limits`);
+      break;
+    }
+    const t = now();
+    const limited = !!u.limited_until && u.limited_until > t;
+    console.log(
+      JSON.stringify(
+        {
+          newAccountLimits: limited ? { until: new Date(u.limited_until!).toISOString() } : null,
+          activeDevices: one("SELECT COUNT(*) n FROM devices WHERE user_id = ? AND revoked_at IS NULL", u.id),
+          maxDevices: cfg.abuse.maxDevicesPerUser || null,
+          filesUploadedLast24h: one("SELECT COALESCE(SUM(size), 0) n FROM attachments WHERE uploader_user_id = ? AND created_at > ?", u.id, t - 86_400_000),
+          filesStored: one("SELECT COALESCE(SUM(size), 0) n FROM attachments WHERE uploader_user_id = ? AND expires_at > ?", u.id, t),
+          historyBytes: one("SELECT COALESCE(SUM(bytes), 0) n FROM history_accounts WHERE user_id = ?", u.id),
+        },
+        null,
+        2,
+      ),
+    );
     break;
   }
   case "cleanup": {

@@ -92,6 +92,8 @@ export class ApiFailure extends Error {
   constructor(
     public status: number,
     public body: any,
+    /** The Retry-After header of a refusal, if any. */
+    public retryAfter: string | null = null,
   ) {
     super(`HTTP ${status}: ${JSON.stringify(body)}`);
   }
@@ -138,8 +140,11 @@ export class GriipClient {
     return sign(this.identity, canonical.deviceCert(this.identityKeyB64, this.signingKeyB64, this.encKeyB64));
   }
 
+  /** Sent with every request, e.g. X-Forwarded-For to act as a client behind a trusted proxy (abuse-control tests). */
+  extraHeaders: Record<string, string> = {};
+
   async req(method: string, path: string, body?: unknown, raw?: Buffer): Promise<any> {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...this.extraHeaders };
     if (this.token) headers.authorization = `Bearer ${this.token}`;
     let payload: BodyInit | undefined;
     if (raw) {
@@ -152,7 +157,7 @@ export class GriipClient {
     const res = await fetch(this.baseUrl + path, { method, headers, body: payload });
     const ct = res.headers.get("content-type") ?? "";
     const data = ct.includes("application/json") ? await res.json() : Buffer.from(await res.arrayBuffer());
-    if (!res.ok) throw new ApiFailure(res.status, data);
+    if (!res.ok) throw new ApiFailure(res.status, data, res.headers.get("retry-after"));
     return data;
   }
 

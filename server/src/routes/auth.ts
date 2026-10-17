@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { DAY_MS, HOUR_MS, networkKey, openRegistrationsToday, SlidingWindow } from "../abuse.js";
 import { type AppContext, bearer, me, parse, requireAuth, zKey, zName, zSig } from "../context.js";
 import { privacyOf } from "../profile.js";
 import { canonical, isValidPublicKey, keyFingerprint, verifyEd25519 } from "../crypto.js";
@@ -81,6 +82,12 @@ export function userSummary(u: {
 
 export default async function authRoutes(app: FastifyInstance, ctx: AppContext) {
   const strict = { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } };
+  const abuse = ctx.config.abuse;
+  // Accounts made by open registration, per network (docs/ABUSE_CONTROLS.md › Registration).
+  const registeredFrom = {
+    hour: new SlidingWindow(abuse.registrationsPerAddressPerHour, HOUR_MS),
+    day: new SlidingWindow(abuse.registrationsPerAddressPerDay, DAY_MS),
+  };
 
   app.post("/v1/auth/challenge", strict, async () => {
     const nonce = crypto.randomBytes(24).toString("base64url");
@@ -99,7 +106,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
 
   // Register a new account: proves possession of the device key (signs a fresh nonce) and
   // binds the device to the account identity key via a certificate signed by that key.
-  app.post("/v1/auth/register", strict, async (req) => {
+  app.post("/v1/auth/register", strict, async (req, reply) => {
     const body = parse(
       z.object({
         username: zUsername,
@@ -117,6 +124,20 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
     if (ctx.config.registrationMode === "invite" && !body.inviteCode) {
       throw new ApiError(403, "invite_required", "Registration needs an invitation code");
     }
+    // Open registration is limited per network and per day, also before any key work. Only accounts actually created
+    // are counted, so a refused or failed attempt doesn't use up anyone's allowance.
+    const open = ctx.config.registrationMode === "open";
+    const network = networkKey(req.ip);
+    if (open) {
+      const wait = Math.max(registeredFrom.hour.retryAfterMs(network), registeredFrom.day.retryAfterMs(network));
+      if (wait > 0) {
+        reply.header("retry-after", String(Math.ceil(wait / 1000)));
+        throw new ApiError(429, "registration_limited", "Too many new accounts from this network. Try again later, or ask for an invitation code.");
+      }
+      if (abuse.openRegistrationsPerDay > 0 && openRegistrationsToday(ctx.db) >= abuse.openRegistrationsPerDay) {
+        throw new ApiError(429, "registration_paused", "New sign-ups are paused for now. Try again later, or ask for an invitation code.");
+      }
+    }
     verifyDevice(body.identityKey, body.device);
     if (!verifyEd25519(body.device.signingKey, canonical.authProof("register", body.nonce, body.device.signingKey), body.signature)) {
       throw unauthorized("Invalid proof signature");
@@ -126,14 +147,16 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
     const t = now();
     const userId = newId("u");
     const deviceId = newId("d");
+    // Accounts made without an invitation start with smaller allowances (docs/ABUSE_CONTROLS.md › New accounts).
+    const limitedUntil = open && abuse.newAccountDays > 0 ? t + abuse.newAccountDays * DAY_MS : null;
     let admitted: { via: string | null; joined: { orgId: string; inviteId: string; role: string } | null };
     try {
       admitted = ctx.db.transaction(() => {
         ctx.db
           .prepare(
-            "INSERT INTO users (id, username, display_name, identity_key, avatar_color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (id, username, display_name, identity_key, avatar_color, created_at, updated_at, limited_until) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
           )
-          .run(userId, body.username, body.displayName, body.identityKey, body.avatarColor, t, t);
+          .run(userId, body.username, body.displayName, body.identityKey, body.avatarColor, t, t, limitedUntil);
         ctx.db
           .prepare(
             "INSERT INTO devices (id, user_id, name, signing_key, encryption_key, certificate, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -161,6 +184,10 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
       throw e;
     }
     const { via, joined } = admitted;
+    if (open) {
+      registeredFrom.hour.record(network, t);
+      registeredFrom.day.record(network, t);
+    }
     ctx.audit({ actorId: userId, action: "user.register", target: userId, detail: via });
     if (joined) {
       ctx.audit({ actorId: userId, orgId: joined.orgId, action: "invite.accept", target: joined.inviteId, detail: joined.role });
@@ -194,16 +221,25 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
       z.object({ username: zUsername, device: zDevice, nonce: z.string().min(16).max(64), signature: zSig }),
       req.body,
     );
+    // Key format is checked first, and an unknown username answers like a certificate that doesn't match, so this
+    // route doesn't tell anyone which accounts exist.
+    if (!isValidPublicKey(body.device.signingKey) || !isValidPublicKey(body.device.encryptionKey)) throw badRequest("Malformed public key");
     const user = ctx.db.prepare("SELECT * FROM users WHERE username = ? AND home_server_id IS NULL").get(body.username) as
       | { id: string; identity_key: string; disabled_at: number | null }
       | undefined;
-    if (!user) throw unauthorized("Invalid device proof");
-    verifyDevice(user.identity_key, body.device);
+    const certified =
+      !!user && verifyEd25519(user.identity_key, canonical.deviceCert(user.identity_key, body.device.signingKey, body.device.encryptionKey), body.device.certificate);
+    if (!user || !certified) throw unauthorized("Invalid device proof");
     if (!verifyEd25519(body.device.signingKey, canonical.authProof("add-device", body.nonce, body.device.signingKey), body.signature)) {
       throw unauthorized("Invalid proof signature");
     }
     if (!consumeChallenge(ctx, body.nonce)) throw unauthorized("Challenge expired or already used");
     if (user.disabled_at) throw new ApiError(401, "account_disabled", "This account is disabled");
+    // A cap on devices: each one gets its own rate limits, and every message to the account is encrypted for each.
+    const active = (ctx.db.prepare("SELECT COUNT(*) n FROM devices WHERE user_id = ? AND revoked_at IS NULL").get(user.id) as { n: number }).n;
+    if (abuse.maxDevicesPerUser > 0 && active >= abuse.maxDevicesPerUser) {
+      throw new ApiError(409, "too_many_devices", "This account has as many devices as it can have. Remove one you no longer use (Settings › Devices), or ask the server's administrator.");
+    }
     const deviceId = newId("d");
     const t = now();
     try {

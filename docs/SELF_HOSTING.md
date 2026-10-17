@@ -111,8 +111,11 @@ location / {
 }
 ```
 
-`compose.yaml` sets `TRUST_PROXY=true` for the API, so it reads the client address from `X-Forwarded-For` (used for rate limiting).
-Only expose the API through a proxy you control.
+`compose.yaml` sets `TRUST_PROXY=loopback,uniquelocal` for the API. The client address used for rate limits and sign-up
+limits is then the last entry in `X-Forwarded-For` that your proxy added; entries a client writes itself are ignored.
+If your proxy reaches the API from a public address, list that address instead. Don't set `TRUST_PROXY=true`: it
+believes every entry, so anyone can pick their own address ([`ABUSE_CONTROLS.md`](ABUSE_CONTROLS.md)). Only expose the
+API through a proxy you control.
 
 ## 5. Health, version and compatibility
 

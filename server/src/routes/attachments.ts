@@ -5,6 +5,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { hasNewAccountLimits, HOUR_MS, SlidingWindow } from "../abuse.js";
 import { type AppContext, me, parse, requireAuth } from "../context.js";
 import type { BlobKind } from "../storage/index.js";
 import { ApiError, badRequest, newId, notFound, now } from "../util.js";
@@ -26,26 +27,73 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
   const spoolFor = (id: string) => path.join(blobs.spoolDir, `${id.replace(/[^A-Za-z0-9_-]/g, "")}.part`);
   const sum = (sql: string, ...p: unknown[]) => (ctx.db.prepare(sql).get(...p) as { n: number | null }).n ?? 0;
 
-  // Uploads in progress: bounds concurrency and the temporary disk space they can claim.
-  const inFlight = { count: 0, bytes: 0, users: new Map<string, { count: number; bytes: number }>() };
+  const abuse = cfg.abuse;
+  // Uploads in progress: bounds concurrency and the temporary disk space they can claim. Their bytes also count for
+  // their workspace and, for accounts under new-account limits, for those accounts together, so uploads running in
+  // parallel can't pass those limits either.
+  const inFlight = { count: 0, bytes: 0, users: new Map<string, { count: number; bytes: number }>(), orgs: new Map<string, number>(), newAccounts: 0 };
+  // Uploads started per person per hour, finished or not (docs/ABUSE_CONTROLS.md › Uploads).
+  const starts = new SlidingWindow(abuse.uploadStartsPerHour, HOUR_MS);
+  /** A new-account allowance, never above the general one (0: no separate allowance). */
+  const newAccountCap = (limit: number, general: number) => (limit > 0 ? Math.min(limit, general) : general);
+
+  interface Uploader {
+    userId: string;
+    /** The workspace of the conversation, if any. */
+    orgId: string | null;
+    /** Under new-account limits. */
+    limited: boolean;
+  }
+  const uploaderOf = (userId: string, orgId: string | null): Uploader => ({ userId, orgId, limited: hasNewAccountLimits(ctx.db, userId) });
+
+  /** Admits one more upload start this hour, or refuses with when to try again. */
+  const admitStart = (userId: string, reply: { header: (k: string, v: string) => unknown }) => {
+    if (starts.allows(userId)) return;
+    reply.header("retry-after", String(Math.ceil(starts.retryAfterMs(userId) / 1000)));
+    throw new ApiError(429, "too_many_uploads", "You've started a lot of uploads in the last hour. Try again later.");
+  };
 
   /**
    * The upload quotas, checked before anything is received. [reserve] is the new upload's size; [streaming] the bytes
    * this server is receiving for the person right now. Open direct uploads count as if they were stored already.
    */
-  const checkQuotas = (userId: string, reserve: number, streaming: number) => {
+  const checkQuotas = (who: Uploader, reserve: number, streaming: number) => {
     const t = now();
+    const { userId } = who;
     const pending = (where: string, ...p: unknown[]) => sum(`SELECT SUM(size) n FROM attachment_uploads WHERE ${where}`, ...p);
     const today =
       sum("SELECT SUM(size) n FROM attachments WHERE uploader_user_id = ? AND created_at > ?", userId, t - 86_400_000) +
       pending("user_id = ? AND created_at > ?", userId, t - 86_400_000);
-    if (today + streaming + reserve > cfg.attachmentUserDailyBytes) {
+    const daily = who.limited ? newAccountCap(abuse.newAccountDailyBytes, cfg.attachmentUserDailyBytes) : cfg.attachmentUserDailyBytes;
+    if (today + streaming + reserve > daily) {
       throw new ApiError(429, "quota_exceeded", "You've reached today's upload limit. Try again tomorrow.");
     }
-    // Files kept for someone's history have their own quota (POST /v1/attachments/:id/keep).
-    const stored = sum("SELECT SUM(size) n FROM attachments WHERE uploader_user_id = ? AND expires_at > ? AND kept = 0", userId, t) + pending("user_id = ?", userId);
-    if (stored + streaming + reserve > cfg.attachmentUserStoredBytes) {
-      throw new ApiError(429, "quota_exceeded", "You've reached your file storage limit. Older files expire after 7 days.");
+    if (who.limited) {
+      // New accounts: kept files count too, and all new accounts together share one allowance.
+      const stored = sum("SELECT SUM(size) n FROM attachments WHERE uploader_user_id = ? AND expires_at > ?", userId, t) + pending("user_id = ?", userId);
+      if (stored + streaming + reserve > newAccountCap(abuse.newAccountStoredBytes, cfg.attachmentUserStoredBytes)) {
+        throw new ApiError(429, "quota_exceeded", "You've reached your file storage limit. Older files expire after 7 days.");
+      }
+      const pool =
+        sum("SELECT SUM(a.size) n FROM attachments a JOIN users u ON u.id = a.uploader_user_id WHERE u.limited_until > ? AND a.expires_at > ?", t, t) +
+        sum("SELECT SUM(p.size) n FROM attachment_uploads p JOIN users u ON u.id = p.user_id WHERE u.limited_until > ?", t);
+      if (abuse.newAccountsTotalBytes > 0 && pool + inFlight.newAccounts + reserve > abuse.newAccountsTotalBytes) {
+        throw new ApiError(507, "storage_full", "File storage for new accounts is full right now. Try again later.");
+      }
+    } else {
+      // Files kept for someone's history have their own quota (POST /v1/attachments/:id/keep).
+      const stored = sum("SELECT SUM(size) n FROM attachments WHERE uploader_user_id = ? AND expires_at > ? AND kept = 0", userId, t) + pending("user_id = ?", userId);
+      if (stored + streaming + reserve > cfg.attachmentUserStoredBytes) {
+        throw new ApiError(429, "quota_exceeded", "You've reached your file storage limit. Older files expire after 7 days.");
+      }
+    }
+    if (who.orgId && abuse.orgStoredBytes > 0) {
+      const org =
+        sum("SELECT SUM(a.size) n FROM attachments a JOIN conversations c ON c.id = a.conversation_id WHERE c.org_id = ? AND a.expires_at > ?", who.orgId, t) +
+        sum("SELECT SUM(p.size) n FROM attachment_uploads p JOIN conversations c ON c.id = p.conversation_id WHERE c.org_id = ?", who.orgId);
+      if (org + (inFlight.orgs.get(who.orgId) ?? 0) + reserve > abuse.orgStoredBytes) {
+        throw new ApiError(429, "org_quota_exceeded", "This workspace has reached its file storage limit. Older files expire after 7 days.");
+      }
     }
     const total = sum("SELECT SUM(size) n FROM attachments WHERE expires_at > ?", t) + pending("1 = 1");
     if (total + inFlight.bytes + reserve > cfg.attachmentTotalBytes) {
@@ -53,7 +101,24 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     }
   };
 
-  app.post("/v1/attachments", auth, async (req) => {
+  /** Counts an upload being received (+1) or finished (-1) everywhere checkQuotas looks. */
+  const track = (who: Uploader, bytes: number, sign: 1 | -1) => {
+    const mine = inFlight.users.get(who.userId) ?? { count: 0, bytes: 0 };
+    mine.count += sign;
+    mine.bytes += sign * bytes;
+    if (mine.count === 0) inFlight.users.delete(who.userId);
+    else inFlight.users.set(who.userId, mine);
+    inFlight.count += sign;
+    inFlight.bytes += sign * bytes;
+    if (who.orgId) {
+      const org = (inFlight.orgs.get(who.orgId) ?? 0) + sign * bytes;
+      if (org === 0) inFlight.orgs.delete(who.orgId);
+      else inFlight.orgs.set(who.orgId, org);
+    }
+    if (who.limited) inFlight.newAccounts += sign * bytes;
+  };
+
+  app.post("/v1/attachments", auth, async (req, reply) => {
     const { userId } = me(req);
     const { conversationId } = parse(z.object({ conversationId: z.string().max(64) }), req.query);
     const conv = ctx.authz.requireMember(conversationId, userId);
@@ -65,20 +130,20 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     if (declared !== null && (!Number.isSafeInteger(declared) || declared <= 0)) throw badRequest("Expected a non-empty body");
     if (declared !== null && declared > cfg.attachmentMaxBytes) throw new ApiError(413, "too_large", "Attachment is too large");
 
-    // Quotas are checked before reading the body. A body of unknown length reserves the maximum size.
+    // Quotas are checked before reading the body. A body of unknown length reserves the maximum size. Checking and
+    // reserving happen with no await in between, so parallel uploads see each other's reservations.
     const t = now();
     const reserve = declared ?? cfg.attachmentMaxBytes;
+    const who = uploaderOf(userId, conv.org_id);
     const mine = inFlight.users.get(userId) ?? { count: 0, bytes: 0 };
-    checkQuotas(userId, reserve, mine.bytes);
+    admitStart(userId, reply);
+    checkQuotas(who, reserve, mine.bytes);
     if (mine.count >= cfg.attachmentMaxConcurrentPerUser || inFlight.count >= cfg.attachmentMaxConcurrent || inFlight.bytes + reserve > cfg.attachmentMaxPendingBytes) {
       throw new ApiError(429, "too_many_uploads", "Too many uploads at once. Try again in a moment.");
     }
 
-    mine.count++;
-    mine.bytes += reserve;
-    inFlight.users.set(userId, mine);
-    inFlight.count++;
-    inFlight.bytes += reserve;
+    starts.record(userId, t);
+    track(who, reserve, 1);
     const id = newId("a");
     const tmp = spoolFor(id);
     let size = 0;
@@ -109,11 +174,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
         throw new ApiError(503, "storage_unavailable", "The server couldn't store the file. Try again in a moment.");
       }
     } finally {
-      mine.count--;
-      mine.bytes -= reserve;
-      if (mine.count === 0) inFlight.users.delete(userId);
-      inFlight.count--;
-      inFlight.bytes -= reserve;
+      track(who, reserve, -1);
     }
     const expiresAt = t + cfg.attachmentTtlSeconds * 1000;
     ctx.db
@@ -226,7 +287,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     ctx.db.prepare("INSERT OR IGNORE INTO abandoned_uploads (id, multipart_id, attempts, next_at) VALUES (?, ?, 0, 0)").run(u.id, u.multipart_id);
   };
 
-  app.post("/v1/attachments/uploads", auth, async (req) => {
+  app.post("/v1/attachments/uploads", auth, async (req, reply) => {
     const { userId, deviceId } = me(req);
     const d = requireDirect();
     const body = parse(z.object({ conversationId: z.string().max(64), size: z.number().int().positive(), sha256: sha256B64 }), req.body);
@@ -235,18 +296,28 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     if (body.size > cfg.attachmentMaxBytes) throw new ApiError(413, "too_large", "Attachment is too large");
     const open = sum("SELECT COUNT(*) n FROM attachment_uploads WHERE user_id = ? AND expires_at > ?", userId, now());
     if (open >= cfg.directUploads.maxPendingPerUser) throw new ApiError(429, "too_many_uploads", "Too many uploads at once. Try again in a moment.");
-    checkQuotas(userId, body.size, 0);
+    admitStart(userId, reply);
+    checkQuotas(uploaderOf(userId, conv.org_id), body.size, 0);
     const id = newId("a");
     const t = now();
     const multipart = body.size > d.multipartThreshold;
-    const multipartId = multipart ? await d.createMultipart("attachments", id).catch((e) => storeFailure(e, "create-multipart")) : null;
     const expiresAt = t + cfg.directUploads.sessionSeconds * 1000;
+    // The upload is recorded before S3 is asked for anything: it then counts against the quotas and the open-upload
+    // limit at once, so requests sent in parallel can't all pass the checks above while S3 answers.
+    starts.record(userId, t);
     ctx.db
       .prepare(
         "INSERT INTO attachment_uploads (id, user_id, device_id, conversation_id, size, sha256, multipart_id, part_size, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(id, userId, deviceId, conv.id, body.size, body.sha256, multipartId, multipart ? d.partSize : null, t, expiresAt);
-    if (multipart) return { uploadId: id, mode: "multipart", partSize: d.partSize, partCount: Math.ceil(body.size / d.partSize), expiresAt };
+      .run(id, userId, deviceId, conv.id, body.size, body.sha256, null, multipart ? d.partSize : null, t, expiresAt);
+    if (multipart) {
+      const multipartId = await d.createMultipart("attachments", id).catch((e) => {
+        ctx.db.prepare("DELETE FROM attachment_uploads WHERE id = ?").run(id);
+        return storeFailure(e, "create-multipart");
+      });
+      ctx.db.prepare("UPDATE attachment_uploads SET multipart_id = ? WHERE id = ?").run(multipartId, id);
+      return { uploadId: id, mode: "multipart", partSize: d.partSize, partCount: Math.ceil(body.size / d.partSize), expiresAt };
+    }
     const upload = await d.presignPut("attachments", id, body.size, body.sha256, cfg.directUploads.urlTtlSeconds).catch((e) => storeFailure(e, "presign"));
     return { uploadId: id, mode: "single", upload, expiresAt };
   });

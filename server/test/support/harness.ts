@@ -27,6 +27,11 @@ export async function startServer(env: Record<string, string> = {}, opts: { push
     RATE_LIMIT_PER_MINUTE: "100000",
     // Most suites create many users; the invite gate has its own suite (registration_quotas.test.ts).
     REGISTRATION_MODE: "open",
+    // Every test user registers from 127.0.0.1: the abuse limits have their own suite (abuse_controls.test.ts).
+    REGISTRATION_PER_ADDRESS_PER_HOUR: "0",
+    REGISTRATION_PER_ADDRESS_PER_DAY: "0",
+    REGISTRATION_OPEN_PER_DAY: "0",
+    NEW_ACCOUNT_LIMIT_DAYS: "0",
     ...env,
   } as NodeJS.ProcessEnv);
   const built = await buildApp(config, { logger: false, push: opts.push });
