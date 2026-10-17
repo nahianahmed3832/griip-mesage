@@ -94,7 +94,43 @@ export function broadcastCall(ctx: AppContext, c: CallRow, event: string, extra:
   if (!c.host_server_id) ctx.federation?.relayCall(c, event, extra);
 }
 
+/**
+ * 1:1 calls survive a dropped connection (2026-10-17, docs/CALLING_AND_E2EE.md › Reconnecting): when one person's media
+ * connection goes away, the call waits [callPeerGraceMs] for them to rejoin before ending as "lost". Hanging up still
+ * ends the call at once (it goes through /end or /leave, not this).
+ */
+const lostTimers = new WeakMap<AppContext, Map<string, NodeJS.Timeout>>();
+
+function timers(ctx: AppContext) {
+  let m = lostTimers.get(ctx);
+  if (!m) lostTimers.set(ctx, (m = new Map()));
+  return m;
+}
+
+export function cancelLostTimer(ctx: AppContext, callId: string) {
+  const t = timers(ctx).get(callId);
+  if (t) {
+    clearTimeout(t);
+    timers(ctx).delete(callId);
+  }
+}
+
+function scheduleLost(ctx: AppContext, c: CallRow) {
+  if (timers(ctx).has(c.id)) return;
+  const t = setTimeout(() => {
+    timers(ctx).delete(c.id);
+    if (!ctx.db.open) return;
+    const cur = loadCall(ctx, c.id);
+    if (!cur || cur.state === "ENDED") return;
+    const users = (ctx.db.prepare("SELECT COUNT(DISTINCT user_id) n FROM call_participants WHERE call_id = ? AND left_at IS NULL").get(c.id) as { n: number }).n;
+    if (users < 2) void endCallRow(ctx, cur, users === 0 ? "empty" : "lost");
+  }, ctx.config.callPeerGraceMs);
+  t.unref?.();
+  timers(ctx).set(c.id, t);
+}
+
 export async function endCallRow(ctx: AppContext, c: CallRow, reason: string): Promise<void> {
+  cancelLostTimer(ctx, c.id);
   const t = now();
   const res = ctx.db.prepare("UPDATE calls SET state = 'ENDED', ended_at = ?, end_reason = ? WHERE id = ? AND state != 'ENDED'").run(t, reason, c.id);
   if (res.changes === 0) return;
@@ -230,6 +266,7 @@ export function callActions(ctx: AppContext) {
       ).run(c.id, userId, deviceId, now());
       const users = (db.prepare("SELECT COUNT(DISTINCT user_id) n FROM call_participants WHERE call_id = ? AND left_at IS NULL").get(c.id) as { n: number }).n;
       if (c.state === "RINGING" && users >= 2) db.prepare("UPDATE calls SET state = 'ACTIVE', answered_at = ? WHERE id = ?").run(now(), c.id);
+      if (users >= 2) cancelLostTimer(ctx, c.id); // came back in time
       const cur = load(c.id)!;
       broadcast(cur, "updated");
       return { call: callView(ctx, cur) };
@@ -462,14 +499,19 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
       ).run(c.id, pUser, pDevice, now());
       const count = (db.prepare("SELECT COUNT(DISTINCT user_id) n FROM call_participants WHERE call_id = ? AND left_at IS NULL").get(c.id) as { n: number }).n;
       if (c.state === "RINGING" && count >= 2) db.prepare("UPDATE calls SET state = 'ACTIVE', answered_at = ? WHERE id = ?").run(now(), c.id);
+      if (count >= 2) cancelLostTimer(ctx, c.id);
       broadcast(load(c.id)!, "updated");
     } else if (event.event === "participant_left" && pDevice) {
       db.prepare("UPDATE call_participants SET left_at = ? WHERE call_id = ? AND device_id = ? AND left_at IS NULL").run(now(), c.id, pDevice);
       const cur = load(c.id)!;
       const remaining = (db.prepare("SELECT COUNT(*) n FROM call_participants WHERE call_id = ? AND left_at IS NULL").get(c.id) as { n: number }).n;
       const conv = authz.conversation(c.conversation_id);
-      if (cur.state !== "ENDED" && (remaining === 0 || (conv?.type === "DM" && cur.state === "ACTIVE"))) await endCall(cur, remaining === 0 ? "empty" : "hangup");
-      else broadcast(cur, "updated");
+      if (cur.state !== "ENDED" && remaining === 0) await endCall(cur, "empty");
+      else {
+        // 1:1: the other person may only have lost their connection; give them time to come back.
+        if (cur.state === "ACTIVE" && conv?.type === "DM") scheduleLost(ctx, cur);
+        broadcast(cur, "updated");
+      }
     } else if (event.event === "room_finished") {
       await endCall(c, "empty");
     }
