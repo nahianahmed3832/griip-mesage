@@ -1,0 +1,149 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Orbit file storage for the Hostinger API server (docs/AWS_STORAGE_PLAN.md). A private S3 bucket for encrypted
+  attachments and profile photos, and a least-privilege IAM user the server uses. Its access key is created separately
+  and written straight to the server's .env, never into this stack's outputs.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [test, prod]
+    Description: test (an isolated bucket for synthetic data) or prod. Names the IAM user, so both can exist.
+  BucketName:
+    Type: String
+    Description: Globally unique bucket name (lowercase letters, digits and hyphens).
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$"
+  ObjectPrefix:
+    Type: String
+    Default: orbit/
+    Description: Prefix of every object the server writes (S3_PREFIX).
+    AllowedPattern: "^[a-z0-9-]+/$"
+  ServerIp:
+    Type: String
+    Default: 72.60.107.88/32
+    Description: The API server's public IPv4 address (for the test stack, the machine running the tests). Only it may
+      delete or list objects. Uploads and downloads use
+      short-lived presigned URLs from phones, so those can't be limited by address.
+  NoncurrentDays:
+    Type: Number
+    Default: 30
+    Description: How long a deleted or replaced object stays recoverable (versioning).
+
+Resources:
+  MediaBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      # Deleted or replaced objects stay recoverable for NoncurrentDays. Expiry by age is left to the server (it knows
+      # when a file was last kept for someone's history); `admin.js storage-orphans` finds anything left behind.
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: abort-incomplete-multipart-uploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+          - Id: recoverable-for-a-while-then-gone
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: !Ref NoncurrentDays
+            ExpiredObjectDeleteMarker: true
+      Tags:
+        - Key: app
+          Value: orbit
+        - Key: env
+          Value: !Ref Environment
+
+  MediaBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref MediaBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyPlainHttp
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt MediaBucket.Arn
+              - !Sub "${MediaBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  ServerUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Sub "orbit-api-${Environment}-${AWS::Region}"
+      Tags:
+        - Key: app
+          Value: orbit
+        - Key: env
+          Value: !Ref Environment
+
+  ServerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: orbit-media-access
+      Users:
+        - !Ref ServerUser
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # Used by the server and, through presigned URLs it issues, by phones: write new objects (single and
+          # multipart), read them, and check uploaded parts. Only under the prefix.
+          - Sid: ObjectsUnderPrefix
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:AbortMultipartUpload
+              - s3:ListMultipartUploadParts
+            Resource: !Sub "${MediaBucket.Arn}/${ObjectPrefix}*"
+          # Server-only operations, from the server's address only.
+          - Sid: DeleteFromServer
+            Effect: Allow
+            Action: s3:DeleteObject
+            Resource: !Sub "${MediaBucket.Arn}/${ObjectPrefix}*"
+            Condition:
+              IpAddress:
+                aws:SourceIp: !Ref ServerIp
+          - Sid: ListFromServer
+            Effect: Allow
+            Action: s3:ListBucket
+            Resource: !GetAtt MediaBucket.Arn
+            Condition:
+              IpAddress:
+                aws:SourceIp: !Ref ServerIp
+              StringLike:
+                s3:prefix: !Sub "${ObjectPrefix}*"
+
+Outputs:
+  Bucket:
+    Value: !Ref MediaBucket
+    Description: S3_BUCKET
+  Region:
+    Value: !Ref AWS::Region
+    Description: S3_REGION
+  Prefix:
+    Value: !Ref ObjectPrefix
+    Description: S3_PREFIX
+  ServerUserName:
+    Value: !Ref ServerUser
+    Description: Create its access key separately (docs/AWS_STORAGE_PLAN.md); it is never an output here.

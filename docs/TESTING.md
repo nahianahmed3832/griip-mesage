@@ -395,6 +395,26 @@ for 18090, 18091, 17890, 7891.
 
 ## How to re-run
 
+On-device tests (2026-10-17: every kind of conversation opened, left and reopened in the real screen). **Run them on the
+emulator only.** Gradle's `connectedAndroidTest` installs the debug build on every connected device and uninstalls it
+afterwards, which would remove the Play app's data on a connected phone. Install and run them by hand instead:
+
+```bash
+cd android && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+```
+
+```bash
+adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+```bash
+adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+```
+
+```bash
+adb -s emulator-5554 shell am instrument -w -e class com.griipbuddy.orbit.ConversationOpenTest com.griipbuddy.orbit.androidtest/androidx.test.runner.AndroidJUnitRunner
+```
+
 Backend tests:
 
 ```bash

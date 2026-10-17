@@ -43,3 +43,19 @@ Migration **008** adds `first_name`, `last_name`, `birthday`, `phone`, `photo_re
 
 App: `ProfileRules` (`ProfileRulesTest`), `ProfileRepository`, `EditProfileScreen`, `PrivacyScreen`, `BlockedUsersScreen`,
 `UserAvatar` (photos with an in-memory and per-account disk cache). Room v6 adds `users.photoRev`.
+
+## Servers without profile support (2026-10-17)
+
+Production ran a server from before profiles, so changing a profile photo returned the server framework's own "Route …
+not found" 404, which the app showed as a bare "Not found."
+
+- **What the app does now.** It recognises a missing route (`ApiErrors.routeMissing`, tested in `ApiErrorsTest`) and
+  says the server needs an update.
+- **Edit profile.** The screen reads the server's `features`. Without `profiles` / `profile-photos` it explains up front
+  what can't be saved and disables the photo button.
+- **Photo storage.** Photos are stored per revision (`<user>-<revision>`, on disk or in S3). A replaced photo's old file
+  is deleted, and a new revision is never served with the old bytes.
+- **Tests.** `server/test/storage_s3.test.ts` covers upload, replacement and removal on S3; `profile_privacy.test.ts`
+  covers the disk.
+- **On the emulator** against a local server: upload, display, replacement (the old file is gone).
+- **Still needed:** deploying the server, for production.

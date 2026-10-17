@@ -69,6 +69,14 @@ so older Orbit versions still open them; older versions can't open chunked files
 anyway). The server needs `ATTACHMENT_MAX_BYTES` (default 500 MB since 2026-10-17; `deploy/.env.example`) and a reverse
 proxy that accepts bodies that large (nginx `client_max_body_size`); production is still at 25 MB until that's changed.
 
+## Where files are kept (2026-10-17)
+
+The server stores files on its disk or in Amazon S3 (`STORAGE_BACKEND`, docs/STORAGE_AND_DATA.md). It only ever holds
+ciphertext, under random ids. Files expire after 7 days unless a member's phone keeps them for its encrypted history
+(docs/MESSAGE_HISTORY.md). Kept files stay `ATTACHMENT_KEEP_DAYS` (365) with their own quota, so a restored or new phone
+can still open them. With presigned downloads on, the app is redirected to a short-lived S3 link after the server's
+checks. The app follows it and drops its own credentials on the way.
+
 ## Encryption
 
 Unchanged format (`griip-envelope-v1` attachments): one AES-256-GCM key and nonce per file, streamed through the cipher

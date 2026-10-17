@@ -22,6 +22,25 @@ unarchived. Server refreshes keep it.
 
 Tests: `ChatListRulesTest` (what's listed and counted), `MigrationsTest` (the v5 schema and existing rows).
 
+## The list jumping (fixed 2026-10-17)
+
+The list jumped in three ways. All three were reproduced on the emulator and fixed:
+
+| What you saw | Cause | Fix |
+|---|---|---|
+| Swiping a chat to the right threw the whole row off the screen and slid it back from the other side | The row was Material's `SwipeToDismissBox`, which always animates a "dismissed" row to the full width before it can be reset | `SwipeableChat` is now its own drag: marking read or unread reveals the action up to 45% of the row (with resistance past the threshold) and springs back. Archiving still slides the row out, because it leaves the list. Rules in `ChatSwipe`, tested in `ChatSwipeRulesTest`. |
+| Coming back from a chat, the list was back at the top | The chats were collected in the screen with an empty starting value, so the first frame after returning had no rows and the saved scroll position was clamped to the top | `ChatsViewModel` holds the chats while a chat is open on top, so the list comes back with its rows and its scroll position (checked on the emulator, mid-list and at the end) |
+| Near the end of the list, it came back shifted by the height of the tab bar | The tab bar's space disappeared as soon as a chat opened, so the list was briefly taller and clamped its position | The tab bar is drawn over the screens (`LocalTabBarPadding` gives tab screens matching bottom padding), so screens keep one height |
+
+Also:
+
+- **Stable order.** Ties in the chat order (same time) are broken by id, so rows never swap places between two reads.
+- **The Back gesture.** A drag that begins in Android's Back-gesture area at either screen edge belongs to Android: rows
+  (and swipe-to-reply in chats) ignore it, so the row doesn't move while the system shows its Back animation. Edges come
+  from `WindowInsets.systemGestures`, which is 0 with button navigation.
+- **Vertical scrolling** still wins over a mostly vertical drag (Compose's touch slop decides), so the list scrolls
+  normally.
+
 ## Stuck swipe-to-reply (fixed in the same round)
 
 The reply preview stayed on screen after sending, or a reply went out without its target. Causes: photos, files and
