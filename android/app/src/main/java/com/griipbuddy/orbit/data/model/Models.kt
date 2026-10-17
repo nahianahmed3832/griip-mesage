@@ -21,7 +21,36 @@ data class Payload(
     val callId: String? = null,
     val video: Boolean? = null,
     val e2eeKey: String? = null,
+    // Rich messages (2026-10-17, docs/RICH_MESSAGES.md). Always sent with a readable [text] fallback, so older apps show
+    // the text; all omitted when absent, so other messages keep their exact wire format.
+    val contact: ContactCard? = null,
+    val location: SharedLocation? = null,
+    /** An animated emoji: the emoji itself; [text] holds the same emoji. */
+    val animoji: String? = null,
+    /** Forwarded from another conversation (its sender isn't named). */
+    val forwarded: Boolean? = null,
+    /** A link preview made on the sender's phone (recipients never fetch the page). */
+    val link: LinkPreview? = null,
 )
+
+/** Title and description of a link in the message, fetched by the sender's phone when they turned previews on. */
+@Serializable
+data class LinkPreview(val url: String, val title: String? = null, val description: String? = null, val siteName: String? = null)
+
+/** A shared contact: only the fields the sender chose. Phone numbers as written in their address book. */
+@Serializable
+data class ContactCard(val name: String, val phones: List<String> = emptyList(), val emails: List<String> = emptyList())
+
+/** A one-time location (never live): coordinates, accuracy in metres when known, and an optional place name. */
+@Serializable
+data class SharedLocation(val lat: Double, val lon: Double, val accuracyM: Float? = null, val label: String? = null)
+
+/** What a message carries besides text and files (stored locally as JSON in `messages.richJson`). */
+@Serializable
+data class RichContent(val contact: ContactCard? = null, val location: SharedLocation? = null, val animoji: String? = null, val link: LinkPreview? = null) {
+    /** Replaces the text (a card or an animated emoji) rather than accompanying it (a link preview). */
+    val structured: Boolean get() = contact != null || location != null || animoji != null
+}
 
 @Serializable
 data class AttachmentRef(
@@ -36,6 +65,11 @@ data class AttachmentRef(
     // format; older clients ignore these and show the clip as an ordinary audio file.
     val voice: Boolean? = null,
     val durationMs: Long? = null,
+    /**
+     * Large files (over 25 MB, 2026-10-17): encrypted in chunks of this many plaintext bytes (ChunkedAttachmentCrypto).
+     * Absent: the original single-message format. Older apps can't open chunked files and say so.
+     */
+    val chunk: Int? = null,
 )
 
 @Serializable
@@ -48,6 +82,8 @@ data class MemberSummary(
     val online: Boolean? = null,
     /** Home server id of someone on another server (federation); null for people on this server. */
     val homeServer: String? = null,
+    /** Profile photo revision when its owner shows it to everyone (server ≥ 2026-10-17). */
+    val photoRev: Long? = null,
 )
 
 @Serializable

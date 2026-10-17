@@ -52,6 +52,9 @@ class AppContainer(
     val messages = MessageRepository(app, db, api, realtime, session, crypto, directory, conversations, users, settings, appState, scope, java.io.File(app.filesDir, profile.attachmentsDir)) { notifier.show(it) }
     val orgs = OrgRepository(api, db, conversations, users)
     val federation = com.griipbuddy.orbit.data.repo.FederationRepository(api)
+    val profiles = com.griipbuddy.orbit.data.repo.ProfileRepository(app, api, users, session, profile.id)
+    val translator by lazy { com.griipbuddy.orbit.data.repo.MessageTranslator(app) }
+    val backups = com.griipbuddy.orbit.data.repo.BackupManager(app, db, session, java.io.File(app.filesDir, profile.attachmentsDir), profile.id)
     val calls = CallManager(app, api, db, session, messages, conversations, settings, scope)
     val voicePlayer = com.griipbuddy.orbit.voice.VoicePlayer(app)
 

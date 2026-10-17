@@ -77,17 +77,24 @@ fun BatchComposer(
     note: String?,
     onRemove: (Uri) -> Unit,
     onAddMore: () -> Unit,
-    onSend: (Quality, String) -> Unit,
+    onSend: (photoQuality: Quality, videoQuality: Quality, caption: String) -> Unit,
     onDismiss: () -> Unit,
+    maxFile: Long = AttachmentPolicy.MAX_FILE_BYTES,
 ) {
     val c = Griip.colors
+    // Photos default to Standard; videos and every other file to Original, unless compression is chosen.
     var quality by rememberSaveable { mutableStateOf(Quality.STANDARD) }
+    var videoQuality by rememberSaveable { mutableStateOf(Quality.ORIGINAL) }
     var caption by rememberSaveable { mutableStateOf("") }
-    val verdicts = items.map { AttachmentPolicy.check(it.item.kind, it.item.sniffed, it.item.size, quality) }
+    val qualityOf = { k: AttachmentPolicy.Kind -> if (k == AttachmentPolicy.Kind.VIDEO) videoQuality else quality }
+    val verdicts = items.map { AttachmentPolicy.check(it.item.kind, it.item.sniffed, it.item.size, qualityOf(it.item.kind), maxFile) }
     val sendable = verdicts.count { it == AttachmentPolicy.Verdict.Ok }
     val risky = items.filterIndexed { i, it -> it.risk != null && verdicts[i] == AttachmentPolicy.Verdict.Ok }
-    val visual = items.any { it.item.kind != AttachmentPolicy.Kind.FILE }
-    val compressible = items.any { AttachmentPolicy.compressible(it.item.kind, it.item.sniffed) }
+    val photos = items.any { it.item.kind == AttachmentPolicy.Kind.PHOTO && AttachmentPolicy.compressible(it.item.kind, it.item.sniffed) }
+    val videos = items.any { it.item.kind == AttachmentPolicy.Kind.VIDEO && AttachmentPolicy.compressible(it.item.kind, it.item.sniffed) }
+    val estimates = items.filterIndexed { i, _ -> verdicts[i] == AttachmentPolicy.Verdict.Ok }
+        .map { AttachmentPolicy.estimate(it.item.kind, it.item.sniffed, it.item.size, it.item.durationMs, qualityOf(it.item.kind)) }
+    val estimate = if (estimates.isNotEmpty() && estimates.all { it != null }) estimates.sumOf { it!! } else null
     val title = when {
         items.all { it.item.kind == AttachmentPolicy.Kind.PHOTO } -> if (items.size == 1) "Send photo" else "Send ${items.size} photos"
         items.all { it.item.kind == AttachmentPolicy.Kind.VIDEO } -> if (items.size == 1) "Send video" else "Send ${items.size} videos"
@@ -112,21 +119,38 @@ fun BatchComposer(
             }
         }
         note?.let { Text(it, style = Griip.type.caption, color = c.warning, modifier = Modifier.padding(top = 8.dp, start = 4.dp)) }
-        if (visual && compressible) {
+        if (photos) {
             Spacer(Modifier.height(12.dp))
-            Text("Quality", style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(start = 4.dp))
+            Text("Photo quality", style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(start = 4.dp))
             ChipRow(Modifier.padding(horizontal = 0.dp)) {
                 Quality.entries.forEach { q -> PillChip(q.label, quality == q, { quality = q }) }
             }
             Text(
                 when (quality) {
-                    Quality.STANDARD -> "Smaller and quicker to send: photos up to 1600 px, videos at 720p."
-                    Quality.HD -> "Sharper, larger files: photos up to 4096 px, videos at 1080p."
-                    Quality.ORIGINAL -> "Exactly as it is, up to 25 MB each, including any location saved in the photo or video."
+                    Quality.STANDARD -> "Smaller and quicker: up to 1600 px, re-encoded without camera metadata or location."
+                    Quality.HD -> "Sharper, larger: up to 4096 px, re-encoded without camera metadata or location."
+                    Quality.ORIGINAL -> "Exactly as it is, including any location saved in the photo."
                 },
                 style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(horizontal = 4.dp),
             )
         }
+        if (videos) {
+            Spacer(Modifier.height(12.dp))
+            Text("Video quality", style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(start = 4.dp))
+            ChipRow(Modifier.padding(horizontal = 0.dp)) {
+                listOf(Quality.ORIGINAL, Quality.HD, Quality.STANDARD).forEach { q ->
+                    PillChip(when (q) { Quality.ORIGINAL -> "Original"; Quality.HD -> "Compress (1080p)"; else -> "Compress (720p)" }, videoQuality == q, { videoQuality = q })
+                }
+            }
+            Text(
+                if (videoQuality == Quality.ORIGINAL) "Sent exactly as it is." else "Re-encoded on this phone before sending; this takes a while for long videos.",
+                style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(horizontal = 4.dp),
+            )
+        }
+        Text(
+            (estimate?.let { "About ${AttachmentPolicy.sizeLabel(it)} to send · " } ?: "") + "up to ${AttachmentPolicy.sizeLabel(maxFile)} per file",
+            style = Griip.type.caption, color = c.textTertiary, modifier = Modifier.padding(top = 8.dp, start = 4.dp),
+        )
         if (risky.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
             Column(Modifier.fillMaxWidth().clip(Shapes.tile).background(c.warningSoft).padding(12.dp)) {
@@ -162,7 +186,7 @@ fun BatchComposer(
                 sendable == 1 -> "Send"
                 else -> "Send $sendable"
             },
-            { onSend(quality, caption) }, Modifier.fillMaxWidth(), enabled = sendable > 0,
+            { onSend(quality, videoQuality, caption) }, Modifier.fillMaxWidth(), enabled = sendable > 0,
         )
         Text(
             "Encrypted on this phone before upload.",

@@ -58,6 +58,8 @@ import androidx.compose.material.icons.rounded.CallEnd
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Cameraswitch
 import androidx.compose.material.icons.rounded.CloseFullscreen
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.rounded.GppGood
 import androidx.compose.material.icons.rounded.GppMaybe
 import androidx.compose.material.icons.rounded.Shield
@@ -155,6 +157,7 @@ fun CallOverlay() {
     LaunchedEffect(s.phase) { if (s.phase == CallPhase.Incoming) minimized = false }
     var details by remember { mutableStateOf(false) }
     var people by remember { mutableStateOf(false) }
+    var verify by remember { mutableStateOf(false) }
     // Over video and shared screens the controls hide after a few seconds (tap to bring them back), so they don't sit on
     // top of what the other person shows. Without video they always stay.
     var chromeVisible by remember { mutableStateOf(true) }
@@ -230,7 +233,13 @@ fun CallOverlay() {
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                SecurityPill(s)
+                Box(Modifier.clip(Shapes.pill).pressable({ verify = !verify; details = false; people = false }, onClickLabel = "Encryption and verification code")) { SecurityPill(s) }
+            }
+            if (s.peerReconnecting && !s.isGroup) {
+                Text(
+                    "${s.title}'s connection dropped. Waiting for them to reconnect…", style = Griip.type.caption, color = Color.White,
+                    modifier = Modifier.padding(top = 8.dp).clip(Shapes.pill).background(Griip.colors.warning.copy(alpha = 0.85f)).padding(horizontal = 12.dp, vertical = 5.dp),
+                )
             }
             if (s.connectionWeak && s.phase == CallPhase.Connected) {
                 Text(
@@ -239,6 +248,7 @@ fun CallOverlay() {
                 )
             }
             if (details) ConnectionDetails(s, Modifier.padding(top = 10.dp)) { details = false }
+            if (verify) VerificationPanel(s, Modifier.padding(top = 10.dp)) { verify = false }
             if (people) PeoplePanel(s.participants, Modifier.padding(top = 10.dp)) { people = false }
         }
 
@@ -345,7 +355,7 @@ private fun CallerHero(s: CallUiState, modifier: Modifier) {
                 else -> "Calling…"
             }
             CallPhase.Connecting -> "Connecting…"
-            CallPhase.Reconnecting -> "Reconnecting…"
+            CallPhase.Reconnecting -> "Reconnecting… the call continues when the connection is back"
             // Everyone else left (or nobody has joined yet): say so, rather than "connecting media".
             CallPhase.Connected -> if (s.participants.none { !it.isLocal }) {
                 if (s.isGroup) "Waiting for others to join…" else "Waiting for the other person…"
@@ -355,7 +365,8 @@ private fun CallerHero(s: CallUiState, modifier: Modifier) {
                 else -> "Connecting media…"
             }
             CallPhase.Ended -> when (s.endReason) {
-                "declined" -> "Call declined"; "busy" -> "Busy"; "missed" -> "No answer"; "error" -> "Call failed"; else -> "Call ended"
+                "declined" -> "Call declined"; "busy" -> "Busy"; "missed" -> "No answer"; "error" -> "Call failed"
+                "lost" -> "Call ended: the connection was lost"; else -> "Call ended"
             }
             else -> ""
         }
@@ -634,5 +645,74 @@ private fun ConnectionDetails(s: CallUiState, modifier: Modifier, onClose: () ->
         if (st?.sendingScreen != null) line("Sending screen", st.sendingScreen.describe())
         line("Receiving video", st?.receivingVideo?.describe())
         if (st?.receivingScreen != null) line("Receiving screen", st.receivingScreen.describe())
+    }
+}
+
+/**
+ * The call's verification code (CallVerification): the same on every phone that holds this call's encryption key.
+ * Compared aloud or side by side, it shows that nobody substituted the key; it isn't decoration, and a call that isn't
+ * end-to-end encrypted has none.
+ */
+@Composable
+private fun VerificationPanel(s: CallUiState, modifier: Modifier, onClose: () -> Unit) {
+    val code = s.verification
+    Column(modifier.fillMaxWidth().clip(Shapes.tile).background(Color.Black.copy(alpha = 0.55f)).padding(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Verify this call", style = Griip.type.titleSmall, color = Color.White, modifier = Modifier.weight(1f))
+            Box(Modifier.size(32.dp).clip(CircleShape).pressable(onClose, onClickLabel = "Close"), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Close, "Close", tint = Color.White, modifier = Modifier.size(18.dp))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        if (code == null) {
+            Text(
+                "This call isn't end-to-end encrypted, so there is no code to compare. Turn on encrypted calls in Settings › Calls.",
+                style = Griip.type.bodySmall, color = Color.White.copy(alpha = 0.85f),
+            )
+            return@Column
+        }
+        Text(code.emoji.joinToString("  "), fontSize = 34.sp, modifier = Modifier.align(Alignment.CenterHorizontally).semantics { contentDescription = "Verification emoji ${code.emoji.joinToString(" ")}" })
+        Text(code.digits, style = Griip.type.title.copy(letterSpacing = 3.sp), color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp))
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (s.isGroup) "Everyone in this call should see the same emoji and digits." else "${s.title} should see the same emoji and digits.",
+            style = Griip.type.bodySmall, color = Color.White,
+        )
+        Text(
+            "Derived from this call's encryption key, which the caller sent through your end-to-end encrypted chat. If they match, " +
+                "your media is encrypted with the same key on both ends and no one replaced it. To be sure who you're talking to, " +
+                "compare safety numbers in the person's profile. A new call has a new code.",
+            style = Griip.type.caption, color = Color.White.copy(alpha = 0.8f), modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+}
+
+/**
+ * The call in picture-in-picture: the other person's video (or shared screen), else their avatar and the call's state.
+ * Controls are the window's own Mute and Hang up buttons; tapping the window opens the full call screen.
+ */
+@Composable
+fun CallPipView(s: CallUiState) {
+    val remote = s.participants.firstOrNull { !it.isLocal && it.screen != null } ?: s.participants.firstOrNull { !it.isLocal }
+    val track = remote?.screen ?: remote?.camera
+    Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+        if (track != null) VideoTile(track, Modifier.fillMaxSize(), fit = remote?.screen != null)
+        else Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Avatar(s.title, s.colorIndex, size = 56.dp)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                when {
+                    s.phase == CallPhase.Reconnecting || s.peerReconnecting -> "Reconnecting…"
+                    !s.micOn -> "Muted"
+                    else -> s.title
+                },
+                style = Griip.type.caption, color = Color.White, maxLines = 1,
+            )
+        }
+        if (!s.micOn) {
+            Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.MicOff, "Muted", tint = Color.White, modifier = Modifier.size(14.dp))
+            }
+        }
     }
 }

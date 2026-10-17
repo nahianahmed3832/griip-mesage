@@ -38,7 +38,7 @@ object NotificationHealth {
     data class Problem(val title: String, val detail: String, val fix: Fix, val channelId: String? = null, val severe: Boolean = true)
 
     /** The channels whose sound matters, with the name the person sees in Android's settings. */
-    val ALERTING = listOf(Channels.MESSAGES to "Messages", Channels.MENTIONS to "Mentions", Channels.INCOMING_CALL to "Incoming calls")
+    val ALERTING get() = listOf(Channels.MESSAGES to "Messages", Channels.MENTIONS to "Mentions", Channels.INCOMING_CALL to "Incoming calls")
 
     fun problems(s: State): List<Problem> {
         val out = mutableListOf<Problem>()

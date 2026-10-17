@@ -59,8 +59,8 @@ fun SwipeableChat(
     LaunchedEffect(state.targetValue) {
         if (state.targetValue != SwipeToDismissBoxValue.Settled) haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
     }
-    val readLabel = if (unread) "Mark read" else "Mark unread"
-    val archiveLabel = if (archived) "Unarchive" else "Archive"
+    val readLabel = androidx.compose.ui.res.stringResource(if (unread) com.griipbuddy.orbit.R.string.swipe_mark_read else com.griipbuddy.orbit.R.string.swipe_mark_unread)
+    val archiveLabel = androidx.compose.ui.res.stringResource(if (archived) com.griipbuddy.orbit.R.string.swipe_unarchive else com.griipbuddy.orbit.R.string.swipe_archive)
     SwipeToDismissBox(
         state,
         backgroundContent = background@{

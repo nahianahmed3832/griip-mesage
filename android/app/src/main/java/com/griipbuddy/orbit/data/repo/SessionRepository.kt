@@ -171,6 +171,11 @@ class SessionRepository(
         session?.let { signedIn(it.copy(displayName = name)) }
     }
 
+    /** After a profile edit: the username and display name this phone shows for the account. */
+    fun updateProfile(username: String, displayName: String) {
+        session?.let { if (it.username != username || it.displayName != displayName) signedIn(it.copy(username = username, displayName = displayName)) }
+    }
+
     private fun signedIn(s: SessionInfo) {
         store.saveSession(s)
         _state.value = SessionState.SignedIn(s)

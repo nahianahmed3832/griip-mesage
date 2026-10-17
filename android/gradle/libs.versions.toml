@@ -17,9 +17,17 @@ livekit = "2.29.0"
 zxing = "3.5.3"
 camerax = "1.4.2"
 media3 = "1.9.0"
+browser = "1.8.0"
+work = "2.10.5"
+mlkitTranslate = "17.0.3"
+mlkitLanguageId = "17.0.6"
 iconsExtended = "1.7.8"
 
 [libraries]
+androidx-work = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+mlkit-translate = { module = "com.google.mlkit:translate", version.ref = "mlkitTranslate" }
+mlkit-language-id = { module = "com.google.mlkit:language-id", version.ref = "mlkitLanguageId" }
+androidx-browser = { module = "androidx.browser:browser", version.ref = "browser" }
 media3-transformer = { module = "androidx.media3:media3-transformer", version.ref = "media3" }
 media3-effect = { module = "androidx.media3:media3-effect", version.ref = "media3" }
 media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }

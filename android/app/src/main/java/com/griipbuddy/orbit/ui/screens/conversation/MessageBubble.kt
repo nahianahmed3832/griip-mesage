@@ -96,6 +96,13 @@ data class BubbleModel(
     val replyPreview: String? = null,
     /** Where the text mentions people (from the message's mentioned ids, docs/MENTIONS.md). */
     val mentions: List<MentionSpan> = emptyList(),
+    /** A contact card, location or animated emoji (docs/RICH_MESSAGES.md); its text is then only the fallback. */
+    val rich: com.griipbuddy.orbit.data.model.RichContent? = null,
+    val animateEmoji: Boolean = true,
+    /** Chat settings › text size. */
+    val textScale: Float = 1f,
+    /** A translation shown under the text (made on this phone; the message itself is unchanged). */
+    val translation: ConversationViewModel.Translated? = null,
 )
 
 /**
@@ -119,6 +126,9 @@ fun MessageBubble(
     onVoiceToggle: (AttachmentRef) -> Unit = {},
     onVoiceSeek: (AttachmentRef, Long) -> Unit = { _, _ -> },
     onMentionClick: (String) -> Unit = {},
+    onCopyText: (String) -> Unit = {},
+    onFindPhone: ((String) -> Unit)? = null,
+    onOpenLink: (String) -> Unit = {},
 ) {
     val c = Griip.colors
     val m = b.m
@@ -139,12 +149,15 @@ fun MessageBubble(
         verticalAlignment = Alignment.Bottom,
     ) {
         if (!out && b.isGroupConv) {
-            if (b.showAvatar) Avatar(b.sender?.displayName ?: "?", b.sender?.avatarColor ?: 0, size = 30.dp, ring = false)
+            if (b.showAvatar) com.griipbuddy.orbit.ui.components.UserAvatar(b.sender?.id, b.sender?.displayName ?: "?", b.sender?.avatarColor ?: 0, b.sender?.photoRev, size = 30.dp)
             else Spacer(Modifier.width(30.dp))
             Spacer(Modifier.width(8.dp))
         }
         Column(horizontalAlignment = if (out) Alignment.End else Alignment.Start) {
+            // An animated emoji on its own is drawn without a bubble, like a sticker.
+            val animojiOnly = b.rich?.animoji != null && b.attachments.isEmpty() && !m.deleted && m.kind == "text" && b.reply == null
             val bg = when {
+                animojiOnly -> Color.Transparent
                 m.kind == "undecryptable" -> c.dangerSoft
                 m.deleted -> c.surfaceVariant
                 out -> c.bubbleOutgoing
@@ -156,8 +169,11 @@ fun MessageBubble(
                     .clip(shape)
                     .background(bg)
                     .combinedClickable(onClick = { if (m.status == MessageStatus.FAILED) onRetry() }, onLongClick = onLongPress, onLongClickLabel = "Message actions")
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                    .padding(horizontal = if (animojiOnly) 0.dp else 12.dp, vertical = 7.dp),
             ) {
+                if (m.forwarded && !m.deleted) {
+                    Text("Forwarded", style = Griip.type.caption.copy(fontStyle = FontStyle.Italic), color = sub, modifier = Modifier.padding(bottom = 3.dp))
+                }
                 if (b.showSender && !out && b.isGroupConv) {
                     Text(b.sender?.displayName ?: "Unknown", style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = senderColor(b.sender?.avatarColor ?: 0), maxLines = 1)
                     Spacer(Modifier.height(2.dp))
@@ -202,7 +218,31 @@ fun MessageBubble(
                             } else AttachmentView(a, out, transfer, localFile(a), onOpenAttachment)
                             if (m.text.isNotEmpty()) Spacer(Modifier.height(6.dp))
                         }
-                        if (m.text.isNotEmpty()) Text(richText(m.text, out, b.mentions, me, onMentionClick), style = Griip.type.body, color = fg)
+                        val rich = b.rich
+                        when {
+                            rich?.contact != null -> ContactCardView(rich.contact, out, onCopyText, onFindPhone)
+                            rich?.location != null -> LocationCardView(rich.location, out)
+                            rich?.animoji != null -> AnimojiView(rich.animoji, b.animateEmoji, size = 110)
+                            m.text.isNotEmpty() -> {
+                                val body = Griip.type.body
+                                Text(richText(m.text, out, b.mentions, me, onMentionClick, onOpenLink), style = body.copy(fontSize = body.fontSize * b.textScale, lineHeight = body.lineHeight * b.textScale), color = fg)
+                            }
+                        }
+                        rich?.link?.let { LinkPreviewCard(it, out, onOpenLink) }
+                        b.translation?.let { t ->
+                            Column(Modifier.padding(top = 6.dp)) {
+                                androidx.compose.material3.HorizontalDivider(thickness = 1.dp, color = if (out) c.primary.copy(alpha = 0.2f) else c.border)
+                                Text(
+                                    androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.translate_label), style = Griip.type.caption.copy(fontWeight = FontWeight.SemiBold),
+                                    color = c.primaryDeep, modifier = Modifier.padding(top = 4.dp),
+                                )
+                                when {
+                                    t.working -> Text(androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.translate_working), style = Griip.type.bodySmall, color = sub)
+                                    t.error != null -> Text(t.error, style = Griip.type.bodySmall, color = c.danger)
+                                    t.text != null -> Text(t.text, style = Griip.type.body.copy(fontSize = Griip.type.body.fontSize * b.textScale), color = fg)
+                                }
+                            }
+                        }
                     }
                 }
                 Row(Modifier.align(Alignment.End).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -277,24 +317,33 @@ private fun StatusIcon(status: String, tint: Color) {
  * plain). A mention of you is highlighted; tapping a person's mention opens their profile.
  */
 @Composable
-private fun richText(text: String, out: Boolean, spans: List<MentionSpan>, me: String?, onMentionClick: (String) -> Unit): AnnotatedString {
+private fun richText(text: String, out: Boolean, spans: List<MentionSpan>, me: String?, onMentionClick: (String) -> Unit, onOpenLink: (String) -> Unit): AnnotatedString {
     val c = Griip.colors
-    if (spans.isEmpty()) return AnnotatedString(text)
+    // Web links (http/https only, docs/LINKS.md) are tappable; the text itself is shown exactly as sent.
+    val links = com.griipbuddy.orbit.data.model.LinkRules.find(text)
+    if (spans.isEmpty() && links.isEmpty()) return AnnotatedString(text)
     val base = SpanStyle(fontWeight = FontWeight.SemiBold, color = if (out) c.onBubbleOutgoing else c.primaryDeep)
     val mine = base.copy(background = c.primary.copy(alpha = if (out) 0.18f else 0.16f))
+    val linkStyle = SpanStyle(color = if (out) c.onBubbleOutgoing else c.primaryDeep, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
+    data class Piece(val start: Int, val end: Int, val mention: MentionSpan?, val url: String?)
+    val pieces = (spans.map { Piece(it.start, it.end, it, null) } + links.map { Piece(it.start, it.end, null, it.url) }).sortedBy { it.start }
     return buildAnnotatedString {
         var last = 0
-        for (sp in spans.sortedBy { it.start }) {
-            if (sp.start < last || sp.end > text.length) continue
-            append(text.substring(last, sp.start))
-            val style = if (sp.userId == null || sp.userId == me) mine else base
-            val id = sp.userId
-            if (id != null) {
-                withLink(LinkAnnotation.Clickable("mention:$id", TextLinkStyles(style)) { onMentionClick(id) }) { append(text.substring(sp.start, sp.end)) }
-            } else {
-                withStyle(style) { append(text.substring(sp.start, sp.end)) }
+        for (p in pieces) {
+            if (p.start < last || p.end > text.length) continue // overlapping: the earlier one wins
+            append(text.substring(last, p.start))
+            val sp = p.mention
+            val url = p.url
+            when {
+                url != null -> withLink(LinkAnnotation.Clickable("url:$url", TextLinkStyles(linkStyle)) { onOpenLink(url) }) { append(text.substring(p.start, p.end)) }
+                sp?.userId != null -> {
+                    val id = sp.userId
+                    val style = if (id == me) mine else base
+                    withLink(LinkAnnotation.Clickable("mention:$id", TextLinkStyles(style)) { onMentionClick(id) }) { append(text.substring(p.start, p.end)) }
+                }
+                else -> withStyle(mine) { append(text.substring(p.start, p.end)) }
             }
-            last = sp.end
+            last = p.end
         }
         append(text.substring(last))
     }
@@ -389,6 +438,23 @@ private fun CallChip(m: MessageEntity, out: Boolean, starter: String?) {
             Spacer(Modifier.width(8.dp))
             Text(line.title, style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = if (line.missed) c.danger else c.textPrimary)
             Text(" · $detail", style = Griip.type.label, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** A link preview the sender's phone made (recipients never fetch the page themselves). */
+@Composable
+fun LinkPreviewCard(p: com.griipbuddy.orbit.data.model.LinkPreview, out: Boolean, onOpen: (String) -> Unit) {
+    val c = Griip.colors
+    Row(
+        Modifier.padding(top = 6.dp).widthIn(max = 280.dp).height(IntrinsicSize.Min).clip(Shapes.small)
+            .background(if (out) c.primary.copy(alpha = 0.10f) else c.surfaceVariant).pressable({ onOpen(p.url) }, onClickLabel = "Open link"),
+    ) {
+        Box(Modifier.width(3.dp).fillMaxHeight().background(c.primary))
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Text(p.siteName ?: com.griipbuddy.orbit.data.model.LinkRules.domain(p.url) ?: "", style = Griip.type.caption.copy(fontWeight = FontWeight.Bold), color = c.primaryDeep, maxLines = 1)
+            p.title?.let { Text(it, style = Griip.type.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = if (out) c.onBubbleOutgoing else c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            p.description?.let { Text(it, style = Griip.type.caption, color = if (out) c.bubbleOutgoingMeta else c.textSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis) }
         }
     }
 }

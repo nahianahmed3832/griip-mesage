@@ -123,6 +123,9 @@ private data class Slide(val title: String, val accent: String, val body: String
 @Composable
 private fun WelcomeScreen(onStart: () -> Unit, onRestore: () -> Unit, onLink: () -> Unit, onServer: () -> Unit) {
     val c = Griip.colors
+    val container = LocalContainer.current
+    val settings by container.settings.state.collectAsStateWithLifecycle()
+    var logoTaps by remember { mutableIntStateOf(0) }
     val slides = listOf(
         Slide("Private by design.", "Connected by everyone.", "Orbit by GriipBuddy: messages, team channels, calls and screen sharing, encrypted on your phone."),
         Slide("Your keys stay", "on your phone.", "Messages are encrypted on your device before they leave it. History lives on your phone, not on our server."),
@@ -131,8 +134,12 @@ private fun WelcomeScreen(onStart: () -> Unit, onRestore: () -> Unit, onLink: ()
     val pager = rememberPagerState { slides.size }
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            OrbitLockup(Modifier.weight(1f))
-            CircleIconButton(Icons.Outlined.Dns, "Server settings", onServer)
+            // People join the Orbit network without choosing a server. The server setup is for testing and self-hosting:
+            // shown in test builds, with developer options on, or when this phone already uses another server.
+            OrbitLockup(Modifier.weight(1f).pressable({
+                if (++logoTaps >= 7) { logoTaps = 0; container.settings.update { it.copy(developerMode = !it.developerMode) } }
+            }))
+            if (OnboardingRules.showServerSetup(settings.developerMode, settings.serverUrl)) CircleIconButton(Icons.Outlined.Dns, "Server settings", onServer)
         }
         HorizontalPager(pager, Modifier.weight(1f)) { i ->
             Column(Modifier.fillMaxSize().padding(horizontal = 28.dp), verticalArrangement = Arrangement.Center) {
@@ -184,10 +191,11 @@ private fun CreateIdentityScreen(onBack: () -> Unit, onServer: () -> Unit) {
     LaunchedEffect(name) {
         if (username.isEmpty() || username == suggest(name.dropLast(1))) username = suggest(name)
     }
+    val usernameProblem = if (username.isEmpty()) null else com.griipbuddy.orbit.data.model.ProfileRules.usernameProblem(username)
     LaunchedEffect(username, server.serverUrl) {
         available = null
         availability = null
-        if (username.length < 3) return@LaunchedEffect
+        if (username.length < 3 || usernameProblem != null) return@LaunchedEffect
         delay(400)
         runCatching { container.session.usernameAvailable(server.serverUrl, username) }
             .onSuccess { available = it.available; availability = if (it.available) "@${it.username} is available" else it.reason ?: "That username is taken" }
@@ -195,7 +203,8 @@ private fun CreateIdentityScreen(onBack: () -> Unit, onServer: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        GriipTopBar("Create your identity", onBack = onBack, actions = { CircleIconButton(Icons.Outlined.Dns, "Server settings", onServer) })
+        val showServer = OnboardingRules.showServerSetup(server.developerMode, server.serverUrl)
+        GriipTopBar("Create your identity", onBack = onBack, actions = { if (showServer) CircleIconButton(Icons.Outlined.Dns, "Server settings", onServer) })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Space.gutter)) {
             Spacer(Modifier.height(8.dp))
             GlassCard(Modifier.fillMaxWidth(), shape = Shapes.hero) {
@@ -225,7 +234,7 @@ private fun CreateIdentityScreen(onBack: () -> Unit, onServer: () -> Unit) {
                 username, { username = it.lowercase().filter { ch -> ch.isLetterOrDigit() || ch == '.' || ch == '_' }.take(24) }, "Username",
                 placeholder = "nusrat", leadingIcon = Icons.Rounded.AlternateEmail,
                 helper = availability ?: "3–24 characters: letters, numbers, . and _",
-                error = if (available == false) availability else null,
+                error = usernameProblem ?: if (available == false) availability else null,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 trailing = { if (available == true) Icon(Icons.Rounded.Check, "Available", tint = c.success, modifier = Modifier.size(20.dp)) },
             )
@@ -252,7 +261,7 @@ private fun CreateIdentityScreen(onBack: () -> Unit, onServer: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(12.dp))
-            Text("Server: ${server.serverUrl}", style = Griip.type.caption, color = c.textTertiary, modifier = Modifier.padding(start = 4.dp))
+            if (showServer) Text("Server: ${server.serverUrl}", style = Griip.type.caption, color = c.textTertiary, modifier = Modifier.padding(start = 4.dp))
             if (server.serverUrl.startsWith("http://")) {
                 Spacer(Modifier.height(8.dp))
                 StatusBanner("Unencrypted connection to the server (testing only). Message content stays end-to-end encrypted.", BannerKind.Warning, icon = Icons.Rounded.Warning)
@@ -274,7 +283,7 @@ private fun CreateIdentityScreen(onBack: () -> Unit, onServer: () -> Unit) {
                     busy = false
                 }
             },
-            enabled = name.isNotBlank() && username.length >= 3 && available != false,
+            enabled = name.isNotBlank() && username.length >= 3 && usernameProblem == null && available != false && !busy,
             loading = busy,
             modifier = Modifier.fillMaxWidth().padding(horizontal = Space.gutter).navigationBarsPadding().padding(bottom = 16.dp),
         )
@@ -449,3 +458,9 @@ fun RevokedScreen(reason: String) {
     }
 }
 
+/** Onboarding rules (unit-tested in `OnboardingRulesTest`). */
+object OnboardingRules {
+    /** The server choice is hidden from ordinary sign-up; test builds, developer options or another server show it. */
+    fun showServerSetup(developerMode: Boolean, serverUrl: String, debugBuild: Boolean = com.griipbuddy.orbit.BuildConfig.DEBUG): Boolean =
+        debugBuild || developerMode || !ServerAddress.same(serverUrl, com.griipbuddy.orbit.BuildConfig.DEFAULT_SERVER_URL)
+}

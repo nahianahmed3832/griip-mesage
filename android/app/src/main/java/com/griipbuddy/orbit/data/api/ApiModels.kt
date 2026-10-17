@@ -42,12 +42,24 @@ import kotlinx.serialization.json.JsonObject
     val branches: List<ScopedRole> = emptyList(), val teams: List<ScopedRole> = emptyList(),
     // Federation (2026-10-16): set for people on another server (their username is then "name:server").
     val homeServer: String? = null, val address: String? = null,
+    // Profile (server ≥ 2026-10-17, docs/PROFILE_AND_PRIVACY.md). Absent: not set, or not visible to you.
+    val firstName: String? = null, val lastName: String? = null, val birthday: String? = null, val phone: String? = null,
+    val photoRev: Long? = null,
+    /** Your own privacy settings (only in your own profile): field → "everyone" | "contacts" | "nobody". */
+    val privacy: Map<String, String>? = null,
 )
 @Serializable data class ScopedRole(val id: String, val role: String)
 @Serializable data class MeRes(val user: UserDto, val deviceId: String)
 @Serializable data class UserRes(val user: UserDto)
 @Serializable data class UsersRes(val users: List<UserDto> = emptyList(), val members: List<UserDto> = emptyList())
-@Serializable data class UpdateMeReq(val displayName: String? = null, val statusText: String? = null, val avatarColor: Int? = null)
+/** Profile edit: null fields are left out (unchanged); an empty string clears a field. */
+@Serializable data class UpdateMeReq(
+    val displayName: String? = null, val statusText: String? = null, val avatarColor: Int? = null,
+    val firstName: String? = null, val lastName: String? = null, val birthday: String? = null, val phone: String? = null,
+    val username: String? = null,
+)
+@Serializable data class PrivacyRes(val privacy: Map<String, String>)
+@Serializable data class PhotoRes(val photoRev: Long? = null)
 @Serializable data class DeviceKeyDto(val id: String, val signingKey: String, val encryptionKey: String, val certificate: String)
 @Serializable data class UserKeysDto(val userId: String, val identityKey: String, val devices: List<DeviceKeyDto>)
 @Serializable data class KeysRes(val users: List<UserKeysDto>)

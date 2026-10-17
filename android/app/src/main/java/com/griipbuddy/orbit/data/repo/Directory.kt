@@ -150,6 +150,7 @@ class UserRepository(private val api: ApiClient, private val db: GriipDatabase) 
             (e ?: UserEntity(u.id, u.username, u.displayName, u.avatarColor, u.statusText, null)).copy(
                 username = u.username, displayName = u.displayName, avatarColor = u.avatarColor, statusText = u.statusText,
                 online = u.online ?: e?.online ?: false, lastSeenAt = u.lastSeenAt ?: e?.lastSeenAt, updatedAt = System.currentTimeMillis(),
+                photoRev = u.photoRev,
             ),
         )
     }

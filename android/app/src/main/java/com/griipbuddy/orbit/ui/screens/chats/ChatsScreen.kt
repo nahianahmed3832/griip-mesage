@@ -10,7 +10,8 @@ import androidx.compose.material.icons.outlined.MarkChatUnread
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.ui.res.stringResource
+import com.griipbuddy.orbit.R
 import com.griipbuddy.orbit.data.db.ConversationEntity
 import com.griipbuddy.orbit.call.CallPhase
 import com.griipbuddy.orbit.ui.components.GlassSheet
@@ -107,7 +108,7 @@ fun ChatsScreen(nav: NavHostController) {
     val permission = com.griipbuddy.orbit.ui.screens.calls.rememberCallPermission()
     LaunchedEffect(Unit) { runCatching { container.conversations.refresh() }; refreshing = false }
 
-    val filters = listOf("All", "Unread", "Direct", "Groups", "Channels")
+    val filters = listOf(R.string.filter_all, R.string.filter_unread, R.string.filter_direct, R.string.filter_groups, R.string.filter_channels).map { stringResource(it) }
     val shown = ChatListRules.visible(convs, filter, query, archivedView) { ConversationRepository.title(it, me) }
     val archivedInfo = ChatListRules.archived(convs)
     fun toggleRead(conv: ConversationEntity) {
@@ -133,13 +134,15 @@ fun ChatsScreen(nav: NavHostController) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
             if (archivedView) item {
                 GriipTopBar(
-                    "Archived chats", subtitle = "Only on this phone. They still notify you unless muted.",
+                    stringResource(R.string.chats_archived_title), subtitle = stringResource(R.string.chats_archived_sub),
                     onBack = { archivedView = false },
                 )
             } else item {
-                LargeHeader("Chats") {
-                    CircleIconButton(Icons.Rounded.Search, "Search people, chats and messages", { nav.navigate(Routes.SEARCH) })
-                    CircleIconButton(Icons.Outlined.GroupAdd, "New group", { nav.navigate(Routes.NEW_CHAT + "?mode=group") })
+                // New conversations start from the top bar (no floating button over the list).
+                LargeHeader(stringResource(R.string.chats_title)) {
+                    CircleIconButton(Icons.Rounded.Search, stringResource(R.string.chats_search), { nav.navigate(Routes.SEARCH) })
+                    CircleIconButton(Icons.Outlined.EditNote, stringResource(R.string.chats_new_chat), { nav.navigate(Routes.NEW_CHAT + "?mode=dm") })
+                    CircleIconButton(Icons.Outlined.GroupAdd, stringResource(R.string.chats_new_group), { nav.navigate(Routes.NEW_CHAT + "?mode=group") })
                 }
             }
             item { ConnectionBanner(conn, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) { container.realtime.reconnectNow() } }
@@ -157,7 +160,7 @@ fun ChatsScreen(nav: NavHostController) {
                     onAction = { permission(liveCall.activeCallVideo) { scope.launch { container.calls.join(liveCall.id, liveCall.activeCallId!!, liveCall.activeCallVideo) } } },
                 )
             }
-            item { SearchPill(query, { query = it }, "Filter chats by name", Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
+            item { SearchPill(query, { query = it }, stringResource(R.string.chats_filter_hint), Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
             if (!archivedView) item {
                 ChipRow {
                     filters.forEachIndexed { i, f ->
@@ -168,7 +171,7 @@ fun ChatsScreen(nav: NavHostController) {
             }
             if (!archivedView && query.isBlank() && archivedInfo.chats > 0) item(key = "archived") {
                 ListCard(
-                    "Archived", Modifier.padding(horizontal = 8.dp, vertical = 2.dp).animateItem(),
+                    stringResource(R.string.chats_archived), Modifier.padding(horizontal = 8.dp, vertical = 2.dp).animateItem(),
                     subtitle = "${archivedInfo.chats} chat${if (archivedInfo.chats == 1) "" else "s"}" +
                         if (archivedInfo.unreadChats > 0) " · ${archivedInfo.unreadChats} unread" else "",
                     leading = { com.griipbuddy.orbit.ui.components.IconTile(Icons.Outlined.Archive, c.lavender, c.lavenderSoft, size = 44.dp) },
@@ -182,13 +185,13 @@ fun ChatsScreen(nav: NavHostController) {
                     EmptyState(
                         Icons.Outlined.ChatBubbleOutline,
                         when {
-                            convs.isEmpty() -> "No conversations yet"
+                            convs.isEmpty() -> stringResource(R.string.chats_empty)
                             query.isNotBlank() -> "No chats named \"${query.trim()}\""
                             archivedView -> "No archived chats"
                             else -> "Nothing here"
                         },
                         when {
-                            convs.isEmpty() -> "Message a colleague, or join your team's channels from the Workspace tab."
+                            convs.isEmpty() -> stringResource(R.string.chats_empty_body)
                             query.isNotBlank() -> "Search also finds people and message text."
                             archivedView -> "Swipe a chat left to archive it. You stay in it and can restore it any time."
                             else -> "Try another filter."
@@ -219,21 +222,14 @@ fun ChatsScreen(nav: NavHostController) {
                 }
             }
         }
-        ExtendedFloatingActionButton(
-            onClick = { nav.navigate(Routes.NEW_CHAT + "?mode=dm") },
-            icon = { Icon(Icons.Outlined.EditNote, null) },
-            text = { Text("New chat", style = Griip.type.button) },
-            containerColor = c.actionStart, contentColor = c.onAction,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(Space.gutter),
-        )
         undo?.let { conv ->
             val title = ConversationRepository.title(conv, me).let { if (conv.type == "CHANNEL") "#$it" else it }
             com.griipbuddy.orbit.ui.components.UndoBar(
-                "Archived $title", onUndo = {
+                stringResource(R.string.chats_archived_toast, title), onUndo = {
                     scope.launch { container.conversations.setArchived(conv.id, false) }
                     undo = null
                 },
-                Modifier.align(Alignment.BottomCenter).padding(start = Space.gutter, end = Space.gutter, bottom = 84.dp),
+                Modifier.align(Alignment.BottomCenter).padding(start = Space.gutter, end = Space.gutter, bottom = 16.dp),
             )
         }
     }
@@ -304,6 +300,14 @@ fun NewChatScreen(nav: NavHostController, mode: String?) {
             resolving = true
             remote = runCatching { container.federation.resolve(q) }.onFailure { error = it.friendly() }.getOrNull()
             resolving = false
+            return@LaunchedEffect
+        }
+        // An exact international phone number: found only if its owner lets people find them by it (docs/PROFILE_AND_PRIVACY.md).
+        val phone = com.griipbuddy.orbit.data.model.ProfileRules.normalizePhone(q)?.takeIf { it.startsWith("+") }
+        if (phone != null) {
+            delay(500)
+            results = runCatching { listOf(container.api.get<com.griipbuddy.orbit.data.api.UserRes>("/v1/users/by-phone?phone=${java.net.URLEncoder.encode(phone, "UTF-8")}").user) }
+                .onFailure { error = "No one on Orbit lets people find them by this number" }.getOrDefault(emptyList())
             return@LaunchedEffect
         }
         delay(250)

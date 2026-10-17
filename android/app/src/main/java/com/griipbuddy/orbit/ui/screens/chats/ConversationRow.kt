@@ -64,7 +64,7 @@ fun ConversationAvatar(conv: ConversationEntity, myUserId: String?, size: androi
     when (conv.type) {
         "DM" -> {
             val peer = ConversationRepository.peer(conv, myUserId)
-            Avatar(peer?.displayName ?: "?", peer?.avatarColor ?: 0, size = size, online = online)
+            com.griipbuddy.orbit.ui.components.UserAvatar(peer?.id, peer?.displayName ?: "?", peer?.avatarColor ?: 0, peer?.photoRev, size = size, online = online)
         }
         "GROUP" -> Box(Modifier.size(size).clip(CircleShape).background(c.lavenderSoft).semantics { contentDescription = "Group" }, contentAlignment = Alignment.Center) {
             Icon(Icons.Rounded.Groups, null, tint = c.lavender, modifier = Modifier.size(size * 0.5f))

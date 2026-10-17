@@ -103,6 +103,10 @@ data class CallUiState(
     val stats: CallMediaStats? = null,
     /** LiveKit rates this phone's or the other person's connection poor or lost: video quality is reduced. */
     val connectionWeak: Boolean = false,
+    /** The call's verification code, from its end-to-end encryption key (null: the call isn't end-to-end encrypted). */
+    val verification: CallVerification.Code? = null,
+    /** 1:1: the other person's connection dropped; the call waits [CallRecovery.PEER_WINDOW_MS] for them. */
+    val peerReconnecting: Boolean = false,
 )
 
 /**
@@ -309,6 +313,7 @@ class CallManager(
         releaseJob?.let { if (it.isActive) diag.log("waiting for the previous call's media to release") ; it.join() }
         val r = try {
             webrtcReady
+            _state.update { it.copy(verification = key?.let { k -> CallVerification.code(k, callId) }) }
             val e2ee = key?.let { k ->
                 val provider = BaseKeyProvider()
                 provider.setSharedKey(k, null)
@@ -494,19 +499,32 @@ class CallManager(
         diag.event(ev)
         when (ev) {
             is RoomEvent.ParticipantConnected -> {
-                _state.update { if (it.phase == CallPhase.Outgoing) it.copy(phase = CallPhase.Connected, connectedAt = System.currentTimeMillis()) else it }
+                peerWait?.cancel()
+                peerWait = null
+                _state.update { if (it.phase == CallPhase.Outgoing) it.copy(phase = CallPhase.Connected, connectedAt = System.currentTimeMillis(), peerReconnecting = false) else it.copy(peerReconnecting = false) }
                 scope.launch { db.calls().getLog(_state.value.callId ?: "")?.let { db.calls().upsertLog(it.copy(answeredAt = System.currentTimeMillis())) } }
             }
             is RoomEvent.ParticipantDisconnected -> {
                 securityTracker?.let { t -> ev.participant.identity?.value?.let(t::participantLeft); publishSecurity(t) }
                 val s = _state.value
-                if (!s.isGroup && room?.remoteParticipants?.isEmpty() == true) finish("hangup", notifyServer = true)
+                // 1:1: the other person may only have lost their connection (a hang-up arrives as a call "ended" event).
+                // Wait for them to come back instead of ending the call at once.
+                if (!s.isGroup && room?.remoteParticipants?.isEmpty() == true && peerWait == null) {
+                    _state.update { it.copy(peerReconnecting = true) }
+                    peerWait = scope.launch {
+                        delay(CallRecovery.PEER_WINDOW_MS)
+                        peerWait = null
+                        if (room?.remoteParticipants?.isEmpty() == true) finish("lost", notifyServer = true)
+                    }
+                }
             }
             is RoomEvent.Reconnecting -> _state.update { it.copy(phase = CallPhase.Reconnecting) }
             is RoomEvent.Reconnected -> _state.update { it.copy(phase = CallPhase.Connected) }
             is RoomEvent.Disconnected -> if (_state.value.phase != CallPhase.Idle && _state.value.phase != CallPhase.Ended) {
-                Log.i(TAG, "room disconnected: ${ev.reason}")
-                finish("disconnected", notifyServer = true)
+                val reason = ev.reason?.name
+                Log.i(TAG, "room disconnected: $reason")
+                // A lost connection (not a hang-up or removal): rejoin the same call with the same key for a while.
+                if (CallRecovery.retryable(reason) && rejoinJob?.isActive != true) rejoin() else if (rejoinJob?.isActive != true) finish("disconnected", notifyServer = true)
             }
             // The SDK has set up the track's frame cryptor by now: register the track for the badge, then
             // swap in the crash-safe observer.
@@ -696,7 +714,59 @@ class CallManager(
      * Disconnecting clears the remote tracks but leaves their frame cryptors running, so every cryptor
      * gets the crash-safe observer first, including ones whose TrackSubscribed event was still queued.
      */
+    private var peerWait: kotlinx.coroutines.Job? = null
+    private var rejoinJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * After this phone's media connection dropped (the SDK's own reconnect gave up): new media credentials from the
+     * server and a new room with the same call key, retried with backoff for [CallRecovery.REJOIN_WINDOW_MS]. The call
+     * screen says "Reconnecting…" meanwhile; the call ends only if the window runs out or the call has ended.
+     */
+    private fun rejoin() {
+        val s = _state.value
+        val callId = s.callId ?: return finish("disconnected", notifyServer = true)
+        _state.update { it.copy(phase = CallPhase.Reconnecting) }
+        rejoinJob = scope.launch {
+            val started = System.currentTimeMillis()
+            var attempt = 0
+            teardownRoomOnly()
+            while (System.currentTimeMillis() - started < CallRecovery.REJOIN_WINDOW_MS) {
+                delay(CallRecovery.backoff(attempt++))
+                if (_state.value.callId != callId || _state.value.phase == CallPhase.Ended || _state.value.phase == CallPhase.Idle) return@launch
+                val res = try {
+                    api.post<CallRes>("/v1/calls/$callId/join")
+                } catch (e: ApiException) {
+                    if (e.status == 410 || e.status == 404) { finish("ended", notifyServer = false); return@launch }
+                    continue
+                }
+                val key = if (settings.current.mediaE2ee) messages.callKey(callId) else null
+                if (settings.current.mediaE2ee && key == null) continue
+                runCatching { connect(callId, res.media ?: continue, key, s.video) }.onSuccess {
+                    diag.log("rejoined after ${System.currentTimeMillis() - started} ms ($attempt attempts)")
+                    return@launch
+                }
+            }
+            finish("lost", notifyServer = true)
+        }
+    }
+
+    /** Drops the current room without ending the call (before a rejoin). */
+    private fun teardownRoomOnly() {
+        mediaJob?.cancel()
+        mediaJob = null
+        eventsJob?.cancel()
+        eventsJob = null
+        val r = room
+        room = null
+        synchronized(securityLock) { securityTracker = null }
+        if (r != null) scope.launch(Dispatchers.Main) { runCatching { r.disconnect() }; delay(1500); runCatching { r.release() } }
+    }
+
     private fun teardown() {
+        peerWait?.cancel()
+        peerWait = null
+        rejoinJob?.cancel()
+        rejoinJob = null
         IncomingCallNotifier.cancel(context)
         synchronized(firstSeen) { firstSeen.clear() }
         mediaJob?.cancel()

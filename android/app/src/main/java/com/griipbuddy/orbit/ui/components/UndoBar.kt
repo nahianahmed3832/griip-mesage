@@ -28,6 +28,6 @@ fun UndoBar(text: String, onUndo: () -> Unit, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text, style = Griip.type.bodySmall, color = c.background, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        TextButton(onClick = onUndo) { Text("Undo", style = Griip.type.button, color = c.primarySoft) }
+        TextButton(onClick = onUndo) { Text(androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.common_undo), style = Griip.type.button, color = c.primarySoft) }
     }
 }

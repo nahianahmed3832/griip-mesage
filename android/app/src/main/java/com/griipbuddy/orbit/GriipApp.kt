@@ -101,7 +101,7 @@ class GriipApp : Application() {
         profiles.update { it.remove(id) }
     }
 
-    data class ProfileSummary(val id: String, val serverUrl: String, val username: String?, val active: Boolean, val original: Boolean)
+    data class ProfileSummary(val id: String, val serverUrl: String, val username: String?, val active: Boolean, val original: Boolean, val displayName: String? = null)
 
     /**
      * What the Servers screen lists. An inactive profile's session is opened with that profile's own
@@ -115,7 +115,7 @@ class GriipApp : Application() {
             val c = container?.takeIf { it.profile.id == id }
             val session = c?.session?.session ?: if (c == null) runCatching { IdentityStore(this, st.identityPrefs, st.keystoreAlias).session() }.getOrNull() else null
             val url = session?.serverUrl ?: settings.getString(st.serverKey, null) ?: profiles.initialUrl(id) ?: BuildConfig.DEFAULT_SERVER_URL
-            ProfileSummary(id, url, session?.username, id == l.active, id == ProfileStorage.DEFAULT)
+            ProfileSummary(id, url, session?.username, id == l.active, id == ProfileStorage.DEFAULT, session?.displayName?.ifEmpty { null })
         }
     }
 

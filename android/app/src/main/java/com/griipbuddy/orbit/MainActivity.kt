@@ -28,6 +28,25 @@ import kotlinx.coroutines.launch
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class MainActivity : ComponentActivity() {
+    // Picture-in-picture during a call (CallPip): entered when leaving Orbit; Android 12+ enters it automatically.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        val s = (application as GriipApp).container?.calls?.state?.value ?: return
+        if (Build.VERSION.SDK_INT in 26..30 && com.griipbuddy.orbit.call.CallPip.eligible(s.phase) && com.griipbuddy.orbit.call.CallPip.supported(this)) {
+            com.griipbuddy.orbit.call.CallPip.params(this, s)?.let { runCatching { enterPictureInPictureMode(it) } }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        com.griipbuddy.orbit.call.CallPip.active.value = isInPictureInPictureMode
+    }
+
+    // The app's own language on Android 12 and older (Android 13+ handles it itself). docs/LANGUAGES.md
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.griipbuddy.orbit.ui.AppLanguage.wrap(newBase))
+    }
+
     private var pendingConversation by mutableStateOf<String?>(null)
     private var pendingInvite by mutableStateOf<String?>(null)
 
@@ -55,7 +74,7 @@ class MainActivity : ComponentActivity() {
                     navigationBarStyle = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
                 )
             }
-            GriipTheme(settings.theme) {
+            GriipTheme(settings.theme, settings.accent) {
                 // A new container (erase, or a switch to another server profile) gets a fresh UI tree:
                 // navigation, view models and remembered state never carry over between profiles.
                 androidx.compose.runtime.key(gen, container) {
@@ -63,6 +82,14 @@ class MainActivity : ComponentActivity() {
                         pendingConversation = null
                         pendingInvite = null
                     }
+                }
+            }
+        }
+        // Keep the picture-in-picture settings in step with the call (auto-enter only while one is on).
+        lifecycleScope.launch {
+            app.generation.flatMapLatest { app.container!!.calls.state }.collect { s ->
+                if (com.griipbuddy.orbit.call.CallPip.supported(this@MainActivity)) {
+                    com.griipbuddy.orbit.call.CallPip.params(this@MainActivity, s)?.let { runCatching { setPictureInPictureParams(it) } }
                 }
             }
         }

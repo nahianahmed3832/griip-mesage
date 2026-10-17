@@ -194,3 +194,115 @@ object AttachmentCrypto {
         }
     }
 }
+
+/**
+ * Chunked attachment encryption for large files (2026-10-17, docs/ATTACHMENTS.md › "Large files"). Used only for files
+ * over 25 MB, which older apps couldn't receive anyway; smaller files keep the original single-message format.
+ *
+ * The plaintext is split into chunks of [chunk] bytes (the last may be shorter, and an empty file is one empty chunk).
+ * Chunk i is AES-256-GCM with the file key, nonce = base nonce with its last four bytes XOR i (big-endian), and
+ * associated data "orbit-att-chunk" ‖ i (4 bytes) ‖ final (1 byte, 1 on the last chunk). So chunks can't be reordered,
+ * dropped or cut off without failing authentication, and each chunk is checked as it's read: memory stays at one
+ * chunk, whatever the file's size. The SHA-256 of the whole ciphertext travels in the message, as for other files.
+ */
+object ChunkedAttachmentCrypto {
+    const val DEFAULT_CHUNK = 1024 * 1024
+    private const val TAG = 16
+    private val AAD_PREFIX = "orbit-att-chunk".toByteArray()
+
+    fun validChunk(c: Int) = c in 1024..(16 * 1024 * 1024)
+
+    private fun nonceFor(base: ByteArray, i: Int): ByteArray = base.copyOf().also { n ->
+        for (b in 0..3) n[8 + b] = (n[8 + b].toInt() xor ((i ushr (8 * (3 - b))) and 0xFF)).toByte()
+    }
+
+    private fun aad(i: Int, final: Boolean): ByteArray =
+        AAD_PREFIX + byteArrayOf((i ushr 24).toByte(), (i ushr 16).toByte(), (i ushr 8).toByte(), i.toByte(), if (final) 1 else 0)
+
+    private fun cipher(mode: Int, key: ByteArray, base: ByteArray, i: Int, final: Boolean): Cipher =
+        Cipher.getInstance("AES/GCM/NoPadding").apply {
+            init(mode, SecretKeySpec(key, "AES"), GCMParameterSpec(128, nonceFor(base, i)))
+            updateAAD(aad(i, final))
+        }
+
+    /** Encrypts [plain] into [out]; returns the key, base nonce and ciphertext hash for the message. */
+    fun encryptFile(plain: File, out: File, chunk: Int = DEFAULT_CHUNK): AttachmentCrypto.Meta {
+        require(validChunk(chunk))
+        val key = randomBytes(32)
+        val base = randomBytes(12)
+        try {
+            val md = MessageDigest.getInstance("SHA-256")
+            val total = plain.length()
+            val count = if (total == 0L) 1L else (total + chunk - 1) / chunk
+            require(count <= Int.MAX_VALUE) { "file too large" }
+            plain.inputStream().buffered(chunk).use { input ->
+                out.outputStream().buffered(256 * 1024).use { o ->
+                    val buf = ByteArray(chunk)
+                    for (i in 0 until count.toInt()) {
+                        var n = 0
+                        while (n < chunk) {
+                            val r = input.read(buf, n, chunk - n)
+                            if (r < 0) break
+                            n += r
+                        }
+                        val ct = cipher(Cipher.ENCRYPT_MODE, key, base, i, i == count.toInt() - 1).doFinal(buf, 0, n)
+                        o.write(ct)
+                        md.update(ct)
+                    }
+                }
+            }
+            return AttachmentCrypto.Meta(key.b64(), base.b64(), md.digest().b64())
+        } finally {
+            key.wipe()
+        }
+    }
+
+    /**
+     * Checks the ciphertext hash of [ct], then decrypts it chunk by chunk into [out], which appears only once every chunk
+     * (including the final one) has authenticated.
+     */
+    fun decryptFile(ct: File, key: String, nonce: String, expectedSha256: String, chunk: Int, out: File) {
+        if (!validChunk(chunk)) throw EnvelopeException("attachment chunk size not supported")
+        val md = MessageDigest.getInstance("SHA-256")
+        ct.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        if (md.digest().b64() != expectedSha256) throw EnvelopeException("attachment integrity check failed")
+        val k = key.unb64()
+        val base = nonce.unb64()
+        if (base.size != 12) throw EnvelopeException("attachment nonce invalid")
+        val block = chunk + TAG
+        val total = ct.length()
+        val count = if (total == 0L) 0L else (total + block - 1) / block
+        if (count == 0L || count > Int.MAX_VALUE || (total - (count - 1) * block) < TAG) throw EnvelopeException("attachment decryption failed")
+        val tmp = File(out.parentFile, out.name + ".dec")
+        try {
+            ct.inputStream().buffered(block).use { input ->
+                tmp.outputStream().buffered(256 * 1024).use { o ->
+                    val buf = ByteArray(block)
+                    for (i in 0 until count.toInt()) {
+                        val want = if (i == count.toInt() - 1) (total - i.toLong() * block).toInt() else block
+                        var n = 0
+                        while (n < want) {
+                            val r = input.read(buf, n, want - n)
+                            if (r < 0) throw EnvelopeException("attachment decryption failed")
+                            n += r
+                        }
+                        o.write(cipher(Cipher.DECRYPT_MODE, k, base, i, i == count.toInt() - 1).doFinal(buf, 0, n))
+                    }
+                }
+            }
+            if (!tmp.renameTo(out)) throw java.io.IOException("couldn't store the decrypted file")
+        } catch (e: javax.crypto.AEADBadTagException) {
+            throw EnvelopeException("attachment decryption failed")
+        } finally {
+            tmp.delete()
+            k.wipe()
+        }
+    }
+}

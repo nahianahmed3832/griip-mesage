@@ -3,6 +3,7 @@ package com.griipbuddy.orbit.data.repo
 import android.content.Context
 import android.util.Log
 import com.griipbuddy.orbit.crypto.AttachmentCrypto
+import com.griipbuddy.orbit.crypto.ChunkedAttachmentCrypto
 import com.griipbuddy.orbit.crypto.EnvelopeException
 import com.griipbuddy.orbit.crypto.EnvelopeHeader
 import com.griipbuddy.orbit.crypto.MessageCrypto
@@ -32,6 +33,8 @@ import com.griipbuddy.orbit.data.model.AttachmentRef
 import com.griipbuddy.orbit.voice.VoiceNote
 import com.griipbuddy.orbit.data.model.CallInfo
 import com.griipbuddy.orbit.data.model.AttachmentPolicy
+import com.griipbuddy.orbit.data.model.RichContent
+import com.griipbuddy.orbit.data.model.RichRules
 import com.griipbuddy.orbit.data.model.CallHistory
 import com.griipbuddy.orbit.data.api.CallDto
 import com.griipbuddy.orbit.data.api.CallsRes
@@ -165,6 +168,7 @@ class MessageRepository(
     fun deliveredTo(m: MessageEntity): List<String> = runCatching { json.decodeFromString(listOfStrings, m.deliveredToJson) }.getOrDefault(emptyList())
     fun mentions(m: MessageEntity): List<String> = runCatching { json.decodeFromString(listOfStrings, m.mentionsJson) }.getOrDefault(emptyList())
     fun callInfo(m: MessageEntity): CallInfo? = m.callJson?.let { runCatching { json.decodeFromString(CallInfo.serializer(), it) }.getOrNull() }
+    fun rich(m: MessageEntity): RichContent? = m.richJson?.let { runCatching { json.decodeFromString(RichContent.serializer(), it) }.getOrNull() }
 
     // ─────────────────────────── Sending ───────────────────────────
 
@@ -174,21 +178,26 @@ class MessageRepository(
      */
     suspend fun sendText(
         cid: String, text: String, replyTo: String? = null, threadRoot: String? = null, attachments: List<AttachmentRef> = emptyList(),
-        presetId: String? = null, mentions: MentionSet? = null,
+        presetId: String? = null, mentions: MentionSet? = null, rich: RichContent? = null, forwarded: Boolean = false,
     ): String {
         val s = session.session ?: error("not signed in")
         val id = presetId ?: UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
-        val m = mentions ?: resolveMentions(cid, text)
+        // A contact, location or animated emoji travels with a readable text, which older apps show instead.
+        val body = if (rich != null && rich.structured && text.isBlank()) RichRules.fallbackText(rich) else text
+        val m = mentions ?: if (rich?.structured == true) MentionSet.NONE else resolveMentions(cid, body)
         val payload = Payload(
-            type = "text", text = text, replyTo = replyTo, threadRoot = threadRoot, mentions = m.ids.ifEmpty { null },
+            type = "text", text = body, replyTo = replyTo, threadRoot = threadRoot, mentions = m.ids.ifEmpty { null },
             mentionAll = if (m.all) true else null, attachments = attachments.ifEmpty { null },
+            contact = rich?.contact, location = rich?.location, animoji = rich?.animoji, forwarded = if (forwarded) true else null,
+            link = rich?.link,
         )
         val existing = db.messages().get(id)
         val msg = MessageEntity(
-            id = id, conversationId = cid, senderUserId = s.userId, senderDeviceId = s.deviceId, outgoing = true, kind = "text", text = text,
+            id = id, conversationId = cid, senderUserId = s.userId, senderDeviceId = s.deviceId, outgoing = true, kind = "text", text = body,
             replyToId = replyTo, threadRootId = threadRoot, mentionsJson = json.encodeToString(listOfStrings, MentionRules.stored(m)),
             attachmentsJson = json.encodeToString(attachmentsSer, attachments), sentAt = existing?.sentAt ?: now, sortTs = existing?.sortTs ?: now, status = MessageStatus.SENDING,
+            richJson = rich?.let { json.encodeToString(RichContent.serializer(), it) }, forwarded = forwarded,
         )
         db.messages().upsert(msg)
         db.outbox().put(OutboxEntity(id, cid, "message", json.encodeToString(Payload.serializer(), payload), now))
@@ -263,10 +272,10 @@ class MessageRepository(
         // already uploaded aren't sent twice.
         if (attachments(m).any { it.id == AttachmentFiles.PENDING }) {
             db.messages().setStatus(id, MessageStatus.SENDING, null, null)
-            scope.launch { processBatch(id) }
+            startBatch(id)
             return
         }
-        sendText(m.conversationId, m.text, m.replyToId, m.threadRootId, attachments(m), presetId = id)
+        sendText(m.conversationId, m.text, m.replyToId, m.threadRootId, attachments(m), presetId = id, rich = rich(m), forwarded = m.forwarded)
     }
 
     /** Distribute a call's media E2EE key to all member devices through the encrypted channel. */
@@ -316,7 +325,7 @@ class MessageRepository(
     // ─────────── Attachments (encrypted before upload) ───────────
 
     /** The picked file is larger than attachments may be (25 MB). */
-    class AttachmentTooLarge : Exception("Files up to 25 MB can be shared in this beta.")
+    class AttachmentTooLarge : Exception("This file is larger than this server accepts.")
 
     /**
      * Copies the picked file into app storage (streamed, never whole in memory), then encrypts and uploads
@@ -392,6 +401,10 @@ class MessageRepository(
         val size: Long,
         val kind: AttachmentPolicy.Kind,
         val sniffed: AttachmentPolicy.Sniffed?,
+        /** A voice message being forwarded: it stays a voice message. */
+        val voiceDurationMs: Long? = null,
+        /** Video length, when the picker could read it (for size estimates). */
+        val durationMs: Long? = null,
     )
 
     /** An album being prepared and sent: [done] of [total] files are uploaded; [stage] describes the current one. */
@@ -416,25 +429,84 @@ class MessageRepository(
      * carries on when you leave the conversation), and the message is sent once every file is uploaded. A failure leaves
      * the message FAILED with a reason; retrying resumes with the files that aren't uploaded yet. Returns the message id.
      */
-    suspend fun sendBatch(cid: String, items: List<BatchItem>, quality: AttachmentPolicy.Quality, caption: String, replyTo: String? = null): String {
+    suspend fun sendBatch(
+        cid: String, items: List<BatchItem>, photoQuality: AttachmentPolicy.Quality, caption: String, replyTo: String? = null,
+        videoQuality: AttachmentPolicy.Quality = AttachmentPolicy.Quality.ORIGINAL, forwarded: Boolean = false,
+    ): String {
         val s = session.session ?: throw IllegalStateException("Not signed in")
         require(items.size in 1..AttachmentPolicy.MAX_ITEMS) { "1 to ${AttachmentPolicy.MAX_ITEMS} files" }
         val id = UUID.randomUUID().toString()
         val placeholders = items.mapIndexed { i, it ->
             val local = files.fileFor("$id-$i", it.name)
-            batchSources[local.name] = BatchSource(it.uri, quality, it.kind, it.sniffed)
-            AttachmentRef(AttachmentFiles.PENDING, it.name, AttachmentPolicy.sendMime(it.mime, it.kind, it.sniffed), it.size, "", "", local.name)
+            val q = if (it.kind == AttachmentPolicy.Kind.VIDEO) videoQuality else photoQuality
+            batchSources[local.name] = BatchSource(it.uri, q, it.kind, it.sniffed)
+            AttachmentRef(
+                AttachmentFiles.PENDING, it.name, AttachmentPolicy.sendMime(it.mime, it.kind, it.sniffed), it.size, "", "", local.name,
+                voice = it.voiceDurationMs?.let { true }, durationMs = it.voiceDurationMs,
+            )
         }
         val now = System.currentTimeMillis()
         db.messages().upsert(
             MessageEntity(
                 id, cid, s.userId, s.deviceId, true, "text", caption, replyToId = replyTo, attachmentsJson = json.encodeToString(attachmentsSer, placeholders),
-                sentAt = now, sortTs = now, status = MessageStatus.SENDING,
+                sentAt = now, sortTs = now, status = MessageStatus.SENDING, forwarded = forwarded,
             ),
         )
         db.conversations().bumpPreview(cid, id, caption.ifBlank { AttachmentPolicy.preview(items.map { it.kind }) }, now, "You", 0, 0)
-        scope.launch { processBatch(id) }
+        startBatch(id)
         return id
+    }
+
+    private val batchJobs = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>()
+
+    private fun startBatch(id: String) {
+        batchJobs[id] = scope.launch { try { processBatch(id) } finally { batchJobs.remove(id) } }
+    }
+
+    /**
+     * Cancels a message whose files are still being prepared or uploaded (it hasn't been sent): the upload stops and the
+     * message and its local copies are removed. Nothing reaches anyone. Returns false once the message has been sent.
+     */
+    suspend fun cancelBatch(id: String): Boolean {
+        val m = db.messages().get(id) ?: return false
+        if (m.status != MessageStatus.SENDING && m.status != MessageStatus.FAILED) return false
+        if (db.outbox().get(id) != null) return false // already handed to the outbox: it's being sent
+        batchJobs.remove(id)?.cancel()
+        attachments(m).forEach { ref -> if (ref.id == AttachmentFiles.PENDING) batchSources.remove(ref.sha256) }
+        files.deleteFor(id, attachments(m))
+        db.messages().deleteLocal(id)
+        refreshPreview(m.conversationId)
+        return true
+    }
+
+    /** The largest file this server accepts (its `/v1/server-info`), capped at the app's own limit. Cached. */
+    @Volatile private var serverMaxBytes: Long? = null
+    suspend fun maxAttachmentBytes(): Long {
+        serverMaxBytes?.let { return it }
+        val v = runCatching { api.get<com.griipbuddy.orbit.data.api.ServerInfo>("/v1/server-info").attachmentMaxBytes }.getOrNull()
+        return AttachmentPolicy.effectiveMax(v).also { if (v != null) serverMaxBytes = it }
+    }
+
+    /**
+     * Forwards [m] to [destCid], which the person chose and confirmed. Text, contact cards, locations and animated
+     * emoji go as a new message; files are decrypted copies on this phone (downloaded first if needed), encrypted again
+     * with new keys and uploaded for the destination, because each conversation's files can only be fetched by its
+     * members. Mentions aren't carried over. Returns the new message's id.
+     */
+    suspend fun forward(m: MessageEntity, destCid: String): String {
+        val refs = attachments(m).filter { it.id != AttachmentFiles.PENDING }
+        if (refs.isEmpty()) return sendText(destCid, m.text, mentions = MentionSet.NONE, rich = rich(m), forwarded = true)
+        val items = refs.map { ref ->
+            val f = downloadAttachment(ref)
+            val head = withContext(Dispatchers.IO) { f.inputStream().use { i -> ByteArray(64).let { b -> b.copyOf(i.read(b).coerceAtLeast(0)) } } }
+            val sniffed = AttachmentPolicy.sniff(head)
+            BatchItem(
+                android.net.Uri.fromFile(f), ref.name, ref.mime, f.length(), AttachmentPolicy.kind(ref.mime, sniffed), sniffed,
+                voiceDurationMs = if (ref.voice == true) ref.durationMs ?: 0 else null,
+            )
+        }
+        val caption = if (m.text.isBlank()) "" else m.text
+        return sendBatch(destCid, items, AttachmentPolicy.Quality.ORIGINAL, caption, forwarded = true)
     }
 
     private suspend fun processBatch(id: String) {
@@ -469,9 +541,16 @@ class MessageRepository(
                 val uploaded = uploadSlots.withPermit {
                     val enc = File(context.cacheDir, "${local.name}.enc")
                     try {
-                        val meta = withContext(Dispatchers.IO) { AttachmentCrypto.encryptFile(local, enc) }
+                        // Over 25 MB: the chunked format, so neither side ever holds the whole file in memory.
+                        val chunked = local.length() > AttachmentPolicy.LEGACY_MAX_FILE_BYTES
+                        val meta = withContext(Dispatchers.IO) {
+                            if (chunked) ChunkedAttachmentCrypto.encryptFile(local, enc) else AttachmentCrypto.encryptFile(local, enc)
+                        }
                         val up = TransferRetry.run { api.uploadFile("/v1/attachments?conversationId=$cid", enc) { p -> progress(i, "Uploading$what", 0.5f + p * 0.5f) } }
-                        AttachmentRef(up.id, ref.name, ref.mime, local.length(), meta.key, meta.nonce, meta.sha256, ref.voice, ref.durationMs)
+                        AttachmentRef(
+                            up.id, ref.name, ref.mime, local.length(), meta.key, meta.nonce, meta.sha256, ref.voice, ref.durationMs,
+                            chunk = if (chunked) ChunkedAttachmentCrypto.DEFAULT_CHUNK else null,
+                        )
                     } finally {
                         enc.delete()
                     }
@@ -481,7 +560,7 @@ class MessageRepository(
                 save()
             }
             val m = db.messages().get(id) ?: return
-            sendText(cid, m.text, replyTo = m.replyToId, attachments = refs, presetId = id)
+            sendText(cid, m.text, replyTo = m.replyToId, attachments = refs, presetId = id, forwarded = m.forwarded, mentions = if (m.forwarded) MentionSet.NONE else null)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e // left SENDING; marked interrupted at the next start (failInterruptedUploads)
         } catch (e: ApiException) {
@@ -512,7 +591,8 @@ class MessageRepository(
         val raw = File(context.cacheDir, "prep-${local.name}")
         try {
             val copyTo = if (compress) raw else part
-            copyFromUri(src.uri, copyTo, if (compress) AttachmentPolicy.MAX_SOURCE_BYTES else AttachmentPolicy.MAX_FILE_BYTES)
+            val max = maxAttachmentBytes()
+            copyFromUri(src.uri, copyTo, if (compress) AttachmentPolicy.MAX_SOURCE_BYTES else max)
             // The bytes read now must still be what was checked when it was picked (a file can change after picking).
             val head = copyTo.inputStream().use { i -> ByteArray(64).let { b -> b.copyOf(i.read(b).coerceAtLeast(0)) } }
             val kindNow = AttachmentPolicy.kind(pending.mime, AttachmentPolicy.sniff(head))
@@ -521,21 +601,21 @@ class MessageRepository(
             if (compress && kindNow == src.kind) {
                 val done = when (src.kind) {
                     AttachmentPolicy.Kind.PHOTO -> com.griipbuddy.orbit.media.MediaPrep.photo(raw, part, name, src.quality)
-                    else -> com.griipbuddy.orbit.media.MediaPrep.video(context, raw, part, name, src.quality, onProgress)
+                    else -> com.griipbuddy.orbit.media.MediaPrep.video(context, raw, part, name, src.quality, max, onProgress)
                 }
                 if (done == null) {
                     // Already within this quality: sent as it is, if it fits.
-                    if (raw.length() > AttachmentPolicy.MAX_FILE_BYTES) throw AttachmentTooLarge()
+                    if (raw.length() > max) throw AttachmentTooLarge()
                     if (!raw.renameTo(part)) raw.copyTo(part, overwrite = true)
                 } else {
                     name = done.name
                     mime = done.mime
                 }
             } else if (compress) {
-                if (raw.length() > AttachmentPolicy.MAX_FILE_BYTES) throw AttachmentTooLarge()
+                if (raw.length() > max) throw AttachmentTooLarge()
                 if (!raw.renameTo(part)) raw.copyTo(part, overwrite = true)
             }
-            if (part.length() > AttachmentPolicy.MAX_FILE_BYTES) throw AttachmentTooLarge()
+            if (part.length() > max) throw AttachmentTooLarge()
             if (!part.renameTo(local)) throw java.io.IOException("couldn't store the prepared file")
             return pending.copy(name = name, mime = mime, size = local.length())
         } finally {
@@ -577,7 +657,11 @@ class MessageRepository(
             TransferRetry.run { api.downloadTo("/v1/attachments/${ref.id}", part) { p -> _transfer.update { it + (ref.id to p) } } }
             val out = files.fileFor(ref.id, ref.name)
             try {
-                withContext(Dispatchers.IO) { AttachmentCrypto.decryptFile(part, ref.key, ref.nonce, ref.sha256, out) }
+                withContext(Dispatchers.IO) {
+                    val chunk = ref.chunk
+                    if (chunk != null) ChunkedAttachmentCrypto.decryptFile(part, ref.key, ref.nonce, ref.sha256, chunk, out)
+                    else AttachmentCrypto.decryptFile(part, ref.key, ref.nonce, ref.sha256, out)
+                }
             } catch (e: EnvelopeException) {
                 part.delete() // start over next time rather than resume corrupt bytes
                 throw e
@@ -780,6 +864,8 @@ class MessageRepository(
                     mentionsJson = json.encodeToString(listOfStrings, MentionRules.stored(received)), attachmentsJson = json.encodeToString(attachmentsSer, atts),
                     sentAt = item.payload.sentAt ?: serverTs, serverTs = serverTs, sortTs = serverTs,
                     status = if (mine) MessageStatus.SENT else MessageStatus.RECEIVED,
+                    richJson = RichRules.fromPayload(pl)?.let { json.encodeToString(RichContent.serializer(), it) },
+                    forwarded = pl.forwarded == true,
                 )
                 if (db.messages().insertIgnore(m) == -1L) return
                 replayPending(item.conversationId, item.messageId, conv, me)
@@ -1038,6 +1124,8 @@ class MessageRepository(
     }
 
     private fun preview(p: Payload): String = when {
+        p.contact != null -> "👤 ${p.contact.name}"
+        p.location != null -> "📍 " + (p.location.label ?: "Location")
         !p.attachments.isNullOrEmpty() && p.text.isNullOrBlank() && p.attachments.size > 1 -> AttachmentPolicy.preview(p.attachments.map { AttachmentPolicy.kindOfMime(it.mime) })
         !p.attachments.isNullOrEmpty() && p.text.isNullOrBlank() -> VoiceNote.label(p.attachments) ?: "📎 ${p.attachments.first().name}"
         !p.attachments.isNullOrEmpty() -> "📎 ${p.text}"

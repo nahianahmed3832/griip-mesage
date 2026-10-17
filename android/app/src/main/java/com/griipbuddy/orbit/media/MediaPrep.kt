@@ -48,7 +48,7 @@ object MediaPrep {
     data class Prepared(val name: String, val mime: String)
 
     class TooLargeAfterCompression(name: String) :
-        Exception("“$name” is still over 25 MB after compression. Try Standard quality, or a shorter video.")
+        Exception("“$name” is still too large after compression. Try Standard quality, or a shorter video.")
 
     /** Photo at [q] from [src] into [out]. */
     suspend fun photo(src: File, out: File, name: String, q: Quality): Prepared = withContext(Dispatchers.IO) {
@@ -105,6 +105,26 @@ object MediaPrep {
         return Bitmap.createBitmap(sampled, 0, 0, sampled.width, sampled.height, m, true).also { if (it !== sampled) sampled.recycle() }
     }
 
+    /**
+     * A profile photo from a picked image: upright, centre-cropped to a square, 512 px, JPEG 85 (about 60 KB). Re-encoding
+     * drops the camera's metadata, including location, before the photo leaves the phone.
+     */
+    suspend fun profilePhoto(context: Context, uri: Uri): ByteArray = withContext(Dispatchers.IO) {
+        val tmp = File(context.cacheDir, "profile-src-${System.nanoTime()}")
+        try {
+            context.contentResolver.openInputStream(uri)?.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } } ?: throw java.io.IOException("can't read")
+            val src = decodeUpright(tmp, 1024) ?: throw java.io.IOException("This image couldn't be read")
+            val side = minOf(src.width, src.height)
+            val square = Bitmap.createBitmap(src, (src.width - side) / 2, (src.height - side) / 2, side, side)
+            val out = if (side > 512) Bitmap.createScaledBitmap(square, 512, 512, true) else square
+            val bytes = java.io.ByteArrayOutputStream().also { out.compress(Bitmap.CompressFormat.JPEG, 85, it) }.toByteArray()
+            listOf(src, square, out).distinct().forEach { it.recycle() }
+            bytes
+        } finally {
+            tmp.delete()
+        }
+    }
+
     data class VideoInfo(val width: Int, val height: Int, val bitrate: Int)
 
     fun videoInfo(file: File): VideoInfo? {
@@ -133,7 +153,7 @@ object MediaPrep {
      * (the caller sends [src] as it is). Cancelling the coroutine stops the export.
      */
     @OptIn(UnstableApi::class)
-    suspend fun video(context: Context, src: File, out: File, name: String, q: Quality, onProgress: (Float) -> Unit): Prepared? {
+    suspend fun video(context: Context, src: File, out: File, name: String, q: Quality, maxBytes: Long, onProgress: (Float) -> Unit): Prepared? {
         val info = withContext(Dispatchers.IO) { videoInfo(src) } ?: throw java.io.IOException("This video couldn't be read")
         if (videoFits(info, q)) return null
         out.delete()
@@ -185,7 +205,7 @@ object MediaPrep {
                 }
             }
         }
-        if (out.length() > AttachmentPolicy.MAX_FILE_BYTES) {
+        if (out.length() > maxBytes) {
             out.delete()
             throw TooLargeAfterCompression(name)
         }

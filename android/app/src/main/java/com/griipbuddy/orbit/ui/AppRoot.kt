@@ -24,6 +24,8 @@ import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Workspaces
+import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Workspaces
@@ -57,10 +59,8 @@ import com.griipbuddy.orbit.ui.screens.onboarding.JoinWorkspaceScreen
 import com.griipbuddy.orbit.ui.screens.onboarding.OnboardingFlow
 import com.griipbuddy.orbit.ui.screens.onboarding.RevokedScreen
 import com.griipbuddy.orbit.ui.screens.profile.DevicesScreen
-import com.griipbuddy.orbit.ui.screens.profile.ProfileScreen
 import com.griipbuddy.orbit.ui.screens.profile.SecurityScreen
 import com.griipbuddy.orbit.ui.screens.profile.ServersScreen
-import com.griipbuddy.orbit.ui.screens.profile.SettingsScreen
 import com.griipbuddy.orbit.ui.screens.profile.UserProfileScreen
 import com.griipbuddy.orbit.ui.screens.workspace.ActivityScreen
 import com.griipbuddy.orbit.ui.screens.workspace.InvitesScreen
@@ -87,6 +87,16 @@ object Routes {
     const val SERVERS = "servers"
     /** Kept for older links; the settings now live on the Settings tab. */
     const val SETTINGS = "settings"
+    const val EDIT_PROFILE = "profile/edit"
+    const val ACCOUNTS = "accounts"
+    const val CHAT_SETTINGS = "settings/chats"
+    const val NOTIFICATION_SETTINGS = "settings/notifications"
+    const val CALL_SETTINGS = "settings/calls"
+    const val LANGUAGE = "settings/language"
+    const val STORAGE = "settings/storage"
+    const val CONTACTS = "contacts"
+    const val PRIVACY = "privacy"
+    const val BLOCKED = "blocked"
     fun conversation(id: String, thread: String? = null) = "conversation/$id" + (thread?.let { "?thread=$it" } ?: "")
     fun info(id: String) = "conversation/$id/info"
     fun team(orgId: String, teamId: String) = "team/$orgId/$teamId"
@@ -94,7 +104,8 @@ object Routes {
     fun invites(orgId: String) = "invites/$orgId"
     fun activity(orgId: String) = "activity/$orgId"
     fun user(id: String) = "user/$id"
-    val tabs = setOf(CHATS, CALLS, WORKSPACE, PROFILE)
+    /** The bottom bar: personal communication first (2026-10-17); workspaces open from Contacts. */
+    val tabs = setOf(CHATS, CALLS, CONTACTS, PROFILE)
 }
 
 @Composable
@@ -102,6 +113,12 @@ fun AppRoot(container: AppContainer, pendingConversation: String?, pendingInvite
     CompositionLocalProvider(LocalContainer provides container) {
         val session by container.session.state.collectAsStateWithLifecycle()
         val call by container.calls.state.collectAsStateWithLifecycle()
+        // In picture-in-picture only the call is drawn (CallPip).
+        val pip by com.griipbuddy.orbit.call.CallPip.active.collectAsStateWithLifecycle()
+        if (pip && call.phase != CallPhase.Idle) {
+            com.griipbuddy.orbit.ui.screens.calls.CallPipView(call)
+            return@CompositionLocalProvider
+        }
         AppBackground {
             when (val s = session) {
                 is SessionState.SignedOut -> OnboardingFlow(pendingInvite)
@@ -149,7 +166,8 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             composable(Routes.HOME) { ChatsScreen(nav) }
             composable(Routes.CALLS) { CallsScreen(nav) }
             composable(Routes.WORKSPACE) { WorkspaceScreen(nav) }
-            composable(Routes.PROFILE) { ProfileScreen(nav) }
+            composable(Routes.CONTACTS) { com.griipbuddy.orbit.ui.screens.contacts.ContactsScreen(nav) }
+            composable(Routes.PROFILE) { com.griipbuddy.orbit.ui.screens.profile.SettingsHub(nav) }
             composable(Routes.JOIN + "?code={code}") { JoinWorkspaceScreen(nav, it.arguments?.getString("code")) }
             composable(Routes.NEW_CHAT + "?mode={mode}") { NewChatScreen(nav, it.arguments?.getString("mode")) }
             composable(Routes.SEARCH) { SearchScreen(nav) }
@@ -163,15 +181,24 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             composable(Routes.DEVICES) { DevicesScreen(nav) }
             composable(Routes.SECURITY) { SecurityScreen(nav) }
             composable(Routes.SERVERS) { ServersScreen(nav) }
-            composable(Routes.SETTINGS) { SettingsScreen(nav) }
+            composable(Routes.SETTINGS) { com.griipbuddy.orbit.ui.screens.profile.SettingsHub(nav) }
+            composable(Routes.EDIT_PROFILE) { com.griipbuddy.orbit.ui.screens.profile.EditProfileScreen(nav) }
+            composable(Routes.ACCOUNTS) { com.griipbuddy.orbit.ui.screens.profile.AccountsScreen(nav) }
+            composable(Routes.CHAT_SETTINGS) { com.griipbuddy.orbit.ui.screens.profile.ChatSettingsScreen(nav) }
+            composable(Routes.NOTIFICATION_SETTINGS) { com.griipbuddy.orbit.ui.screens.profile.NotificationSettingsScreen(nav) }
+            composable(Routes.CALL_SETTINGS) { com.griipbuddy.orbit.ui.screens.profile.CallSettingsScreen(nav) }
+            composable(Routes.LANGUAGE) { com.griipbuddy.orbit.ui.screens.profile.LanguageScreen(nav) }
+            composable(Routes.STORAGE) { com.griipbuddy.orbit.ui.screens.profile.StorageScreen(nav) }
+            composable(Routes.PRIVACY) { com.griipbuddy.orbit.ui.screens.profile.PrivacyScreen(nav) }
+            composable(Routes.BLOCKED) { com.griipbuddy.orbit.ui.screens.profile.BlockedUsersScreen(nav) }
         }
         if (route in Routes.tabs || route == Routes.HOME) {
             GriipNavigationBar(
                 items = listOf(
-                    NavItem(Routes.CHATS, "Chats", Icons.AutoMirrored.Outlined.Chat, Icons.AutoMirrored.Rounded.Chat, badge = unread),
-                    NavItem(Routes.CALLS, "Calls", Icons.Outlined.Call, Icons.Rounded.Call),
-                    NavItem(Routes.WORKSPACE, "Workspace", Icons.Outlined.Workspaces, Icons.Rounded.Workspaces),
-                    NavItem(Routes.PROFILE, "Settings", Icons.Outlined.Settings, Icons.Rounded.Settings),
+                    NavItem(Routes.CHATS, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_chats), Icons.AutoMirrored.Outlined.Chat, Icons.AutoMirrored.Rounded.Chat, badge = unread),
+                    NavItem(Routes.CALLS, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_calls), Icons.Outlined.Call, Icons.Rounded.Call),
+                    NavItem(Routes.CONTACTS, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_contacts), Icons.Outlined.People, Icons.Rounded.People),
+                    NavItem(Routes.PROFILE, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_settings), Icons.Outlined.Settings, Icons.Rounded.Settings),
                 ),
                 selectedRoute = if (route == Routes.HOME) Routes.CHATS else route,
                 onSelect = { item -> nav.switchTab(item.route) },

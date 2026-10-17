@@ -26,6 +26,10 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations")
     suspend fun all(): List<ConversationEntity>
 
+    /** Restoring a backup: adds chats this phone doesn't have; never replaces one it has. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(c: ConversationEntity): Long
+
     @Upsert
     suspend fun upsert(c: ConversationEntity)
 
@@ -88,6 +92,17 @@ interface MessageDao {
 
     @Upsert
     suspend fun upsert(m: MessageEntity)
+
+    /** Backups: every stored message, oldest first, a page at a time. */
+    @Query("SELECT * FROM messages ORDER BY sortTs, id LIMIT :limit OFFSET :offset")
+    suspend fun page(limit: Int, offset: Int): List<MessageEntity>
+
+    @Query("SELECT COUNT(*) FROM messages")
+    suspend fun count(): Int
+
+    /** Removes a message only from this phone (an unsent upload the person cancelled). */
+    @Query("DELETE FROM messages WHERE id = :id")
+    suspend fun deleteLocal(id: String)
 
     @Query("UPDATE messages SET status = :status, serverTs = COALESCE(:serverTs, serverTs), errorText = :error WHERE id = :id")
     suspend fun setStatus(id: String, status: String, serverTs: Long?, error: String?)
@@ -166,6 +181,13 @@ interface UserDao {
 
     @Query("UPDATE users SET online = :online, lastSeenAt = COALESCE(:lastSeen, lastSeenAt) WHERE id = :id")
     suspend fun setPresence(id: String, online: Boolean, lastSeen: Long?)
+
+    @Query("SELECT * FROM users")
+    suspend fun all(): List<UserEntity>
+
+    /** Restoring a backup: adds people this phone doesn't know; never replaces a stored identity pin. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(u: UserEntity): Long
 }
 
 @Dao
@@ -264,7 +286,7 @@ abstract class GriipDatabase : RoomDatabase() {
          * Schema version. Raising it needs a matching step in [Migrations] and the exported schema
          * committed under `app/schemas` (docs/DECISIONS.md D-13); `MigrationsTest` enforces both.
          */
-        const val VERSION = 5
+        const val VERSION = 6
 
         /**
          * The database file is encrypted with SQLCipher (AES-256) using a random passphrase that is

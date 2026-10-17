@@ -66,6 +66,14 @@ class ApiClient(
         return decode(res, de)
     }
 
+    /** Sends raw bytes (a profile photo) with [method]; the reply is JSON. */
+    suspend fun <T> sendBytes(method: String, path: String, bytes: ByteArray, de: kotlinx.serialization.KSerializer<T>): T {
+        val body = bytes.toRequestBody("application/octet-stream".toMediaType())
+        var res = execute(method, path, body, true)
+        if (res.first == 401 && reauthLock.withLock { reauth() }) res = execute(method, path, body, true)
+        return decode(res, de)
+    }
+
     /** Streams an already-encrypted file to the relay with progress; nothing is held in memory (T2.6). */
     suspend fun uploadFile(path: String, file: File, onProgress: (Float) -> Unit): AttachmentUploadRes {
         val total = file.length()

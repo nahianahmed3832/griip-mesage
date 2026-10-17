@@ -26,6 +26,13 @@ object MediaGallery {
         else -> null
     }
 
+    /** Whether received photos download on their own (Settings › Chats), given whether the network is unmetered. */
+    fun autoDownloadAllowed(mode: com.griipbuddy.orbit.data.repo.AutoDownload, unmetered: Boolean): Boolean = when (mode) {
+        com.griipbuddy.orbit.data.repo.AutoDownload.ALWAYS -> true
+        com.griipbuddy.orbit.data.repo.AutoDownload.WIFI -> unmetered
+        com.griipbuddy.orbit.data.repo.AutoDownload.NEVER -> false
+    }
+
     fun kindOf(ref: AttachmentRef): MediaKind? = when {
         ref.id == "pending" || VoiceNote.isVoice(ref) -> null
         ref.mime.lowercase() in IMAGES -> MediaKind.Image

@@ -18,6 +18,15 @@ import android.widget.Toast
 import android.os.Build
 import androidx.activity.result.PickVisualMediaRequest
 import com.griipbuddy.orbit.data.model.AttachmentPolicy
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Translate
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.outlined.ContactPage
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.automirrored.outlined.Forward
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -190,6 +199,73 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val batch by vm.batch.collectAsStateWithLifecycle()
     val batchNote by vm.batchNote.collectAsStateWithLifecycle()
     val riskyOpen by vm.riskyOpen.collectAsStateWithLifecycle()
+    val maxFile by vm.maxFile.collectAsStateWithLifecycle()
+    val chatSettings by vm.c.settings.state.collectAsStateWithLifecycle()
+    // Camera: a photo or a video taken now, reviewed in the send preview like a picked one. The camera permission is
+    // asked only when the camera is used.
+    var captureUri by rememberSaveable { mutableStateOf<String?>(null) }
+    val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> captureUri?.let { u -> if (ok) vm.pick(ctx, listOf(android.net.Uri.parse(u))) } }
+    val takeVideo = rememberLauncherForActivityResult(ActivityResultContracts.CaptureVideo()) { ok -> captureUri?.let { u -> if (ok) vm.pick(ctx, listOf(android.net.Uri.parse(u))) } }
+    var pendingCamera by remember { mutableStateOf<Boolean?>(null) } // true: video
+    fun launchCamera(video: Boolean) {
+        val dir = java.io.File(ctx.cacheDir, "camera").apply { mkdirs() }
+        val f = java.io.File(dir, "orbit-${System.currentTimeMillis()}" + if (video) ".mp4" else ".jpg")
+        val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
+        captureUri = uri.toString()
+        runCatching { if (video) takeVideo.launch(uri) else takePhoto.launch(uri) }.onFailure { vm.error.value = "No camera app is available" }
+    }
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val v = pendingCamera
+        pendingCamera = null
+        if (granted && v != null) launchCamera(v) else if (!granted) vm.error.value = "Orbit needs the camera permission to take photos and videos."
+    }
+    fun openCamera(video: Boolean) {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) launchCamera(video)
+        else { pendingCamera = video; cameraPermission.launch(android.Manifest.permission.CAMERA) }
+    }
+    // Contact: one picked entry, previewed before sending.
+    var contactCard by remember { mutableStateOf<com.griipbuddy.orbit.data.model.ContactCard?>(null) }
+    val pickContact = rememberLauncherForActivityResult(PickPhoneContact()) { uri ->
+        if (uri != null) contactCard = readPickedContact(ctx, uri) ?: run { vm.error.value = "Couldn't read that contact"; null }
+    }
+    // Location: once, after the person confirms.
+    var locationSheet by remember { mutableStateOf(false) }
+    var location by remember { mutableStateOf<com.griipbuddy.orbit.data.model.SharedLocation?>(null) }
+    var locating by remember { mutableStateOf(false) }
+    var locationProblem by remember { mutableStateOf<String?>(null) }
+    fun locate() {
+        locating = true
+        locationProblem = null
+        scope.launch {
+            val l = com.griipbuddy.orbit.media.OneShotLocation.current(ctx)
+            location = l?.let { com.griipbuddy.orbit.data.model.RichRules.clean(com.griipbuddy.orbit.data.model.SharedLocation(it.latitude, it.longitude, if (it.hasAccuracy()) it.accuracy else null)) }
+            if (location == null) locationProblem = "Couldn't get your location. Check that location is turned on."
+            locating = false
+        }
+    }
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
+        if (res.values.any { it }) { locationSheet = true; locate() } else vm.error.value = "Orbit needs location access to share where you are."
+    }
+    fun shareLocation() {
+        val has = listOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+            .any { androidx.core.content.ContextCompat.checkSelfPermission(ctx, it) == android.content.pm.PackageManager.PERMISSION_GRANTED }
+        if (has) { locationSheet = true; locate() }
+        else locationPermission.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION))
+    }
+    var emojiSheet by remember { mutableStateOf(false) }
+    val translations by vm.translations.collectAsStateWithLifecycle()
+    var translateFor by remember { mutableStateOf<MessageEntity?>(null) }
+    // Links: opened as the Chat settings say, after a confirmation when asked for or when the address looks misleading.
+    var linkToOpen by remember { mutableStateOf<String?>(null) }
+    val onOpenLink: (String) -> Unit = { url ->
+        if (com.griipbuddy.orbit.ui.LinkOpener.needsConfirmation(url, chatSettings.linkOpening)) linkToOpen = url
+        else if (!com.griipbuddy.orbit.ui.LinkOpener.open(ctx, url, chatSettings.linkOpening == com.griipbuddy.orbit.data.repo.LinkOpening.IN_APP)) vm.error.value = "No app can open this link"
+    }
+    val composerPreview by vm.linkPreview.collectAsStateWithLifecycle()
+    // Received photos download by themselves when Settings › Chats › media allows (videos and files wait for a tap).
+    LaunchedEffect(messages.firstOrNull()?.id, chatSettings.autoDownload) { vm.autoDownloadPhotos(messages.take(40), ctx) }
+    var forwardFor by remember { mutableStateOf<MessageEntity?>(null) }
+    var forwardTo by remember { mutableStateOf<com.griipbuddy.orbit.data.db.ConversationEntity?>(null) }
     // Photos and videos open in the in-app viewer; other files are opened explicitly with another app.
     var viewerFor by rememberSaveable { mutableStateOf<String?>(null) }
     var saveTarget by remember { mutableStateOf<AttachmentRef?>(null) }
@@ -346,8 +422,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             HorizontalDivider(thickness = 1.dp, color = c.border)
         }
 
-        // Messages
-        Box(Modifier.weight(1f)) {
+        // Messages, over Settings › Chats › wallpaper.
+        Box(Modifier.weight(1f).then(com.griipbuddy.orbit.ui.theme.Wallpapers.modifier(chatSettings.wallpaper, c))) {
             if (messages.isEmpty() && threadRoot == null) {
                 EmptyState(
                     Icons.Rounded.Lock, "Say hello 👋",
@@ -380,6 +456,10 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                                 threadCount = if (threadRoot == null) threadCounts[m.id] ?: 0 else 0, isGroupConv = isGroup,
                                 replyPreview = reply?.let { previewOf(it) },
                                 mentions = mentionSpansFor(m),
+                                rich = vm.c.messages.rich(m),
+                                translation = translations[m.id],
+                                animateEmoji = chatSettings.animatedEmoji,
+                                textScale = chatSettings.textScale,
                             ),
                             me = me,
                             transfer = vm.c.messages.attachments(m).firstNotNullOfOrNull { transfers[it.id] } ?: transfers[m.id],
@@ -391,6 +471,9 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                             onRetry = { vm.retry(m) },
                             onReplyClick = { id -> val idx = messages.indexOfFirst { it.id == id }; if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) } },
                             onMentionClick = { id -> nav.navigate(Routes.user(id)) },
+                            onOpenLink = onOpenLink,
+                            onCopyText = { t -> scope.launch { clipboard.setClipEntry(ClipData.newPlainText("contact", t).toClipEntry()) } },
+                            onFindPhone = { ph -> vm.findByPhone(ph) { id -> nav.navigate(Routes.user(id)) } },
                             voice = voicePlayer,
                             onVoiceToggle = { ref -> vm.toggleVoice(m.id, ref) },
                             onVoiceSeek = { ref, pos -> vm.seekVoice(m.id, ref, pos) },
@@ -459,6 +542,12 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     vm.typingChanged(t)
                 }
             }
+            composerPreview?.let { p ->
+                Row(Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { LinkPreviewCard(p, out = false, onOpen = {}) }
+                    CircleIconButton(Icons.Outlined.Close, "Send without preview", { vm.dismissPreview() }, size = 36.dp, tint = c.textSecondary)
+                }
+            }
             Composer(
                 text = field,
                 onText = { field = it; vm.typingChanged(it.text) },
@@ -466,6 +555,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     ?: editing?.let { "Editing message" to it.text },
                 onCancelContext = { vm.replyTo.value = null; vm.editing.value = null; if (editing != null) setText("") },
                 onAttach = { attachSheet = true },
+                onEmoji = { emojiSheet = true },
                 onSend = { vm.send(text); setText("") },
                 placeholder = if (threadRoot != null) "Reply in thread…" else if (conv?.type == "CHANNEL") "Message #$title" else "Message",
                 voice = VoiceComposerState(
@@ -499,13 +589,17 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 }
             }
             if (!m.deleted && m.kind == "text") {
-                if (interactive) MenuRow(Icons.AutoMirrored.Rounded.Reply, "Reply", onClick = { vm.replyTo.value = m; vm.editing.value = null; actionFor = null; focusComposer() }, trailing = null)
-                if (interactive && threadRoot == null) MenuRow(Icons.Outlined.Forum, "Reply in thread", onClick = { actionFor = null; nav.navigate(Routes.conversation(conversationId, m.id)) }, trailing = null)
-                if (m.text.isNotEmpty()) MenuRow(Icons.Outlined.ContentCopy, "Copy text", onClick = {
+                if (interactive) MenuRow(Icons.AutoMirrored.Rounded.Reply, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.menu_reply), onClick = { vm.replyTo.value = m; vm.editing.value = null; actionFor = null; focusComposer() }, trailing = null)
+                if (interactive && threadRoot == null) MenuRow(Icons.Outlined.Forum, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.menu_reply_thread), onClick = { actionFor = null; nav.navigate(Routes.conversation(conversationId, m.id)) }, trailing = null)
+                if (m.text.isNotEmpty() && vm.c.messages.rich(m)?.structured != true) {
+                    if (translations[m.id] != null) MenuRow(Icons.Outlined.Translate, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.menu_show_original), onClick = { vm.showOriginal(m); actionFor = null }, trailing = null)
+                    else MenuRow(Icons.Outlined.Translate, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.menu_translate), onClick = { translateFor = m; actionFor = null }, trailing = null)
+                }
+                if (m.text.isNotEmpty()) MenuRow(Icons.Outlined.ContentCopy, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.menu_copy), onClick = {
                     scope.launch { clipboard.setClipEntry(ClipData.newPlainText("message", m.text).toClipEntry()) }
                     actionFor = null
                 }, trailing = null)
-                if (interactive && m.outgoing && m.status != MessageStatus.FAILED && m.status != MessageStatus.SENDING) MenuRow(Icons.Outlined.Edit, "Edit", onClick = {
+                if (interactive && m.outgoing && m.status != MessageStatus.FAILED && m.status != MessageStatus.SENDING) MenuRow(Icons.Outlined.Edit, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.menu_edit), onClick = {
                     vm.editing.value = m; vm.replyTo.value = null; setText(m.text); actionFor = null
                 }, trailing = null)
                 if (interactive) MenuRow(Icons.Outlined.PushPin, if (m.pinned) "Unpin" else "Pin for everyone", tint = c.peach, tintBg = c.peachSoft, onClick = { vm.pin(m); actionFor = null }, trailing = null)
@@ -517,9 +611,15 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 MenuRow(Icons.Outlined.FolderOpen, "Save to Files", onClick = { actionFor = null; onMedia(MediaAction.SaveToFiles, file) }, trailing = null)
                 MenuRow(Icons.Outlined.Share, "Share…", onClick = { actionFor = null; onMedia(MediaAction.Share, file) }, trailing = null)
             }
-            if (m.status == MessageStatus.FAILED) MenuRow(Icons.Outlined.Refresh, "Retry sending", onClick = { vm.retry(m); actionFor = null }, trailing = null)
-            if (m.outgoing) MenuRow(Icons.Outlined.Info, "Message info", tint = c.lavender, tintBg = c.lavenderSoft, onClick = { infoFor = m; actionFor = null }, trailing = null)
-            if (interactive && m.outgoing && !m.deleted) MenuRow(Icons.Outlined.DeleteOutline, "Delete for everyone", tint = c.danger, tintBg = c.dangerSoft, onClick = { vm.delete(m); actionFor = null }, trailing = null)
+            if (!m.deleted && m.kind == "text" && m.status != MessageStatus.SENDING && vm.c.messages.attachments(m).none { it.id == "pending" }) {
+                MenuRow(Icons.AutoMirrored.Outlined.Forward, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.menu_forward), onClick = { forwardFor = m; actionFor = null }, trailing = null)
+            }
+            if (m.outgoing && (m.status == MessageStatus.SENDING || m.status == MessageStatus.FAILED) && vm.c.messages.attachments(m).any { it.id == "pending" }) {
+                MenuRow(Icons.Outlined.Close, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.menu_cancel_upload), subtitle = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.menu_cancel_upload_sub), tint = c.danger, tintBg = c.dangerSoft, onClick = { vm.cancelUpload(m); actionFor = null }, trailing = null)
+            }
+            if (m.status == MessageStatus.FAILED) MenuRow(Icons.Outlined.Refresh, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.menu_retry), onClick = { vm.retry(m); actionFor = null }, trailing = null)
+            if (m.outgoing) MenuRow(Icons.Outlined.Info, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.menu_info), tint = c.lavender, tintBg = c.lavenderSoft, onClick = { infoFor = m; actionFor = null }, trailing = null)
+            if (interactive && m.outgoing && !m.deleted) MenuRow(Icons.Outlined.DeleteOutline, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.menu_delete), tint = c.danger, tintBg = c.dangerSoft, onClick = { vm.delete(m); actionFor = null }, trailing = null)
         }
     }
     viewerFor?.let { id ->
@@ -548,21 +648,92 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         }
     }
     if (attachSheet) {
-        GlassSheet({ attachSheet = false }, title = "Send") {
+        GlassSheet({ attachSheet = false }, title = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_title)) {
             MenuRow(
-                Icons.Outlined.Image, "Photos and videos", subtitle = "Up to ${AttachmentPolicy.MAX_ITEMS} at once · Standard, HD or Original quality",
+                Icons.Outlined.Image, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_media), subtitle = "Up to ${AttachmentPolicy.MAX_ITEMS} at once · Standard, HD or Original quality",
                 onClick = { attachSheet = false; mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }, trailing = null,
             )
+            MenuRow(Icons.Outlined.PhotoCamera, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_camera), subtitle = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_camera_sub), onClick = { attachSheet = false; openCamera(false) }, trailing = null)
+            MenuRow(Icons.Outlined.Videocam, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_video), subtitle = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_video_sub), onClick = { attachSheet = false; openCamera(true) }, trailing = null)
             MenuRow(
-                Icons.Outlined.Description, "Files", subtitle = "Up to ${AttachmentPolicy.MAX_ITEMS} documents · 25 MB each",
+                Icons.Outlined.Description, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_files), subtitle = "Up to ${AttachmentPolicy.MAX_ITEMS} documents · ${AttachmentPolicy.sizeLabel(maxFile)} each",
                 onClick = { attachSheet = false; picker.launch("*/*") }, trailing = null,
             )
+            MenuRow(Icons.Outlined.ContactPage, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_contact), subtitle = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_contact_sub), onClick = {
+                attachSheet = false
+                runCatching { pickContact.launch(Unit) }.onFailure { vm.error.value = "No contacts app is available" }
+            }, trailing = null)
+            MenuRow(Icons.Outlined.LocationOn, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_location), subtitle = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_location_sub), onClick = { attachSheet = false; shareLocation() }, trailing = null)
         }
     } else if (batch.isNotEmpty()) {
         BatchComposer(
             batch, batchNote, onRemove = vm::unpick, onAddMore = { attachSheet = true },
-            onSend = { q, caption -> vm.sendBatch(q, caption) }, onDismiss = vm::clearBatch,
+            onSend = { q, vq, caption -> vm.sendBatch(q, vq, caption) }, onDismiss = vm::clearBatch,
+            maxFile = maxFile,
         )
+    }
+    contactCard?.let { card ->
+        ContactShareSheet(card, onSend = { vm.sendRich(com.griipbuddy.orbit.data.model.RichContent(contact = it)); contactCard = null }, onDismiss = { contactCard = null })
+    }
+    if (locationSheet) {
+        LocationShareSheet(
+            location, locating, locationProblem, onRetry = ::locate,
+            onSend = { vm.sendRich(com.griipbuddy.orbit.data.model.RichContent(location = it)); locationSheet = false; location = null },
+            onDismiss = { locationSheet = false; location = null },
+        )
+    }
+    if (emojiSheet) {
+        EmojiPickerSheet(
+            chatSettings.animatedEmoji,
+            onInsert = { e -> val t = field.text; val sel = field.selection.start.coerceIn(0, t.length); field = TextFieldValue(t.substring(0, sel) + e + t.substring(sel), TextRange(sel + e.length)) },
+            onSendAnimated = { e -> vm.sendRich(com.griipbuddy.orbit.data.model.RichContent(animoji = e)); emojiSheet = false },
+            onDismiss = { emojiSheet = false },
+        )
+    }
+    forwardFor?.let { m ->
+        val all by vm.c.conversations.observeAll().collectAsStateWithLifecycle(emptyList())
+        ForwardSheet(all, me, onPick = { forwardTo = it }, onDismiss = { forwardFor = null })
+        forwardTo?.let { dest ->
+            val destTitle = com.griipbuddy.orbit.data.repo.ConversationRepository.title(dest, me)
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { forwardTo = null },
+                title = { Text("Forward to $destTitle?") },
+                text = { Text(if (vm.c.messages.attachments(m).isNotEmpty()) "The files are encrypted again for that chat and uploaded." else "It's sent as a new message, marked as forwarded.") },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        vm.forward(m, dest.id) { vm.notice.value = "Forwarded to $destTitle" }
+                        forwardTo = null
+                        forwardFor = null
+                    }) { Text("Forward") }
+                },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = { forwardTo = null }) { Text("Cancel") } },
+            )
+        }
+    }
+    linkToOpen?.let { url ->
+        com.griipbuddy.orbit.ui.LinkOpenSheet(
+            url,
+            onOpen = { inApp -> linkToOpen = null; if (!com.griipbuddy.orbit.ui.LinkOpener.open(ctx, url, inApp)) vm.error.value = "No app can open this link" },
+            onCopy = { scope.launch { clipboard.setClipEntry(ClipData.newPlainText("link", url).toClipEntry()) }; linkToOpen = null },
+            onDismiss = { linkToOpen = null },
+        )
+    }
+    translateFor?.let { m ->
+        GlassSheet({ translateFor = null }, title = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.translate_title)) {
+            if (!vm.c.translator.consented) {
+                Text(androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.translate_consent), style = Griip.type.bodySmall, color = c.textSecondary)
+                Spacer(Modifier.height(10.dp))
+            }
+            Text(androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.translate_into), style = Griip.type.label, color = c.textSecondary)
+            vm.c.translator.targets.forEach { t ->
+                MenuRow(
+                    Icons.Outlined.Translate, com.griipbuddy.orbit.ui.AppLanguage.nativeName(if (t == "zh") "zh-CN" else t),
+                    trailing = { if (t == vm.c.translator.lastTarget) Icon(Icons.Rounded.Check, null, tint = c.primary) },
+                    onClick = { vm.c.translator.consent(); vm.translate(m, t); translateFor = null },
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+        }
     }
     riskyOpen?.let { (ref, why) ->
         GlassSheet({ vm.riskyOpen.value = null }, title = "Open “${ref.name}”?") {
@@ -628,6 +799,7 @@ private fun Composer(
     replyLabel: Pair<String, String>?,
     onCancelContext: () -> Unit,
     onAttach: () -> Unit,
+    onEmoji: () -> Unit,
     onSend: () -> Unit,
     placeholder: String,
     voice: VoiceComposerState,
@@ -668,7 +840,8 @@ private fun Composer(
                 }
             }
             Row(verticalAlignment = Alignment.Bottom) {
-                ComposerIcon(Icons.Outlined.AttachFile, "Attach a photo, video or file", onAttach)
+                ComposerIcon(Icons.Outlined.AttachFile, "Attach a photo, video, file, contact or location", onAttach)
+                ComposerIcon(Icons.Outlined.EmojiEmotions, "Emoji and animated emoji", onEmoji)
                 Box(
                     Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).background(c.surfaceVariant)
                         .padding(horizontal = 16.dp, vertical = 12.dp),

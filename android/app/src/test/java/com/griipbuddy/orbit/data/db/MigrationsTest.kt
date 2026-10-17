@@ -66,6 +66,17 @@ class MigrationsTest {
         }
     }
 
+    @Test
+    fun knownPeopleStartWithoutAProfilePhoto() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { c ->
+            create(c, schema(5))
+            Fixtures.insert(c, 5)
+            Migrations.steps.getValue(5).forEach { c.createStatement().execute(it) }
+            c.createStatement().executeQuery("SELECT COUNT(*) FROM users WHERE photoRev IS NULL").use { it.next(); assertEquals(1, it.getInt(1)) }
+            c.createStatement().executeQuery("SELECT archivedAt FROM conversations WHERE id = 'c1'").use { it.next(); assertEquals(5, it.getInt(1)) }
+        }
+    }
+
     private fun create(c: Connection, db: JsonObject) {
         for (e in db["entities"]!!.jsonArray.map { it.jsonObject }) {
             val table = e["tableName"]!!.jsonPrimitive.content
@@ -106,6 +117,11 @@ private object Fixtures {
     fun insert(c: Connection, version: Int): Map<String, Int> {
         val s = c.createStatement()
         when (version) {
+            5 -> {
+                val base = insert(c, 4)
+                s.execute("UPDATE conversations SET archivedAt = 5 WHERE id = 'c1'")
+                return base
+            }
             4 -> {
                 val base = insert(c, 3)
                 s.execute(

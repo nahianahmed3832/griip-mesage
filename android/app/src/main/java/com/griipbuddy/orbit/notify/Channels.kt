@@ -15,24 +15,81 @@ import com.griipbuddy.orbit.R
 import com.griipbuddy.orbit.data.repo.Notice
 
 object Channels {
-    const val MESSAGES = "messages"
-    const val MENTIONS = "mentions"
-    const val INCOMING_CALL = "incoming_call_v2"
+    /**
+     * Channel ids. Android fixes a channel's sound and vibration when it's created, so each sound setting has its own
+     * channel (2026-10-17, docs/NOTIFICATIONS.md): changing Orbit's sound or vibration setting creates the matching
+     * channel and removes the old one, carrying over whether the person had turned it off or down in Android's settings.
+     */
+    @Volatile var MESSAGES = "messages"
+        private set
+    @Volatile var MENTIONS = "mentions"
+        private set
+    @Volatile var INCOMING_CALL = "incoming_call_v2"
+        private set
     const val ONGOING_CALL = "ongoing_call"
     const val CONNECTION = "connection"
 
+    /** Channels these replace (the original ids, and other sound variants). */
+    private val LEGACY = mapOf("msg" to listOf("messages"), "mention" to listOf("mentions"), "call" to listOf("incoming_call", "incoming_call_v2"))
+
+    /** The channel ids for these sound settings (pure; unit-tested in `ChannelIdsTest`). */
+    object Ids {
+        fun messages(sound: Boolean, vibrate: Boolean) = "orbit_msg_s${if (sound) 1 else 0}v${if (vibrate) 1 else 0}"
+        fun mentions(sound: Boolean, vibrate: Boolean) = "orbit_mention_s${if (sound) 1 else 0}v${if (vibrate) 1 else 0}"
+        fun calls(ring: Boolean, vibrate: Boolean) = "orbit_call_r${if (ring) 1 else 0}v${if (vibrate) 1 else 0}"
+        fun category(id: String): String? = when {
+            id.startsWith("orbit_msg_") -> "msg"
+            id.startsWith("orbit_mention_") -> "mention"
+            id.startsWith("orbit_call_") -> "call"
+            else -> LEGACY.entries.firstOrNull { id in it.value }?.key
+        }
+    }
+
     fun create(context: Context) {
+        val p = context.getSharedPreferences("griip_settings", Context.MODE_PRIVATE)
+        apply(context, p.getBoolean("messageSound", true), p.getBoolean("callRingtone", true), p.getBoolean("vibrate", true))
         val nm = context.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(MESSAGES, "Messages", NotificationManager.IMPORTANCE_HIGH).apply { description = "New messages in your conversations" })
-        nm.createNotificationChannel(NotificationChannel(MENTIONS, "Mentions", NotificationManager.IMPORTANCE_HIGH).apply { description = "When someone @mentions you" })
-        nm.createNotificationChannel(
-            NotificationChannel(INCOMING_CALL, "Incoming calls", NotificationManager.IMPORTANCE_HIGH).apply {
-                setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE), AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).build())
-                enableVibration(true)
-            },
-        )
         nm.createNotificationChannel(NotificationChannel(ONGOING_CALL, "Ongoing call", NotificationManager.IMPORTANCE_LOW))
         nm.createNotificationChannel(NotificationChannel(CONNECTION, "Background connection", NotificationManager.IMPORTANCE_MIN).apply { description = "Shown while Orbit stays connected for background delivery" })
+    }
+
+    /** After Settings › Notifications & Sounds changed. */
+    fun applySoundSettings(context: Context, s: com.griipbuddy.orbit.data.repo.Settings) = apply(context, s.messageSound, s.callRingtone, s.vibrate)
+
+    private fun sound(context: Context, raw: Int) = android.net.Uri.parse("android.resource://${context.packageName}/$raw")
+
+    private fun apply(context: Context, messageSound: Boolean, ring: Boolean, vibrate: Boolean) {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        val notif = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+        val ringAttrs = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+        fun ensure(category: String, id: String, name: String, desc: String, build: NotificationChannel.() -> Unit) {
+            val existing = nm.notificationChannels.filter { Ids.category(it.id) == category }
+            if (existing.none { it.id == id }) {
+                // Carry over a channel the person blocked or turned down in Android's settings.
+                val keep = existing.minOfOrNull { it.importance }?.coerceAtMost(NotificationManager.IMPORTANCE_HIGH) ?: NotificationManager.IMPORTANCE_HIGH
+                nm.createNotificationChannel(NotificationChannel(id, name, keep).apply { description = desc; build() })
+            }
+            existing.filter { it.id != id }.forEach { runCatching { nm.deleteNotificationChannel(it.id) } }
+        }
+        val msgId = Ids.messages(messageSound, vibrate)
+        ensure("msg", msgId, "Messages", "New messages in your conversations") {
+            setSound(if (messageSound) sound(context, R.raw.orbit_message) else null, notif)
+            enableVibration(vibrate)
+        }
+        val mentionId = Ids.mentions(messageSound, vibrate)
+        ensure("mention", mentionId, "Mentions", "When someone @mentions you") {
+            setSound(if (messageSound) sound(context, R.raw.orbit_message) else null, notif)
+            enableVibration(vibrate)
+        }
+        val callId = Ids.calls(ring, vibrate)
+        ensure("call", callId, "Incoming calls", "Orbit's ringtone for calls to you") {
+            setSound(if (ring) sound(context, R.raw.orbit_ringtone) else null, ringAttrs)
+            enableVibration(vibrate)
+            if (vibrate) vibrationPattern = longArrayOf(0, 600, 400, 600, 400, 600)
+        }
+        MESSAGES = msgId
+        MENTIONS = mentionId
+        INCOMING_CALL = callId
     }
 }
 
@@ -41,6 +98,14 @@ class MessageNotifier(private val context: Context) {
     private val history = NotificationHistory()
 
     fun show(n: Notice) {
+        // Settings › Notifications & Sounds (docs/NOTIFICATIONS.md): group chats can be silenced (mentions still come
+        // through), and message text can be hidden from notifications altogether.
+        val prefs = context.getSharedPreferences("griip_settings", Context.MODE_PRIVATE)
+        if (n.isGroup && !n.mention && !prefs.getBoolean("groupNotifications", true)) return
+        if (!prefs.getBoolean("notificationPreviews", true)) {
+            showPrivate(n)
+            return
+        }
         val open = PendingIntent.getActivity(
             context, n.conversationId.hashCode(),
             Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_CONVERSATION, n.conversationId).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
@@ -80,6 +145,26 @@ class MessageNotifier(private val context: Context) {
         runCatching { context.getSystemService(NotificationManager::class.java).notify(n.conversationId.hashCode(), builder.build()) }
     }
 
+    /** Message previews off: "New message", without the sender or the text. */
+    private fun showPrivate(n: Notice) {
+        val open = PendingIntent.getActivity(
+            context, n.conversationId.hashCode(),
+            Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_CONVERSATION, n.conversationId).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notif = NotificationCompat.Builder(context, if (n.mention) Channels.MENTIONS else Channels.MESSAGES)
+            .setSmallIcon(R.drawable.ic_stat_griip)
+            .setContentTitle("Orbit")
+            .setContentText(if (n.mention) "You were mentioned" else "New message")
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setColor(0xFF1FA874.toInt())
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+        runCatching { context.getSystemService(NotificationManager::class.java).notify(n.conversationId.hashCode(), notif) }
+    }
+
     /** An explicit intent to this app's own receiver; only the reply needs to be mutable (RemoteInput fills it). */
     private fun action(conversationId: String, action: String, mutable: Boolean): PendingIntent = PendingIntent.getBroadcast(
         context, 31 * conversationId.hashCode() + action.hashCode(),
@@ -114,6 +199,6 @@ class MessageNotifier(private val context: Context) {
     fun clearAll() {
         history.clearAll()
         val nm = context.getSystemService(NotificationManager::class.java)
-        runCatching { nm.activeNotifications.filter { it.notification.channelId == Channels.MESSAGES || it.notification.channelId == Channels.MENTIONS }.forEach { nm.cancel(it.tag, it.id) } }
+        runCatching { nm.activeNotifications.filter { Channels.Ids.category(it.notification.channelId) in setOf("msg", "mention") }.forEach { nm.cancel(it.tag, it.id) } }
     }
 }

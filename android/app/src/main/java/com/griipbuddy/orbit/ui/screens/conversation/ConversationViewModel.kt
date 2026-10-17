@@ -90,6 +90,7 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     init {
         viewModelScope.launch { c.conversations.refreshOne(conversationId); loadMentionMembers() }
         viewModelScope.launch { runCatching { memberIds.value = c.directory.conversationMemberIds(conversationId) } }
+        viewModelScope.launch { maxFile.value = c.messages.maxAttachmentBytes() }
         // Call history: entries for calls that rang or ended while this phone was offline.
         viewModelScope.launch { runCatching { c.messages.syncCalls(conversationId) } }
         viewModelScope.launch {
@@ -211,11 +212,17 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
                 // Resolved from the loaded member list; if it hasn't loaded yet the repository resolves it from what it knows.
                 val resolved = if (mentionMembers.value.isNotEmpty()) mentionsIn(t) else null
                 if (ed != null) c.messages.edit(ed, t, resolved)
-                else c.messages.sendText(conversationId, t, replyTo = replyId, threadRoot = threadRoot, mentions = resolved)
+                else {
+                    // A preview fetched for a link still in the text goes with it (inside the encrypted message).
+                    val preview = linkPreview.value?.takeIf { p -> com.griipbuddy.orbit.data.model.LinkRules.find(t).any { it.url == p.url } }
+                    c.messages.sendText(conversationId, t, replyTo = replyId, threadRoot = threadRoot, mentions = resolved, rich = preview?.let { com.griipbuddy.orbit.data.model.RichContent(link = it) })
+                }
             }.onFailure { error.value = it.friendly(); restoreText.value = t }.isSuccess
             // The message is stored with its reply (retries resend it from there), so the composer's target can go.
             replyTo.value = ReplyTarget.afterSend(replyTo.value, replyId, ok)
             if (ok) {
+                linkPreview.value = null
+                previewJob?.cancel()
                 if (editing.value?.id == ed?.id) editing.value = null
                 c.conversations.setDraft(conversationId, null)
                 c.messages.setTyping(conversationId, false)
@@ -231,6 +238,35 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     fun typingChanged(text: String) {
         if (text.isNotBlank()) c.messages.setTyping(conversationId, true)
         viewModelScope.launch { c.conversations.setDraft(conversationId, text.ifBlank { null }) }
+        prefetchPreview(text)
+    }
+
+    // ─────────── Link previews (sender side only, docs/LINKS.md) ───────────
+
+    /** The preview for the first link in the composer, when Chat settings › Link previews is on. */
+    val linkPreview = MutableStateFlow<com.griipbuddy.orbit.data.model.LinkPreview?>(null)
+    private var previewJob: kotlinx.coroutines.Job? = null
+    private val dismissedPreviews = HashSet<String>()
+
+    private fun prefetchPreview(text: String) {
+        val url = com.griipbuddy.orbit.data.model.LinkRules.find(text).firstOrNull()?.url?.takeIf { it.startsWith("https://") }
+        if (url == null || !c.settings.current.linkPreviews || url in dismissedPreviews) {
+            previewJob?.cancel()
+            linkPreview.value = null
+            return
+        }
+        if (linkPreview.value?.url == url || previewJob?.isActive == true) return
+        previewJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(700)
+            linkPreview.value = com.griipbuddy.orbit.data.repo.LinkPreviews.fetch(url)
+        }
+    }
+
+    /** The person removed the preview: this link is sent without one. */
+    fun dismissPreview() {
+        linkPreview.value?.url?.let { dismissedPreviews += it }
+        linkPreview.value = null
+        previewJob?.cancel()
     }
 
     fun react(m: MessageEntity, emoji: String) = viewModelScope.launch { c.messages.react(m, emoji) }
@@ -282,7 +318,16 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
         val head = cr.openInputStream(uri)?.use { i -> ByteArray(64).let { b -> b.copyOf(i.read(b).coerceAtLeast(0)) } } ?: return null
         val sniffed = AttachmentPolicy.sniff(head)
         val kind = AttachmentPolicy.kind(mime, sniffed)
-        Candidate(MessageRepository.BatchItem(uri, safe, mime, size, kind, sniffed), AttachmentPolicy.risk(safe, mime, sniffed))
+        val duration = if (kind == AttachmentPolicy.Kind.VIDEO) runCatching {
+            val r = android.media.MediaMetadataRetriever()
+            try {
+                r.setDataSource(context, uri)
+                r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+            } finally {
+                r.release()
+            }
+        }.getOrNull() else null
+        Candidate(MessageRepository.BatchItem(uri, safe, mime, size, kind, sniffed, durationMs = duration), AttachmentPolicy.risk(safe, mime, sniffed))
     }.getOrNull()
 
     fun unpick(uri: Uri) {
@@ -299,17 +344,87 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
      * Sends the preview's files that pass the checks as one message at [quality], with [caption] and the reply target
      * chosen now. The preview closes once the message is queued; preparing and uploading carry on in the background.
      */
-    fun sendBatch(quality: AttachmentPolicy.Quality, caption: String) = viewModelScope.launch {
-        val items = batch.value.map { it.item }
-            .filter { AttachmentPolicy.check(it.kind, it.sniffed, it.size, quality) == AttachmentPolicy.Verdict.Ok }
+    fun sendBatch(photoQuality: AttachmentPolicy.Quality, videoQuality: AttachmentPolicy.Quality, caption: String) = viewModelScope.launch {
+        val max = maxFile.value
+        val items = batch.value.map { it.item }.filter {
+            val q = if (it.kind == AttachmentPolicy.Kind.VIDEO) videoQuality else photoQuality
+            AttachmentPolicy.check(it.kind, it.sniffed, it.size, q, max) == AttachmentPolicy.Verdict.Ok
+        }
         if (items.isEmpty()) return@launch
         val replyId = replyTo.value?.id
-        runCatching { c.messages.sendBatch(conversationId, items, quality, caption.trim(), replyId) }
+        runCatching { c.messages.sendBatch(conversationId, items, photoQuality, caption.trim(), replyId, videoQuality = videoQuality) }
             .onSuccess {
                 clearBatch()
                 replyTo.value = ReplyTarget.afterSend(replyTo.value, replyId, success = true)
             }
             .onFailure { error.value = it.friendly() }
+    }
+
+    /** The largest file this conversation's server accepts (25 MB until the server says otherwise). */
+    val maxFile = MutableStateFlow(AttachmentPolicy.MAX_FILE_BYTES)
+
+    /** Stops an upload that hasn't been sent yet; the message disappears from this phone (nothing reached anyone). */
+    fun cancelUpload(m: MessageEntity) = viewModelScope.launch {
+        if (!c.messages.cancelBatch(m.id)) notice.value = "Already sent: it can no longer be cancelled"
+    }
+
+    /** Forwards [m] to [destCid] (chosen and confirmed by the person). */
+    fun forward(m: MessageEntity, destCid: String, onDone: (String) -> Unit) = viewModelScope.launch {
+        runCatching { c.messages.forward(m, destCid) }
+            .onSuccess { onDone(destCid) }
+            .onFailure { error.value = it.friendly() }
+    }
+
+    /** A contact card, a one-time location or an animated emoji, with the reply target chosen now. */
+    fun sendRich(rich: com.griipbuddy.orbit.data.model.RichContent) = viewModelScope.launch {
+        val replyId = replyTo.value?.id
+        runCatching { c.messages.sendText(conversationId, "", replyTo = replyId, threadRoot = threadRoot, rich = rich) }
+            .onSuccess { replyTo.value = ReplyTarget.afterSend(replyTo.value, replyId, success = true) }
+            .onFailure { error.value = it.friendly() }
+    }
+
+    /**
+     * Downloads received photos (up to 10 MB each) among [recent] in the background, when Settings › Chats allows it
+     * (always, or only on an unmetered network). One at a time; already-downloaded ones are skipped.
+     */
+    fun autoDownloadPhotos(recent: List<MessageEntity>, context: Context) = viewModelScope.launch {
+        val mode = c.settings.current.autoDownload
+        if (!com.griipbuddy.orbit.ui.media.MediaGallery.autoDownloadAllowed(mode, unmetered(context))) return@launch
+        for (m in recent) {
+            if (m.outgoing || m.deleted) continue
+            for (ref in c.messages.attachments(m)) {
+                if (com.griipbuddy.orbit.ui.media.MediaGallery.kindOf(ref) != com.griipbuddy.orbit.ui.media.MediaKind.Image || ref.size > 10L * 1024 * 1024) continue
+                if (c.messages.localAttachment(ref) != null) continue
+                runCatching { c.messages.downloadAttachment(ref) }
+            }
+        }
+    }
+
+    private fun unmetered(context: Context): Boolean = runCatching {
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+        cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true
+    }.getOrDefault(false)
+
+    /** Someone on this server with that exact phone number, if they let people find them by it. */
+    fun findByPhone(phone: String, onFound: (String) -> Unit) = viewModelScope.launch {
+        runCatching { c.api.get<com.griipbuddy.orbit.data.api.UserRes>("/v1/users/by-phone?phone=${java.net.URLEncoder.encode(phone, "UTF-8")}").user }
+            .onSuccess { c.users.remember(it); onFound(it.id) }
+            .onFailure { notice.value = "No one on Orbit lets people find them by this number" }
+    }
+
+    /** On-screen translations by message id (docs/LANGUAGES.md › Translation); the stored message never changes. */
+    data class Translated(val text: String? = null, val working: Boolean = false, val error: String? = null)
+    val translations = MutableStateFlow<Map<String, Translated>>(emptyMap())
+
+    fun translate(m: MessageEntity, target: String) = viewModelScope.launch {
+        c.translator.lastTarget = target
+        translations.value = translations.value + (m.id to Translated(working = true))
+        val r = runCatching { c.translator.translate(m.text, target) }
+        translations.value = translations.value + (m.id to r.fold({ Translated(text = it) }, { Translated(error = it.message ?: "Couldn't translate this message.") }))
+    }
+
+    fun showOriginal(m: MessageEntity) {
+        translations.value = translations.value - m.id
     }
 
     /** A received file that can run software, waiting for the user to confirm opening it: the file and why. */

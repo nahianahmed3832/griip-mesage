@@ -30,6 +30,13 @@ object Migrations {
         ),
         // v5 (2026-10-17): chats archived on this phone (swipe actions). Nullable, so every existing chat stays unarchived.
         4 to listOf("ALTER TABLE `conversations` ADD COLUMN `archivedAt` INTEGER"),
+        // v6 (2026-10-17): profile photos. Nullable, so every known person starts without one until the server says.
+        5 to listOf(
+            "ALTER TABLE `users` ADD COLUMN `photoRev` INTEGER",
+            // Rich messages: contact cards, locations, animated emoji; and the forwarded mark.
+            "ALTER TABLE `messages` ADD COLUMN `richJson` TEXT",
+            "ALTER TABLE `messages` ADD COLUMN `forwarded` INTEGER NOT NULL DEFAULT 0",
+        ),
     )
 
     fun all(): Array<Migration> = steps.map { (from, sql) ->

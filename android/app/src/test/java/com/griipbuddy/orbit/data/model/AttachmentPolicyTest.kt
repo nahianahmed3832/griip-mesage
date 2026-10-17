@@ -102,6 +102,25 @@ class AttachmentPolicyTest {
     }
 
     @Test
+    fun largeFilesFollowTheServersLimitUpTo500Mb() {
+        val mb = 1024L * 1024
+        assertEquals(25 * mb, AttachmentPolicy.effectiveMax(null)) // an older server
+        assertEquals(500 * mb, AttachmentPolicy.effectiveMax(2048 * mb)) // never more than the app's own limit
+        assertEquals(100 * mb, AttachmentPolicy.effectiveMax(100 * mb))
+        val max = AttachmentPolicy.effectiveMax(500 * mb)
+        assertEquals(Verdict.Ok, AttachmentPolicy.check(Kind.FILE, Sniffed.ZIP, 499 * mb, Quality.ORIGINAL, max))
+        val tooBig = AttachmentPolicy.check(Kind.FILE, Sniffed.ZIP, 501 * mb, Quality.ORIGINAL, max)
+        assertEquals(Verdict.TooLarge("Over 500 MB. Files up to 500 MB can be sent."), tooBig)
+        // Estimates: originals as they are; compressed photos and videos smaller.
+        assertEquals(12 * mb, AttachmentPolicy.estimate(Kind.FILE, Sniffed.PDF, 12 * mb, null, Quality.STANDARD))
+        assertEquals(450_000L, AttachmentPolicy.estimate(Kind.PHOTO, Sniffed.JPEG, 6 * mb, null, Quality.STANDARD))
+        assertEquals(60L * (2_000_000 + 128_000) / 8, AttachmentPolicy.estimate(Kind.VIDEO, Sniffed.MP4, 200 * mb, 60_000, Quality.STANDARD))
+        assertEquals(null, AttachmentPolicy.estimate(Kind.FILE, null, -1, null, Quality.ORIGINAL))
+        assertEquals("500 MB", AttachmentPolicy.sizeLabel(500 * mb))
+        assertEquals("1.5 MB", AttachmentPolicy.sizeLabel(mb * 3 / 2))
+    }
+
+    @Test
     fun qualitiesAreRealDifferences() {
         assertTrue(Quality.STANDARD.photoLongEdge < Quality.HD.photoLongEdge)
         assertTrue(Quality.STANDARD.videoShortSide < Quality.HD.videoShortSide)

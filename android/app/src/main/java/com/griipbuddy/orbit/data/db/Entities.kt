@@ -5,6 +5,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /** Server-provided conversation metadata merged with local-only state (unread, mute, preview). */
+@kotlinx.serialization.Serializable
 @Entity(tableName = "conversations")
 data class ConversationEntity(
     @PrimaryKey val id: String,
@@ -44,6 +45,7 @@ data class ConversationEntity(
     val archivedAt: Long? = null,
 )
 
+@kotlinx.serialization.Serializable
 @Entity(
     tableName = "messages",
     indices = [Index("conversationId", "sortTs"), Index("threadRootId"), Index("senderUserId")],
@@ -72,6 +74,10 @@ data class MessageEntity(
     val readByJson: String = "[]",
     val deliveredToJson: String = "[]",
     val callJson: String? = null,
+    /** Contact card, location or animated emoji ([com.griipbuddy.orbit.data.model.RichContent] JSON); null for plain messages. */
+    val richJson: String? = null,
+    /** Forwarded from another conversation. */
+    @androidx.room.ColumnInfo(defaultValue = "0") val forwarded: Boolean = false,
 )
 
 /** Messages waiting to be encrypted & submitted. Plaintext lives only in the encrypted local DB. */
@@ -89,6 +95,7 @@ data class OutboxEntity(
 )
 
 /** Directory cache + trust-on-first-use pin of each user's identity key. */
+@kotlinx.serialization.Serializable
 @Entity(tableName = "users")
 data class UserEntity(
     @PrimaryKey val id: String,
@@ -102,6 +109,8 @@ data class UserEntity(
     val online: Boolean = false,
     val lastSeenAt: Long? = null,
     val updatedAt: Long = 0,
+    /** Profile photo revision visible to this account (null: none, or not shown to you). */
+    val photoRev: Long? = null,
 )
 
 @Entity(tableName = "call_log", indices = [Index("conversationId")])

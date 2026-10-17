@@ -78,6 +78,8 @@ import com.griipbuddy.orbit.ui.Routes
 import com.griipbuddy.orbit.data.repo.GlobalAddress
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Cake
+import androidx.compose.material.icons.outlined.Phone
 import com.griipbuddy.orbit.ui.TimeFmt
 import com.griipbuddy.orbit.ui.components.Avatar
 import com.griipbuddy.orbit.ui.components.BannerKind
@@ -109,157 +111,6 @@ import com.griipbuddy.orbit.ui.theme.ThemeMode
 import kotlinx.coroutines.launch
 
 /** The Settings tab: profile, then account, appearance, notifications, privacy, calls, server and about. */
-@Composable
-fun ProfileScreen(nav: NavHostController) {
-    val container = LocalContainer.current
-    val c = Griip.colors
-    val session = container.session.session
-    val me by container.db.users().observe(session?.userId ?: "").collectAsStateWithLifecycle(null)
-    val settings by container.settings.state.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
-    var edit by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { session?.userId?.let { runCatching { container.users.fetch(it) } } }
-    val name = me?.displayName?.takeIf { it.isNotEmpty() } ?: session?.displayName ?: ""
-
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item { LargeHeader("Settings") }
-        item {
-            GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), onClick = { edit = true }, contentPadding = PaddingValues(14.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(name, me?.avatarColor ?: 0, size = 60.dp)
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(name, style = Griip.type.title, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("@${session?.username}", style = Griip.type.bodySmall, color = c.textSecondary, maxLines = 1)
-                        me?.statusText?.let { Text(it, style = Griip.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                    }
-                    CircleIconButton(Icons.Outlined.Edit, "Edit profile", { edit = true }, tint = c.primary)
-                }
-            }
-        }
-        settingsSections(nav, container, settings, c)
-    }
-    if (edit) EditProfileSheet(name, me?.statusText, me?.avatarColor ?: 0, { edit = false }) { dn, st, col ->
-        scope.launch {
-            runCatching { container.api.patch<UpdateMeReq, UserRes>("/v1/users/me", UpdateMeReq(dn, st, col)) }.onSuccess {
-                container.users.remember(it.user)
-                container.session.updateDisplayName(dn)
-            }
-            edit = false
-        }
-    }
-}
-
-/** The settings groups, shared by the Settings tab and the older pushed Settings route. Every control persists. */
-private fun androidx.compose.foundation.lazy.LazyListScope.settingsSections(
-    nav: NavHostController,
-    container: com.griipbuddy.orbit.di.AppContainer,
-    settings: com.griipbuddy.orbit.data.repo.Settings,
-    c: com.griipbuddy.orbit.ui.theme.GriipColors,
-) {
-    fun update(block: (com.griipbuddy.orbit.data.repo.Settings) -> com.griipbuddy.orbit.data.repo.Settings) = container.settings.update(block)
-    item { SectionHeader("Account", Modifier.padding(top = 14.dp, bottom = 6.dp)) }
-    item {
-        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
-            // The account's global address, when this server federates: people on other servers use it to reach you.
-            var address by remember { mutableStateOf<String?>(null) }
-            LaunchedEffect(Unit) { address = runCatching { container.federation.info()?.address }.getOrNull() }
-            val clipboard = androidx.compose.ui.platform.LocalClipboard.current
-            val scope = rememberCoroutineScope()
-            address?.let { a ->
-                MenuRow(
-                    Icons.Outlined.AlternateEmail, a, subtitle = "Your address on the Orbit network. Share it so people on other servers can message you. Tap to copy.",
-                    onClick = { scope.launch { clipboard.setClipEntry(androidx.compose.ui.platform.ClipEntry(android.content.ClipData.newPlainText("address", a))) } },
-                    trailing = null,
-                )
-            }
-            MenuRow(Icons.Outlined.Security, "Security & recovery", subtitle = "Recovery key, safety numbers, what is encrypted", onClick = { nav.navigate(Routes.SECURITY) })
-            MenuRow(Icons.Outlined.Devices, "Devices", subtitle = "Linked phones, link a new device, revoke", onClick = { nav.navigate(Routes.DEVICES) })
-        }
-    }
-    item { SectionHeader("Appearance", Modifier.padding(top = 18.dp, bottom = 8.dp)) }
-    item {
-        SegmentedPills(
-            ThemeMode.entries.map { m -> if (m == ThemeMode.SYSTEM) "System" else m.name.lowercase().replaceFirstChar { it.uppercase() } },
-            ThemeMode.entries.indexOf(settings.theme),
-            { i -> update { it.copy(theme = ThemeMode.entries[i]) } },
-            Modifier.padding(horizontal = Space.gutter),
-        )
-    }
-    item { SectionHeader("Notifications", Modifier.padding(top = 18.dp, bottom = 6.dp)) }
-    item {
-        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
-            MenuRow(Icons.Outlined.Notifications, "Message notifications", subtitle = "Shown privately on the lock screen", trailing = { GriipSwitch(settings.notifications, { v -> update { it.copy(notifications = v) } }) })
-            MenuRow(Icons.Outlined.SyncAlt, "Stay connected in background", subtitle = "Receive messages and calls without push services. Uses more battery.", trailing = {
-                GriipSwitch(settings.backgroundConnection, { v -> update { it.copy(backgroundConnection = v) } })
-            })
-        }
-    }
-    item {
-        // What Android or the phone maker has silenced or blocked, with a link to fix each one.
-        val problems = com.griipbuddy.orbit.ui.screens.home.rememberNotificationProblems(settings)
-        if (problems.isNotEmpty()) com.griipbuddy.orbit.ui.screens.home.NotificationProblems(problems, Modifier.padding(horizontal = Space.gutter, vertical = 6.dp))
-    }
-    item { SectionHeader("Privacy", Modifier.padding(top = 18.dp, bottom = 6.dp)) }
-    item {
-        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
-            MenuRow(Icons.Outlined.DoneAll, "Send read receipts", subtitle = "Direct messages and groups of up to 20", trailing = { GriipSwitch(settings.readReceipts, { v -> update { it.copy(readReceipts = v) } }) })
-            MenuRow(Icons.Outlined.Keyboard, "Show when I'm typing", trailing = { GriipSwitch(settings.typingIndicators, { v -> update { it.copy(typingIndicators = v) } }) })
-        }
-    }
-    item { SectionHeader("Calls", Modifier.padding(top = 18.dp, bottom = 6.dp)) }
-    item {
-        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
-            MenuRow(
-                Icons.Outlined.Shield, "End-to-end encrypt call media",
-                subtitle = if (settings.mediaE2ee) "On: calls won't join without the key. The call screen says \"End-to-end encrypted\" only once media has actually decrypted."
-                else "Off: media is protected in transit only",
-                trailing = { GriipSwitch(settings.mediaE2ee, { v -> update { it.copy(mediaE2ee = v) } }) },
-            )
-            MenuRow(
-                Icons.Outlined.GraphicEq, "Use the phone's echo canceller",
-                subtitle = if (settings.hardwareEchoCanceller) "On: this phone's built-in echo cancellation. Turn off if people you call hear their own voice."
-                else "Off (recommended): Orbit's own echo cancellation, the same on every phone. Applies from the next call.",
-                trailing = { GriipSwitch(settings.hardwareEchoCanceller, { v -> update { it.copy(hardwareEchoCanceller = v) } }) },
-            )
-        }
-    }
-    item { SectionHeader("Server and about", Modifier.padding(top = 18.dp, bottom = 6.dp)) }
-    item {
-        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
-            MenuRow(
-                Icons.Outlined.Dns, container.session.serverUrl,
-                subtitle = "Servers on this phone: add your organisation's or community's server, or switch between them. Your accounts stay separate.",
-                tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.SERVERS) },
-            )
-            MenuRow(Icons.Outlined.Info, "About Orbit", subtitle = "Orbit by GriipBuddy · version ${BuildConfig.VERSION_NAME} · internal beta · how your data is protected", tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.SECURITY) })
-        }
-        if (container.session.serverUrl.startsWith("http://")) {
-            StatusBanner("Unencrypted connection to the server (internal testing). Message content stays end-to-end encrypted; metadata and session tokens don't.", BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 8.dp), icon = Icons.Rounded.GppMaybe)
-        }
-    }
-}
-
-@Composable
-private fun EditProfileSheet(name: String, status: String?, color: Int, onDismiss: () -> Unit, onSave: (String, String?, Int) -> Unit) {
-    var n by remember { mutableStateOf(name) }
-    var s by remember { mutableStateOf(status ?: "") }
-    var col by remember { mutableIntStateOf(color) }
-    GlassSheet(onDismiss, title = "Edit profile") {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Avatar(n.ifBlank { "?" }, col, size = 56.dp)
-            Spacer(Modifier.width(12.dp))
-            ChipRow(Modifier.weight(1f)) { (0..7).forEach { i -> PillChip("${i + 1}", col == i, { col = i }) } }
-        }
-        Spacer(Modifier.height(12.dp))
-        GriipTextField(n, { n = it.take(60) }, "Display name", keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
-        Spacer(Modifier.height(12.dp))
-        GriipTextField(s, { s = it.take(140) }, "Status (optional)", placeholder = "In the Dhaka office today")
-        Spacer(Modifier.height(16.dp))
-        PillButton("Save", { onSave(n.trim(), s.trim().ifEmpty { null }, col) }, Modifier.fillMaxWidth(), enabled = n.isNotBlank(), height = 50.dp)
-    }
-}
-
 // ───────────────────────────── Devices ─────────────────────────────
 
 @Composable
@@ -451,17 +302,6 @@ fun SecurityScreen(nav: NavHostController) {
 // ───────────────────────────── Settings ─────────────────────────────
 
 /** Older pushed route to the settings; same sections as the Settings tab. */
-@Composable
-fun SettingsScreen(nav: NavHostController) {
-    val container = LocalContainer.current
-    val c = Griip.colors
-    val settings by container.settings.state.collectAsStateWithLifecycle()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
-        item { GriipTopBar("Settings", onBack = { nav.popBackStack() }) }
-        settingsSections(nav, container, settings, c)
-    }
-}
-
 // ───────────────────────────── Contact profile ─────────────────────────────
 
 @Composable
@@ -484,10 +324,12 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
             item {
                 GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), shape = Shapes.hero) {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Avatar(u.displayName, u.avatarColor, size = 84.dp, online = u.online)
+                        com.griipbuddy.orbit.ui.components.UserAvatar(u.id, u.displayName, u.avatarColor, u.photoRev, size = 84.dp, online = u.online)
                         Spacer(Modifier.height(10.dp))
                         Text(u.displayName, style = Griip.type.headline, color = c.textPrimary)
                         Text("@${u.username}", style = Griip.type.bodySmall, color = c.textSecondary)
+                        val fullName = listOfNotNull(u.firstName, u.lastName).joinToString(" ")
+                        if (fullName.isNotBlank() && fullName != u.displayName) Text(fullName, style = Griip.type.bodySmall, color = c.textSecondary)
                         val server = if (GlobalAddress.isRemote(u.username, u.homeServer)) GlobalAddress.serverOf(u.username) else null
                         if (server != null) {
                             // Presence isn't shared between servers.
@@ -502,6 +344,20 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
                                 scope.launch { runCatching { container.conversations.openDm(u.id) }.onSuccess { nav.navigate(Routes.conversation(it.id)) }.onFailure { error = it.friendly() } }
                             }, Modifier.weight(1f), height = 48.dp)
                         }
+                    }
+                }
+            }
+            // What they chose to show this account (the server leaves out everything else).
+            val birthday = com.griipbuddy.orbit.data.model.ProfileRules.Birthday.parse(u.birthday)
+            if (birthday != null || u.phone != null) item {
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), contentPadding = PaddingValues(4.dp)) {
+                    birthday?.let { MenuRow(Icons.Outlined.Cake, it.display(), subtitle = "Birthday", trailing = null) }
+                    u.phone?.let { ph ->
+                        MenuRow(
+                            Icons.Outlined.Phone, ph, subtitle = "Phone · not verified by Orbit · tap to dial",
+                            onClick = { runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:$ph"))) } },
+                        )
                     }
                 }
             }

@@ -17,6 +17,11 @@ val localProps = Properties().apply {
 val defaultServer: String = localProps.getProperty("griip.serverUrl") ?: "https://msg.griipbuddy.cloud"
 
 android {
+    // The app has its own language setting (docs/LANGUAGES.md): every language must be in every install, so the Play
+    // bundle isn't split by language.
+    bundle {
+        language { enableSplit = false }
+    }
     namespace = "com.griipbuddy.orbit"
     compileSdk = 36
 
@@ -28,8 +33,8 @@ android {
         applicationId = "com.griipbuddy.Orbit"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.1.2-beta"
+        versionCode = 4
+        versionName = "0.1.3-beta"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"$defaultServer\"")
         manifestPlaceholders["appLabel"] = "@string/app_name"
@@ -128,6 +133,14 @@ dependencies {
     implementation(libs.media3.transformer)
     implementation(libs.media3.effect)
     implementation(libs.media3.common)
+    // Links open in a Custom Tab: the person's own browser, with its safe-browsing and TLS checks (no embedded WebView).
+    implementation(libs.androidx.browser)
+    // Automatic encrypted backups (docs/BACKUP.md).
+    implementation(libs.androidx.work)
+    // Message translation on the phone (docs/LANGUAGES.md › Translation): message text never leaves the device; only the
+    // language models are downloaded, after the person agrees.
+    implementation(libs.mlkit.translate)
+    implementation(libs.mlkit.language.id)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

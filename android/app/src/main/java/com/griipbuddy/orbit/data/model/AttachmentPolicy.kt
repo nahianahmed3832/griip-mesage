@@ -13,8 +13,29 @@ object AttachmentPolicy {
     /** Photos, videos or files in one message. */
     const val MAX_ITEMS = 10
 
-    /** Largest file the server accepts (ATTACHMENT_MAX_BYTES), after any compression. */
-    const val MAX_FILE_BYTES = 25L * 1024 * 1024
+    /**
+     * Files up to this size use the original single-message encryption, which every Orbit version opens; it is also the
+     * limit of servers that don't advertise one. Larger files use the chunked format (docs/ATTACHMENTS.md › Large files).
+     */
+    const val LEGACY_MAX_FILE_BYTES = 25L * 1024 * 1024
+    /** The default limit: what servers before the large-file change accept. */
+    const val MAX_FILE_BYTES = LEGACY_MAX_FILE_BYTES
+
+    /** The most this app sends in one file, whatever the server allows (also bounded by the phone's free space). */
+    const val APP_MAX_FILE_BYTES = 500L * 1024 * 1024
+
+    /** The limit to use with a server that advertises [serverMax] bytes (`/v1/server-info`); null: an older server. */
+    fun effectiveMax(serverMax: Long?): Long = serverMax?.takeIf { it > 0 }?.coerceAtMost(APP_MAX_FILE_BYTES) ?: LEGACY_MAX_FILE_BYTES
+
+    /** "25 MB", "500 MB", "1.5 MB". */
+    fun sizeLabel(bytes: Long): String {
+        val mb = bytes / (1024.0 * 1024.0)
+        return when {
+            mb >= 10 -> "${mb.toLong()} MB"
+            mb >= 1 -> String.format(java.util.Locale.ROOT, "%.1f MB", mb)
+            else -> "${(bytes / 1024).coerceAtLeast(1)} KB"
+        }
+    }
 
     /** Largest photo or video picked for compression (Standard/HD): it's copied to the phone's app storage first. */
     const val MAX_SOURCE_BYTES = 1024L * 1024 * 1024
@@ -147,15 +168,28 @@ object AttachmentPolicy {
      * Whether a picked file of [size] bytes can be sent at [quality] (compression happens later, on the phone). A negative
      * [size] means the picker didn't say: the limit is then enforced while the file is copied.
      */
-    fun check(kind: Kind, sniffed: Sniffed?, size: Long, quality: Quality): Verdict {
+    fun check(kind: Kind, sniffed: Sniffed?, size: Long, quality: Quality, maxFile: Long = MAX_FILE_BYTES): Verdict {
         val compresses = quality != Quality.ORIGINAL && compressible(kind, sniffed)
         return when {
             size < 0L -> Verdict.Ok
             size == 0L -> Verdict.TooLarge("This file is empty.")
             compresses && size > MAX_SOURCE_BYTES -> Verdict.TooLarge("Too large to compress on this phone (over 1 GB).")
-            !compresses && size > MAX_FILE_BYTES ->
-                Verdict.TooLarge(if (kind == Kind.FILE || quality == Quality.ORIGINAL) "Over 25 MB. Files up to 25 MB can be sent." else "Over 25 MB.")
+            !compresses && size > maxFile -> Verdict.TooLarge("Over ${sizeLabel(maxFile)}. Files up to ${sizeLabel(maxFile)} can be sent.")
             else -> Verdict.Ok
+        }
+    }
+
+    /**
+     * About how large the file will be when sent ([size] when it's sent as it is). An estimate for the preview, not a
+     * promise: compression depends on the content. Null when it can't be told (an unknown size).
+     */
+    fun estimate(kind: Kind, sniffed: Sniffed?, size: Long, durationMs: Long?, quality: Quality): Long? {
+        if (size < 0) return null
+        if (quality == Quality.ORIGINAL || !compressible(kind, sniffed)) return size
+        return when (kind) {
+            Kind.PHOTO -> minOf(size, if (quality == Quality.HD) 1_800_000L else 450_000L)
+            Kind.VIDEO -> durationMs?.let { minOf(size, it / 1000 * (quality.videoBitrate + 128_000) / 8) } ?: size
+            Kind.FILE -> size
         }
     }
 
