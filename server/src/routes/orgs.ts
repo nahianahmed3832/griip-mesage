@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { BranchRow, ConversationRow, OrgRole, TeamRow } from "../authz.js";
 import { type AppContext, me, parse, requireAuth, zName, zText } from "../context.js";
+import { memberView } from "../profile.js";
 import { ApiError, badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex } from "../util.js";
 import { INVITE_PROBLEMS, inviteAlreadySatisfied, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../invites.js";
 import { userSummary } from "./auth.js";
@@ -354,7 +355,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const rows = db
       .prepare("SELECT u.*, tm.role AS team_role FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.team_id = ? ORDER BY tm.role, u.display_name")
       .all(id) as any[];
-    return { members: rows.map((u) => ({ ...userSummary(u), role: u.team_role, online: ctx.hub.isUserOnline(u.id) })) };
+    return { members: rows.map((u) => memberView(ctx, me(req).userId, u, { ...userSummary(u), role: u.team_role })) };
   });
 
   app.get("/v1/branches/:id/members", auth, async (req) => {
@@ -365,7 +366,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const rows = db
       .prepare("SELECT u.*, bm.role AS branch_role FROM branch_members bm JOIN users u ON u.id = bm.user_id WHERE bm.branch_id = ? ORDER BY bm.role, u.display_name")
       .all(id) as any[];
-    return { members: rows.map((u) => ({ ...userSummary(u), role: u.branch_role, online: ctx.hub.isUserOnline(u.id) })) };
+    return { members: rows.map((u) => memberView(ctx, me(req).userId, u, { ...userSummary(u), role: u.branch_role })) };
   });
 
   // ───────────── Membership & roles ─────────────
@@ -390,14 +391,15 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       .prepare("SELECT tm.user_id, tm.team_id, tm.role FROM team_members tm JOIN teams t ON t.id = tm.team_id WHERE t.org_id = ?")
       .all(orgId) as any[];
     return {
-      members: rows.map((u) => ({
-        ...userSummary(u),
-        orgRole: u.org_role,
-        title: u.title,
-        online: ctx.hub.isUserOnline(u.id),
-        branches: branchRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.branch_id, role: r.role })),
-        teams: teamRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.team_id, role: r.role })),
-      })),
+      members: rows.map((u) =>
+        memberView(ctx, userId, u, {
+          ...userSummary(u),
+          orgRole: u.org_role,
+          title: u.title,
+          branches: branchRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.branch_id, role: r.role })),
+          teams: teamRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.team_id, role: r.role })),
+        }),
+      ),
     };
   });
 

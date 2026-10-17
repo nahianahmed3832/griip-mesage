@@ -22,6 +22,8 @@ export interface Config {
   port: number;
   databasePath: string;
   attachmentDir: string;
+  /** Profile photos (published by their owners, not end-to-end encrypted; served per each person's privacy settings). */
+  profilePhotoDir: string;
   /** Delivery queue TTL in seconds. Hard-capped at 7 days. */
   queueTtlSeconds: number;
   attachmentTtlSeconds: number;
@@ -131,6 +133,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port: int("PORT", 8080),
     databasePath: env.DATABASE_PATH ?? path.join(dataDir, "griip.sqlite"),
     attachmentDir: env.ATTACHMENT_DIR ?? path.join(dataDir, "attachments"),
+    profilePhotoDir: env.PROFILE_PHOTO_DIR ?? path.join(dataDir, "profile-photos"),
     queueTtlSeconds: Math.max(queueTtl, 1),
     attachmentTtlSeconds: Math.min(int("ATTACHMENT_TTL_SECONDS", SEVEN_DAYS_S), SEVEN_DAYS_S),
     attachmentMaxBytes: int("ATTACHMENT_MAX_BYTES", 25 * MiB),

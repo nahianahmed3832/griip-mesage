@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { type AppContext, authenticateToken } from "./context.js";
+import { canSeeLastSeen, type ProfileRow } from "./profile.js";
 import { acknowledge } from "./routes/messages.js";
 import { now } from "./util.js";
 
@@ -26,8 +27,11 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
          WHERE m1.user_id = ? AND m2.user_id != ?`,
       )
       .all(userId, userId) as { user_id: string }[];
+    // Someone whose "last seen" is limited is announced only to the people that setting allows (src/profile.ts).
+    const u = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as ProfileRow | undefined;
+    const audience = u ? peers.filter((p) => canSeeLastSeen(ctx, p.user_id, u)) : [];
     hub.sendToUsers(
-      peers.map((p) => p.user_id),
+      audience.map((p) => p.user_id),
       { t: "presence", userId, online, lastSeenAt: online ? null : now() },
     );
   };

@@ -9,6 +9,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { Readable } from "node:stream";
 import { z } from "zod";
 import { type AppContext, me, parse, requireAuth } from "../context.js";
+import { privacyOf } from "../profile.js";
 import { keyFingerprint } from "../crypto.js";
 import { notifyConversation } from "../routes/orgs.js";
 import { userSummary } from "../routes/auth.js";
@@ -91,8 +92,11 @@ export async function federationPeerRoutes(app: FastifyInstance, ctx: AppContext
     const peer = req.fedPeer!;
     if (!fed.lookupLimit.take(peer.serverId)) throw new FederationError(429, "rate_limited", "Too many lookups from your server");
     const { username } = parse(z.object({ username: z.string().trim().toLowerCase().max(24) }), req.query);
-    const u = ctx.db.prepare("SELECT id FROM users WHERE username = ? AND home_server_id IS NULL AND disabled_at IS NULL").get(username) as { id: string } | undefined;
-    const entry = u ? fed.entry(u.id) : null;
+    const u = ctx.db.prepare("SELECT id, privacy FROM users WHERE username = ? AND home_server_id IS NULL AND disabled_at IS NULL").get(username) as
+      | { id: string; privacy: string | null }
+      | undefined;
+    // People who limited who can find them by username aren't found from other servers either.
+    const entry = u && privacyOf(u).findByUsername === "everyone" ? fed.entry(u.id) : null;
     if (!entry) return reply.code(404).send({ error: { code: "not_found", message: "No such user" } });
     ctx.audit({ action: "federation.lookup", target: peer.serverId }); // who asked; not whom
     return { user: entry };

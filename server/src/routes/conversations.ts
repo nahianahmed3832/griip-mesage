@@ -3,6 +3,7 @@ import { mentionAllPermission } from "../mentions.js";
 import { z } from "zod";
 import type { ConversationRow } from "../authz.js";
 import { type AppContext, me, parse, requireAuth, zText } from "../context.js";
+import { memberView } from "../profile.js";
 import { ApiError, badRequest, conflict, forbidden, newId, notFound, now } from "../util.js";
 import { fedDmId } from "../federation/service.js";
 import { userSummary } from "./auth.js";
@@ -22,7 +23,7 @@ export function conversationView(ctx: AppContext, c: ConversationRow, userId: st
       db
         .prepare("SELECT u.*, m.role AS conv_role FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? ORDER BY m.joined_at LIMIT 12")
         .all(c.id) as any[]
-    ).map((u) => ({ ...userSummary(u), role: u.conv_role, online: ctx.hub.isUserOnline(u.id) }));
+    ).map((u) => memberView(ctx, userId, u, { ...userSummary(u), role: u.conv_role }));
   }
   const call = db.prepare("SELECT id, video, state, created_at FROM calls WHERE conversation_id = ? AND state != 'ENDED' ORDER BY created_at DESC LIMIT 1").get(c.id) as
     | { id: string; video: number; state: string; created_at: number }
@@ -108,13 +109,14 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
       .prepare("SELECT u.*, m.role AS conv_role, m.joined_at FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? ORDER BY m.role, u.display_name")
       .all(id) as any[];
     return {
-      members: rows.map((u) => ({
-        ...userSummary(u),
-        role: u.conv_role,
-        joinedAt: u.joined_at,
-        online: ctx.hub.isUserOnline(u.id),
-        orgRole: c.org_id ? authz.orgRole(c.org_id, u.id) : null,
-      })),
+      members: rows.map((u) =>
+        memberView(ctx, userId, u, {
+          ...userSummary(u),
+          role: u.conv_role,
+          joinedAt: u.joined_at,
+          orgRole: c.org_id ? authz.orgRole(c.org_id, u.id) : null,
+        }),
+      ),
     };
   });
 

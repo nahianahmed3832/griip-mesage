@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { type AppContext, bearer, me, parse, requireAuth, zKey, zName, zSig } from "../context.js";
+import { privacyOf } from "../profile.js";
 import { canonical, isValidPublicKey, keyFingerprint, verifyEd25519 } from "../crypto.js";
 import { findOrgInvite, findRegistrationInvite, INVITE_PROBLEMS, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../invites.js";
 import { ApiError, badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex, unauthorized } from "../util.js";
@@ -12,7 +13,7 @@ const USERNAME = /^[a-z0-9](?:[a-z0-9._]{1,22})[a-z0-9]$/;
 const CHALLENGE_TTL_MS = 2 * 60 * 1000;
 const PAIRING_TTL_MS = 10 * 60 * 1000;
 
-const zUsername = z
+export const zUsername = z
   .string()
   .trim()
   .toLowerCase()
@@ -59,13 +60,19 @@ export function userSummary(u: {
   status_text: string | null;
   identity_key?: string;
   home_server_id?: string | null;
+  photo_rev?: number | null;
+  privacy?: string | null;
 }) {
+  // Lists and search show only what the person publishes to everyone (docs/PROFILE_AND_PRIVACY.md); the profile
+  // endpoint shows contacts what they may see.
+  const p = privacyOf(u);
   return {
     id: u.id,
     username: u.username,
     displayName: u.display_name,
     avatarColor: u.avatar_color,
-    statusText: u.status_text,
+    statusText: p.bio === "everyone" ? u.status_text : null,
+    ...(p.photo === "everyone" && u.photo_rev ? { photoRev: u.photo_rev } : {}),
     // Set for people on another server: their home server's id (username is then "name:domain").
     homeServer: u.home_server_id ?? null,
   };

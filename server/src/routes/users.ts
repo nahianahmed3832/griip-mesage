@@ -1,9 +1,30 @@
+import fs from "node:fs";
+import path from "node:path";
+import type { Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { type AppContext, me, parse, requireAuth, zName } from "../context.js";
 import { keyFingerprint } from "../crypto.js";
-import { badRequest, notFound, now } from "../util.js";
-import { userSummary } from "./auth.js";
+import {
+  AUDIENCES,
+  allows,
+  canSeeLastSeen,
+  isJpeg,
+  PHONE,
+  PRIVACY_FIELDS,
+  type ProfileRow,
+  privacyOf,
+  profileView,
+  relation,
+  validBirthday,
+} from "../profile.js";
+import { ApiError, badRequest, conflict, notFound, now } from "../util.js";
+import { userSummary, zUsername } from "./auth.js";
+
+/** Largest profile photo accepted (the app sends a 512 px JPEG of about 60 KB). */
+const MAX_PHOTO_BYTES = 512 * 1024;
+/** A username can change at most once an hour, so links and mentions don't churn. */
+const USERNAME_CHANGE_INTERVAL_MS = 60 * 60 * 1000;
 
 export interface DeviceKeyRow {
   user_id: string;
@@ -39,37 +60,167 @@ export function deviceDirectory(ctx: AppContext, userIds: string[]) {
 export default async function userRoutes(app: FastifyInstance, ctx: AppContext) {
   const auth = { preHandler: requireAuth(ctx) };
 
+  const photoDir = ctx.config.profilePhotoDir;
+  fs.mkdirSync(photoDir, { recursive: true });
+  const photoFile = (id: string) => path.join(photoDir, `${id.replace(/[^A-Za-z0-9_-]/g, "")}.jpg`);
+  const meView = (u: any) => ({
+    ...profileView(u, { self: true, contact: true, blockedByTarget: false }),
+    identityKey: u.identity_key,
+    fingerprint: keyFingerprint(u.identity_key),
+    createdAt: u.created_at,
+  });
+
   app.get("/v1/users/me", auth, async (req) => {
     const { userId, deviceId } = me(req);
     const u = ctx.db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
-    return {
-      user: { ...userSummary(u), identityKey: u.identity_key, fingerprint: keyFingerprint(u.identity_key), createdAt: u.created_at },
-      deviceId,
-    };
+    return { user: meView(u), deviceId };
   });
 
+  // The person's own profile. Every field is optional; null clears it. Hidden fields stay stored (privacy decides who
+  // sees them, not whether they exist).
+  const zOptText = (max: number) =>
+    z
+      .string()
+      .trim()
+      .max(max)
+      .nullable()
+      .optional()
+      .transform((v) => (v === "" ? null : v));
   app.patch("/v1/users/me", auth, async (req) => {
     const { userId } = me(req);
     const body = parse(
       z.object({
         displayName: zName.optional(),
-        statusText: z.string().trim().max(140).nullable().optional(),
+        statusText: zOptText(140),
         avatarColor: z.number().int().min(0).max(15).optional(),
+        firstName: zOptText(40),
+        lastName: zOptText(40),
+        birthday: z
+          .string()
+          .trim()
+          .nullable()
+          .optional()
+          .refine((v) => v == null || v === "" || validBirthday(v), "Birthday must be YYYY-MM-DD or --MM-DD")
+          .transform((v) => (v === "" ? null : v)),
+        phone: z
+          .string()
+          .trim()
+          .nullable()
+          .optional()
+          // Absent stays absent (an edit of another field must not clear the number).
+          .transform((v) => (v === undefined ? undefined : v === null || v === "" ? null : v.replace(/[\s()-]/g, "")))
+          .refine((v) => v == null || PHONE.test(v), "Phone numbers start with + and the country code, e.g. +8801712345678"),
+        username: zUsername.optional(),
       }),
       req.body,
     );
     const u = ctx.db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
+    let username = u.username as string;
+    if (body.username && body.username.toLowerCase() !== username.toLowerCase()) {
+      if (u.home_server_id) throw badRequest("This account lives on another server");
+      if (u.username_changed_at && now() - u.username_changed_at < USERNAME_CHANGE_INTERVAL_MS) {
+        throw new ApiError(429, "username_recently_changed", "You can change your username once an hour");
+      }
+      if (ctx.db.prepare("SELECT 1 FROM users WHERE username = ? AND id != ?").get(body.username, userId)) {
+        throw conflict("That username is taken");
+      }
+      username = body.username;
+    }
+    const pick = <T>(v: T | undefined, old: T) => (v === undefined ? old : v);
     ctx.db
-      .prepare("UPDATE users SET display_name = ?, status_text = ?, avatar_color = ?, updated_at = ? WHERE id = ?")
+      .prepare(
+        `UPDATE users SET display_name = ?, status_text = ?, avatar_color = ?, first_name = ?, last_name = ?, birthday = ?, phone = ?,
+           username = ?, username_changed_at = ?, updated_at = ? WHERE id = ?`,
+      )
       .run(
         body.displayName ?? u.display_name,
-        body.statusText === undefined ? u.status_text : body.statusText,
+        pick(body.statusText, u.status_text),
         body.avatarColor ?? u.avatar_color,
+        pick(body.firstName, u.first_name),
+        pick(body.lastName, u.last_name),
+        pick(body.birthday, u.birthday),
+        pick(body.phone, u.phone),
+        username,
+        username === u.username ? u.username_changed_at : now(),
         now(),
         userId,
       );
     const updated = ctx.db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
-    return { user: userSummary(updated) };
+    return { user: meView(updated) };
+  });
+
+  // Who may see each part of the profile (src/profile.ts). Only the fields sent change.
+  app.put("/v1/users/me/privacy", auth, async (req) => {
+    const { userId } = me(req);
+    const shape = Object.fromEntries(PRIVACY_FIELDS.map((f) => [f, z.enum(AUDIENCES as [string, ...string[]]).optional()]));
+    const body = parse(z.object(shape).strict(), req.body);
+    const u = ctx.db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
+    const next = { ...privacyOf(u), ...Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)) };
+    ctx.db.prepare("UPDATE users SET privacy = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(next), now(), userId);
+    return { privacy: next };
+  });
+
+  // Profile photo: a JPEG the phone has already re-encoded (no metadata). Published to the photo's audience; it is not
+  // end-to-end encrypted, and the server can see it (docs/PROFILE_AND_PRIVACY.md).
+  app.put("/v1/users/me/photo", auth, async (req) => {
+    const { userId } = me(req);
+    const body = req.body as Readable | undefined;
+    if (!body || typeof (body as Readable).pipe !== "function") throw badRequest("Expected application/octet-stream body");
+    const declared = Number(req.headers["content-length"] ?? Number.NaN);
+    if (declared > MAX_PHOTO_BYTES) throw new ApiError(413, "too_large", "Profile photos can be up to 512 KB");
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const c of body) {
+      size += (c as Buffer).length;
+      if (size > MAX_PHOTO_BYTES) {
+        body.destroy();
+        throw new ApiError(413, "too_large", "Profile photos can be up to 512 KB");
+      }
+      chunks.push(c as Buffer);
+    }
+    const buf = Buffer.concat(chunks);
+    if (!isJpeg(buf)) throw badRequest("Profile photos must be JPEG");
+    const tmp = `${photoFile(userId)}.part`;
+    await fs.promises.writeFile(tmp, buf, { mode: 0o600 });
+    await fs.promises.rename(tmp, photoFile(userId));
+    const rev = now();
+    ctx.db.prepare("UPDATE users SET photo_rev = ?, updated_at = ? WHERE id = ?").run(rev, rev, userId);
+    return { photoRev: rev };
+  });
+
+  app.delete("/v1/users/me/photo", auth, async (req) => {
+    const { userId } = me(req);
+    await fs.promises.rm(photoFile(userId), { force: true });
+    ctx.db.prepare("UPDATE users SET photo_rev = NULL, updated_at = ? WHERE id = ?").run(now(), userId);
+    return { photoRev: null };
+  });
+
+  app.get("/v1/users/:id/photo", auth, async (req, reply) => {
+    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const u = ctx.db.prepare("SELECT * FROM users WHERE id = ? AND disabled_at IS NULL").get(id) as ProfileRow | undefined;
+    // Same answer for "no photo" and "not allowed to see it".
+    if (!u?.photo_rev || !allows(privacyOf(u).photo, relation(ctx, me(req).userId, u.id))) throw notFound("No photo");
+    const file = photoFile(u.id);
+    if (!fs.existsSync(file)) throw notFound("No photo");
+    return reply
+      .header("content-type", "image/jpeg")
+      .header("cache-control", "private, max-age=3600")
+      .header("etag", `"${u.photo_rev}"`)
+      .send(fs.createReadStream(file));
+  });
+
+  // Find someone by their exact phone number, if they allow it. Never a list or a partial match, and the same answer
+  // whether nobody has that number or its owner doesn't want to be found. No address book is ever uploaded.
+  app.get("/v1/users/by-phone", { ...auth, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req) => {
+    const { userId } = me(req);
+    const { phone } = parse(z.object({ phone: z.string().trim().max(24) }), req.query);
+    const p = phone.replace(/[\s()-]/g, "");
+    if (!PHONE.test(p)) throw badRequest("Phone numbers start with + and the country code");
+    const u = ctx.db
+      .prepare("SELECT * FROM users WHERE phone = ? AND disabled_at IS NULL AND home_server_id IS NULL AND id != ?")
+      .get(p, userId) as ProfileRow | undefined;
+    if (!u || !allows(privacyOf(u).findByPhone, relation(ctx, userId, u.id))) throw notFound("No one found");
+    return { user: userSummary(u as any) };
   });
 
   // Find colleagues: people who share an organisation with you (prefix match on username or
@@ -93,18 +244,26 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
          ) ORDER BY u.username LIMIT 30`,
       )
       .all(userId, term, like, like, `% ${like}`, userId) as any[];
-    // Exact-username matches can be strangers: their presence stays hidden (null).
-    return { users: rows.map((u) => ({ ...userSummary(u), online: ctx.authz.canSeePresence(userId, u.id) ? ctx.hub.isUserOnline(u.id) : null })) };
+    // Exact-username matches can be strangers: only people who let everyone find them by username are listed to them,
+    // never someone who blocked the searcher, and their presence stays hidden (null).
+    const visible = rows.filter((u) => {
+      const r = relation(ctx, userId, u.id);
+      return !r.blockedByTarget && (r.contact || allows(privacyOf(u).findByUsername, r));
+    });
+    return { users: visible.map((u) => ({ ...userSummary(u), online: canSeeLastSeen(ctx, userId, u) ? ctx.hub.isUserOnline(u.id) : null })) };
   });
 
   app.get("/v1/users/:id", auth, async (req) => {
     const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
     const u = ctx.db.prepare("SELECT * FROM users WHERE id = ? AND disabled_at IS NULL").get(id) as any;
     if (!u) throw notFound("User not found");
-    const visible = ctx.authz.canSeePresence(me(req).userId, u.id);
+    const viewer = me(req).userId;
+    const r = relation(ctx, viewer, u.id);
+    const visible = allows(privacyOf(u).lastSeen, r);
     return {
       user: {
-        ...userSummary(u),
+        statusText: null, // older apps expect the key
+        ...profileView(u, r),
         identityKey: u.identity_key,
         fingerprint: keyFingerprint(u.identity_key),
         online: visible ? ctx.hub.isUserOnline(u.id) : null,
@@ -146,7 +305,12 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
   app.get("/v1/presence", auth, async (req) => {
     const { userId } = me(req);
     const { ids } = parse(z.object({ ids: z.string().max(5000) }), req.query);
-    const list = [...new Set(ids.split(",").filter(Boolean))].slice(0, 200).filter((u) => ctx.authz.canSeePresence(userId, u));
+    const wanted = [...new Set(ids.split(",").filter(Boolean))].slice(0, 200);
+    const rows = wanted.length
+      ? (ctx.db.prepare(`SELECT * FROM users WHERE id IN (${wanted.map(() => "?").join(",")})`).all(...wanted) as ProfileRow[])
+      : [];
+    // Each person's "last seen" setting decides (contacts by default, the rule this endpoint always had).
+    const list = rows.filter((u) => canSeeLastSeen(ctx, userId, u)).map((u) => u.id);
     return {
       presence: list.map((u) => ({ userId: u, online: ctx.hub.isUserOnline(u), lastSeenAt: ctx.hub.lastSeenAt(u) })),
     };
