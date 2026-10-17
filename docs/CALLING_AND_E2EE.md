@@ -107,3 +107,29 @@ connected / decline / leave / end: forwarded the same way; A broadcasts updated/
   microphone permission and the phone wasn't available for this step).
 - **Limits:** a server without LiveKit can't start calls with remote people (the app hides the buttons) but can join theirs; group calls
   aren't federated; no TURN.
+
+## Verifying a call (2026-10-17)
+
+Tap the encryption badge on the call screen. Every phone in an end-to-end encrypted call holds the same media key, which
+the caller generated and sent through the chat's end-to-end encrypted, signed messages. `CallVerification` derives four
+emoji and six digits from that key and the call id (HKDF-SHA256; 44 bits shown, the key itself never leaves the phone).
+Phones holding the same key for this call show the same code; a key someone substituted (for example a compromised
+server) gives different ones. Matching codes show that everyone's media uses the same key from the same sender; they don't
+by themselves prove who the sender is (that's what safety numbers are for). A call without media encryption has no code
+and says so. Tests: `CallVerificationTest` (includes the RFC 5869 HKDF vector).
+
+## Reconnecting (2026-10-17)
+
+- This phone's connection drops: LiveKit's own reconnect runs first ("Reconnecting…"). If it gives up for a connection
+  reason (not a hang-up, removal or duplicate join), Orbit gets new media credentials and rejoins the same call with the
+  same key, with backoff, for up to 45 s (`CallRecovery`). The call ends ("the connection was lost") only after that.
+- The other person's connection drops (1:1): the call shows "…'s connection dropped. Waiting for them to reconnect…" for
+  30 s instead of ending. The server waits too (`CALL_PEER_GRACE_MS`, default 30 s; `server/test/call_reconnect.test.ts`)
+  before ending the call as `lost`, which call history shows with its real duration. Hanging up still ends it at once.
+
+## Minimised calls (2026-10-17)
+
+Leaving Orbit during a connected call shrinks it into picture-in-picture (Android 8+; automatic with gesture navigation
+on Android 12+): the other person's video or shared screen, or their avatar for voice calls, with the window's own Mute
+and Hang up buttons. Tapping it returns to the full call screen. Inside the app, the existing minimise button keeps a call
+bar over other screens. During a call Android requires the ongoing-call notification.

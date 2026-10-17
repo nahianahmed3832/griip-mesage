@@ -1,12 +1,14 @@
 # Attachments: several at once, quality, and file safety
 
-Added 2026-10-17. Up to 10 photos, videos or files can be sent as one message (an album), at Standard, HD or Original
-quality, after the phone checks each file.
+Added 2026-10-17. Up to 10 photos, videos or files can be sent as one message (an album), after the phone checks each
+file. Photos default to Standard quality; videos and other files are sent as they are unless compression is chosen.
+Files can be up to **500 MB** each where the server allows it (it advertises its limit; older servers: 25 MB).
 
 ## Sending
 
 1. **Pick.** "Photos and videos" opens the Android photo picker for up to 10 items; "Files" opens the document picker
-   (the first 10 are kept, with a note). No storage permission is needed.
+   (the first 10 are kept, with a note); "Camera" and "Record video" use the phone's camera app (the camera permission is
+   asked then) and the result goes to the same preview, where it can be discarded. No storage permission is needed.
 2. **Preview** (`BatchComposer`). Every file with a remove button, a "+" tile to add more, the quality (when there are
    photos or videos), one caption, and what the checks found. Files that can't be sent are marked and left out; the
    button says how many will go. Nothing is uploaded before Send.
@@ -14,9 +16,10 @@ quality, after the phone checks each file.
    carries on when you leave the chat) each file is prepared, encrypted on the phone and uploaded, at most two at a
    time (the server's per-person limit), with progress on the bubble. The message itself is sent when every file is
    uploaded. One message carries all the files; older Orbit versions show them one under the other.
-4. **Failure and retry.** A failure marks the message failed with the reason. Tap to retry: files already uploaded
-   aren't uploaded again. If the app was closed before a file was prepared, the original is no longer reachable and the
-   message says so (pick the files again).
+4. **Failure, retry and cancel.** A failure marks the message failed with the reason. Tap to retry: files already
+   uploaded aren't uploaded again. Long-press › Cancel upload stops a message that hasn't been sent yet and removes it from
+   the phone. If the app was closed before a file was prepared, the original is no longer reachable and the message says
+   so (pick the files again).
 
 A swipe-to-reply target applies to the album and is cleared once the album is queued.
 
@@ -24,9 +27,11 @@ A swipe-to-reply target applies to the album and is cleared once the album is qu
 
 | | Photos | Videos |
 |---|---|---|
-| Standard (default) | longest edge ≤ 1600 px, JPEG 82 | short side ≤ 720 px, H.264 ~2 Mbit/s, AAC |
-| HD | longest edge ≤ 4096 px, JPEG 92 | short side ≤ 1080 px, H.264 ~5 Mbit/s, AAC |
-| Original | the file as it is (≤ 25 MB) | the file as it is (≤ 25 MB) |
+| Standard | longest edge ≤ 1600 px, JPEG 82 (photo default) | "Compress (720p)": short side ≤ 720 px, H.264 ~2 Mbit/s, AAC |
+| HD | longest edge ≤ 4096 px, JPEG 92 | "Compress (1080p)": short side ≤ 1080 px, H.264 ~5 Mbit/s, AAC |
+| Original | the file as it is | the file as it is (video default) |
+
+The preview shows an estimate of the total size to send (for compressed videos from their length and bitrate).
 
 - Photos are decoded upright (EXIF rotation applied) and re-encoded, so camera metadata, **including location**, isn't
   carried over at Standard and HD. Transparent images stay PNG. GIFs are never re-encoded (they may be animated).
@@ -50,9 +55,19 @@ The app never claims it does. The checks run on the phone:
   shows a warning and the button becomes "Send anyway"; opening one that was received asks first ("Open anyway").
 - **Names** are cleaned when picked and when received: no folders, control or invisible characters, no
   right-to-left override (which can make `gpj.exe` look like `exe.jpg`), no reserved characters, at most 120 characters.
-- **Sizes**: 25 MB per file after compression (the server's limit), 1 GB before compression, empty files refused, at
-  most 10 files sent and at most 20 shown per received message.
+- **Sizes**: up to the server's limit per file (500 MB at most), 1 GB before compression, empty files refused, at most
+  10 files sent and at most 20 shown per received message.
 - **Gallery**: Save to Gallery only accepts files whose bytes really are a photo or video.
+
+## Large files
+
+Files over 25 MB use a chunked format (`ChunkedAttachmentCrypto`, `ChunkedAttachmentCryptoTest`): 1 MiB chunks, each
+AES-256-GCM with its own nonce (the file nonce with the chunk index) and associated data binding its index and whether
+it's the last chunk, so chunks can't be reordered, dropped or cut off, and neither phone ever holds the whole file in
+memory. The attachment reference says `chunk` (absent for the original format). Smaller files keep the original format,
+so older Orbit versions still open them; older versions can't open chunked files (they couldn't receive files that large
+anyway). The server needs `ATTACHMENT_MAX_BYTES` (default 500 MB since 2026-10-17; `deploy/.env.example`) and a reverse
+proxy that accepts bodies that large (nginx `client_max_body_size`); production is still at 25 MB until that's changed.
 
 ## Encryption
 
