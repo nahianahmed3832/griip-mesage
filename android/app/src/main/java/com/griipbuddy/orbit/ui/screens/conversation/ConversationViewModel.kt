@@ -329,7 +329,7 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
         val max = maxFile.value
         val items = batch.value.map { it.item }.filter {
             val q = if (it.kind == AttachmentPolicy.Kind.VIDEO) videoQuality else photoQuality
-            AttachmentPolicy.check(it.kind, it.sniffed, it.size, q, max) == AttachmentPolicy.Verdict.Ok
+            AttachmentPolicy.check(it.kind, it.sniffed, it.size, q, max, it.durationMs).sendable
         }
         if (items.isEmpty()) return@launch
         val replyId = replyTo.value?.id

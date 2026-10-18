@@ -102,6 +102,30 @@ class AttachmentPolicyTest {
     }
 
     @Test
+    fun aCompressedVideoThatWontFitIsFlaggedBeforeCompressing() {
+        // The owner's report (UI-003): a 283.8 MB, 56 s phone video against production's 25 MB limit.
+        val mb = 1024L * 1024
+        val size = 283L * mb + 800 * 1024
+        val limit = 25 * mb
+        // Original can't be sent at all; that's the server's limit, not a bug.
+        assertTrue(AttachmentPolicy.check(Kind.VIDEO, Sniffed.MP4, size, Quality.ORIGINAL, limit, 56_000) is Verdict.TooLarge)
+        // 1080p is about 34 MB at 5 Mbit/s: still sendable (it's an estimate) but flagged, pointing at 720p.
+        val hd = AttachmentPolicy.check(Kind.VIDEO, Sniffed.MP4, size, Quality.HD, limit, 56_000)
+        assertEquals(Verdict.MayBeTooLarge("About 34 MB after compressing, over the 25 MB limit. Compress (720p) should fit."), hd)
+        assertTrue(hd.sendable)
+        // 720p is about 14 MB: fine.
+        assertEquals(Verdict.Ok, AttachmentPolicy.check(Kind.VIDEO, Sniffed.MP4, size, Quality.STANDARD, limit, 56_000))
+        // A ten-minute video is over the limit at 720p too: a shorter video is the only suggestion.
+        val long = AttachmentPolicy.check(Kind.VIDEO, Sniffed.MP4, 900 * mb, Quality.STANDARD, limit, 600_000)
+        assertTrue((long as Verdict.MayBeTooLarge).reason.endsWith("Try a shorter video."))
+        // Length unknown: no guess, checked after compressing as before. With 1 GB allowed, nothing to flag.
+        assertEquals(Verdict.Ok, AttachmentPolicy.check(Kind.VIDEO, Sniffed.MP4, size, Quality.HD, limit, null))
+        assertEquals(Verdict.Ok, AttachmentPolicy.check(Kind.VIDEO, Sniffed.MP4, size, Quality.HD, 1024 * mb, 56_000))
+        assertEquals(Verdict.Ok, AttachmentPolicy.check(Kind.VIDEO, Sniffed.MP4, size, Quality.ORIGINAL, 1024 * mb, 56_000))
+        assertFalse(Verdict.TooLarge("x").sendable)
+    }
+
+    @Test
     fun largeFilesFollowTheServersLimitUpTo1Gib() {
         val mb = 1024L * 1024
         val gib = 1024 * mb
@@ -130,6 +154,8 @@ class AttachmentPolicyTest {
         assertEquals(null, AttachmentPolicy.estimate(Kind.FILE, null, -1, null, Quality.ORIGINAL))
         assertEquals("500 MB", AttachmentPolicy.sizeLabel(500 * mb))
         assertEquals("1.5 MB", AttachmentPolicy.sizeLabel(mb * 3 / 2))
+        // A 25 MB limit less the encryption overhead (what a 0.4.0 server advertises) reads 25 MB, not 24 (UI-003).
+        assertEquals("25 MB", AttachmentPolicy.sizeLabel(26_214_000L))
     }
 
     @Test

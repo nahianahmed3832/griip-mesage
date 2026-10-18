@@ -648,23 +648,17 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         }
     }
     if (attachSheet) {
-        GlassSheet({ attachSheet = false }, title = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_title)) {
-            MenuRow(
-                Icons.Outlined.Image, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_media), subtitle = "Up to ${AttachmentPolicy.MAX_ITEMS} at once · Standard, HD or Original quality",
-                onClick = { attachSheet = false; mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }, trailing = null,
-            )
-            MenuRow(Icons.Outlined.PhotoCamera, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_camera), subtitle = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_camera_sub), onClick = { attachSheet = false; openCamera(false) }, trailing = null)
-            MenuRow(Icons.Outlined.Videocam, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_video), subtitle = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_video_sub), onClick = { attachSheet = false; openCamera(true) }, trailing = null)
-            MenuRow(
-                Icons.Outlined.Description, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_files), subtitle = "Up to ${AttachmentPolicy.MAX_ITEMS} documents · ${AttachmentPolicy.sizeLabel(maxFile)} each",
-                onClick = { attachSheet = false; picker.launch("*/*") }, trailing = null,
-            )
-            MenuRow(Icons.Outlined.ContactPage, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_contact), subtitle = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_contact_sub), onClick = {
-                attachSheet = false
-                runCatching { pickContact.launch(Unit) }.onFailure { vm.error.value = "No contacts app is available" }
-            }, trailing = null)
-            MenuRow(Icons.Outlined.LocationOn, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_location), subtitle = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.attach_location_sub), onClick = { attachSheet = false; shareLocation() }, trailing = null)
-        }
+        AttachPanel(maxFile, onAction = { action ->
+            attachSheet = false
+            when (action) {
+                AttachAction.Gallery -> mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                AttachAction.Camera -> openCamera(false)
+                AttachAction.RecordVideo -> openCamera(true)
+                AttachAction.Files -> picker.launch("*/*")
+                AttachAction.Contact -> runCatching { pickContact.launch(Unit) }.onFailure { vm.error.value = "No contacts app is available" }
+                AttachAction.Location -> shareLocation()
+            }
+        }, onDismiss = { attachSheet = false })
     } else if (batch.isNotEmpty()) {
         BatchComposer(
             batch, batchNote, onRemove = vm::unpick, onAddMore = { attachSheet = true },

@@ -87,12 +87,14 @@ fun BatchComposer(
     var videoQuality by rememberSaveable { mutableStateOf(Quality.ORIGINAL) }
     var caption by rememberSaveable { mutableStateOf("") }
     val qualityOf = { k: AttachmentPolicy.Kind -> if (k == AttachmentPolicy.Kind.VIDEO) videoQuality else quality }
-    val verdicts = items.map { AttachmentPolicy.check(it.item.kind, it.item.sniffed, it.item.size, qualityOf(it.item.kind), maxFile) }
-    val sendable = verdicts.count { it == AttachmentPolicy.Verdict.Ok }
-    val risky = items.filterIndexed { i, it -> it.risk != null && verdicts[i] == AttachmentPolicy.Verdict.Ok }
+    val verdicts = items.map { AttachmentPolicy.check(it.item.kind, it.item.sniffed, it.item.size, qualityOf(it.item.kind), maxFile, it.item.durationMs) }
+    val sendable = verdicts.count { it.sendable }
+    val risky = items.filterIndexed { i, it -> it.risk != null && verdicts[i].sendable }
+    // Compressed videos that will probably still be over the limit: said now, before a long compression (UI-003).
+    val oversized = verdicts.filterIsInstance<AttachmentPolicy.Verdict.MayBeTooLarge>()
     val photos = items.any { it.item.kind == AttachmentPolicy.Kind.PHOTO && AttachmentPolicy.compressible(it.item.kind, it.item.sniffed) }
     val videos = items.any { it.item.kind == AttachmentPolicy.Kind.VIDEO && AttachmentPolicy.compressible(it.item.kind, it.item.sniffed) }
-    val estimates = items.filterIndexed { i, _ -> verdicts[i] == AttachmentPolicy.Verdict.Ok }
+    val estimates = items.filterIndexed { i, _ -> verdicts[i].sendable }
         .map { AttachmentPolicy.estimate(it.item.kind, it.item.sniffed, it.item.size, it.item.durationMs, qualityOf(it.item.kind)) }
     val estimate = if (estimates.isNotEmpty() && estimates.all { it != null }) estimates.sumOf { it!! } else null
     val title = when {
@@ -148,9 +150,12 @@ fun BatchComposer(
             )
         }
         Text(
-            (estimate?.let { "About ${AttachmentPolicy.sizeLabel(it)} to send · " } ?: "") + "up to ${AttachmentPolicy.sizeLabel(maxFile)} per file",
+            (estimate?.let { "About ${AttachmentPolicy.sizeLabel(it)} to send · " } ?: "") + "this server takes up to ${AttachmentPolicy.sizeLabel(maxFile)} per file",
             style = Griip.type.caption, color = c.textTertiary, modifier = Modifier.padding(top = 8.dp, start = 4.dp),
         )
+        oversized.firstOrNull()?.let { v ->
+            Text(v.reason, style = Griip.type.caption, color = c.warning, modifier = Modifier.padding(top = 6.dp, start = 4.dp))
+        }
         if (risky.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
             Column(Modifier.fillMaxWidth().clip(Shapes.tile).background(c.warningSoft).padding(12.dp)) {
@@ -202,9 +207,12 @@ private fun CandidateTile(cand: ConversationViewModel.Candidate, verdict: Attach
     val item = cand.item
     val thumb by produceState<ImageBitmap?>(null, item.uri) { value = withContext(Dispatchers.IO) { thumbnail(ctx, item.uri, item.kind) }?.asImageBitmap() }
     val bad = verdict as? AttachmentPolicy.Verdict.TooLarge
+    val big = verdict as? AttachmentPolicy.Verdict.MayBeTooLarge
     Box(
         Modifier.size(96.dp).clip(Shapes.tile).background(c.surfaceVariant)
-            .semantics { contentDescription = item.name + (bad?.let { ", can't be sent: ${it.reason}" } ?: "") + (cand.risk?.let { ", $it" } ?: "") },
+            .semantics {
+                contentDescription = item.name + (bad?.let { ", can't be sent: ${it.reason}" } ?: "") + (big?.let { ", ${it.reason}" } ?: "") + (cand.risk?.let { ", $it" } ?: "")
+            },
     ) {
         val t = thumb
         if (t != null) Image(t, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -217,9 +225,9 @@ private fun CandidateTile(cand: ConversationViewModel.Candidate, verdict: Attach
                 Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
-        if (bad != null || cand.risk != null) {
+        if (bad != null || big != null || cand.risk != null) {
             Text(
-                if (bad != null) "Can't send" else "Check",
+                when { bad != null -> "Can't send"; big != null -> "May be too big"; else -> "Check" },
                 style = Griip.type.caption, color = Color.White,
                 modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().background(if (bad != null) c.danger else c.warning).padding(horizontal = 6.dp, vertical = 2.dp),
             )

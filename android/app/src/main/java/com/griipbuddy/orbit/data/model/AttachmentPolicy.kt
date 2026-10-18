@@ -49,7 +49,8 @@ object AttachmentPolicy {
         val gb = mb / 1024.0
         return when {
             gb >= 1 -> if (bytes % (1024L * 1024 * 1024) == 0L) "${gb.toLong()} GB" else String.format(java.util.Locale.ROOT, "%.1f GB", gb)
-            mb >= 10 -> "${mb.toLong()} MB"
+            // Rounded, not cut: a 25 MB limit less a few hundred bytes of encryption overhead read "24 MB" (UI-003).
+            mb >= 10 -> "${Math.round(mb)} MB"
             mb >= 1 -> String.format(java.util.Locale.ROOT, "%.1f MB", mb)
             else -> "${(bytes / 1024).coerceAtLeast(1)} KB"
         }
@@ -179,22 +180,41 @@ object AttachmentPolicy {
 
     sealed interface Verdict {
         data object Ok : Verdict
+        /**
+         * Can be sent, but compressing it will probably not bring it under the server's limit (from the video's length and
+         * the quality's bitrate, so an estimate): the person is told before a long compression, not after it (UI-003).
+         */
+        data class MayBeTooLarge(val reason: String) : Verdict
         data class TooLarge(val reason: String) : Verdict
+
+        val sendable: Boolean get() = this !is TooLarge
     }
 
     /**
      * Whether a picked file of [size] bytes can be sent at [quality] (compression happens later, on the phone). A negative
-     * [size] means the picker didn't say: the limit is then enforced while the file is copied.
+     * [size] means the picker didn't say: the limit is then enforced while the file is copied. [durationMs] (videos)
+     * lets a compressed video's size be estimated against [maxFile].
      */
-    fun check(kind: Kind, sniffed: Sniffed?, size: Long, quality: Quality, maxFile: Long = MAX_FILE_BYTES): Verdict {
+    fun check(kind: Kind, sniffed: Sniffed?, size: Long, quality: Quality, maxFile: Long = MAX_FILE_BYTES, durationMs: Long? = null): Verdict {
         val compresses = quality != Quality.ORIGINAL && compressible(kind, sniffed)
         return when {
             size < 0L -> Verdict.Ok
             size == 0L -> Verdict.TooLarge("This file is empty.")
             compresses && size > MAX_SOURCE_BYTES -> Verdict.TooLarge("Too large to compress on this phone (over 1 GB).")
             !compresses && size > maxFile -> Verdict.TooLarge("Over ${sizeLabel(maxFile)}. Files up to ${sizeLabel(maxFile)} can be sent.")
+            compresses -> compressedVerdict(kind, sniffed, size, durationMs, quality, maxFile)
             else -> Verdict.Ok
         }
+    }
+
+    /** A compressed video whose estimate is over [maxFile]: which smaller choice would probably fit, if any. */
+    private fun compressedVerdict(kind: Kind, sniffed: Sniffed?, size: Long, durationMs: Long?, quality: Quality, maxFile: Long): Verdict {
+        if (kind == Kind.VIDEO && durationMs == null) return Verdict.Ok // length unknown: no estimate, checked after compressing
+        val estimate = estimate(kind, sniffed, size, durationMs, quality) ?: return Verdict.Ok
+        if (estimate <= maxFile) return Verdict.Ok
+        val smaller = (estimate(kind, sniffed, size, durationMs, Quality.STANDARD) ?: Long.MAX_VALUE) <= maxFile
+        val hint = if (quality == Quality.HD && smaller) "Compress (720p) should fit." else "Try a shorter video."
+        return Verdict.MayBeTooLarge("About ${sizeLabel(estimate)} after compressing, over the ${sizeLabel(maxFile)} limit. $hint")
     }
 
     /**

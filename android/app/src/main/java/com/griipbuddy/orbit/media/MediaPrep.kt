@@ -47,8 +47,13 @@ object MediaPrep {
     /** The prepared file's name and type (they change when the format does). */
     data class Prepared(val name: String, val mime: String)
 
-    class TooLargeAfterCompression(name: String) :
-        Exception("“$name” is still too large after compression. Try Standard quality, or a shorter video.")
+    /** The quality names match the send preview's chips ("Compress (720p)"), so the advice can be followed (UI-003). */
+    class TooLargeAfterCompression(name: String, maxBytes: Long) :
+        Exception("“$name” is still over ${AttachmentPolicy.sizeLabel(maxBytes)} after compressing, this server's limit. Try Compress (720p), or a shorter video.")
+
+    /** The phone's encoder couldn't re-encode this video (the cause is logged by class name only). */
+    class CompressionFailed(name: String, cause: Throwable) :
+        java.io.IOException("“$name” couldn't be compressed on this phone. Try the other quality, or Original if it fits.", cause)
 
     /** Photo at [q] from [src] into [out]. */
     suspend fun photo(src: File, out: File, name: String, q: Quality): Prepared = withContext(Dispatchers.IO) {
@@ -179,7 +184,7 @@ object MediaPrep {
 
                         override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
                             main.removeCallbacks(poll)
-                            if (cont.isActive) cont.resumeWithException(java.io.IOException("This video couldn't be compressed", exportException))
+                            if (cont.isActive) cont.resumeWithException(CompressionFailed(name, exportException))
                         }
                     })
                     .build()
@@ -207,7 +212,7 @@ object MediaPrep {
         }
         if (out.length() > maxBytes) {
             out.delete()
-            throw TooLargeAfterCompression(name)
+            throw TooLargeAfterCompression(name, maxBytes)
         }
         return Prepared(AttachmentPolicy.withExtension(name, "mp4"), "video/mp4")
     }

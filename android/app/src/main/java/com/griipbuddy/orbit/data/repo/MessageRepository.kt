@@ -486,12 +486,16 @@ class MessageRepository(
         return true
     }
 
-    /** The largest file this server accepts (its `/v1/server-info`), capped at the app's own limit. Cached. */
-    @Volatile private var serverMaxBytes: Long? = null
+    /**
+     * The largest file this server accepts (its `/v1/server-info`), capped at the app's own limit. Cached for
+     * [SERVER_LIMIT_TTL_MS], so a limit the server's operator raises (production ran 25 MB) applies without restarting Orbit.
+     */
+    @Volatile private var serverMaxBytes: Pair<Long, Long>? = null // limit, when it was read
     suspend fun maxAttachmentBytes(): Long {
-        serverMaxBytes?.let { return it }
+        serverMaxBytes?.let { (limit, at) -> if (System.currentTimeMillis() - at < SERVER_LIMIT_TTL_MS) return limit }
         val info = runCatching { api.get<com.griipbuddy.orbit.data.api.ServerInfo>("/v1/server-info") }.getOrNull()
-        return AttachmentPolicy.effectiveMax(info?.attachmentMaxBytes, info?.fileMaxBytes).also { if (info != null) serverMaxBytes = it }
+        return AttachmentPolicy.effectiveMax(info?.attachmentMaxBytes, info?.fileMaxBytes)
+            .also { if (info != null) serverMaxBytes = it to System.currentTimeMillis() }
     }
 
     /**
@@ -579,6 +583,9 @@ class MessageRepository(
         } catch (e: MissingOriginal) {
             db.messages().setStatus(id, MessageStatus.FAILED, null, e.message)
         } catch (e: com.griipbuddy.orbit.media.MediaPrep.TooLargeAfterCompression) {
+            db.messages().setStatus(id, MessageStatus.FAILED, null, e.message)
+        } catch (e: com.griipbuddy.orbit.media.MediaPrep.CompressionFailed) {
+            Log.w(TAG, "video compression failed: ${generateSequence(e.cause) { it.cause }.take(3).joinToString(" < ") { it.javaClass.simpleName }}")
             db.messages().setStatus(id, MessageStatus.FAILED, null, e.message)
         } catch (e: Exception) {
             Log.w(TAG, "attachment batch failed: ${e.javaClass.simpleName}")
@@ -1150,6 +1157,7 @@ class MessageRepository(
 
     companion object {
         const val MAX_ATTACHMENT_BYTES = 25L * 1024 * 1024
+        private const val SERVER_LIMIT_TTL_MS = 10 * 60_000L
         /** More than a sender can attach (10), so an older or newer app's message still shows, but bounded. */
         const val MAX_RECEIVED_ATTACHMENTS = 20
         /** Outbox `lastError` marking a send paused by an identity change. */

@@ -266,8 +266,10 @@ fun MessageBubble(
             }
             if (m.status == MessageStatus.FAILED) {
                 Text(
+                    // A small corner radius, not a pill: a pill's half-height corners clipped the first and last
+                    // letters of a reason that wraps onto several lines (UI-003, the owner's screenshot).
                     (m.errorText ?: "Not sent") + " · Tap to retry", style = Griip.type.caption, color = c.danger,
-                    modifier = Modifier.padding(top = 3.dp, end = 4.dp).clip(Shapes.pill).pressable(onRetry).padding(2.dp),
+                    modifier = Modifier.padding(top = 3.dp, end = 4.dp).clip(Shapes.small).pressable(onRetry).padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
             if (b.reactions.isNotEmpty()) {
