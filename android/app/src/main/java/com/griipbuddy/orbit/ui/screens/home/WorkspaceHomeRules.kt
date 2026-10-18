@@ -96,6 +96,13 @@ object WorkspaceHomeRules {
     fun resolveOrg(orgs: List<OrgDto>, selected: String?): String? =
         selected?.takeIf { s -> orgs.any { it.id == s } } ?: orgs.firstOrNull()?.id
 
+    /**
+     * The selection names a workspace the loaded list doesn't have: one made or joined on another screen, which selects
+     * it, after Home loaded its list. Home then reloads the list once. False while the list is still loading.
+     */
+    fun selectionUnknown(orgs: List<OrgDto>?, selected: String?): Boolean =
+        selected != null && orgs != null && orgs.none { it.id == selected }
+
     /** Badge on the DMs tab: unread messages in direct messages and groups that aren't muted or archived. */
     fun dmBadge(convs: List<ConversationEntity>): Int = convs.filter { isPeople(it) && listed(it) && !it.muted }.sumOf { it.unreadCount }
 

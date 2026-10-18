@@ -4,6 +4,7 @@ import com.griipbuddy.orbit.data.api.OrgDto
 import com.griipbuddy.orbit.data.db.CallLogEntity
 import com.griipbuddy.orbit.data.db.ConversationEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -130,5 +131,17 @@ class WorkspaceHomeRulesTest {
         assertEquals("o1", WorkspaceHomeRules.resolveOrg(orgs, "gone")) // removed from it: the first one
         assertEquals("o1", WorkspaceHomeRules.resolveOrg(orgs, null))
         assertNull(WorkspaceHomeRules.resolveOrg(emptyList(), "o1"))
+    }
+
+    @Test
+    fun aWorkspaceSelectedBeforeTheListKnowsItAsksForAReload() {
+        // Made or joined on another screen, which selects it: Home's list was loaded before it existed.
+        val orgs = listOf(OrgDto("o1", "Acme"))
+        assertTrue(WorkspaceHomeRules.selectionUnknown(orgs, "o2"))
+        assertTrue(WorkspaceHomeRules.selectionUnknown(emptyList(), "o2"))
+        assertFalse(WorkspaceHomeRules.selectionUnknown(orgs, "o1"))
+        assertFalse(WorkspaceHomeRules.selectionUnknown(orgs, null))
+        // Still loading: the first load decides.
+        assertFalse(WorkspaceHomeRules.selectionUnknown(null, "o2"))
     }
 }

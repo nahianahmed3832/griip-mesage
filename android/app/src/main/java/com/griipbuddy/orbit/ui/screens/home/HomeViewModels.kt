@@ -42,6 +42,8 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         refresh()
         // Membership changed somewhere (joined, removed, a workspace deleted): reload the list.
         viewModelScope.launch { c.messages.orgEvents.collect { loadOrgs() } }
+        // A workspace made or joined on another screen is selected there before this list knows it: reload.
+        viewModelScope.launch { selectedOrg.collect { if (WorkspaceHomeRules.selectionUnknown(_orgs.value, it)) loadOrgs() } }
     }
 
     fun refresh() = viewModelScope.launch {
