@@ -1,6 +1,6 @@
 {
   "name": "griip-message-server",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "description": "Griip Message relay/API server (internal beta)",
   "type": "module",
