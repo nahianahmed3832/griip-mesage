@@ -2,9 +2,9 @@
 
 Worktree `.claude/worktrees/orbit-ui-003`, branch `claude/orbit-ui-003`, cut from `origin/internal-beta` 5e3b72f (Orbit 2.0).
 Phase A (code, tests, build) and Phase B (the owner's HONOR phone, side-by-side Orbit Test build, local server and
-LiveKit over `adb reverse`, Griip Bots as the other party) are done; results in §9. **Production was only read** (the
-public `GET /v1/server-info`) and still runs 0.2.0 with the old limits: what it needs is in §3. No emulator was used.
-**Owner's decision during Phase B: 1 GB per file and no other file upload limits** (§3a).
+LiveKit over `adb reverse`, Griip Bots as the other party) are done; results in §9. No emulator was used.
+**Owner's decision during Phase B: 1 GB per file and no other file upload limits** (§3a). **Deployed to production
+with the owner's approval on 2026-10-18 at 13:24 UTC: API 0.4.1 (commit 4151b76)** (§3c).
 
 ## 1. Summary
 
@@ -110,6 +110,25 @@ where the bucket holds files; the cost is per GB stored and downloaded, below).
 7. **App**: Play needs a build from this branch with a versionCode above 7 (the orbit-2-mobile worktree prepares 0.2.1-beta
    (8)). The owner builds and signs it in Android Studio; the main checkout's local `internal-beta` (6f355a1) must be
    moved to origin first, which drops its uncommitted UI-002 copies (they equal 25d606b except `AppRoot.kt`).
+
+### 3c. Production deploy, 2026-10-18 (owner-approved)
+
+| Step | Result |
+|---|---|
+| Backup | `/opt/griip-internal-messaging/backups/pre-0.4.1-20261018T132139Z`: verified database snapshot and files (integrity ok, schema 10, 27 users, 71 MB) plus `.env`, `compose.yaml` and `livekit.yaml` copies |
+| Code | `server/`, `compose.yaml`, `.env.example` and `scripts/` from 4151b76 synced; image `griip-internal-messaging-api:0.4.1` built on the VPS (0.2.0 and 0.1.0-rollback kept) |
+| `.env` | Edited without displaying it: the `ATTACHMENT_MAX_BYTES=26214400` pin removed; `FILE_MAX_BYTES=1073741824` and the upload quotas at 0 added (production had no quota lines; 0.2.0 used its code defaults). `TRUST_PROXY` comes from `compose.yaml` (`loopback,uniquelocal`) |
+| Config check | A throwaway 0.4.1 container loaded production's config: 1 GiB per file, quotas 0, in-flight 2 GiB, S3, open registration, LiveKit configured, mail `none` |
+| Switch | `up -d --no-deps api` only: api 0.4.1 healthy in seconds; LiveKit (up 44 h) and ntfy (up 21 h) untouched |
+| Verified | Public `/v1/server-info`: version 0.4.1, `fileMaxBytes` 1073741824, `attachmentMaxBytes` 1074790400, `minClientApi` 1, features incl. `files-1g`, `direct-upload`; migrations 011, 012, 014 applied; a forged `X-Forwarded-For` was ignored (real client addresses logged); a client reconnected after the restart (`/v1/ws`, conversations, active calls) with no warnings; `verify.sh` all healthy, 54 GB free, no restarts |
+
+What this means for people now: the **current Play app (0.2.0-beta)** reads the server's limit and caps at its own 500 MB,
+so a 283.8 MB video can now go as Original from it; 1 GB and the UI-003 app fixes need a new Play build. Not changed:
+nginx's `client_max_body_size 27m` for the msg site (only uploads *through* the server would hit it; with S3 the app
+always uploads directly, and it falls back only if direct uploads are unavailable). Raising it to about 1100m is an
+optional, separately approved step. Rollback: set the api image back to `griip-internal-messaging-api:0.2.0` in
+`compose.yaml`, restore `env.backup`, `up -d --no-deps api`; restore the database from the backup only if 0.2.0
+misbehaves with the new tables (migrations 011/012/014 only add).
 
 ## 4. Calling architecture, verified in code
 
@@ -224,7 +243,8 @@ Mocked tests don't prove that remote audio is audible or that a route change is 
 - Audio quality as two people hear it, and Bluetooth routing: measured with bots, not with a second person or a headset.
 - Choppiness on real networks (VPN, mobile, restrictive Wi-Fi): the test LAN gave `udp · direct` with 0 % loss.
 - Older Android versions (route verification uses the Android 12+ API; older ones trust LiveKit's selection).
-- Production behaviour after the 0.2.0 → 0.4.x jump (§3b) until it's deployed and checked.
+- Production after the deploy: checked with server-info, logs, `verify.sh` and a reconnecting client; no real call or
+  large upload was made on production by this session (the owner's Play app can send up to 500 MB now).
 
 ## 9. Physical-device testing (Phase B, 2026-10-18 19:49–21:01)
 
