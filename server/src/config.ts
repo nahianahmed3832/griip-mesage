@@ -32,13 +32,21 @@ export interface Config {
   attachmentDir: string;
   /** How long a 1:1 call waits for someone whose media connection dropped before it ends as "lost" (ms). */
   callPeerGraceMs: number;
+  /**
+   * Most devices in one call (UI-003). Matches LiveKit's `room.max_participants` (12 in deploy/livekit), so a join past it
+   * is refused with a clear reason instead of failing inside the media server.
+   */
+  callMaxParticipants: number;
   /** Profile photos (published by their owners, not end-to-end encrypted; served per each person's privacy settings). */
   profilePhotoDir: string;
   /** Delivery queue TTL in seconds. Hard-capped at 7 days. */
   queueTtlSeconds: number;
   attachmentTtlSeconds: number;
   attachmentMaxBytes: number;
-  /** Upload quotas protecting the shared VPS (bytes). */
+  /**
+   * Upload quotas (bytes; 0: no limit). Owner's decision 2026-10-18 (UI-003): 1 GB per file and no other file upload
+   * limits, so all of them default to 0; each can still be set if a server ever needs one.
+   */
   attachmentUserDailyBytes: number;
   attachmentUserStoredBytes: number;
   attachmentTotalBytes: number;
@@ -195,12 +203,13 @@ function abuseConfig(int: (n: string, d: number) => number): AbuseConfig {
     registrationsPerAddressPerDay: atLeast0("REGISTRATION_PER_ADDRESS_PER_DAY", 30),
     openRegistrationsPerDay: atLeast0("REGISTRATION_OPEN_PER_DAY", 200),
     newAccountDays: atLeast0("NEW_ACCOUNT_LIMIT_DAYS", 7),
-    newAccountDailyBytes: atLeast0("NEW_ACCOUNT_DAILY_UPLOAD_BYTES", 256 * MiB),
-    newAccountStoredBytes: atLeast0("NEW_ACCOUNT_STORED_BYTES", 512 * MiB),
-    newAccountsTotalBytes: atLeast0("NEW_ACCOUNTS_TOTAL_STORED_BYTES", 2048 * MiB),
+    // File uploads: no new-account limits by default (0: none; owner's decision 2026-10-18, UI-003).
+    newAccountDailyBytes: atLeast0("NEW_ACCOUNT_DAILY_UPLOAD_BYTES", 0),
+    newAccountStoredBytes: atLeast0("NEW_ACCOUNT_STORED_BYTES", 0),
+    newAccountsTotalBytes: atLeast0("NEW_ACCOUNTS_TOTAL_STORED_BYTES", 0),
     newAccountHistoryBytes: atLeast0("NEW_ACCOUNT_HISTORY_BYTES", 64 * MiB),
     orgStoredBytes: atLeast0("ATTACHMENT_ORG_STORED_BYTES", 0),
-    uploadStartsPerHour: atLeast0("ATTACHMENT_UPLOAD_STARTS_PER_HOUR", 300),
+    uploadStartsPerHour: atLeast0("ATTACHMENT_UPLOAD_STARTS_PER_HOUR", 0),
     maxDevicesPerUser: atLeast0("MAX_DEVICES_PER_USER", 20),
     wsFramesPerSecond: Math.max(int("WS_FRAMES_PER_SECOND", 20), 1),
     wsFrameBurst: Math.max(int("WS_FRAME_BURST", 100), 1),
@@ -282,6 +291,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const queueTtl = Math.min(int("QUEUE_TTL_SECONDS", SEVEN_DAYS_S), SEVEN_DAYS_S);
   const fileMaxBytes = Math.max(int("FILE_MAX_BYTES", DEFAULT_FILE_MAX_BYTES), 1);
+  const attachmentMaxBytes = int("ATTACHMENT_MAX_BYTES", fileMaxBytes + ENCRYPTION_HEADROOM_BYTES);
   return {
     host: env.HOST ?? "0.0.0.0",
     port: int("PORT", 8080),
@@ -289,21 +299,25 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     attachmentDir: env.ATTACHMENT_DIR ?? path.join(dataDir, "attachments"),
     profilePhotoDir: env.PROFILE_PHOTO_DIR ?? path.join(dataDir, "profile-photos"),
     callPeerGraceMs: int("CALL_PEER_GRACE_MS", 30_000),
+    callMaxParticipants: Math.max(int("CALL_MAX_PARTICIPANTS", 12), 2),
     queueTtlSeconds: Math.max(queueTtl, 1),
     attachmentTtlSeconds: Math.min(int("ATTACHMENT_TTL_SECONDS", SEVEN_DAYS_S), SEVEN_DAYS_S),
     // 1 GiB per file since Orbit 2.0 (files over 25 MB use the chunked format; docs/ATTACHMENTS.md). Uploads to S3 go
     // straight from the app; uploads through the server need the reverse proxy to allow bodies this large.
-    attachmentMaxBytes: int("ATTACHMENT_MAX_BYTES", fileMaxBytes + ENCRYPTION_HEADROOM_BYTES),
+    attachmentMaxBytes,
     fileMaxBytes,
     accounts: accountsConfig(env, dataDir, int),
-    attachmentUserDailyBytes: int("ATTACHMENT_USER_DAILY_BYTES", 2048 * MiB),
-    attachmentUserStoredBytes: int("ATTACHMENT_USER_STORED_BYTES", 4096 * MiB),
-    attachmentTotalBytes: int("ATTACHMENT_TOTAL_BYTES", 10 * 1024 * MiB),
+    // No upload quotas by default (0: no limit; owner's decision 2026-10-18, UI-003).
+    attachmentUserDailyBytes: Math.max(int("ATTACHMENT_USER_DAILY_BYTES", 0), 0),
+    attachmentUserStoredBytes: Math.max(int("ATTACHMENT_USER_STORED_BYTES", 0), 0),
+    attachmentTotalBytes: Math.max(int("ATTACHMENT_TOTAL_BYTES", 0), 0),
     attachmentMaxConcurrentPerUser: int("ATTACHMENT_MAX_CONCURRENT_PER_USER", 2),
     attachmentMaxConcurrent: int("ATTACHMENT_MAX_CONCURRENT", 8),
-    attachmentMaxPendingBytes: int("ATTACHMENT_MAX_PENDING_BYTES", 1024 * MiB),
+    // Bytes being streamed through the server at once (its temporary disk). At least two files of the largest size:
+    // the old default (1024 MiB) was below one 1 GB file plus its encryption headroom, so such a file was always refused.
+    attachmentMaxPendingBytes: Math.max(int("ATTACHMENT_MAX_PENDING_BYTES", 2 * attachmentMaxBytes), 2 * attachmentMaxBytes),
     attachmentKeepDays: Math.max(int("ATTACHMENT_KEEP_DAYS", 365), 0),
-    attachmentUserKeptBytes: int("ATTACHMENT_USER_KEPT_BYTES", 10 * 1024 * MiB),
+    attachmentUserKeptBytes: Math.max(int("ATTACHMENT_USER_KEPT_BYTES", 0), 0),
     storage: storageConfig(env, dataDir, int),
     directUploads: {
       urlTtlSeconds: Math.min(Math.max(int("S3_UPLOAD_URL_TTL_SECONDS", 900), 60), 3600),

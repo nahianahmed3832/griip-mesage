@@ -31,6 +31,20 @@ describe("the 1 GiB limit in configuration", () => {
     expect(encryptedSize(advertised)).toBeLessThanOrEqual(c.attachmentMaxBytes);
   });
 
+  it("has no file upload limits other than 1 GiB per file (owner's decision, UI-003)", () => {
+    const c = loadConfig({ DATA_DIR: "/tmp/orbit-config-test" } as NodeJS.ProcessEnv);
+    expect(c.fileMaxBytes).toBe(GiB);
+    // 0 means no limit: no daily, stored, total, kept, new-account or hourly upload quotas.
+    expect([c.attachmentUserDailyBytes, c.attachmentUserStoredBytes, c.attachmentTotalBytes, c.attachmentUserKeptBytes]).toEqual([0, 0, 0, 0]);
+    expect([c.abuse.newAccountDailyBytes, c.abuse.newAccountStoredBytes, c.abuse.newAccountsTotalBytes, c.abuse.uploadStartsPerHour]).toEqual([0, 0, 0, 0]);
+    // Uploads streamed through the server always have room for two files of the largest size (it was 1024 MiB, below one).
+    expect(c.attachmentMaxPendingBytes).toBeGreaterThanOrEqual(2 * c.attachmentMaxBytes);
+    expect(loadConfig({ DATA_DIR: "/tmp/orbit-config-test", ATTACHMENT_MAX_PENDING_BYTES: String(1024 * MiB) } as NodeJS.ProcessEnv).attachmentMaxPendingBytes)
+      .toBeGreaterThanOrEqual(2 * c.attachmentMaxBytes);
+    // A quota can still be set where a server needs one.
+    expect(loadConfig({ DATA_DIR: "/tmp/orbit-config-test", ATTACHMENT_USER_DAILY_BYTES: String(GiB) } as NodeJS.ProcessEnv).attachmentUserDailyBytes).toBe(GiB);
+  });
+
   it("refuses development-only settings in production", () => {
     const base = { DATA_DIR: "/tmp/orbit-config-test", APP_ENV: "production" };
     expect(() => loadConfig({ ...base, MAIL_TRANSPORT: "file" } as NodeJS.ProcessEnv)).toThrow(/not allowed with APP_ENV=production/);

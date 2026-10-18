@@ -2,7 +2,7 @@ import type { AppContext } from "./context.js";
 import { expireDirectUploads, processAbandonedUploads, processBlobDeletes, purgeExpiredAttachments } from "./routes/attachments.js";
 import { purgeRevokedPushEndpoints } from "./push/service.js";
 import { purgeHistoryTombstones } from "./routes/history.js";
-import { broadcastCall, type CallRow, endCallRow, evictFromCall, loadCall } from "./routes/calls.js";
+import { broadcastCall, type CallRow, endCallRow, evictFromCall, loadCall, scheduleLost } from "./routes/calls.js";
 import { now } from "./util.js";
 
 export interface CleanupResult {
@@ -29,6 +29,8 @@ export interface CleanupResult {
   accountRows: number;
   callsTimedOut: number;
   callEvictions: number;
+  /** Call participant records of devices LiveKit no longer has (a missed "left" webhook). */
+  callStaleParticipants: number;
   disabledDisconnected: number;
   callRecordsPruned: number;
   auditPruned: number;
@@ -58,6 +60,7 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     accountRows: ctx.accounts.purgeExpired(),
     callsTimedOut: 0,
     callEvictions: 0,
+    callStaleParticipants: 0,
     disabledDisconnected: 0,
     callRecordsPruned: 0,
     auditPruned: 0,
@@ -130,9 +133,34 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
       }
     } else if (users.size === 0) {
       await endCallRow(ctx, c, "empty");
+    } else if (fromLiveKit) {
+      r.callStaleParticipants += await reconcileParticipants(ctx, c, type === "DM", t);
     }
   }
   return r;
+}
+
+/**
+ * A live call against LiveKit's participant list (UI-003): a device the server still counts as connected but LiveKit no
+ * longer has (its "left" webhook was lost, or the server restarted meanwhile) is marked as left once it's been gone
+ * longer than the reconnect grace; a 1:1 call left with one person gets the same grace timer a "left" webhook starts,
+ * so it ends as "lost" instead of staying open. Returns the records corrected.
+ */
+async function reconcileParticipants(ctx: AppContext, c: CallRow, isDm: boolean, t: number): Promise<number> {
+  const identities = new Set((ctx.livekit && (await ctx.livekit.participantIdentities(c.room_name))) ?? []);
+  const rows = ctx.db
+    .prepare("SELECT user_id, device_id, joined_at FROM call_participants WHERE call_id = ? AND left_at IS NULL")
+    .all(c.id) as { user_id: string; device_id: string; joined_at: number }[];
+  let stale = 0;
+  for (const p of rows) {
+    if (identities.has(`${p.user_id}.${p.device_id}`) || t - p.joined_at < ctx.config.callPeerGraceMs) continue;
+    ctx.db.prepare("UPDATE call_participants SET left_at = ? WHERE call_id = ? AND device_id = ? AND left_at IS NULL").run(t, c.id, p.device_id);
+    stale++;
+  }
+  if (stale > 0) broadcastCall(ctx, loadCall(ctx, c.id)!, "updated");
+  const users = new Set([...identities].map((i) => i.split(".")[0]));
+  if (isDm && c.state === "ACTIVE" && users.size < 2) scheduleLost(ctx, c);
+  return stale;
 }
 
 export function startJobs(ctx: AppContext): () => void {

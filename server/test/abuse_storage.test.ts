@@ -63,7 +63,12 @@ describe("new-account limits", () => {
     const dm = await dmOf(newbie, veteran);
     await upload(newbie, dm, blob(MiB));
     await upload(newbie, dm, blob(MiB));
-    expect((await expectStatus(upload(newbie, dm, blob(MiB)), 429)).error.code).toBe("quota_exceeded");
+    const over = await expectStatus(upload(newbie, dm, blob(MiB)), 429);
+    expect(over.error.code).toBe("quota_exceeded");
+    // UI-003: it says which allowance this is, what's left today and what lifts it (not just "today's limit").
+    expect(over.error.message).toBe(
+      "New accounts can upload 2 MB a day for their first 7 days (0 MB left today). An invitation from a member, or an administrator, lifts this limit.",
+    );
     for (let i = 0; i < 3; i++) await upload(veteran, dm, blob(MiB));
   });
 

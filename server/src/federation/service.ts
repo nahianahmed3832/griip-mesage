@@ -605,7 +605,7 @@ export class Federation {
     const fromPeer = (db
       .prepare("SELECT SUM(a.size) n FROM attachments a JOIN users u ON u.id = a.uploader_user_id WHERE u.home_server_id = ? AND a.expires_at > ?")
       .get(peer.serverId, now()) as { n: number | null }).n ?? 0;
-    if (fromPeer + meta.size > config.attachmentUserStoredBytes) return { status: 429, code: "quota_exceeded" };
+    if (config.attachmentUserStoredBytes > 0 && fromPeer + meta.size > config.attachmentUserStoredBytes) return { status: 429, code: "quota_exceeded" };
     const tmp = path.join(this.ctx.blobs.spoolDir, `${meta.id}.fed.part`);
     const hash = crypto.createHash("sha256");
     let size = 0;

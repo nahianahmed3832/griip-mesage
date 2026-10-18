@@ -115,7 +115,7 @@ export function cancelLostTimer(ctx: AppContext, callId: string) {
   }
 }
 
-function scheduleLost(ctx: AppContext, c: CallRow) {
+export function scheduleLost(ctx: AppContext, c: CallRow) {
   if (timers(ctx).has(c.id)) return;
   const t = setTimeout(() => {
     timers(ctx).delete(c.id);
@@ -134,6 +134,8 @@ export async function endCallRow(ctx: AppContext, c: CallRow, reason: string): P
   const t = now();
   const res = ctx.db.prepare("UPDATE calls SET state = 'ENDED', ended_at = ?, end_reason = ? WHERE id = ? AND state != 'ENDED'").run(t, reason, c.id);
   if (res.changes === 0) return;
+  // Observability (UI-003): the call's id, why it ended and how long it lasted; never names, identities or media.
+  ctx.log.info({ callId: c.id, reason, seconds: c.answered_at ? Math.round((t - c.answered_at) / 1000) : 0 }, "call ended");
   ctx.db.prepare("UPDATE call_participants SET left_at = ? WHERE call_id = ? AND left_at IS NULL").run(t, c.id);
   broadcastCall(ctx, loadCall(ctx, c.id)!, "ended");
   if (!c.host_server_id) await ctx.livekit?.deleteRoom(c.room_name);
@@ -153,6 +155,26 @@ export function callAdmission(ctx: AppContext, conversationId: string): (userId:
     const d = device.get(deviceId, userId) as { revoked_at: number | null; disabled_at: number | null } | undefined;
     return !!d && !d.revoked_at && !d.disabled_at;
   };
+}
+
+/**
+ * Refuses a join that would take a call past [Config.callMaxParticipants] devices (UI-003). Counted from LiveKit (the
+ * truth about who is connected) or, when it can't be reached, from the server's own records; the joining device itself
+ * (a reconnect) never counts against it.
+ */
+export async function assertCallHasRoom(ctx: AppContext, c: CallRow, identity: string): Promise<void> {
+  const fromLiveKit = ctx.livekit ? await ctx.livekit.participantIdentities(c.room_name) : null;
+  const identities =
+    fromLiveKit ??
+    (ctx.db.prepare("SELECT user_id, device_id FROM call_participants WHERE call_id = ? AND left_at IS NULL").all(c.id) as {
+      user_id: string;
+      device_id: string;
+    }[]).map((r) => `${r.user_id}.${r.device_id}`);
+  const others = new Set(identities.filter((i) => i !== identity)).size;
+  if (others >= ctx.config.callMaxParticipants) {
+    ctx.log.info({ callId: c.id, others }, "call: join refused, call is full");
+    throw new ApiError(409, "call_full", `This call is full (${ctx.config.callMaxParticipants} people at most)`);
+  }
 }
 
 /**
@@ -255,6 +277,7 @@ export function callActions(ctx: AppContext) {
     issue,
     async join(c: CallRow, userId: string, deviceId: string) {
       if (c.state === "ENDED") throw new ApiError(410, "call_ended", "This call has ended");
+      await assertCallHasRoom(ctx, c, `${userId}.${deviceId}`);
       return { call: callView(ctx, c), media: await issue(c, userId, deviceId) };
     },
     // Client-side confirmation that it is connected to the media room. Complements LiveKit
@@ -365,6 +388,7 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
       throw new ApiError(409, "federated_calls_unavailable", "Calls with people on other servers aren't available yet");
     }
     if (existing) {
+      await assertCallHasRoom(ctx, existing, `${userId}.${deviceId}`);
       return { call: callView(ctx, existing), media: await actions.issue(existing, userId, deviceId), joinedExisting: true };
     }
     const id = newId("call");
@@ -378,6 +402,7 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
       now(),
     );
     const c = load(id)!;
+    ctx.log.info({ callId: id, video: body.video, group: conv.type !== "DM" }, "call started");
     if (conv.org_id) ctx.audit({ actorId: userId, orgId: conv.org_id, action: "call.start", target: conv.id, detail: body.video ? "video" : "voice" });
     // Ring everyone else (people on another server through their home server). The media E2EE key is NOT in this
     // event: the caller sends it as an end-to-end encrypted control message through the normal messaging path.
@@ -504,6 +529,14 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
       if (count >= 2) cancelLostTimer(ctx, c.id);
       broadcast(load(c.id)!, "updated");
     } else if (event.event === "participant_left" && pDevice) {
+      // A device that rejoins (the app's reconnect, or a second connection) replaces its old session under the same
+      // identity, and LiveKit's "left" for the old one can arrive after the new one joined. Marking the device as gone
+      // then ended live 1:1 calls as "lost" (UI-003). Only a device LiveKit no longer has is marked as left.
+      const still = await ctx.livekit.participantIdentities(roomName);
+      if (still?.includes(identity)) {
+        ctx.log.info({ callId: c.id }, "call: ignored a replaced session's leave");
+        return { ok: true };
+      }
       db.prepare("UPDATE call_participants SET left_at = ? WHERE call_id = ? AND device_id = ? AND left_at IS NULL").run(now(), c.id, pDevice);
       const cur = load(c.id)!;
       const remaining = (db.prepare("SELECT COUNT(*) n FROM call_participants WHERE call_id = ? AND left_at IS NULL").get(c.id) as { n: number }).n;

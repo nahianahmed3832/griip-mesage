@@ -34,8 +34,10 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
   const inFlight = { count: 0, bytes: 0, users: new Map<string, { count: number; bytes: number }>(), orgs: new Map<string, number>(), newAccounts: 0 };
   // Uploads started per person per hour, finished or not (docs/ABUSE_CONTROLS.md › Uploads).
   const starts = new SlidingWindow(abuse.uploadStartsPerHour, HOUR_MS);
-  /** A new-account allowance, never above the general one (0: no separate allowance). */
-  const newAccountCap = (limit: number, general: number) => (limit > 0 ? Math.min(limit, general) : general);
+  /** A new-account allowance, never above the general one (0: no separate allowance; a general 0 means no limit). */
+  const newAccountCap = (limit: number, general: number) => (limit > 0 ? (general > 0 ? Math.min(limit, general) : limit) : general);
+  /** Whether [used] bytes pass a quota of [limit] bytes; 0 means no limit (the default since UI-003). */
+  const exceeds = (limit: number, used: number) => limit > 0 && used > limit;
 
   interface Uploader {
     userId: string;
@@ -65,25 +67,36 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
       sum("SELECT SUM(size) n FROM attachments WHERE uploader_user_id = ? AND created_at > ?", userId, t - 86_400_000) +
       pending("user_id = ? AND created_at > ?", userId, t - 86_400_000);
     const daily = who.limited ? newAccountCap(abuse.newAccountDailyBytes, cfg.attachmentUserDailyBytes) : cfg.attachmentUserDailyBytes;
-    if (today + streaming + reserve > daily) {
+    if (exceeds(daily, today + streaming + reserve)) {
+      // UI-003: on the phone a new account's first 249 MB video got "today's upload limit" while the server advertised
+      // 1 GB per file. Say which allowance it is, what's left, and what lifts it.
+      if (who.limited) {
+        const mb = (n: number) => `${Math.floor(Math.max(n, 0) / (1024 * 1024))} MB`;
+        throw new ApiError(
+          429,
+          "quota_exceeded",
+          `New accounts can upload ${mb(daily)} a day for their first ${abuse.newAccountDays} days (${mb(daily - today - streaming)} left today). ` +
+            "An invitation from a member, or an administrator, lifts this limit.",
+        );
+      }
       throw new ApiError(429, "quota_exceeded", "You've reached today's upload limit. Try again tomorrow.");
     }
     if (who.limited) {
       // New accounts: kept files count too, and all new accounts together share one allowance.
       const stored = sum("SELECT SUM(size) n FROM attachments WHERE uploader_user_id = ? AND expires_at > ?", userId, t) + pending("user_id = ?", userId);
-      if (stored + streaming + reserve > newAccountCap(abuse.newAccountStoredBytes, cfg.attachmentUserStoredBytes)) {
+      if (exceeds(newAccountCap(abuse.newAccountStoredBytes, cfg.attachmentUserStoredBytes), stored + streaming + reserve)) {
         throw new ApiError(429, "quota_exceeded", "You've reached your file storage limit. Older files expire after 7 days.");
       }
       const pool =
         sum("SELECT SUM(a.size) n FROM attachments a JOIN users u ON u.id = a.uploader_user_id WHERE u.limited_until > ? AND a.expires_at > ?", t, t) +
         sum("SELECT SUM(p.size) n FROM attachment_uploads p JOIN users u ON u.id = p.user_id WHERE u.limited_until > ?", t);
-      if (abuse.newAccountsTotalBytes > 0 && pool + inFlight.newAccounts + reserve > abuse.newAccountsTotalBytes) {
+      if (exceeds(abuse.newAccountsTotalBytes, pool + inFlight.newAccounts + reserve)) {
         throw new ApiError(507, "storage_full", "File storage for new accounts is full right now. Try again later.");
       }
     } else {
       // Files kept for someone's history have their own quota (POST /v1/attachments/:id/keep).
       const stored = sum("SELECT SUM(size) n FROM attachments WHERE uploader_user_id = ? AND expires_at > ? AND kept = 0", userId, t) + pending("user_id = ?", userId);
-      if (stored + streaming + reserve > cfg.attachmentUserStoredBytes) {
+      if (exceeds(cfg.attachmentUserStoredBytes, stored + streaming + reserve)) {
         throw new ApiError(429, "quota_exceeded", "You've reached your file storage limit. Older files expire after 7 days.");
       }
     }
@@ -96,7 +109,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
       }
     }
     const total = sum("SELECT SUM(size) n FROM attachments WHERE expires_at > ?", t) + pending("1 = 1");
-    if (total + inFlight.bytes + reserve > cfg.attachmentTotalBytes) {
+    if (exceeds(cfg.attachmentTotalBytes, total + inFlight.bytes + reserve)) {
       throw new ApiError(507, "storage_full", "The server's file storage is full. Try again later.");
     }
   };
@@ -138,7 +151,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     const mine = inFlight.users.get(userId) ?? { count: 0, bytes: 0 };
     admitStart(userId, reply);
     checkQuotas(who, reserve, mine.bytes);
-    if (mine.count >= cfg.attachmentMaxConcurrentPerUser || inFlight.count >= cfg.attachmentMaxConcurrent || inFlight.bytes + reserve > cfg.attachmentMaxPendingBytes) {
+    if (mine.count >= cfg.attachmentMaxConcurrentPerUser || inFlight.count >= cfg.attachmentMaxConcurrent || exceeds(cfg.attachmentMaxPendingBytes, inFlight.bytes + reserve)) {
       throw new ApiError(429, "too_many_uploads", "Too many uploads at once. Try again in a moment.");
     }
 
@@ -239,7 +252,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     const until = t + cfg.attachmentKeepDays * 86_400_000;
     if (!a.kept) {
       const kept = sum("SELECT SUM(size) n FROM attachments WHERE uploader_user_id = ? AND kept = 1 AND expires_at > ?", a.uploader_user_id, t);
-      if (kept + a.size > cfg.attachmentUserKeptBytes) {
+      if (exceeds(cfg.attachmentUserKeptBytes, kept + a.size)) {
         throw new ApiError(429, "quota_exceeded", "This file can't be kept on the server: its sender's storage for kept files is full.");
       }
     }
