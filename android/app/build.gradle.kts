@@ -33,8 +33,8 @@ android {
         applicationId = "com.griipbuddy.Orbit"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.2.0-beta"
+        versionCode = 8
+        versionName = "0.2.1-beta"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Not the default "<applicationId>.test": that is the side-by-side debug build's id ("Orbit Test").
         testApplicationId = "com.griipbuddy.orbit.androidtest"
