@@ -1,5 +1,6 @@
 import type { FastifyBaseLogger, FastifyRequest } from "fastify";
 import { z } from "zod";
+import type { Accounts } from "./accounts/index.js";
 import type { Authz } from "./authz.js";
 import type { Config } from "./config.js";
 import type { DB } from "./db.js";
@@ -22,6 +23,8 @@ export interface AppContext {
   federation?: Federation;
   /** Present when PUSH_UNIFIEDPUSH_HOSTS is configured (docs/BACKGROUND_DELIVERY.md). */
   push?: PushService;
+  /** Orbit 2.0 email-and-password accounts (src/accounts). Set by buildApp right after the context is made. */
+  accounts: Accounts;
   log: FastifyBaseLogger;
   audit: (e: { actorId?: string | null; orgId?: string | null; action: string; target?: string | null; detail?: string | null }) => void;
 }
@@ -29,6 +32,8 @@ export interface AppContext {
 export interface AuthInfo {
   userId: string;
   deviceId: string;
+  /** Set when the token is an Orbit 2.0 access token: the account session it belongs to. */
+  sessionId?: string;
 }
 
 declare module "fastify" {
@@ -48,8 +53,25 @@ export function parse<T extends z.ZodTypeAny>(schema: T, data: unknown): z.infer
   return r.data;
 }
 
-/** Resolve a bearer session token → (user, device). Rejects revoked devices and disabled users. */
+/**
+ * Resolve a bearer token → (user, device): a v1 session token, or an Orbit 2.0 access token whose session is bound to a
+ * device. Rejects revoked devices, disabled users and ended sessions.
+ */
 export function authenticateToken(ctx: AppContext, token: string | undefined): AuthInfo | null {
+  return authenticateV1Token(ctx, token) ?? ctx.accounts?.deviceAuth(token) ?? null;
+}
+
+/**
+ * For a connection that stays open (the WebSocket): whether what it authenticated with still holds. A v2 session is
+ * checked by its id, so the access token being renewed every few minutes doesn't close the socket, while a revoked
+ * session, device or account still does at once.
+ */
+export function stillAuthenticated(ctx: AppContext, token: string | undefined, auth: AuthInfo): boolean {
+  if (auth.sessionId) return ctx.accounts.sessionStillValid(auth.sessionId, auth.deviceId);
+  return authenticateV1Token(ctx, token) !== null;
+}
+
+function authenticateV1Token(ctx: AppContext, token: string | undefined): AuthInfo | null {
   if (!token || token.length < 20 || token.length > 200) return null;
   const row = ctx.db
     .prepare(

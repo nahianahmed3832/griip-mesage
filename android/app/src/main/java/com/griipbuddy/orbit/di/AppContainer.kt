@@ -48,7 +48,13 @@ class AppContainer(
     val settings = SettingsStore(app, profile.serverKey, serverDefault)
     val identity = IdentityStore(app, profile.identityPrefs, profile.keystoreAlias)
     val session = SessionRepository(identity, settings)
-    val api = ApiClient({ session.serverUrl }, { session.token }, { session.reauth() }).also { session.api = it }
+    // Before this phone has encryption keys (device setup), requests carry the account's access token.
+    val api = ApiClient({ session.serverUrl }, { session.token ?: identity.account()?.tokens?.accessToken }, { session.reauth() }).also { session.api = it }
+    /** Orbit 2.0 accounts (docs/ORBIT_2_ARCHITECTURE_2026-10-18.md): sign-in, tokens, device setup, legacy move, workspaces. */
+    private val accountApi = com.griipbuddy.orbit.data.account.HttpAccountApi(api)
+    val accounts = com.griipbuddy.orbit.data.account.AccountRepository(accountApi, identity, session, session::deviceName)
+    val legacyMigration = com.griipbuddy.orbit.data.account.LegacyMigration(accountApi, identity, session, accounts)
+    val workspaces = com.griipbuddy.orbit.data.account.WorkspaceRepository(accountApi)
     /** What this account's server supports (server-info features, 2026-10-17). */
     val features = com.griipbuddy.orbit.data.repo.ServerFeatures(api)
     val db: GriipDatabase = GriipDatabase.open(app, identity.databasePassphrase(), profile.dbName)
@@ -81,6 +87,7 @@ class AppContainer(
     val wakeFetch = WakeFetch(scope, appState.wakeHolds, messages.backlogDrained, calls.ringChecks, calls.state.map { it.phase == CallPhase.Incoming })
 
     init {
+        session.accountRenewal = { if (accounts.record?.tokens != null) accounts.refreshTokens() else null }
         messages.start()
         calls.start()
         history.start()

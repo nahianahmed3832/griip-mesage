@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { buildApp, type BuiltApp } from "../../src/app.js";
 import { loadConfig } from "../../src/config.js";
+import type { Mailer } from "../../src/accounts/mailer.js";
 import type { PushDeps } from "../../src/push/service.js";
 import { GriipClient } from "./griipClient.js";
 
@@ -15,8 +16,11 @@ export interface Harness extends BuiltApp {
 
 let counter = 0;
 
-/** [push]: replaces DNS and the network for push wake-ups (test/push_wakeup.test.ts). */
-export async function startServer(env: Record<string, string> = {}, opts: { push?: PushDeps } = {}): Promise<Harness> {
+/**
+ * [push]: replaces DNS and the network for push wake-ups (test/push_wakeup.test.ts). [mailer]: receives account emails
+ * (test/support/accounts.ts MemoryMailer); without one, MAIL_TRANSPORT decides (none by default).
+ */
+export async function startServer(env: Record<string, string> = {}, opts: { push?: PushDeps; mailer?: Mailer } = {}): Promise<Harness> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "griip-test-"));
   const config = loadConfig({
     DATA_DIR: dir,
@@ -32,9 +36,14 @@ export async function startServer(env: Record<string, string> = {}, opts: { push
     REGISTRATION_PER_ADDRESS_PER_DAY: "0",
     REGISTRATION_OPEN_PER_DAY: "0",
     NEW_ACCOUNT_LIMIT_DAYS: "0",
+    // Password hashing at the lowest cost the server accepts, so account tests stay fast (production refuses it).
+    PASSWORD_SCRYPT_LOG_N: "10",
+    // Account suites make many sign-ins from 127.0.0.1; the per-network limit itself is tested on its own.
+    AUTH_RATE_LIMIT_PER_MINUTE: "10000",
+    ACCOUNT_EMAILS_PER_NETWORK_PER_HOUR: "10000",
     ...env,
   } as NodeJS.ProcessEnv);
-  const built = await buildApp(config, { logger: false, push: opts.push });
+  const built = await buildApp(config, { logger: false, push: opts.push, mailer: opts.mailer });
   await built.app.listen({ host: "127.0.0.1", port: 0 });
   const addr = built.app.server.address();
   const port = typeof addr === "object" && addr ? addr.port : 0;

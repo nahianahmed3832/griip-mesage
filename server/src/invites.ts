@@ -110,9 +110,10 @@ export function createRegistrationInvite(db: DB, opts: { maxUses: number; days: 
 /**
  * Joins `userId` to the invite's org (upgrade only: an invite never downgrades a member), adds the
  * branch or team the invite names, consumes one use and auto-joins the scope's public channels.
+ * [consume] false: the use was already taken (an Orbit 2.0 sign-up reserves it, src/accounts/service.ts).
  * Must run inside the caller's transaction.
  */
-export function joinOrgByInvite(ctx: AppContext, inv: OrgInviteRow, userId: string, t: number): { orgId: string; inviteId: string; role: string } {
+export function joinOrgByInvite(ctx: AppContext, inv: OrgInviteRow, userId: string, t: number, consume = true): { orgId: string; inviteId: string; role: string } {
   const { db, authz } = ctx;
   const existing = authz.orgRole(inv.org_id, userId);
   const rank: Record<string, number> = { GUEST: 0, MEMBER: 1, ADMIN: 2, OWNER: 3 };
@@ -126,7 +127,7 @@ export function joinOrgByInvite(ctx: AppContext, inv: OrgInviteRow, userId: stri
     if (inv.branch_id) db.prepare("INSERT OR IGNORE INTO branch_members (branch_id, user_id, role, joined_at) VALUES (?, ?, 'MEMBER', ?)").run(inv.branch_id, userId, t);
     if (inv.team_id) db.prepare("INSERT OR IGNORE INTO team_members (team_id, user_id, role, joined_at) VALUES (?, ?, 'MEMBER', ?)").run(inv.team_id, userId, t);
   }
-  db.prepare("UPDATE invitations SET uses = uses + 1 WHERE id = ?").run(inv.id);
+  if (consume) db.prepare("UPDATE invitations SET uses = uses + 1 WHERE id = ?").run(inv.id);
   // An invitation from an established member ends new-account limits (docs/ABUSE_CONTROLS.md). One from an account
   // still under them doesn't, so nobody can vouch for their own extra accounts.
   if (!hasNewAccountLimits(db, inv.created_by, t)) endNewAccountLimits(db, userId);

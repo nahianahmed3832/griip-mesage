@@ -26,6 +26,7 @@
  *   storage-orphans [--delete]     stored files no record refers to, older than a day (dry run; --delete queues them
  *                                  for the retention job)
  */
+import { Accounts } from "./accounts/index.js";
 import { Authz } from "./authz.js";
 import { backupDatabase, verifyBackup } from "./backup.js";
 import { loadConfig } from "./config.js";
@@ -34,6 +35,7 @@ import { ServerIdentity } from "./federation/identity.js";
 import { Hub } from "./hub.js";
 import { endNewAccountLimits } from "./abuse.js";
 import { createRegistrationInvite } from "./invites.js";
+import type { AppContext } from "./context.js";
 import { runCleanup } from "./jobs.js";
 import { deleteEmptyOrg, findDuplicateOrgs, keepReason, orgFootprint } from "./orgRepair.js";
 import { humanCode, newId, now, sha256Hex } from "./util.js";
@@ -161,7 +163,9 @@ switch (cmd) {
     break;
   }
   case "cleanup": {
-    const r = await runCleanup({ db, config: cfg, authz: new Authz(db), hub: new Hub(db), livekit: null, blobs: createBlobStore(cfg), log: console as any, audit: () => {} });
+    const ctx = { db, config: cfg, authz: new Authz(db), hub: new Hub(db), livekit: null, blobs: createBlobStore(cfg), log: console as any, audit: () => {} } as unknown as AppContext;
+    ctx.accounts = new Accounts(ctx);
+    const r = await runCleanup(ctx);
     console.table(r);
     break;
   }

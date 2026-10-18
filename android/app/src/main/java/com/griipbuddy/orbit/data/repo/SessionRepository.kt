@@ -26,6 +26,7 @@ import com.griipbuddy.orbit.data.api.RegisterReq
 import com.griipbuddy.orbit.data.api.ServerInfo
 import com.griipbuddy.orbit.data.api.SessionRes
 import com.griipbuddy.orbit.data.api.UsernameAvailableRes
+import com.griipbuddy.orbit.data.account.MessagingSession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.serializer
@@ -50,11 +51,18 @@ data class PendingPairing(
 class SessionRepository(
     private val store: IdentityStore,
     private val settings: SettingsStore,
-) {
+) : MessagingSession {
     private val _state = MutableStateFlow<SessionState>(store.session()?.let { SessionState.SignedIn(it) } ?: SessionState.SignedOut)
     val state: StateFlow<SessionState> = _state
 
     val session: SessionInfo? get() = (state.value as? SessionState.SignedIn)?.session
+    override val current: SessionInfo? get() = session
+
+    /**
+     * Orbit 2.0: renews the account's tokens (refresh token) instead of signing a device challenge. Answers null when
+     * this profile has no account session, so a legacy install keeps re-authenticating the old way. Set by AppContainer.
+     */
+    var accountRenewal: (suspend () -> Boolean?)? = null
     val keys: LocalKeys? get() = store.keys()
     val serverUrl: String get() = session?.serverUrl ?: settings.current.serverUrl
     val token: String? get() = session?.token
@@ -71,7 +79,7 @@ class SessionRepository(
 
     private suspend fun challenge(c: ApiClient): String = c.request("POST", "/v1/auth/challenge", "{}", ChallengeRes.serializer(), auth = false).nonce
 
-    private fun deviceName(): String = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}".take(60)
+    fun deviceName(): String = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}".take(60)
 
     /** Create a brand-new identity on this device and register the username. */
     suspend fun register(url: String, username: String, displayName: String, avatarColor: Int, inviteCode: String? = null) {
@@ -126,16 +134,26 @@ class SessionRepository(
 
     /** Returns true once linked, false while still pending; throws when expired. */
     suspend fun pollPairing(p: PendingPairing): Boolean {
+        val (keys, approval) = pollPairingKeys(p) ?: return false
+        addDevice(p.serverUrl, approval.username!!, keys, approval.certificate!!)
+        return true
+    }
+
+    /**
+     * The keys another phone sealed to this one, once it approved (null while pending; throws when expired). Orbit 2.0
+     * accounts then bind this phone with them (DeviceSetup.withLinkedKeys) instead of the legacy add-device sign-in.
+     */
+    suspend fun pollPairingKeys(p: PendingPairing): Pair<LocalKeys, PairingPollRes>? {
         val r: PairingPollRes = setupClient(p.serverUrl).request("GET", "/v1/pairing/${p.pairingId}", null, PairingPollRes.serializer(), auth = false)
         when (r.status) {
-            "pending" -> return false
+            "pending" -> return null
             "expired" -> throw ApiException(410, "expired", "The link code expired. Start again.")
         }
-        val seed = Hpke.open(p.transferPrivate.unb64(), p.transferPublic.unb64(), r.sealedEnc!!.unb64(), PAIRING_INFO, p.keys.deviceSignPublic, r.sealedIdentity!!.unb64())
+        val sealedEnc = r.sealedEnc ?: throw ApiException(0, "decode", "Unexpected server response")
+        val sealed = r.sealedIdentity ?: throw ApiException(0, "decode", "Unexpected server response")
+        val seed = Hpke.open(p.transferPrivate.unb64(), p.transferPublic.unb64(), sealedEnc.unb64(), PAIRING_INFO, p.keys.deviceSignPublic, sealed.unb64())
         if (!Ed25519.publicFromSeed(seed).b64().equals(r.identityKey)) throw ApiException(400, "mismatch", "Identity key mismatch — pairing aborted")
-        val keys = p.keys.copy(identitySeed = seed.b64())
-        addDevice(p.serverUrl, r.username!!, keys, r.certificate!!)
-        return true
+        return p.keys.copy(identitySeed = seed.b64()) to r
     }
 
     // ───── Pairing: existing device side ─────
@@ -148,8 +166,9 @@ class SessionRepository(
         api.post<PairingApproveReq, com.griipbuddy.orbit.data.api.OkRes>("/v1/pairing/code/${code.filter { it.isLetterOrDigit() }}/approve", PairingApproveReq(cert, sealed.b64(), enc.b64()))
     }
 
-    /** Re-authenticate by signing a fresh challenge with the device key. */
+    /** Re-authenticate: Orbit 2.0 accounts renew their tokens; legacy installs sign a fresh challenge with the device key. */
     suspend fun reauth(): Boolean {
+        accountRenewal?.invoke()?.let { return it }
         val s = session ?: return false
         val k = keys ?: return false
         return try {
@@ -174,6 +193,21 @@ class SessionRepository(
     /** After a profile edit: the username and display name this phone shows for the account. */
     fun updateProfile(username: String, displayName: String) {
         session?.let { if (it.username != username || it.displayName != displayName) signedIn(it.copy(username = username, displayName = displayName)) }
+    }
+
+    // ───── Orbit 2.0 accounts (MessagingSession) ─────
+    override fun signIn(info: SessionInfo) {
+        settings.update { it.copy(serverUrl = info.serverUrl) }
+        signedIn(info)
+    }
+
+    override fun updateToken(token: String, expiresAt: Long) {
+        session?.let { signedIn(it.copy(token = token, tokenExpiresAt = expiresAt)) }
+    }
+
+    override fun signOutKeepingData() {
+        store.saveSession(null)
+        _state.value = SessionState.SignedOut
     }
 
     private fun signedIn(s: SessionInfo) {

@@ -155,3 +155,20 @@ Evaluated item by item in `DECENTRALISATION_READINESS.md` (2026-10-16).
   pinning, attachments, voice, calls) is the existing code.
 - Specification: `FEDERATION_PROTOCOL.md`; identities: `GLOBAL_IDENTITIES_AND_DISCOVERY.md`; lifecycle: `SERVER_LIFECYCLE.md`; threats and
   metadata: `SECURITY_AND_PRIVACY.md`; audit and plan: `FEDERATION_GAP_ANALYSIS.md`.
+
+## 10. Orbit 2.0 accounts (2026-10-18)
+
+- **Email-and-password accounts** sit on top of the encryption identity: `server/src/accounts/` (store, sessions,
+  service, device setup, workspaces, legacy migration, mailer, routes under `/v2`), migration `014_accounts.sql`. A v2
+  access token whose session is bound to a device authenticates every `/v1` route and the WebSocket exactly like a v1
+  session token (`context.ts` › `authenticateToken`), so messaging, organisations, files and calls are unchanged.
+- **App:** `android/.../data/account/` (wire models, `AccountRepository`, `DeviceSetup`, `LegacyMigration`,
+  `WorkspaceRepository`) and `ui/screens/account/` (sign-up, sign-in, email code, password reset, device setup, legacy
+  move, recovery key, workspace start, account settings). `ApiClient` renews tokens on a 401 through
+  `SessionRepository.reauth` → `AccountRepository.refreshTokens`. Servers without `accounts-v2` keep the legacy onboarding.
+- **Workspaces:** a virtual personal workspace (DMs, groups and contacts outside any organisation) plus the account's
+  organisations, from `GET /v2/workspaces`; the selected one is stored on the account.
+- **Files:** 1 GiB per file of the person's file (`FILE_MAX_BYTES`), advertised as `fileMaxBytes`; the server's
+  ciphertext cap is derived from it.
+- Design, contracts, conflicts and the database plan: `ORBIT_2_MOBILE_AUDIT_2026-10-18.md`,
+  `ORBIT_2_ARCHITECTURE_2026-10-18.md`; results: `ORBIT_2_IMPLEMENTATION_REPORT_2026-10-18.md`.

@@ -2,8 +2,11 @@ import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import { networkKey } from "./abuse.js";
+import { Accounts } from "./accounts/index.js";
+import type { Mailer } from "./accounts/mailer.js";
+import accountRoutes from "./accounts/routes.js";
 import { Authz } from "./authz.js";
-import type { Config } from "./config.js";
+import { type Config, effectiveFileMaxBytes } from "./config.js";
 import { federationClientRoutes, federationPeerRoutes } from "./federation/routes.js";
 import { Federation } from "./federation/service.js";
 import { type AppContext, authenticateToken, bearer } from "./context.js";
@@ -24,12 +27,12 @@ import userRoutes from "./routes/users.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.4.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
  */
-export const API_VERSION = 1;
+export const API_VERSION = 2;
 export const MIN_CLIENT_API = 1;
 /** Version of the /v1/server-info document itself (fields are only ever added). */
 export const SERVER_INFO_VERSION = 1;
@@ -39,7 +42,7 @@ export interface BuiltApp {
   ctx: AppContext;
 }
 
-export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean; push?: PushDeps } = {}): Promise<BuiltApp> {
+export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean; push?: PushDeps; mailer?: Mailer } = {}): Promise<BuiltApp> {
   const app = Fastify({
     logger:
       opts.logger === false
@@ -55,7 +58,8 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
   });
 
   const db = opts.db ?? openDatabase(config.databasePath);
-  const ctx: AppContext = {
+  // `accounts` needs the finished context; it is set right below, before any route can run.
+  const ctx = {
     db,
     config,
     authz: new Authz(db),
@@ -73,7 +77,8 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
         e.detail ?? null,
       );
     },
-  };
+  } as AppContext;
+  ctx.accounts = new Accounts(ctx, { mailer: opts.mailer });
 
   if (config.trustProxy === true) {
     app.log.warn("TRUST_PROXY=true believes X-Forwarded-For entries clients send themselves, so per-address limits can be dodged. Set the proxy's addresses instead, e.g. TRUST_PROXY=loopback,uniquelocal (docs/ABUSE_CONTROLS.md)");
@@ -143,6 +148,15 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
     calling: !!ctx.livekit,
     queueTtlSeconds: config.queueTtlSeconds,
     attachmentMaxBytes: config.attachmentMaxBytes,
+    // Orbit 2.0: the largest file a person may send, in bytes of the file itself (apps check it before encrypting).
+    fileMaxBytes: effectiveFileMaxBytes(config),
+    // Orbit 2.0 accounts: whether new accounts can be verified (an email transport is set up) and the migration window.
+    accounts: {
+      registration: ctx.accounts.mailer.available,
+      legacyLogin: config.accounts.legacy.login,
+      legacyRegistration: config.accounts.legacy.registration,
+      legacyMigration: config.accounts.legacy.migration,
+    },
     attachmentTtlSeconds: config.attachmentTtlSeconds,
     encryption: "griip-envelope-v1 (HPKE X25519/HKDF-SHA256/AES-256-GCM + Ed25519)",
     // What this server supports beyond API 1, so apps can say "this server needs an update" instead of failing
@@ -158,6 +172,7 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
   for (const r of [authRoutes, userRoutes, orgRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, wsRoutes]) {
     await app.register(async (scope) => r(scope, ctx));
   }
+  await app.register(async (scope) => accountRoutes(scope, ctx, ctx.accounts));
   const fed = ctx.federation;
   if (fed) {
     await app.register(async (scope) => federationPeerRoutes(scope, ctx, fed));
@@ -168,7 +183,8 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
 
 /** Feature names in /v1/server-info (2026-10-17 onwards). */
 export function serverFeatures(config: Config, directUploads = false): string[] {
-  const f = ["profiles", "profile-photos", "privacy", "phone-lookup", "chunked-attachments", "call-reconnect", "org-delete"];
+  const f = ["profiles", "profile-photos", "privacy", "phone-lookup", "chunked-attachments", "call-reconnect", "org-delete", "accounts-v2", "workspaces-v2", "files-1g"];
+  if (config.accounts.legacy.migration) f.push("legacy-migration");
   if (directUploads) f.push("direct-upload");
   if (config.history.enabled) f.push("history");
   if (config.attachmentKeepDays > 0) f.push("attachment-keep");

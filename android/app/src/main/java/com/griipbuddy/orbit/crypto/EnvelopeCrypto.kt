@@ -13,6 +13,9 @@ object Canonical {
 
     fun authProof(purpose: String, nonce: String, signingKey: String) = "griip-auth-v1\n$purpose\n$nonce\n$signingKey"
 
+    /** Orbit 2.0 legacy migration: signed by the account IDENTITY key, derived from the recovery key on this phone. */
+    fun legacyMigration(username: String, nonce: String) = "griip-legacy-migration-v1\n$username\n$nonce"
+
     fun header(h: EnvelopeHeader) =
         "griip-envelope-v1\n${h.messageId}\n${h.conversationId}\n${h.senderUserId}\n${h.senderDeviceId}\n${h.sentAt}\n${h.cls}"
 }

@@ -25,6 +25,8 @@ export interface CleanupResult {
   federation: number;
   /** Push endpoints of revoked devices. */
   pushEndpoints: number;
+  /** Orbit 2.0 account sessions, email codes and legacy tickets past their time. */
+  accountRows: number;
   callsTimedOut: number;
   callEvictions: number;
   disabledDisconnected: number;
@@ -53,6 +55,7 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     historyTombstones: purgeHistoryTombstones(ctx, t),
     federation: ctx.federation ? Object.values(ctx.federation.cleanup(t)).reduce((a, b) => a + b, 0) : 0,
     pushEndpoints: purgeRevokedPushEndpoints(db),
+    accountRows: ctx.accounts.purgeExpired(),
     callsTimedOut: 0,
     callEvictions: 0,
     disabledDisconnected: 0,

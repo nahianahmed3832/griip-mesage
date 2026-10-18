@@ -99,6 +99,23 @@ else
   ok "federation off (standalone server)"
 fi
 
+# Orbit 2.0 accounts (docs/ORBIT_2_ARCHITECTURE §9). The server itself refuses the worst combinations at start.
+case "${APP_ENV:-development}" in
+  production|staging) ok "APP_ENV = ${APP_ENV}" ;;
+  development) warn "APP_ENV = development on a deployment: set production (or staging)" ;;
+  *) err "APP_ENV must be development, staging or production (is ${APP_ENV})" ;;
+esac
+case "${MAIL_TRANSPORT:-none}" in
+  none) warn "MAIL_TRANSPORT = none: Orbit 2.0 sign-up and password reset answer 503 until email is set up" ;;
+  file) if [ "${APP_ENV:-development}" = "production" ]; then err "MAIL_TRANSPORT=file writes codes to disk: not allowed in production"; else warn "MAIL_TRANSPORT = file: codes are written to disk (development only)"; fi ;;
+  ses) if [ -z "${MAIL_FROM:-}" ]; then err "MAIL_TRANSPORT=ses needs MAIL_FROM (an SES-verified sender)"; else ok "account emails sent with Amazon SES from ${MAIL_FROM}"; fi ;;
+  *) err "MAIL_TRANSPORT must be none, file or ses (is ${MAIL_TRANSPORT})" ;;
+esac
+for v in LEGACY_REGISTRATION LEGACY_LOGIN LEGACY_MIGRATION; do
+  eval "val=\${$v:-on}"
+  case "$val" in on|off|true|false) ok "$v = $val" ;; *) err "$v must be on or off (is $val)" ;; esac
+done
+
 if [ -n "${PUSH_UNIFIEDPUSH_HOSTS:-}" ]; then
   for h in $(echo "$PUSH_UNIFIEDPUSH_HOSTS" | tr ',' ' '); do
     case "$h" in

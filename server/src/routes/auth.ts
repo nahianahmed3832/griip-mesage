@@ -28,6 +28,19 @@ const zDevice = z.object({
   certificate: zSig,
 });
 
+/**
+ * v1 sign-up and device-key sign-in serve apps before Orbit 2.0. The owner turns them off when the migration window ends
+ * (LEGACY_REGISTRATION, LEGACY_LOGIN; docs/ORBIT_2_ARCHITECTURE §5).
+ */
+function requireLegacy(ctx: AppContext, what: "registration" | "login"): void {
+  if (what === "registration" && !ctx.config.accounts.legacy.registration) {
+    throw new ApiError(410, "legacy_registration_closed", "This version of Orbit can't create accounts any more. Update the app to sign up.");
+  }
+  if (what === "login" && !ctx.config.accounts.legacy.login) {
+    throw new ApiError(410, "legacy_login_closed", "This version of Orbit can't sign in any more. Update the app and sign in with your email.");
+  }
+}
+
 /** Consume a single-use challenge nonce. Returns false if unknown/expired/already used. */
 function consumeChallenge(ctx: AppContext, nonce: string): boolean {
   const r = ctx.db.prepare("DELETE FROM auth_challenges WHERE nonce = ? AND expires_at > ? RETURNING nonce").get(nonce, now());
@@ -107,6 +120,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
   // Register a new account: proves possession of the device key (signs a fresh nonce) and
   // binds the device to the account identity key via a certificate signed by that key.
   app.post("/v1/auth/register", strict, async (req, reply) => {
+    requireLegacy(ctx, "registration");
     const body = parse(
       z.object({
         username: zUsername,
@@ -198,6 +212,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
   });
 
   app.post("/v1/auth/login", strict, async (req) => {
+    requireLegacy(ctx, "login");
     const body = parse(z.object({ deviceId: z.string().max(64), nonce: z.string().min(16).max(64), signature: zSig }), req.body);
     const dev = ctx.db
       // A remote user's stand-in (home_server_id set) can never sign in here, even with its device key.
@@ -217,6 +232,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
   // Add a device to an existing account (pairing or recovery). The certificate must be
   // signed by the account's identity key — only someone holding that key can authorise it.
   app.post("/v1/auth/add-device", strict, async (req) => {
+    requireLegacy(ctx, "login");
     const body = parse(
       z.object({ username: zUsername, device: zDevice, nonce: z.string().min(16).max(64), signature: zSig }),
       req.body,
@@ -380,13 +396,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
       | undefined;
     if (!d) throw notFound("Device not found");
     if (d.revoked_at) return { ok: true };
-    const t = now();
-    ctx.db.transaction(() => {
-      ctx.db.prepare("UPDATE devices SET revoked_at = ? WHERE id = ?").run(t, id);
-      ctx.db.prepare("DELETE FROM sessions WHERE device_id = ?").run(id);
-      ctx.db.prepare("DELETE FROM delivery_queue WHERE recipient_device_id = ?").run(id);
-      removePushEndpoint(ctx.db, id);
-    })();
+    ctx.db.transaction(() => revokeDeviceRows(ctx, id, now()))();
     ctx.audit({ actorId: userId, action: "device.revoke", target: id, detail: id === deviceId ? "self" : null });
     ctx.hub.disconnectDevice(id, "device revoked");
     notifyKeyChange(ctx, userId);
@@ -400,6 +410,18 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
     if (!u) throw notFound();
     return { fingerprint: keyFingerprint(u.identity_key) };
   });
+}
+
+/**
+ * Removes a device from its account: no session (v1 or v2) works for it any more, nothing more is queued for it and it
+ * isn't woken. Run inside a transaction; the caller disconnects its sockets and tells contacts (notifyKeyChange).
+ */
+export function revokeDeviceRows(ctx: AppContext, deviceId: string, t: number): void {
+  ctx.db.prepare("UPDATE devices SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL").run(t, deviceId);
+  ctx.db.prepare("DELETE FROM sessions WHERE device_id = ?").run(deviceId);
+  ctx.db.prepare("UPDATE account_sessions SET revoked_at = ?, revoke_reason = 'device_revoked' WHERE device_id = ? AND revoked_at IS NULL").run(t, deviceId);
+  ctx.db.prepare("DELETE FROM delivery_queue WHERE recipient_device_id = ?").run(deviceId);
+  removePushEndpoint(ctx.db, deviceId);
 }
 
 /** Tell everyone who shares a conversation with this user to refresh its device list. */

@@ -1,0 +1,248 @@
+package com.griipbuddy.orbit.ui.screens.account
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.griipbuddy.orbit.data.account.AccountPhase
+import com.griipbuddy.orbit.data.account.AccountRepository
+import com.griipbuddy.orbit.data.account.AccountRules
+import com.griipbuddy.orbit.data.account.LegacyMigration
+import com.griipbuddy.orbit.data.account.LegacyTicket
+import com.griipbuddy.orbit.data.api.ApiException
+import com.griipbuddy.orbit.ui.screens.onboarding.AuthError
+import com.griipbuddy.orbit.ui.screens.onboarding.AuthErrors
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/** The steps of Orbit 2.0 sign-up and sign-in. [back] is where Back goes (null: back to the welcome screen). */
+enum class AccountStep {
+    SignUp, LogIn, Verify, Forgot, Reset, DeviceSetup, RestoreKey, Link, StartFresh, LegacyCredentials, LegacyDetails;
+
+    val back: AccountStep?
+        get() = when (this) {
+            SignUp, LogIn -> null
+            Verify -> null
+            Forgot -> LogIn
+            Reset -> Forgot
+            DeviceSetup -> null
+            RestoreKey, Link, StartFresh -> DeviceSetup
+            LegacyCredentials -> LogIn
+            LegacyDetails -> LegacyCredentials
+        }
+
+    /** Steps the account's phase decides; the person can't wander off them with Back. */
+    val pinned: Boolean get() = this == Verify || this == DeviceSetup
+}
+
+/** A confirmation shown above a form. */
+enum class AccountNotice { CodeResent, ResetCodeSent, PasswordChanged }
+
+data class AccountFormState(
+    val step: AccountStep = AccountStep.LogIn,
+    val name: String = "",
+    val email: String = "",
+    val password: String = "",
+    val inviteCode: String = "",
+    val code: String = "",
+    val newPassword: String = "",
+    val legacyUsername: String = "",
+    val recoveryKey: String = "",
+    val submitting: Boolean = false,
+    val error: AuthError? = null,
+    val notice: AccountNotice? = null,
+    /** Why the last session ended (shown on the sign-in step), from the server. */
+    val signedOutReason: String? = null,
+    /** The code step needs the password again (the app was restarted since it was typed). */
+    val verifyNeedsPassword: Boolean = false,
+) {
+    val passwordIssue: AccountRules.PasswordIssue? get() = if (password.isEmpty()) null else AccountRules.passwordIssue(password, email)
+    val newPasswordIssue: AccountRules.PasswordIssue? get() = if (newPassword.isEmpty()) null else AccountRules.passwordIssue(newPassword, email)
+    val emailValid: Boolean get() = AccountRules.isEmail(email)
+
+    val canSignUp get() = !submitting && name.isNotBlank() && emailValid && password.isNotEmpty() && passwordIssue == null
+    val canLogIn get() = !submitting && emailValid && password.isNotEmpty()
+    val canVerify get() = !submitting && AccountRules.isVerifyCode(code) && (!verifyNeedsPassword || password.isNotEmpty())
+    val canSendReset get() = !submitting && emailValid
+    val canReset get() = !submitting && AccountRules.isResetCode(code) && newPassword.isNotEmpty() && newPasswordIssue == null
+    val canRestore get() = !submitting && recoveryKey.length >= MIN_RECOVERY_KEY
+    val canStartFresh get() = !submitting && password.isNotEmpty()
+    val canLegacyVerify get() = !submitting && legacyUsername.length >= MIN_USERNAME && recoveryKey.length >= MIN_RECOVERY_KEY
+    val canLegacyComplete get() = canSignUp
+
+    companion object {
+        const val MIN_USERNAME = 3
+        /** Shorter than any recovery key; the key itself is checked when decoded. */
+        const val MIN_RECOVERY_KEY = 20
+    }
+}
+
+/**
+ * Orbit 2.0 sign-up and sign-in, as one flow so the steps share what was typed (docs/ORBIT_2_ARCHITECTURE §2–5). The
+ * account's phase moves it on its own: after sign-up to the code, after sign-in to setting up encryption when needed,
+ * and back to sign-in when a session ended. The password is kept in memory only, to sign in right after the code.
+ * Unit-tested in `AccountFlowViewModelTest`.
+ */
+class AccountFlowViewModel(
+    private val accounts: AccountRepository,
+    private val migration: LegacyMigration,
+    private val serverUrl: () -> String,
+    start: AccountStep = AccountStep.LogIn,
+) : ViewModel() {
+    private val _form = MutableStateFlow(AccountFormState(step = start, email = accounts.record?.email.orEmpty()))
+    val form: StateFlow<AccountFormState> = _form.asStateFlow()
+
+    private var pendingPassword: String? = null
+    private var legacyTicket: LegacyTicket? = null
+
+    init {
+        viewModelScope.launch { accounts.phase.collect(::follow) }
+    }
+
+    private fun follow(phase: AccountPhase) {
+        when (phase) {
+            is AccountPhase.AwaitingVerification -> _form.update { it.copy(step = AccountStep.Verify, email = phase.email, verifyNeedsPassword = pendingPassword == null) }
+            is AccountPhase.NeedsDeviceSetup -> _form.update {
+                if (it.step in setOf(AccountStep.RestoreKey, AccountStep.Link, AccountStep.StartFresh)) it else it.copy(step = AccountStep.DeviceSetup)
+            }
+            is AccountPhase.SignedOut -> _form.update { it.copy(step = AccountStep.LogIn, email = phase.email, signedOutReason = phase.reason) }
+            AccountPhase.None, is AccountPhase.Ready -> Unit
+        }
+    }
+
+    fun goTo(step: AccountStep) = _form.update { it.copy(step = step, error = null, notice = null) }
+
+    /** Back within the flow; false when Back should leave it (to the welcome screen). */
+    fun back(): Boolean {
+        val s = _form.value
+        if (s.submitting) return true
+        if (s.step == AccountStep.Verify) {
+            if (legacyTicket != null) accounts.abandonPending() else accounts.cancelVerification()
+            pendingPassword = null
+            legacyTicket = null
+            goTo(AccountStep.LogIn)
+            return true
+        }
+        val to = s.step.back ?: return false
+        goTo(to)
+        return true
+    }
+
+    fun edit(change: (AccountFormState) -> AccountFormState) = _form.update { change(it).copy(error = null) }
+
+    private fun run(block: suspend () -> Unit) {
+        if (_form.value.submitting) return
+        _form.update { it.copy(submitting = true, error = null, notice = null) }
+        viewModelScope.launch {
+            val error = AuthErrors.attempt(block)
+            _form.update { it.copy(submitting = false, error = error) }
+        }
+    }
+
+    /** Remembers [password] for the code step before [block] moves the flow there; forgets it if [block] fails. */
+    private suspend fun withPendingPassword(password: String, block: suspend () -> Unit) {
+        pendingPassword = password
+        try {
+            block()
+        } catch (e: Exception) {
+            if (accounts.phase.value !is AccountPhase.AwaitingVerification) pendingPassword = null
+            throw e
+        }
+    }
+
+    fun signUp() {
+        val s = _form.value
+        if (!s.canSignUp) return
+        run { withPendingPassword(s.password) { accounts.register(serverUrl(), s.name, s.email, s.password, s.inviteCode) } }
+    }
+
+    fun logIn() {
+        val s = _form.value
+        if (!s.canLogIn) return
+        run {
+            try {
+                accounts.login(serverUrl(), s.email, s.password)
+                _form.update { it.copy(password = "", signedOutReason = null) }
+            } catch (e: ApiException) {
+                if (e.code != "email_unverified") throw e
+                // Signed up earlier but never entered the code: send a fresh one and sign in right after it.
+                withPendingPassword(s.password) { accounts.awaitVerification(serverUrl(), AccountRules.normalizeEmail(s.email), accounts.record?.deviceId) }
+                runCatching { accounts.resendVerification() }
+            }
+        }
+    }
+
+    /**
+     * The code (with the password, which the server checks too), then signing in. If the sign-in failed after the code
+     * went through, trying again only signs in: the code is used up by then.
+     */
+    fun verify() {
+        val s = _form.value
+        if (!s.canVerify) return
+        val password = pendingPassword ?: s.password
+        run {
+            if (!accounts.verified) accounts.verifyEmail(s.code, password)
+            val ticket = legacyTicket
+            if (ticket != null) migration.finish(serverUrl(), ticket, s.email, password) else accounts.login(serverUrl(), s.email, password)
+            pendingPassword = null
+            legacyTicket = null
+            _form.update { it.copy(code = "", password = "", verifyNeedsPassword = false) }
+        }
+    }
+
+    fun resendCode() = run {
+        accounts.resendVerification()
+        _form.update { it.copy(notice = AccountNotice.CodeResent) }
+    }
+
+    fun sendReset() {
+        val s = _form.value
+        if (!s.canSendReset) return
+        run {
+            accounts.forgotPassword(serverUrl(), s.email)
+            _form.update { it.copy(step = AccountStep.Reset, code = "", notice = AccountNotice.ResetCodeSent) }
+        }
+    }
+
+    fun resetPassword() {
+        val s = _form.value
+        if (!s.canReset) return
+        run {
+            accounts.resetPassword(serverUrl(), s.email, s.code, s.newPassword)
+            _form.update { it.copy(step = AccountStep.LogIn, code = "", newPassword = "", password = "", notice = AccountNotice.PasswordChanged) }
+        }
+    }
+
+    fun restoreWithKey() {
+        val s = _form.value
+        if (!s.canRestore) return
+        run { accounts.devices.withRecoveryKey(s.recoveryKey) }
+    }
+
+    fun startFresh() {
+        val s = _form.value
+        if (!s.canStartFresh) return
+        run {
+            accounts.devices.startFresh(s.password)
+            _form.update { it.copy(password = "") }
+        }
+    }
+
+    fun legacyVerify() {
+        val s = _form.value
+        if (!s.canLegacyVerify) return
+        run {
+            val ticket = migration.verify(serverUrl(), s.legacyUsername, s.recoveryKey)
+            legacyTicket = ticket
+            _form.update { it.copy(step = AccountStep.LegacyDetails, name = it.name.ifBlank { ticket.displayName }, recoveryKey = "") }
+        }
+    }
+
+    fun legacyComplete() {
+        val s = _form.value
+        val ticket = legacyTicket ?: return goTo(AccountStep.LegacyCredentials)
+        if (!s.canLegacyComplete) return
+        run { withPendingPassword(s.password) { migration.complete(serverUrl(), ticket, s.name, s.email, s.password) } }
+    }
+}

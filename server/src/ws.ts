@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { type AppContext, authenticateToken } from "./context.js";
+import { type AppContext, authenticateToken, stillAuthenticated } from "./context.js";
 import { canSeeLastSeen, type ProfileRow } from "./profile.js";
 import { acknowledge } from "./routes/messages.js";
 import { now } from "./util.js";
@@ -86,8 +86,9 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
       } catch {
         return;
       }
-      // Re-check the session on every frame so revoked devices are cut off immediately.
-      if (!authenticateToken(ctx, token)) {
+      // Re-check the session on every frame so revoked devices are cut off immediately. (A v2 session is checked by
+      // its id: its access token is renewed every few minutes while the socket stays open.)
+      if (!stillAuthenticated(ctx, token, auth)) {
         socket.close(4401, "session expired");
         return;
       }

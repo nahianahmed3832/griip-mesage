@@ -332,6 +332,7 @@ class MessageRepository(
 
     /** The picked file is larger than attachments may be (25 MB). */
     class AttachmentTooLarge : Exception("This file is larger than this server accepts.")
+    class NotEnoughSpace : Exception("Not enough free space on this phone to send this file. Free up some space and try again.")
 
     /**
      * Copies the picked file into app storage (streamed, never whole in memory), then encrypts and uploads
@@ -489,8 +490,8 @@ class MessageRepository(
     @Volatile private var serverMaxBytes: Long? = null
     suspend fun maxAttachmentBytes(): Long {
         serverMaxBytes?.let { return it }
-        val v = runCatching { api.get<com.griipbuddy.orbit.data.api.ServerInfo>("/v1/server-info").attachmentMaxBytes }.getOrNull()
-        return AttachmentPolicy.effectiveMax(v).also { if (v != null) serverMaxBytes = it }
+        val info = runCatching { api.get<com.griipbuddy.orbit.data.api.ServerInfo>("/v1/server-info") }.getOrNull()
+        return AttachmentPolicy.effectiveMax(info?.attachmentMaxBytes, info?.fileMaxBytes).also { if (info != null) serverMaxBytes = it }
     }
 
     /**
@@ -573,6 +574,8 @@ class MessageRepository(
             db.messages().setStatus(id, MessageStatus.FAILED, null, e.message)
         } catch (e: AttachmentTooLarge) {
             db.messages().setStatus(id, MessageStatus.FAILED, null, e.message)
+        } catch (e: NotEnoughSpace) {
+            db.messages().setStatus(id, MessageStatus.FAILED, null, e.message)
         } catch (e: MissingOriginal) {
             db.messages().setStatus(id, MessageStatus.FAILED, null, e.message)
         } catch (e: com.griipbuddy.orbit.media.MediaPrep.TooLargeAfterCompression) {
@@ -593,6 +596,8 @@ class MessageRepository(
      */
     private suspend fun prepare(pending: AttachmentRef, local: File, src: BatchSource, onProgress: (Float) -> Unit): AttachmentRef {
         val compress = src.quality != AttachmentPolicy.Quality.ORIGINAL && AttachmentPolicy.compressible(src.kind, src.sniffed)
+        // Large files (up to 1 GiB) need room for their copy and its encrypted copy: refuse early rather than fill the phone.
+        if ((local.parentFile ?: context.filesDir).usableSpace < AttachmentPolicy.spaceNeeded(pending.size)) throw NotEnoughSpace()
         val part = File(local.parentFile, local.name + ".part")
         val raw = File(context.cacheDir, "prep-${local.name}")
         try {

@@ -50,6 +50,54 @@ Encryption does not hide metadata. A relay operator can see who talks to whom, w
   administrator cannot impersonate a user: there is no server-side master key, and a new identity key triggers
   "safety number changed" warnings for contacts.
 
+## 2b. Orbit 2.0 accounts: email and password (2026-10-18)
+
+Design and contracts: `ORBIT_2_ARCHITECTURE_2026-10-18.md`; decisions: `ORBIT_2_MOBILE_AUDIT_2026-10-18.md` §6.
+
+- **Two layers.** The email-and-password *account* decides who may sign in and holds sessions. The identity and device
+  keys above still decide who can read messages. A password never decrypts anything, and the server still can't read
+  messages, files or call media.
+- **Passwords** are hashed with scrypt (N = 2^15, r = 8, p = 3, 16-byte salt; parameters stored with the hash and raised
+  at sign-in). Minimum 10 characters, maximum 128, not the email. Production refuses a lower cost
+  (`PASSWORD_SCRYPT_LOG_N`). Passwords are never logged; request bodies aren't logged at all.
+- **Sessions:** a 15-minute access token and a refresh token (60 days idle, 180 days at most), 32 random bytes each,
+  stored as SHA-256. A refresh token names its session (`<session id>.<secret>`), so every refresh token the session
+  ever had is recognised: the current one rotates; the one just replaced is accepted once more for 30 seconds (an answer
+  lost on a mobile network), which ends the pair handed out in between; any other one revokes the whole session (a
+  copied token, however many times the copy was renewed). Password reset revokes every session; a password change
+  revokes all others; removing a device revokes its sessions. The WebSocket re-checks the session on every frame.
+- **Enumeration:** sign-up, resend and forgot always answer 202; sign-in answers the same for an unknown email and a
+  wrong password after a dummy hash; sign-in throttling is counted per email address whether or not it has an account;
+  wrong codes give the same answer whether the address exists, has a code, or has used up its tries.
+- **Codes:** email verification uses 6 digits and **must come with the password chosen at sign-up**, so a later sign-up
+  for the same unverified address can't take over the account its owner is verifying; an unverified sign-up's password
+  changes only together with a new code. Password reset uses 10 characters (about 50 bits). Both expire after 15
+  minutes, allow 5 wrong tries and are stored hashed; each account gets at most 5 per purpose per hour, each network can
+  cause at most 30 account emails per hour, and the "someone tried to sign up with your address" notice has its own
+  allowance, so sign-up attempts can't use up someone's reset emails. A password reset clears the sign-in throttle for
+  that address. Emails contain nothing anyone typed (no names). Codes are never logged. `MAIL_TRANSPORT=file`
+  (development only, refused in production) writes them to disk.
+- **Invite-only servers:** an Orbit 2.0 sign-up takes one use of its registration or organisation invite in the same
+  transaction that creates the account; an organisation invite's holder joins that organisation when their encryption
+  identity is made.
+- **A device joins an account** only with a certificate from the account's identity key: made on the first device,
+  derived from the recovery key, or sealed over by another device (pairing). A device that signs in again proves its
+  device key, so its session is bound at once. "Start fresh" (no recovery key, no other device) needs the password,
+  replaces the identity key, revokes every other device and deletes the server history nobody can decrypt any more;
+  contacts see a security-code change.
+- **Legacy migration:** the app derives the identity key from the recovery key and signs
+  `griip-legacy-migration-v1\n<username>\n<nonce>`; the server checks the signature against the stored identity key and
+  issues a single-use, 15-minute ticket (stored hashed). **The recovery key never leaves the phone and is never stored as a
+  credential.** Failed proofs are counted per username and per network. Nothing is linked until the proof and the
+  ticket both succeed; a link whose email was never verified can be redone, a verified one can't. The phone lets a
+  move with a mistyped address start again.
+- **On the phone,** the account record and tokens are sealed with the same Keystore key as the identity keys. Signing out
+  keeps the encrypted messages and keys for the next sign-in; "Sign out & erase" removes them. A profile holding one
+  account's keys refuses another account's sign-up, move or sign-in until it is erased, and keys made for an account are
+  reused (after an interrupted setup) only by that account.
+- **Known limit:** the account-wide sign-in throttle (50 failures an hour) applies before the password is checked, so a
+  distributed guesser can keep a known address from signing in for an hour at a time; a password reset clears it.
+
 ## 3. Message encryption: `griip-envelope-v1`
 
 This is implemented in `android/.../crypto/EnvelopeCrypto.kt` and mirrored byte for byte in `server/test/support/griipClient.ts`.

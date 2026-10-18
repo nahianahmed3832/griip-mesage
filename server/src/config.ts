@@ -1,8 +1,13 @@
 import path from "node:path";
+import { type AccountsConfig, accountsConfig } from "./accounts/config.js";
 import type { S3Config } from "./storage/s3.js";
 
 const SEVEN_DAYS_S = 7 * 24 * 3600;
 const MiB = 1024 * 1024;
+/** The default per-file limit (Orbit 2.0): 1 GiB of the person's file, before encryption. */
+export const DEFAULT_FILE_MAX_BYTES = 1024 * MiB;
+/** Room for encryption overhead on top of the file limit: the chunked format adds 16 bytes per 1 MiB chunk. */
+const ENCRYPTION_HEADROOM_BYTES = MiB;
 
 export type StorageBackend = "local" | "s3";
 
@@ -61,6 +66,13 @@ export interface Config {
    * take before it counts as abandoned (its object or parts are then deleted), and how many a person may have open.
    */
   directUploads: { urlTtlSeconds: number; sessionSeconds: number; maxPendingPerUser: number };
+  /**
+   * The largest file a person may send, in bytes of the file itself (before encryption). Apps check it byte-exactly;
+   * [attachmentMaxBytes] is the ciphertext limit the server enforces, which defaults to this plus encryption headroom.
+   */
+  fileMaxBytes: number;
+  /** Orbit 2.0 email-and-password accounts (src/accounts). */
+  accounts: AccountsConfig;
   /** "invite" (default): registering needs a registration or org invite code. "open": anyone may register. */
   registrationMode: "invite" | "open";
   sessionTtlSeconds: number;
@@ -245,6 +257,20 @@ function federationConfig(env: NodeJS.ProcessEnv, dataDir: string, int: (n: stri
   };
 }
 
+/** Bytes the chunked attachment format adds per chunk (an AES-GCM tag) and its chunk size (docs/ATTACHMENTS.md). */
+const CHUNK_TAG_BYTES = 16;
+const CHUNK_BYTES = MiB;
+
+/**
+ * The file limit apps are told (`fileMaxBytes` in server-info): [Config.fileMaxBytes], lowered when the ciphertext
+ * limit is set smaller (production ran ATTACHMENT_MAX_BYTES at 25 MB), so a file the app accepts always fits once
+ * encrypted. The overhead is counted per started chunk, which is never less than the real one.
+ */
+export function effectiveFileMaxBytes(c: Pick<Config, "fileMaxBytes" | "attachmentMaxBytes">): number {
+  const overhead = CHUNK_TAG_BYTES * Math.ceil(c.attachmentMaxBytes / CHUNK_BYTES);
+  return Math.max(Math.min(c.fileMaxBytes, c.attachmentMaxBytes - overhead), 0);
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const int = (name: string, def: number) => intFrom(env, name, def);
   const dataDir = env.DATA_DIR ?? path.resolve("data");
@@ -255,6 +281,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error("LIVEKIT_API_SECRET must be at least 32 characters");
   }
   const queueTtl = Math.min(int("QUEUE_TTL_SECONDS", SEVEN_DAYS_S), SEVEN_DAYS_S);
+  const fileMaxBytes = Math.max(int("FILE_MAX_BYTES", DEFAULT_FILE_MAX_BYTES), 1);
   return {
     host: env.HOST ?? "0.0.0.0",
     port: int("PORT", 8080),
@@ -264,9 +291,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     callPeerGraceMs: int("CALL_PEER_GRACE_MS", 30_000),
     queueTtlSeconds: Math.max(queueTtl, 1),
     attachmentTtlSeconds: Math.min(int("ATTACHMENT_TTL_SECONDS", SEVEN_DAYS_S), SEVEN_DAYS_S),
-    // 500 MB per file since 2026-10-17 (files over 25 MB use the chunked format; docs/ATTACHMENTS.md). The reverse proxy
-    // in front must allow bodies this large (nginx client_max_body_size).
-    attachmentMaxBytes: int("ATTACHMENT_MAX_BYTES", 500 * MiB),
+    // 1 GiB per file since Orbit 2.0 (files over 25 MB use the chunked format; docs/ATTACHMENTS.md). Uploads to S3 go
+    // straight from the app; uploads through the server need the reverse proxy to allow bodies this large.
+    attachmentMaxBytes: int("ATTACHMENT_MAX_BYTES", fileMaxBytes + ENCRYPTION_HEADROOM_BYTES),
+    fileMaxBytes,
+    accounts: accountsConfig(env, dataDir, int),
     attachmentUserDailyBytes: int("ATTACHMENT_USER_DAILY_BYTES", 2048 * MiB),
     attachmentUserStoredBytes: int("ATTACHMENT_USER_STORED_BYTES", 4096 * MiB),
     attachmentTotalBytes: int("ATTACHMENT_TOTAL_BYTES", 10 * 1024 * MiB),
@@ -278,7 +307,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     storage: storageConfig(env, dataDir, int),
     directUploads: {
       urlTtlSeconds: Math.min(Math.max(int("S3_UPLOAD_URL_TTL_SECONDS", 900), 60), 3600),
-      sessionSeconds: Math.min(Math.max(int("DIRECT_UPLOAD_SESSION_SECONDS", 6 * 3600), 600), 7 * 86_400),
+      sessionSeconds: Math.min(Math.max(int("DIRECT_UPLOAD_SESSION_SECONDS", 24 * 3600), 600), 7 * 86_400),
       maxPendingPerUser: Math.max(int("DIRECT_UPLOAD_MAX_PENDING_PER_USER", 10), 1),
     },
     history: {

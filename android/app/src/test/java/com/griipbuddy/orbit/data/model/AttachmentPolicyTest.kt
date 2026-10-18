@@ -102,11 +102,23 @@ class AttachmentPolicyTest {
     }
 
     @Test
-    fun largeFilesFollowTheServersLimitUpTo500Mb() {
+    fun largeFilesFollowTheServersLimitUpTo1Gib() {
         val mb = 1024L * 1024
+        val gib = 1024 * mb
         assertEquals(25 * mb, AttachmentPolicy.effectiveMax(null)) // an older server
-        assertEquals(500 * mb, AttachmentPolicy.effectiveMax(2048 * mb)) // never more than the app's own limit
+        assertEquals(gib, AttachmentPolicy.effectiveMax(2048 * mb)) // never more than the app's own limit
         assertEquals(100 * mb, AttachmentPolicy.effectiveMax(100 * mb))
+        // Orbit 2.0 servers say the file limit itself (fileMaxBytes), which wins over their ciphertext limit.
+        assertEquals(1_073_741_824L, AttachmentPolicy.effectiveMax(gib + mb, 1_073_741_824L))
+        assertEquals(26_214_000L, AttachmentPolicy.effectiveMax(25 * mb, 26_214_000L))
+        val oneGib = AttachmentPolicy.effectiveMax(gib + mb, gib)
+        assertEquals(Verdict.Ok, AttachmentPolicy.check(Kind.FILE, Sniffed.ZIP, 1_073_741_824L, Quality.ORIGINAL, oneGib))
+        assertEquals(Verdict.TooLarge("Over 1 GB. Files up to 1 GB can be sent."), AttachmentPolicy.check(Kind.FILE, Sniffed.ZIP, 1_073_741_825L, Quality.ORIGINAL, oneGib))
+        assertEquals("1 GB", AttachmentPolicy.sizeLabel(gib))
+        assertEquals("1.5 GB", AttachmentPolicy.sizeLabel(gib + gib / 2))
+        // Room for the copy and its encrypted copy, plus a margin; unknown sizes need the margin only.
+        assertTrue(AttachmentPolicy.spaceNeeded(gib) > 2 * gib)
+        assertEquals(AttachmentPolicy.spaceNeeded(-1), AttachmentPolicy.spaceNeeded(0))
         val max = AttachmentPolicy.effectiveMax(500 * mb)
         assertEquals(Verdict.Ok, AttachmentPolicy.check(Kind.FILE, Sniffed.ZIP, 499 * mb, Quality.ORIGINAL, max))
         val tooBig = AttachmentPolicy.check(Kind.FILE, Sniffed.ZIP, 501 * mb, Quality.ORIGINAL, max)

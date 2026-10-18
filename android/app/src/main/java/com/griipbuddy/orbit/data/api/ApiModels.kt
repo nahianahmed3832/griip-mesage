@@ -28,6 +28,9 @@ import kotlinx.serialization.json.JsonObject
     val features: List<String>? = null,
     // Push wake-ups (docs/BACKGROUND_DELIVERY.md): the push servers this server sends wake-ups to. Null: none.
     val push: ServerPushInfo? = null,
+    // Orbit 2.0 (docs/ORBIT_2_ARCHITECTURE §6–7): the largest file in bytes of the file itself, and the account system.
+    val fileMaxBytes: Long? = null,
+    val accounts: com.griipbuddy.orbit.data.account.AccountsInfo? = null,
 )
 
 @Serializable data class ServerPushInfo(val unifiedPushHosts: List<String> = emptyList())

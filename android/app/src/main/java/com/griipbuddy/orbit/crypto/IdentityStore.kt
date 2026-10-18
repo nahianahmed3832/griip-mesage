@@ -1,6 +1,8 @@
 package com.griipbuddy.orbit.crypto
 
 import android.content.Context
+import com.griipbuddy.orbit.data.account.AccountRecord
+import com.griipbuddy.orbit.data.account.AccountVault
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -51,13 +53,14 @@ data class SessionInfo(
  * Each server profile passes its own [prefsName] and Keystore [alias]; the defaults are the original
  * profile's, so existing installs read exactly what they always did.
  */
-class IdentityStore(context: Context, prefsName: String = "griip_identity", alias: String = "griip_master_v1") {
+class IdentityStore(context: Context, prefsName: String = "griip_identity", alias: String = "griip_master_v1") : AccountVault {
     private val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
     private val sealer = KeystoreSealer(alias)
     private val json = Json { ignoreUnknownKeys = true }
 
     @Volatile private var cachedKeys: LocalKeys? = null
     @Volatile private var cachedSession: SessionInfo? = null
+    @Volatile private var cachedAccount: AccountRecord? = null
 
     private fun put(name: String, value: String?) {
         if (value == null) prefs.edit().remove(name).commit()
@@ -66,9 +69,9 @@ class IdentityStore(context: Context, prefsName: String = "griip_identity", alia
 
     private fun get(name: String): String? = prefs.getString(name, null)?.let { String(sealer.open(it.unb64())) }
 
-    fun keys(): LocalKeys? = cachedKeys ?: get("keys")?.let { json.decodeFromString<LocalKeys>(it) }?.also { cachedKeys = it }
+    override fun keys(): LocalKeys? = cachedKeys ?: get("keys")?.let { json.decodeFromString<LocalKeys>(it) }?.also { cachedKeys = it }
 
-    fun saveKeys(k: LocalKeys) {
+    override fun saveKeys(k: LocalKeys) {
         put("keys", json.encodeToString(LocalKeys.serializer(), k))
         cachedKeys = k
     }
@@ -78,6 +81,14 @@ class IdentityStore(context: Context, prefsName: String = "griip_identity", alia
     fun saveSession(s: SessionInfo?) {
         put("session", s?.let { json.encodeToString(SessionInfo.serializer(), it) })
         cachedSession = s
+    }
+
+    /** The Orbit 2.0 account of this profile, its tokens included; sealed like the keys. Null on legacy-only installs. */
+    override fun account(): AccountRecord? = cachedAccount ?: get("account")?.let { json.decodeFromString<AccountRecord>(it) }?.also { cachedAccount = it }
+
+    override fun saveAccount(a: AccountRecord?) {
+        put("account", a?.let { json.encodeToString(AccountRecord.serializer(), it) })
+        cachedAccount = a
     }
 
     /** Random 32-byte passphrase for SQLCipher, created once and sealed by the Keystore. */
@@ -92,6 +103,7 @@ class IdentityStore(context: Context, prefsName: String = "griip_identity", alia
         prefs.edit().clear().commit()
         cachedKeys = null
         cachedSession = null
+        cachedAccount = null
         sealer.destroy()
     }
 

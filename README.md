@@ -100,4 +100,6 @@ cd tools/griip-bot && npm run bot -- call <yourUsername> video 120
 - [Continuous integration](docs/CI.md): the checks that run on every push to `internal-beta` and every pull request
 - [Release builds and signing](docs/RELEASE_BUILDS.md) and [operational security remediation](docs/SECURITY_REMEDIATION.md)
 - [Abuse controls](docs/ABUSE_CONTROLS.md): registration, sign-in, upload, storage and realtime limits, and how to recover from false positives
+- Orbit 2.0 (email-and-password accounts, workspaces, legacy migration, 1 GB files): [audit](docs/ORBIT_2_MOBILE_AUDIT_2026-10-18.md),
+  [architecture and API contracts](docs/ORBIT_2_ARCHITECTURE_2026-10-18.md), [implementation report](docs/ORBIT_2_IMPLEMENTATION_REPORT_2026-10-18.md)
 - [Known issues](docs/KNOWN_ISSUES.md) and [Progress](docs/PROGRESS.md)

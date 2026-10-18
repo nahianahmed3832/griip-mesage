@@ -141,7 +141,10 @@ fun AppRoot(container: AppContainer, pendingConversation: String?, pendingInvite
                     when (val s = session) {
                         is SessionState.SignedOut -> OnboardingFlow(pendingInvite)
                         is SessionState.Revoked -> RevokedScreen(s.reason)
-                        is SessionState.SignedIn -> MainNav(container, pendingConversation, pendingInvite, onPendingHandled)
+                        // Orbit 2.0: a new recovery key, the start choice or a legacy account's move come before the app.
+                        is SessionState.SignedIn -> com.griipbuddy.orbit.ui.screens.account.AccountGate(container) { join ->
+                            MainNav(container, pendingConversation, pendingInvite ?: join, onPendingHandled)
+                        }
                     }
                     AnimatedVisibility(
                         visible = call.phase != CallPhase.Idle,

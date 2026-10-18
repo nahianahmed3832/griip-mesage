@@ -21,16 +21,34 @@ object AttachmentPolicy {
     /** The default limit: what servers before the large-file change accept. */
     const val MAX_FILE_BYTES = LEGACY_MAX_FILE_BYTES
 
-    /** The most this app sends in one file, whatever the server allows (also bounded by the phone's free space). */
-    const val APP_MAX_FILE_BYTES = 500L * 1024 * 1024
+    /**
+     * The most this app sends in one file, whatever the server allows (also bounded by the phone's free space): Orbit
+     * 2.0's 1 GiB, counted in bytes of the file itself, exactly (docs/ORBIT_2_ARCHITECTURE §7).
+     */
+    const val APP_MAX_FILE_BYTES = 1024L * 1024 * 1024
 
-    /** The limit to use with a server that advertises [serverMax] bytes (`/v1/server-info`); null: an older server. */
-    fun effectiveMax(serverMax: Long?): Long = serverMax?.takeIf { it > 0 }?.coerceAtMost(APP_MAX_FILE_BYTES) ?: LEGACY_MAX_FILE_BYTES
+    /**
+     * The limit to use with a server. [serverFileMax] is Orbit 2.0's `fileMaxBytes` (the file itself, before encryption);
+     * older servers only give [serverMax], their ciphertext limit, used as it is. Neither: a server before large files.
+     */
+    fun effectiveMax(serverMax: Long?, serverFileMax: Long? = null): Long =
+        (serverFileMax ?: serverMax)?.takeIf { it > 0 }?.coerceAtMost(APP_MAX_FILE_BYTES) ?: LEGACY_MAX_FILE_BYTES
 
-    /** "25 MB", "500 MB", "1.5 MB". */
+    /**
+     * Free space a file of [size] bytes needs on the phone before sending: its copy in app storage and its encrypted copy
+     * (16 bytes more per MiB), plus a margin so the phone isn't filled to the last byte. Unknown size: the margin only.
+     */
+    fun spaceNeeded(size: Long): Long = if (size <= 0) SPACE_MARGIN_BYTES else size * 2 + 16 * (size / CHUNK_BYTES + 1) + SPACE_MARGIN_BYTES
+
+    private const val CHUNK_BYTES = 1024L * 1024
+    private const val SPACE_MARGIN_BYTES = 64L * 1024 * 1024
+
+    /** "25 MB", "500 MB", "1.5 MB", "1 GB". */
     fun sizeLabel(bytes: Long): String {
         val mb = bytes / (1024.0 * 1024.0)
+        val gb = mb / 1024.0
         return when {
+            gb >= 1 -> if (bytes % (1024L * 1024 * 1024) == 0L) "${gb.toLong()} GB" else String.format(java.util.Locale.ROOT, "%.1f GB", gb)
             mb >= 10 -> "${mb.toLong()} MB"
             mb >= 1 -> String.format(java.util.Locale.ROOT, "%.1f MB", mb)
             else -> "${(bytes / 1024).coerceAtLeast(1)} KB"

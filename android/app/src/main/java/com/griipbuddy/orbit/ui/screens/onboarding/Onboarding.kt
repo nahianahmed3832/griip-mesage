@@ -28,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -40,7 +41,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.griipbuddy.orbit.BuildConfig
 import com.griipbuddy.orbit.GriipApp
 import com.griipbuddy.orbit.R
+import com.griipbuddy.orbit.data.account.AccountPhase
 import com.griipbuddy.orbit.data.repo.ServerAddress
+import com.griipbuddy.orbit.ui.screens.account.AccountOnboarding
+import com.griipbuddy.orbit.ui.screens.account.AccountStep
+import com.griipbuddy.orbit.ui.screens.account.accountFlowViewModel
 import com.griipbuddy.orbit.ui.LocalContainer
 import com.griipbuddy.orbit.ui.components.BannerKind
 import com.griipbuddy.orbit.ui.components.ButtonTone
@@ -95,6 +100,29 @@ fun OnboardingFlow(pendingInvite: String?, gateway: AuthGateway? = null) {
     val restoring by restore.state.collectAsStateWithLifecycle()
     var step by rememberSaveable { mutableStateOf(AuthStep.Welcome) }
     var showServer by remember { mutableStateOf(false) }
+    // Orbit 2.0: a server with email-and-password accounts gets the new sign-up and sign-in, which take over from the
+    // welcome screen. A phone already part-way through (a code to enter, keys to set up, signed out) goes straight there.
+    // Older servers keep the steps below until they are updated.
+    val accountPhase by container.accounts.phase.collectAsStateWithLifecycle()
+    val serverAccounts by produceState<ServerAccounts?>(null, settings.serverUrl) {
+        value = runCatching { container.session.serverInfo(settings.serverUrl) }.getOrNull()?.let {
+            ServerAccounts(v2 = it.features.orEmpty().contains("accounts-v2"), inviteOnly = it.registration == "invite")
+        }
+    }
+    val accountsV2 = accountPhase !is AccountPhase.None || serverAccounts?.v2 == true
+    var inAccountFlow by rememberSaveable { mutableStateOf(accountPhase !is AccountPhase.None) }
+    val accountFlow = accountFlowViewModel()
+    val flowScope = rememberCoroutineScope()
+    // A tap before the server has answered asks it first, so nobody starts a legacy sign-up on an Orbit 2.0 server.
+    val openFlow: (AccountStep, AuthStep) -> Unit = { v2Step, legacyStep ->
+        flowScope.launch {
+            val v2 = accountsV2 || runCatching { container.session.serverInfo(settings.serverUrl) }.getOrNull()?.features.orEmpty().contains("accounts-v2")
+            if (v2) {
+                accountFlow.goTo(v2Step)
+                inAccountFlow = true
+            } else step = legacyStep
+        }
+    }
     var brandTaps by remember { mutableIntStateOf(0) }
     // People join the Orbit network without choosing a server. The server setup is for testing and self-hosting:
     // shown in test builds, with developer options on, or when this phone already uses another server.
@@ -106,6 +134,13 @@ fun OnboardingFlow(pendingInvite: String?, gateway: AuthGateway? = null) {
     BackHandler(enabled = step.back != null) { if (!busy) step.back?.let { step = it } }
 
     ProvideGriipPalette(IvoryColors) {
+        if (inAccountFlow && accountsV2) {
+            Box(Modifier.fillMaxSize().background(Griip.colors.background)) {
+                AccountOnboarding(serverSetup, serverAccounts?.inviteOnly == true, onExit = { inAccountFlow = false; step = AuthStep.Welcome }, onServer = { showServer = true })
+            }
+            if (showServer) ServerSheet { showServer = false }
+            return@ProvideGriipPalette
+        }
         Box(Modifier.fillMaxSize().background(Griip.colors.background)) {
             AnimatedContent(step, transitionSpec = { stepTransition(initialState, targetState) }, label = "onboarding") { s ->
                 val back = { s.back?.let { step = it } ?: Unit }
@@ -118,8 +153,8 @@ fun OnboardingFlow(pendingInvite: String?, gateway: AuthGateway? = null) {
                                 container.settings.update { it.copy(developerMode = !it.developerMode) }
                             }
                         },
-                        onSignUp = { step = AuthStep.SignUp },
-                        onLogIn = { step = AuthStep.LogIn },
+                        onSignUp = { openFlow(AccountStep.SignUp, AuthStep.SignUp) },
+                        onLogIn = { openFlow(AccountStep.LogIn, AuthStep.LogIn) },
                         onServer = { showServer = true },
                     )
                     AuthStep.SignUp -> SignUpScreen(signUp, settings.serverUrl, serverSetup, onBack = back, onServer = { showServer = true }, onLogIn = { step = AuthStep.LogIn })
@@ -135,6 +170,9 @@ fun OnboardingFlow(pendingInvite: String?, gateway: AuthGateway? = null) {
         if (showServer) ServerSheet { showServer = false }
     }
 }
+
+/** What the chosen server says about Orbit 2.0 accounts (null while it hasn't answered). */
+private data class ServerAccounts(val v2: Boolean, val inviteOnly: Boolean)
 
 /** Deeper steps slide in from the end, going back slides the other way; both cross-fade. */
 private fun stepTransition(from: AuthStep, to: AuthStep): ContentTransform {

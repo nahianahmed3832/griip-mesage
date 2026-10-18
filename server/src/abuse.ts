@@ -62,6 +62,16 @@ export class SlidingWindow {
     if (this.hits.size > this.maxKeys) this.prune(t);
   }
 
+  /** Forgets [key]'s events. */
+  clear(key: string): void {
+    this.hits.delete(key);
+  }
+
+  /** Forgets the events of every key starting with [prefix]. */
+  clearPrefix(prefix: string): void {
+    for (const k of [...this.hits.keys()]) if (k.startsWith(prefix)) this.hits.delete(k);
+  }
+
   /** Forgets every key whose events have all left the window; if that isn't enough, the oldest keys. */
   private prune(t: number): void {
     for (const k of [...this.hits.keys()]) this.recent(k, t);
@@ -83,8 +93,16 @@ export function endNewAccountLimits(db: DB, userId: string): boolean {
   return db.prepare("UPDATE users SET limited_until = NULL WHERE id = ? AND limited_until IS NOT NULL").run(userId).changes > 0;
 }
 
-/** Open registrations (no invitation) on this server in the last 24 hours, from the audit log. */
+/**
+ * Open registrations (no invitation) on this server in the last 24 hours, from the audit log: v1 sign-ups
+ * ("user.register") and Orbit 2.0 account sign-ups ("account.register"). Setting up encryption for an account is logged
+ * with a detail, so one person isn't counted twice.
+ */
 export function openRegistrationsToday(db: DB, t = now()): number {
-  return (db.prepare("SELECT COUNT(*) n FROM audit_log WHERE action = 'user.register' AND detail IS NULL AND at > ?").get(t - DAY_MS) as { n: number }).n;
+  return (
+    db.prepare("SELECT COUNT(*) n FROM audit_log WHERE action IN ('user.register', 'account.register') AND detail IS NULL AND at > ?").get(t - DAY_MS) as {
+      n: number;
+    }
+  ).n;
 }
 

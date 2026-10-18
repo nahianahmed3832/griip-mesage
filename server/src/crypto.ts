@@ -10,6 +10,8 @@ export const canonical = {
     `griip-device-cert-v1\n${identityKey}\n${signingKey}\n${encryptionKey}`,
   authProof: (purpose: "register" | "login" | "add-device", nonce: string, signingKey: string) =>
     `griip-auth-v1\n${purpose}\n${nonce}\n${signingKey}`,
+  /** Orbit 2.0 legacy migration: signed by the account IDENTITY key (derived from the recovery key on the phone). */
+  legacyMigration: (username: string, nonce: string) => `griip-legacy-migration-v1\n${username}\n${nonce}`,
   envelope: (e: {
     messageId: string;
     conversationId: string;
