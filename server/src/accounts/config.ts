@@ -30,6 +30,8 @@ export interface AccountsConfig {
     registration: boolean;
     /** The routes that link a legacy account to a new email-and-password account. */
     migration: boolean;
+    /** Apps with the move must do it before opening (no "Later"). Old apps keep signing in while [login] is on. */
+    migrationRequired: boolean;
   };
 }
 
@@ -81,6 +83,16 @@ export function accountsConfig(env: NodeJS.ProcessEnv, dataDir: string, int: (na
   if (deployment === "production" && scryptLogN < MIN_PRODUCTION_LOG_N) {
     throw new Error(`PASSWORD_SCRYPT_LOG_N below ${MIN_PRODUCTION_LOG_N} is for tests only: not allowed with APP_ENV=production`);
   }
+  const legacy = {
+    login: onOff(env.LEGACY_LOGIN, "LEGACY_LOGIN", true),
+    registration: onOff(env.LEGACY_REGISTRATION, "LEGACY_REGISTRATION", true),
+    migration: onOff(env.LEGACY_MIGRATION, "LEGACY_MIGRATION", true),
+    // Updated apps must move before they open (no "Later"); apps from before the move still sign in until they update.
+    migrationRequired: onOff(env.LEGACY_MIGRATION_REQUIRED, "LEGACY_MIGRATION_REQUIRED", false),
+  };
+  if (legacy.migrationRequired && !legacy.migration) {
+    throw new Error("LEGACY_MIGRATION_REQUIRED=on needs LEGACY_MIGRATION=on: the move it requires is switched off");
+  }
   return {
     appEnv: deployment,
     mail: mailConfig(env, dataDir, deployment),
@@ -92,10 +104,6 @@ export function accountsConfig(env: NodeJS.ProcessEnv, dataDir: string, int: (na
     codeMaxAttempts: 5,
     authRateLimitPerMinute: Math.max(int("AUTH_RATE_LIMIT_PER_MINUTE", 20), 1),
     emailsPerNetworkPerHour: Math.max(int("ACCOUNT_EMAILS_PER_NETWORK_PER_HOUR", 30), 1),
-    legacy: {
-      login: onOff(env.LEGACY_LOGIN, "LEGACY_LOGIN", true),
-      registration: onOff(env.LEGACY_REGISTRATION, "LEGACY_REGISTRATION", true),
-      migration: onOff(env.LEGACY_MIGRATION, "LEGACY_MIGRATION", true),
-    },
+    legacy,
   };
 }

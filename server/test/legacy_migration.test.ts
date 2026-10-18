@@ -134,6 +134,39 @@ describe("legacy account migration", () => {
 });
 
 describe("retiring the legacy system", () => {
+  it("offers the move as optional by default", async () => {
+    const info = await new AccountClient(h.baseUrl, email("defprobe")).req("GET", "/v1/server-info");
+    expect(info.accounts).toMatchObject({ legacyLogin: true, legacyMigration: true, legacyMigrationRequired: false });
+  });
+
+  it("can require the move from updated apps while old apps still sign in", async () => {
+    const required = await startServer({ LEGACY_MIGRATION_REQUIRED: "on" }, { mailer: new MemoryMailer() });
+    try {
+      const info = await new AccountClient(required.baseUrl, email("reqprobe")).req("GET", "/v1/server-info");
+      expect(info.features).toContain("legacy-migration");
+      expect(info.accounts).toMatchObject({ legacyLogin: true, legacyMigration: true, legacyMigrationRequired: true });
+      // An app from before the move still registers and signs in with its device key.
+      const old = await required.client("oldapp");
+      await old.req("GET", "/v1/users/me");
+    } finally {
+      await required.close();
+    }
+  });
+
+  it("never requires the move while account email is off", async () => {
+    const noMail = await startServer({ LEGACY_MIGRATION_REQUIRED: "on" });
+    try {
+      const info = await new AccountClient(noMail.baseUrl, email("nomail")).req("GET", "/v1/server-info");
+      expect(info.accounts).toMatchObject({ registration: false, legacyMigrationRequired: false });
+    } finally {
+      await noMail.close();
+    }
+  });
+
+  it("refuses to require a move that is switched off", async () => {
+    await expect(startServer({ LEGACY_MIGRATION_REQUIRED: "on", LEGACY_MIGRATION: "off" })).rejects.toThrow(/LEGACY_MIGRATION_REQUIRED/);
+  });
+
   it("closes migration, v1 sign-in and v1 sign-up when the settings say so", async () => {
     const closed = await startServer({ LEGACY_MIGRATION: "off", LEGACY_LOGIN: "off", LEGACY_REGISTRATION: "off" }, { mailer: new MemoryMailer() });
     try {

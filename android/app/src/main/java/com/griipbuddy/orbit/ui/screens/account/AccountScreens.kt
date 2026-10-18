@@ -168,11 +168,12 @@ internal fun LogInEmailScreen(
     onOtherAccount: (() -> Unit)?,
     allowLegacyEntry: Boolean = true,
     onStartOver: (() -> Unit)? = null,
+    canGoBack: Boolean = true,
 ) {
     val focus = LocalFocusManager.current
     AuthScaffold(
         title = stringResource(R.string.acct_login_title), subtitle = stringResource(R.string.acct_login_subtitle),
-        onBack = onBack, backEnabled = !state.submitting,
+        onBack = onBack, backEnabled = canGoBack && !state.submitting,
         actions = { if (showServer) CircleIconButton(Icons.Outlined.Dns, stringResource(R.string.auth_server_settings), onServer) },
         bottomBar = {
             StepButton(stringResource(R.string.acct_login_submit), stringResource(R.string.acct_working), state, state.canLogIn) { focus.clearFocus(); vm.logIn() }

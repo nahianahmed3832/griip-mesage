@@ -84,6 +84,13 @@ recognised install (keys + v1 session on this phone)        fresh install ("Move
 - The recovery key never leaves the phone (C2). It is not stored as a credential.
 - Retirement: `LEGACY_MIGRATION=off` closes the routes; `LEGACY_LOGIN=off` ends v1 sign-in; `LEGACY_REGISTRATION=off`
   ends v1 sign-up. The owner sets the dates (§9).
+- Required move: with `LEGACY_MIGRATION_REQUIRED=on`, server-info says `accounts.legacyMigrationRequired: true`, and an
+  updated app shows the move with no "Later" before it opens. Apps from before 2.0 keep signing in while
+  `LEGACY_LOGIN=on`, so nobody is locked out before the update reaches them. The server reports it only while it can
+  email codes, and the app also checks `accounts.registration`. Without email the move would trap people at the code
+  step. With SES in its sandbox, codes reach verified addresses only, so turn this on after production access.
+- Apps offer the move at all only while `accounts.registration` is true (the server can email codes). Production 0.4.1
+  lists `legacy-migration` with email still off, and a move that can't finish isn't offered.
 
 ## 6. API contracts (v2)
 
@@ -197,6 +204,7 @@ to the database.
 | `LEGACY_LOGIN` | `on` | v1 device-key sign-in for apps before 2.0 |
 | `LEGACY_REGISTRATION` | `on` | v1 sign-up; set `off` in production when the 2.0 app ships |
 | `LEGACY_MIGRATION` | `on` | the migration routes |
+| `LEGACY_MIGRATION_REQUIRED` | `off` | `on`: updated apps must move before opening (no "Later"); needs `LEGACY_MIGRATION=on` and email |
 | `FILE_MAX_BYTES` | `1073741824` | plaintext per-file limit |
 
 Staging is a second Compose project on its own host name and database, with SES in sandbox mode. It doesn't exist yet

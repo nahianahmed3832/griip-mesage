@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.griipbuddy.orbit.data.account.AccountPhase
+import com.griipbuddy.orbit.data.account.MigrationWindow
 import com.griipbuddy.orbit.di.AppContainer
 import com.griipbuddy.orbit.ui.theme.Griip
 import com.griipbuddy.orbit.ui.theme.Motion
@@ -31,7 +32,7 @@ internal enum class GateScreen { RecoveryKey, LegacyMove, WorkspaceStart, App }
  * - a new encryption identity's recovery key, shown once;
  * - on a new account, the choice of how to start (personal, create an organisation, join one);
  * - on a recognised legacy installation, the move to an email-and-password account (it can wait while the server still
- *   accepts the old sign-in).
+ *   accepts the old sign-in and doesn't require it: [MigrationWindow]).
  * [content] is the app; it gets "" as an invitation to open when the person chose to join an organisation.
  */
 @Composable
@@ -41,10 +42,10 @@ fun AccountGate(container: AppContainer, content: @Composable (joinRequested: St
     val phase by container.accounts.phase.collectAsStateWithLifecycle()
     var joinRequested by rememberSaveable { mutableStateOf<String?>(null) }
     var legacyLater by rememberSaveable { mutableStateOf(false) }
-    // The server's migration window: whether moving is offered, and whether the old sign-in still works (so it can wait).
+    // The server's migration window: whether moving is offered, and whether it can wait.
     val window by produceState<MigrationWindow?>(null, container) {
         value = runCatching { container.session.serverInfo(container.session.serverUrl) }.getOrNull()?.let {
-            MigrationWindow(open = it.features.orEmpty().contains("legacy-migration"), canWait = it.accounts?.legacyLogin != false)
+            MigrationWindow.of(it.features, it.accounts)
         }
     }
     // A moved account whose phone still runs on its legacy session (the app stopped between the code and signing in):
@@ -72,8 +73,6 @@ fun AccountGate(container: AppContainer, content: @Composable (joinRequested: St
         }
     }
 }
-
-private data class MigrationWindow(val open: Boolean, val canWait: Boolean)
 
 /** The account steps come after sign-in, so they are drawn in the signed-in Cocoa palette (`AppRoot.SignedInPalette`). */
 @Composable
@@ -112,7 +111,8 @@ private fun LegacyMoveFlow(container: AppContainer, canWait: Boolean, onLater: (
         AccountStep.LegacyDetails -> LegacyDetailsScreen(vm, state, onBack = { vm.goTo(AccountStep.LegacyCredentials) })
         AccountStep.Verify -> VerifyEmailScreen(vm, state, onBack = { later?.invoke() ?: startOver() }, onUseAnotherEmail = startOver)
         AccountStep.LogIn, AccountStep.Forgot, AccountStep.Reset -> FinishMoveSignIn(vm, state, onLater = later, onStartOver = startOver)
-        else -> LegacyCredentialsScreen(vm, state, recognizedUsername = username, onBack = { later?.invoke() }, onLater = later)
+        // A required move (no "Later") has nowhere to go back to: the arrow is shown disabled.
+        else -> LegacyCredentialsScreen(vm, state, recognizedUsername = username, onBack = { later?.invoke() }, onLater = later, canGoBack = later != null)
     }
 }
 
@@ -124,7 +124,7 @@ private fun FinishMoveSignIn(vm: AccountFlowViewModel, state: AccountFormState, 
         AccountStep.Reset -> ResetPasswordScreen(vm, state, onBack = { vm.goTo(AccountStep.Forgot) })
         else -> LogInEmailScreen(
             vm, state, showServer = false, onBack = { onLater?.invoke() }, onServer = {}, onOtherAccount = null,
-            allowLegacyEntry = false, onStartOver = onStartOver,
+            allowLegacyEntry = false, onStartOver = onStartOver, canGoBack = onLater != null,
         )
     }
 }

@@ -28,11 +28,18 @@ import com.griipbuddy.orbit.ui.theme.Space
  * this phone's and only shown. The key is checked on the phone and never sent (docs/ORBIT_2_ARCHITECTURE §5).
  */
 @Composable
-internal fun LegacyCredentialsScreen(vm: AccountFlowViewModel, state: AccountFormState, recognizedUsername: String?, onBack: () -> Unit, onLater: (() -> Unit)?) {
+internal fun LegacyCredentialsScreen(
+    vm: AccountFlowViewModel,
+    state: AccountFormState,
+    recognizedUsername: String?,
+    onBack: () -> Unit,
+    onLater: (() -> Unit)?,
+    canGoBack: Boolean = true,
+) {
     val focus = LocalFocusManager.current
     AuthScaffold(
         title = stringResource(R.string.acct_legacy_title), subtitle = stringResource(R.string.acct_legacy_subtitle),
-        onBack = onBack, backEnabled = !state.submitting,
+        onBack = onBack, backEnabled = canGoBack && !state.submitting,
         bottomBar = {
             StepButton(stringResource(R.string.acct_legacy_verify), stringResource(R.string.acct_working), state, state.canLegacyVerify) { focus.clearFocus(); vm.legacyVerify() }
             if (onLater != null) com.griipbuddy.orbit.ui.screens.onboarding.AuthSwitchLink(stringResource(R.string.acct_legacy_later_q), stringResource(R.string.acct_legacy_later), onLater)

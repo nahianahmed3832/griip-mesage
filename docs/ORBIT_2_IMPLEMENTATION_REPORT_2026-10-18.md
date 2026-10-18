@@ -237,6 +237,72 @@ now disabled, like system Back. **Rechecked on the phone** with another sign-up.
 Test accounts made in this retest are all on local servers: `phonenewthree…` and `phonenewfour…` on 18090, and
 `@phonelegacy4` on a scratch data directory served on 18092 (now stopped).
 
+## 9e. "Updated from Play, but nothing asked me to move" (2026-10-18, evening)
+
+The owner built a signed AAB, put it on Play internal testing and updated the phone. The app showed the new
+Home/DMs/Activity design but never asked for an email and password. There were three causes:
+
+1. **The AAB didn't contain the account code.** It was built in Android Studio from the main checkout at 16:33. That
+   checkout is still on `6f355a1` plus the uncommitted UI-002 files, while the account work is only on `internal-beta`
+   (`5e3b72f`). Checked in the bundle: no `/v2/auth/login`, no `/v2/migration/legacy/verify`, no
+   `griip-legacy-migration-v1`, no `acct_*` strings, but `nav_activity` (UI-002) is there.
+2. **Production doesn't offer the move.** `msg.griipbuddy.cloud` still runs API 0.2.0: server-info has no `accounts`
+   block and no `legacy-migration` feature, so even a correct app keeps the old sign-in, by design.
+3. **The move was never mandatory.** The app offered "Later" whenever the old sign-in still worked.
+
+Fixed in this branch:
+
+- New server switch **`LEGACY_MIGRATION_REQUIRED`** (default `off`), reported as `accounts.legacyMigrationRequired`.
+  With it on, an updated app shows the move before anything else, with no "Later", and Back and the arrow do nothing.
+  Old app versions keep working until they update. The server refuses to start with it on while
+  `LEGACY_MIGRATION=off`. It reports it only while account email works, and the app double-checks, so nobody can be
+  stuck at the code step. `validate-env.sh` checks it.
+- Apps offer the move only while the server can email codes (`accounts.registration`). Production 0.4.1 (UI-003
+  deploy) lists `legacy-migration` with email still off, and a prompt there would end in an unsendable code.
+- The rule now lives in `data/account/MigrationWindow.kt` and is tested in `MigrationWindowTest`. Server tests are in
+  `legacy_migration.test.ts`.
+- App version 0.2.1-beta (code 8), since Play already has code 7.
+- Checks: server 323 passed and 9 skipped (live S3); Android 386 JVM tests passed and 0 failed (with the Home fix
+  below); lint 0 errors, 84
+  warnings (unchanged); `assembleRelease` and the side-by-side `assembleDebug` pass.
+
+Phone check (HONOR, side-by-side Orbit Test 0.2.1-beta on fresh app data; the Play-installed Orbit 0.2.0-beta was
+not touched). A legacy account `@phone.legacy.five` was made on the 0.3.0 server. The same data was then served by
+this branch with `LEGACY_MIGRATION_REQUIRED=on` and `MAIL_TRANSPORT=file`:
+
+| Check | Result |
+|---|---|
+| App start after the upgrade | Pass: "Orbit has a new sign-in" before anything else, with **no "Later"** and the arrow disabled |
+| System Back and the arrow on the prompt | Pass: both stay on the prompt; the app doesn't close |
+| Move: recovery key → email and password → emailed code | Pass: same user, one device, email verified, the app opens on Home |
+| Restart after the move | Pass: no prompt |
+| A bot sends 2 DMs and a group message | Pass: Home shows both chats as unread (2 and 1), DMs badge 3 |
+| Replies from the phone in the DM and the group | Pass: the bot receives and decrypts both |
+| Read state | Pass: Home "All caught up", DMs list shows the replies, Activity "Nothing new" |
+| Create a workspace from Home, switch between two | Pass after the fix below |
+| Sign out → sign in with the new email and password | Pass: back on the selected workspace, no prompt |
+
+Bug found and fixed: **a workspace created or joined from Home didn't appear on Home until the app restarted.** The
+create and join screens select the new workspace, but Home's list was loaded earlier. Home now reloads its list once
+whenever the selection names a workspace it doesn't know (`WorkspaceHomeRules.selectionUnknown`, tested in
+`WorkspaceHomeRulesTest`). Rechecked on the phone: a second workspace appears on Home at once, and switching works.
+
+Seen, not changed:
+- Home's "Unreads" card counts chats (2), while the DMs tab badge counts messages (3). That is UI-002's design.
+- On a required move, system Back does nothing; it doesn't put the app in the background.
+- The account's server-side selected workspace isn't updated by Home's switcher, which still uses the app's saved
+  choice (known follow-up).
+
+What has to happen for the phone to see it (each step needs the owner):
+
+1. Build the signed AAB from code that has the account work: `internal-beta` once this fix is pushed. The main
+   checkout must first be brought up to `internal-beta`. Its uncommitted files are already all in `internal-beta`.
+2. Deploy API 0.4.0 or later to production, with a database backup first; migration 014 is additive.
+3. Email: SES production access (console), then the sending key and `.env` (`MAIL_TRANSPORT=ses`, `MAIL_FROM`), per
+   docs/ORBIT_SES_SETUP_2026-10-18.md steps 6–8.
+4. Then `LEGACY_MIGRATION_REQUIRED=on`. Before production access, only addresses verified in SES can get codes. That is
+   enough for the owner's own test if their address is verified as a sandbox recipient.
+
 ## 9b. Independent review and what it changed
 
 A separate review of the new code (run by a review agent, with probes against an in-process server) found 12 issues.
@@ -275,7 +341,7 @@ New server settings (all in `deploy/.env.example`, checked by `validate-env.sh`)
 `MAIL_FROM`, `MAIL_FILE_DIR`, `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY`, `PASSWORD_SCRYPT_LOG_N`,
 `ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_IDLE_DAYS`, `SESSION_MAX_DAYS`, `AUTH_RATE_LIMIT_PER_MINUTE`,
 `ACCOUNT_EMAILS_PER_NETWORK_PER_HOUR`,
-`LEGACY_LOGIN`, `LEGACY_REGISTRATION`, `LEGACY_MIGRATION`, `FILE_MAX_BYTES`. Changed defaults: `ATTACHMENT_MAX_BYTES`
+`LEGACY_LOGIN`, `LEGACY_REGISTRATION`, `LEGACY_MIGRATION`, `LEGACY_MIGRATION_REQUIRED`, `FILE_MAX_BYTES`. Changed defaults: `ATTACHMENT_MAX_BYTES`
 (now `FILE_MAX_BYTES` + 1 MiB), `DIRECT_UPLOAD_SESSION_SECONDS` (24 h).
 
 Local development with account emails written to disk:
@@ -297,3 +363,5 @@ Verification codes then appear in `/tmp/orbit-dev/mail/*.eml`. The Android build
    `FILE_MAX_BYTES`) and raise `ATTACHMENT_TOTAL_BYTES` together, after checking the S3 cost.
 4. When the Orbit 2.0 app ships: `LEGACY_REGISTRATION=off`. At the cutoff the owner sets: `LEGACY_LOGIN=off`, then
    `LEGACY_MIGRATION=off`.
+5. To force the move on updated apps (§9e): `LEGACY_MIGRATION_REQUIRED=on`, only once SES has production access and
+   `MAIL_TRANSPORT=ses` works. Otherwise people outside the SES sandbox's verified addresses can't get their code.

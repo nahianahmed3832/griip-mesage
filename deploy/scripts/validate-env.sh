@@ -115,6 +115,14 @@ for v in LEGACY_REGISTRATION LEGACY_LOGIN LEGACY_MIGRATION; do
   eval "val=\${$v:-on}"
   case "$val" in on|off|true|false) ok "$v = $val" ;; *) err "$v must be on or off (is $val)" ;; esac
 done
+case "${LEGACY_MIGRATION_REQUIRED:-off}" in
+  on|true)
+    case "${LEGACY_MIGRATION:-on}" in off|false) err "LEGACY_MIGRATION_REQUIRED=on needs LEGACY_MIGRATION=on" ;; esac
+    case "${MAIL_TRANSPORT:-none}" in ses|file) ok "LEGACY_MIGRATION_REQUIRED = on: updated apps must move before opening" ;;
+      *) err "LEGACY_MIGRATION_REQUIRED=on needs account email (MAIL_TRANSPORT=ses): the move ends with an emailed code" ;; esac ;;
+  off|false) ok "LEGACY_MIGRATION_REQUIRED = off" ;;
+  *) err "LEGACY_MIGRATION_REQUIRED must be on or off (is ${LEGACY_MIGRATION_REQUIRED})" ;;
+esac
 
 if [ -n "${PUSH_UNIFIEDPUSH_HOSTS:-}" ]; then
   for h in $(echo "$PUSH_UNIFIEDPUSH_HOSTS" | tr ',' ' '); do

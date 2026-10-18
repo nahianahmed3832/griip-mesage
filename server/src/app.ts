@@ -156,6 +156,8 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
       legacyLogin: config.accounts.legacy.login,
       legacyRegistration: config.accounts.legacy.registration,
       legacyMigration: config.accounts.legacy.migration,
+      // Only when codes can be emailed: a required move with no email would trap people at the code step.
+      legacyMigrationRequired: config.accounts.legacy.migrationRequired && ctx.accounts.mailer.available,
     },
     attachmentTtlSeconds: config.attachmentTtlSeconds,
     encryption: "griip-envelope-v1 (HPKE X25519/HKDF-SHA256/AES-256-GCM + Ed25519)",

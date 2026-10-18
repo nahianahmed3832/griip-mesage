@@ -144,6 +144,8 @@ data class AccountsInfo(
     val legacyLogin: Boolean = true,
     val legacyRegistration: Boolean = true,
     val legacyMigration: Boolean = false,
+    /** The move must be done before the app opens (no "Later"); see [MigrationWindow]. */
+    val legacyMigrationRequired: Boolean = false,
 )
 
 /**
