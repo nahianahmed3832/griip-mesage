@@ -2,13 +2,25 @@
 
 Added 2026-10-17. Up to 10 photos, videos or files can be sent as one message (an album), after the phone checks each
 file. Photos default to Standard quality; videos and other files are sent as they are unless compression is chosen.
-Files can be up to **500 MB** each where the server allows it (it advertises its limit; older servers: 25 MB).
+Files can be up to **1 GB** each (Orbit 2.0) where the server allows it: the app shows and enforces the server's own
+limit from `/v1/server-info` (older servers: 25 MB), re-read every 10 minutes so a raised limit applies without a restart.
+
+> **UI-003 (2026-10-18), the 283.8 MB video that failed twice:** production advertises `attachmentMaxBytes` 26214400
+> (25 MiB; read from the public `/v1/server-info`, API 0.2.0), so "Original" was refused before upload and "Compress
+> (1080p)" (about 34 MB for 56 s at 5 Mbit/s) failed only after a long compression. The fix on the server is the 0.4.0
+> deploy with the limit raised (owner's steps in `ORBIT_UI003_CALLING_ATTACHMENTS_2026-10-18.md` §3). The app now warns
+> before compressing when the estimate is over the limit and names the quality that fits, says why a compression failed,
+> and no longer clips the reason under a failed bubble. **Owner's decision the same day: 1 GB per file and no other
+> upload limits** (no daily, stored, total, kept or new-account quotas; `docs/ABUSE_CONTROLS.md`).
 
 ## Sending
 
-1. **Pick.** "Photos and videos" opens the Android photo picker for up to 10 items; "Files" opens the document picker
-   (the first 10 are kept, with a note); "Camera" and "Record video" use the phone's camera app (the camera permission is
-   asked then) and the result goes to the same preview, where it can be discarded. No storage permission is needed.
+1. **Pick.** The attach panel (UI-003, `AttachPanel`) has six tiles: "Photos and videos" opens the Android photo picker
+   for up to 10 items; "Camera" and "Record video" use the phone's camera app (the camera permission is asked then);
+   "Files" opens the document picker (the first 10 are kept, with a note); then contact and location. The panel shows
+   this server's limit, and on a 25 MB server says long videos only fit compressed. No storage permission is needed:
+   the phone's photos aren't shown inline in the panel, which would need READ_MEDIA_IMAGES/VIDEO (Google Play restricts
+   it to apps whose core use needs broad photo access); that's an owner decision, not done.
 2. **Preview** (`BatchComposer`). Every file with a remove button, a "+" tile to add more, the quality (when there are
    photos or videos), one caption, and what the checks found. Files that can't be sent are marked and left out; the
    button says how many will go. Nothing is uploaded before Send.
@@ -37,8 +49,12 @@ The preview shows an estimate of the total size to send (for compressed videos f
   carried over at Standard and HD. Transparent images stay PNG. GIFs are never re-encoded (they may be animated).
 - Videos are re-encoded on the phone with AndroidX Media3 Transformer 1.9.0 (HDR tone-mapped to SDR so every phone can
   play them). A video already within the quality (resolution and bitrate) is sent as it is. Photos and videos picked
-  at Standard/HD may be up to 1 GB before compression; the result must fit 25 MB or the message fails with a reason
-  ("try Standard or a shorter video"). WebM videos are sent as they are.
+  at Standard/HD may be up to 1 GB before compression; the result must fit the server's limit or the message fails with a
+  reason that uses the preview's own words ("still over 25 MB after compressing… Try Compress (720p), or a shorter
+  video"). Since UI-003 the preview flags a compressed video whose estimate (length × bitrate) is over the limit before
+  anything is compressed ("May be too big", and which smaller choice fits); it stays sendable because it's an estimate.
+  An encoder failure says "couldn't be compressed on this phone" (its cause is logged by class name) instead of the old
+  generic "Couldn't send this file". WebM videos are sent as they are.
 - Original says plainly that location data in the file is kept.
 
 ## Safety checks (`AttachmentPolicy`, unit-tested in `AttachmentPolicyTest`)

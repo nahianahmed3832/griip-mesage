@@ -127,9 +127,69 @@ and says so. Tests: `CallVerificationTest` (includes the RFC 5869 HKDF vector).
   30 s instead of ending. The server waits too (`CALL_PEER_GRACE_MS`, default 30 s; `server/test/call_reconnect.test.ts`)
   before ending the call as `lost`, which call history shows with its real duration. Hanging up still ends it at once.
 
-## Minimised calls (2026-10-17)
+## Minimised calls (2026-10-17, revised in UI-003 2026-10-18)
 
-Leaving Orbit during a connected call shrinks it into picture-in-picture (Android 8+; automatic with gesture navigation
-on Android 12+): the other person's video or shared screen, or their avatar for voice calls, with the window's own Mute
-and Hang up buttons. Tapping it returns to the full call screen. Inside the app, the existing minimise button keeps a call
-bar over other screens. During a call Android requires the ongoing-call notification.
+Leaving Orbit during a connected **video** call shrinks it into picture-in-picture (Android 8+; automatic with gesture
+navigation on Android 12+): the other person's video or shared screen, with the window's own Mute and Hang up buttons.
+Tapping it returns to the full call screen. Since UI-003, voice calls don't go into picture-in-picture (they carry on in
+the background with the ongoing-call notification, like a phone call), and neither does a call while this phone shares
+its screen (the window would be captured into the share). The app stays composed under the picture-in-picture view, so
+navigation and the minimised state survive the round trip.
+
+Inside the app, Back or the minimise button turns the call into a **call panel** at the top of the app (`MiniCallPanel`):
+name, status and time, mute, the audio output and end/leave; tapping the name reopens the call. The app moves down under it
+instead of being covered. The minimised state lives in `CallManager.minimized`, so navigation, rotation, the notification's
+"return to call" and picture-in-picture agree on it. The ongoing-call notification shows the call's state and timer with
+Mute, Hang up (Leave in groups) and, while sharing, Stop sharing.
+
+## Audio output and loudness (UI-003, 2026-10-18)
+
+- **Single owner.** LiveKit's `AudioSwitchHandler` (twilio audioswitch, LiveKit's fork) owns the phone's call audio:
+  `MODE_IN_COMMUNICATION`, audio focus, and on Android 12+ `setCommunicationDevice` (`CommDeviceAudioSwitch`; older
+  versions toggle speakerphone and Bluetooth SCO). Nothing else in Orbit changes the audio mode or the route. Voice-note
+  playback only asks for transient audio focus.
+- **Defaults** (`CallAudioPolicy.preferred`): a Bluetooth or wired headset first; then the speaker for video and group
+  calls and the earpiece for 1:1 voice calls. Set as LiveKit's preferred device list before connecting (LiveKit's own
+  default put the speaker before the earpiece for every call, and group calls started from a chat used the earpiece while
+  joined ones used the speaker).
+- **The control never disappears.** The output button is one of the same five controls in every call (mic, camera,
+  output, share, end/leave), in the minimised panel too. It shows the route the phone reports (on Android 12+ the
+  communication device), switches speaker ↔ earpiece with one tap, and lists every output when a headset is there.
+  A route the phone didn't apply 1.5 s later shows "Couldn't switch the sound to …" with a way to retry. A headset that
+  connects mid-call takes over; turning the camera on moves an earpiece call to the speaker unless the earpiece was
+  chosen. Camera flip moved onto your own preview (it used to replace the speaker button whenever the camera was on).
+- **Loudness diagnostics, no gain changes.** Connection details and the output list show the call volume ("2 of 7
+  (low)"), the loudest remote stream's level in dBFS with packet loss, jitter and concealment, and your microphone's
+  level as sent. "No sound is arriving right now" appears when someone's microphone is on but no audio bytes arrive.
+  Orbit doesn't add gain, override the phone's volume limits or touch WebRTC's AEC/AGC/NS beyond the existing echo
+  canceller setting.
+
+## Screen sharing (UI-003)
+
+Start asks first (what everyone will see), then Android's own consent. The capture runs in LiveKit's mediaProjection
+service with Orbit's notification ("Sharing your screen" with Stop sharing). Stop in the call screen, the notification or
+Android's own controls ends only the share; End/Leave is a separate button. When Android or the person stops the capture
+outside Orbit, LiveKit unpublishes it, Orbit says "Screen sharing stopped" and never restarts it. Mute, the output,
+duration and the other controls stay on screen while sharing; a shared screen is laid out clear of them.
+
+## Call sessions on the server (UI-003)
+
+- A device that reconnects replaces its old LiveKit session; the old session's late `participant_left` webhook is now
+  ignored when LiveKit still lists that identity (it used to mark the device as gone and end live 1:1 calls as "lost").
+- The cleanup job marks call records of devices LiveKit no longer has (a lost webhook, a restart) as left after the
+  reconnect grace, and gives a 1:1 call left with one person the same grace timer before it ends as "lost".
+- `CALL_MAX_PARTICIPANTS` (default 12, LiveKit's `max_participants`): one device more gets `409 call_full`; a
+  participant's own reconnect never counts against it.
+- Logs: `call started` / `call ended` with the call id, kind and reason or length; never names, identities or media.
+- Tests: `server/test/call_sessions.test.ts` (5).
+
+## TURN relay (proposal, not deployed)
+
+The deployment still has no TURN server: media uses UDP 7882 or TCP 7881 on the server's address. Networks that block
+both (or VPNs that break UDP) can't carry media, and TCP fallback adds delay and choppiness under loss. The smallest
+change is LiveKit's built-in TURN (no new service): `turn.enabled`, a `turn.<domain>` certificate, UDP 3478 and TLS 5349
+(or 443 through an SNI router, since nginx holds 443). Clients get TURN credentials from LiveKit automatically; no app
+change. Media stays end-to-end encrypted (the relay forwards the same encrypted frames the SFU already forwards), so the
+trust boundary doesn't move. Cost: relayed participants' traffic passes the VPS twice. Whether it's needed should come
+from the "Network path" in Connection details on the networks that fail. Details and steps:
+`ORBIT_UI003_CALLING_ATTACHMENTS_2026-10-18.md` §6. Needs the owner's approval; nothing was changed.

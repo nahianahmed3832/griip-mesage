@@ -43,17 +43,26 @@ How it behaves:
 
 ## New accounts
 
-An account made by **open registration** has smaller allowances for `NEW_ACCOUNT_LIMIT_DAYS` (7) days:
+> **File uploads have no limits other than 1 GB per file** (owner's decision 2026-10-18, UI-003). Every file quota
+> below now defaults to `0`, meaning no limit: the daily, stored, total, kept-file and workspace quotas, the new-account
+> file allowances and the hourly upload-start limit. They stay as settings for a server that needs one. On the phone,
+> a new account's first 249 MB video had been refused with "today's upload limit" (256 MiB a day) while the server
+> advertised 1 GB per file. `ATTACHMENT_MAX_PENDING_BYTES` (bytes streamed through the server at once) is now at least
+> two files of the largest size: at 1024 MiB it was below one 1 GB file plus its encryption headroom, so such a file
+> could never be uploaded through the server.
+
+An account made by **open registration** can have smaller allowances for `NEW_ACCOUNT_LIMIT_DAYS` (7) days:
 
 | Setting | Default | Established accounts |
 |---|---|---|
-| `NEW_ACCOUNT_DAILY_UPLOAD_BYTES` | 256 MiB a day | `ATTACHMENT_USER_DAILY_BYTES` (2 GiB) |
-| `NEW_ACCOUNT_STORED_BYTES` (kept files included) | 512 MiB | `ATTACHMENT_USER_STORED_BYTES` (4 GiB) + kept quota |
-| `NEW_ACCOUNTS_TOTAL_STORED_BYTES` (all new accounts together) | 2 GiB | — |
+| `NEW_ACCOUNT_DAILY_UPLOAD_BYTES` | 0 (no limit; was 256 MiB a day) | `ATTACHMENT_USER_DAILY_BYTES` (0, no limit; was 2 GiB) |
+| `NEW_ACCOUNT_STORED_BYTES` (kept files included) | 0 (no limit; was 512 MiB) | `ATTACHMENT_USER_STORED_BYTES` (0, no limit; was 4 GiB) + kept quota (0) |
+| `NEW_ACCOUNTS_TOTAL_STORED_BYTES` (all new accounts together) | 0 (no limit; was 2 GiB) | — |
 | `NEW_ACCOUNT_HISTORY_BYTES` | 64 MiB | `HISTORY_MAX_BYTES_PER_USER` (1 GiB) |
 
-The shared pool means more accounts don't buy more storage. Once it's full, uploads from new accounts get
-`507 storage_full` and established accounts are unaffected.
+When set, the shared pool means more accounts don't buy more storage. Once it's full, uploads from new accounts get
+`507 storage_full` and established accounts are unaffected. History (encrypted message history, not files) keeps its
+limits.
 
 The limits end in any of these ways:
 - by themselves, after the days have passed;
@@ -88,7 +97,8 @@ All of these are enforced by the server, whatever the app does:
   - a declared size;
   - bytes actually received;
   - a direct upload's announced size, which its presigned URL is bound to, along with the SHA-256.
-- **Quotas.** They're checked before anything is received:
+- **Quotas** (all off by default since UI-003: `0`, no limit; 1 GB per file is the only file limit). When set, they're
+  checked before anything is received:
   - per person, a day and stored;
   - for new accounts;
   - per workspace;
@@ -101,13 +111,13 @@ All of these are enforced by the server, whatever the app does:
   starts passed a quota that allowed 2.
 - **Workspaces.** `ATTACHMENT_ORG_STORED_BYTES` (0, off) caps files in one workspace's conversations, including kept
   files and uploads in progress. DMs and groups belong to no workspace.
-- **Upload starts.** `ATTACHMENT_UPLOAD_STARTS_PER_HOUR` (300) counts every upload started, whether it finished, failed
+- **Upload starts.** `ATTACHMENT_UPLOAD_STARTS_PER_HOUR` (0, off since UI-003; was 300) counts every upload started, whether it finished, failed
   or was cancelled. A cancelled upload frees its bytes, but endless start-and-cancel loops still stop. After a refusal,
   `Retry-After` says when to try again.
 - **Concurrency.** These are unchanged:
   - 2 uploads at a time per person;
   - 8 on the server;
-  - 1 GiB of uploads in flight;
+  - uploads in flight up to two files of the largest size (UI-003; 1 GiB before, below one 1 GB file);
   - 10 direct uploads open per person.
 - **Cleanup.** Also unchanged: abandoned direct uploads (6 hours) are aborted and their parts and objects deleted by
   the retention job. The bucket also aborts incomplete multipart uploads after a day. Recorded files are never touched.
