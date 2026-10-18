@@ -174,6 +174,23 @@ aws cloudformation deploy --region ap-southeast-1 --profile orbit-admin --stack-
 
 `deploy` keeps the other parameters' previous values when they aren't given.
 
+**Step 6b (closed team, no production access needed).** While only the team uses Orbit, the sandbox is enough: SES
+sends to verified addresses, up to 200 emails a day and one a second. For each team member's sign-in address:
+
+```bash
+aws sesv2 create-email-identity --region ap-southeast-1 --profile orbit-admin --email-identity <member address>
+```
+
+AWS emails that address a confirmation link, and the member clicks it. Then allow sending to verified team addresses:
+
+```bash
+aws cloudformation deploy --region ap-southeast-1 --profile orbit-admin --stack-name orbit-mail-prod --template-file deploy/aws/orbit-mail.yaml --capabilities CAPABILITY_NAMED_IAM --parameter-overrides SandboxTeamRecipients=on --no-fail-on-empty-changeset
+```
+
+Anyone whose address isn't verified can't receive a code. With `LEGACY_MIGRATION_REQUIRED=on`, such a person would
+be stuck at the code step of the move, so verify every member before turning it on. Verify newcomers before they
+update or sign up. When production access arrives, set `SandboxTeamRecipients=off` and remove the identities.
+
 **Step 7. Create the access key and pipe it into the VPS `.env`.** This is the same way as the S3 key. The key is
 never printed, never in chat and never in Git, and the old `.env` is kept (root-only) next to it.
 

@@ -38,6 +38,14 @@ Parameters:
     Description: While the account is in the SES sandbox, one recipient address verified in SES for a test send. Leave
       empty, or set it back to empty, once production access is granted.
     AllowedPattern: "^([^@\\s]+@[^@\\s]+)?$"
+  SandboxTeamRecipients:
+    Type: String
+    Default: "off"
+    AllowedValues: ["on", "off"]
+    Description: on while the account is in the SES sandbox and a closed team uses Orbit. The server may then send to any
+      address verified in SES (each team member's, added with create-email-identity), still only from Orbit's address
+      and only from ServerIp. The sandbox itself refuses unverified recipients. Set back to off once production access
+      is granted.
   PermissionsBoundaryArn:
     Type: String
     Default: ""
@@ -47,6 +55,7 @@ Conditions:
   HasBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   HasMailFromDomain: !Not [!Equals [!Ref MailFromSubdomain, ""]]
   HasSandboxRecipient: !Not [!Equals [!Ref SandboxTestRecipient, ""]]
+  HasSandboxTeam: !Equals [!Ref SandboxTeamRecipients, "on"]
 
 Resources:
   MailConfigurationSet:
@@ -143,6 +152,20 @@ Resources:
               Effect: Allow
               Action: ses:SendEmail
               Resource: !Sub "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SandboxTestRecipient}"
+              Condition:
+                StringEquals:
+                  ses:FromAddress: !Sub "${SenderLocalPart}@${MailDomain}"
+                IpAddress:
+                  aws:SourceIp: !Ref ServerIp
+            - !Ref AWS::NoValue
+          # A closed team in the sandbox: the recipients are the team's addresses verified in SES (any other address is
+          # refused by the sandbox itself), with the same From address and server-address conditions.
+          - !If
+            - HasSandboxTeam
+            - Sid: SandboxTeamRecipients
+              Effect: Allow
+              Action: ses:SendEmail
+              Resource: !Sub "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/*"
               Condition:
                 StringEquals:
                   ses:FromAddress: !Sub "${SenderLocalPart}@${MailDomain}"
