@@ -17,15 +17,21 @@ object ChatListRules {
 
     fun isArchived(c: ConversationEntity) = c.archivedAt != null
 
+    /** Direct messages and personal groups: what the DMs tab lists (since UI-002 channels live on Home). */
+    fun isPeople(c: ConversationEntity) = c.type == "DM" || c.type == "GROUP"
+
     /**
      * The chats to list. In the main view: not archived, matching [filter]; while filtering by name, archived matches show
      * too (so nothing is lost). In the archived view: archived chats only, in the main list's order (newest message first).
+     * [peopleOnly] (the DMs tab): the main view lists direct messages and groups only; the archived view still lists every
+     * archived chat, channels included, so each can be restored.
      */
     fun visible(
         convs: List<ConversationEntity>,
         filter: Int,
         query: String,
         archivedView: Boolean,
+        peopleOnly: Boolean = false,
         title: (ConversationEntity) -> String,
     ): List<ConversationEntity> {
         val q = query.trim()
@@ -35,7 +41,7 @@ object ChatListRules {
                 q.isNotEmpty() -> true
                 else -> !isArchived(c)
             }
-            inView && (archivedView || matches(c, filter)) && (q.isEmpty() || title(c).contains(q, ignoreCase = true))
+            inView && (archivedView || ((!peopleOnly || isPeople(c)) && matches(c, filter))) && (q.isEmpty() || title(c).contains(q, ignoreCase = true))
         }
     }
 
@@ -48,7 +54,8 @@ object ChatListRules {
     }
 
     /** Unread chats for the "Unread" chip: archived ones aren't counted (they're out of the main list). */
-    fun unreadCount(convs: List<ConversationEntity>): Int = convs.count { !isArchived(it) && it.unreadCount > 0 }
+    fun unreadCount(convs: List<ConversationEntity>, peopleOnly: Boolean = false): Int =
+        convs.count { !isArchived(it) && it.unreadCount > 0 && (!peopleOnly || isPeople(it)) }
 
     data class Archived(val chats: Int, val unreadChats: Int)
 

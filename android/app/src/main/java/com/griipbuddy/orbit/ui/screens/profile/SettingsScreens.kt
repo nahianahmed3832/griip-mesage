@@ -1,5 +1,8 @@
 package com.griipbuddy.orbit.ui.screens.profile
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.asPaddingValues
 import android.app.Activity
 import android.content.Intent
 import android.os.Build
@@ -20,7 +23,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AlternateEmail
@@ -105,10 +107,8 @@ import com.griipbuddy.orbit.ui.components.StatusBanner
 import com.griipbuddy.orbit.ui.components.TagPill
 import com.griipbuddy.orbit.ui.components.UserAvatar
 import com.griipbuddy.orbit.ui.components.pressable
-import com.griipbuddy.orbit.ui.theme.Accents
 import com.griipbuddy.orbit.ui.theme.Griip
 import com.griipbuddy.orbit.ui.theme.Space
-import com.griipbuddy.orbit.ui.theme.ThemeMode
 import com.griipbuddy.orbit.ui.theme.Wallpapers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -132,8 +132,8 @@ fun SettingsHub(nav: NavHostController) {
     var versionTaps by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + com.griipbuddy.orbit.ui.LocalTabBarPadding.current)) {
-        item { LargeHeader(stringResource(R.string.settings_title)) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())) {
+        item { GriipTopBar(stringResource(R.string.settings_title), onBack = { nav.popBackStack() }) }
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), onClick = { nav.navigate(Routes.EDIT_PROFILE) }, contentPadding = PaddingValues(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -224,30 +224,11 @@ fun ChatSettingsScreen(nav: NavHostController) {
     fun update(f: (Settings) -> Settings) = container.settings.update(f)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item { GriipTopBar(stringResource(R.string.settings_chats), onBack = { nav.popBackStack() }) }
+        // No theme or accent choice here (owner's decision, 2026-10-18): every signed-in screen is Orbit's Cocoa palette
+        // with its peach/pink accent. The saved choices are kept, unused.
         item { SectionHeader(stringResource(R.string.chat_appearance), Modifier.padding(top = 6.dp, bottom = 6.dp)) }
         item {
-            ChipRow {
-                listOf(ThemeMode.SYSTEM to R.string.theme_system, ThemeMode.LIGHT to R.string.theme_light, ThemeMode.DARK to R.string.theme_dark).forEach { (m, label) ->
-                    PillChip(stringResource(label), s.theme == m, { update { it.copy(theme = m) } })
-                }
-            }
-        }
-        item {
-            Text(stringResource(R.string.chat_accent), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(start = Space.gutter, top = 12.dp, bottom = 6.dp))
-            Row(Modifier.padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Accents.ALL.forEach { a ->
-                    val selected = s.accent == a.id
-                    Box(
-                        Modifier.size(40.dp).clip(CircleShape).background(Color(if (c.isDark) a.dark else a.light))
-                            .border(if (selected) 3.dp else 0.dp, c.textPrimary, CircleShape)
-                            .pressable({ update { it.copy(accent = a.id) } }, onClickLabel = a.label).semantics { contentDescription = a.label },
-                        contentAlignment = Alignment.Center,
-                    ) { if (selected) androidx.compose.material3.Icon(Icons.Rounded.Check, null, tint = Color.White) }
-                }
-            }
-        }
-        item {
-            Text(stringResource(R.string.chat_wallpaper), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(start = Space.gutter, top = 14.dp, bottom = 6.dp))
+            Text(stringResource(R.string.chat_wallpaper), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(start = Space.gutter, top = 6.dp, bottom = 6.dp))
             Row(Modifier.padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Wallpapers.ALL.forEach { w ->
                     val selected = s.wallpaper == w.id

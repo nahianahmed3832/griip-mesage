@@ -1,5 +1,8 @@
 # Orbit UI-002: home and chat-list redesign (2026-10-18)
 
+> **Superseded the same day** by the revised UI-002 brief (workspace home, Home / DMs / Activity tabs): see
+> `docs/ORBIT_UI002_WORKSPACE_HOME_2026-10-18.md`. This report describes the first version, committed in `6f355a1`.
+
 Scope: the signed-in home screen (the Chats tab) and the bottom navigation, in the Cocoa direction from UI-001. The
 conversation screen and contact profile (UI-003) aren't touched. Committed and pushed to `internal-beta` together with UI-001. A device pass is
 planned for tomorrow; this round was checked on the Mac only (see "Build and test results").

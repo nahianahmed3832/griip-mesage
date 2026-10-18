@@ -1,5 +1,8 @@
 package com.griipbuddy.orbit.ui.screens.contacts
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -72,9 +75,9 @@ fun ContactsScreen(nav: NavHostController) {
     val byId = users.associateBy { it.id }
     val people = ContactsRules.people(convs, byId, me, query)
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp + com.griipbuddy.orbit.ui.LocalTabBarPadding.current)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())) {
         item {
-            LargeHeader(stringResource(R.string.contacts_title)) {
+            com.griipbuddy.orbit.ui.components.GriipTopBar(stringResource(R.string.contacts_title), onBack = { nav.popBackStack() }) {
                 CircleIconButton(Icons.Rounded.Search, stringResource(R.string.chats_search), { nav.navigate(Routes.SEARCH) })
                 CircleIconButton(Icons.Outlined.GroupAdd, stringResource(R.string.chats_new_group), { nav.navigate(Routes.NEW_CHAT + "?mode=group") })
             }

@@ -145,7 +145,7 @@ fun WorkspaceScreen(nav: NavHostController) {
     val d = detail
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
-            LargeHeader("Workspace", subtitle = d?.org?.name) {
+            com.griipbuddy.orbit.ui.components.GriipTopBar("Workspace", subtitle = d?.org?.name, onBack = { nav.popBackStack() }) {
                 if ((orgs?.size ?: 0) > 0) CircleIconButton(Icons.Outlined.SwapHoriz, "Switch organization", { showSwitcher = true })
             }
         }

@@ -1,5 +1,9 @@
 package com.griipbuddy.orbit.ui.screens.calls
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -63,7 +67,7 @@ internal object CallLogText {
     }
 }
 
-/** Calls tab: calls running now in your conversations, then the call history kept on this device. */
+/** Calls (from Home's Calls card, Activity and the menus): calls running now in your conversations, then the call history kept on this device. */
 @Composable
 fun CallsScreen(nav: NavHostController) {
     val container = LocalContainer.current
@@ -81,8 +85,8 @@ fun CallsScreen(nav: NavHostController) {
     fun callBack(conversationId: String, video: Boolean) = permission(video) { scope.launch { container.calls.startCall(conversationId, video) } }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp + com.griipbuddy.orbit.ui.LocalTabBarPadding.current)) {
-            item { LargeHeader("Calls") }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())) {
+            item { com.griipbuddy.orbit.ui.components.GriipTopBar("Calls", onBack = { nav.popBackStack() }) }
             if (live.isNotEmpty()) {
                 item { SectionHeader("Active now", Modifier.padding(top = 4.dp, bottom = 4.dp)) }
                 items(live, key = { "live" + it.id }) { conv ->
@@ -151,7 +155,7 @@ fun CallsScreen(nav: NavHostController) {
             icon = { Icon(Icons.Rounded.AddIcCall, null) },
             text = { Text("New call", style = Griip.type.button) },
             containerColor = c.actionStart, contentColor = c.onAction,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(Space.gutter).padding(bottom = com.griipbuddy.orbit.ui.LocalTabBarPadding.current),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(Space.gutter).navigationBarsPadding(),
         )
     }
 }

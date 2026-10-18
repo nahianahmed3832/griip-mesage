@@ -199,7 +199,7 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
         onConfirm = {
             confirmLeave = false
             scope.launch {
-                runCatching { container.conversations.removeMember(conversationId, me!!) }.onSuccess { nav.popBackStack(Routes.CHATS, false) || nav.popBackStack() }.onFailure { error = it.friendly() }
+                runCatching { container.conversations.removeMember(conversationId, me!!) }.onSuccess { nav.popBackStack(Routes.CHATS, false) || nav.popBackStack(Routes.HOME, false) || nav.popBackStack() }.onFailure { error = it.friendly() }
             }
         },
         onDismiss = { confirmLeave = false }, destructive = true,

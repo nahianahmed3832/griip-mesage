@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -32,13 +31,12 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,13 +47,11 @@ private val BarHeight = 64.dp
 private val BarShape = RoundedCornerShape(32.dp)
 private val ItemShape = RoundedCornerShape(24.dp)
 
-/** The primary action beside the bar (a new chat on Chats): an icon, its label, and what it does. */
-data class NavAction(val icon: ImageVector, val label: String, val onClick: () -> Unit)
-
 /**
- * The floating bottom navigation (UI-002): a rounded bar raised above the gesture area with the tabs, and an optional
- * round primary action beside it. The selected tab is filled with the palette's accent gradient; the others are quiet.
- * It floats over the screens: tab screens keep [com.griipbuddy.orbit.ui.LocalTabBarPadding] below their content.
+ * The floating bottom navigation (UI-002): a rounded bar raised above the gesture area with the tabs (Home, DMs,
+ * Activity). The selected tab is filled with the palette's accent gradient; the others are quiet. No action button:
+ * each screen offers its own New action. It floats over the screens: tab screens keep
+ * [com.griipbuddy.orbit.ui.LocalTabBarPadding] below their content.
  */
 @Composable
 fun FloatingNavBar(
@@ -63,7 +59,6 @@ fun FloatingNavBar(
     selectedRoute: String?,
     onSelect: (NavItem) -> Unit,
     modifier: Modifier = Modifier,
-    action: NavAction? = null,
 ) {
     val c = Griip.colors
     Row(
@@ -89,26 +84,11 @@ fun FloatingNavBar(
         ) {
             items.forEach { item -> NavTab(item, item.route == selectedRoute, Modifier.weight(1f)) { onSelect(item) } }
         }
-        if (action != null) {
-            Spacer(Modifier.width(10.dp))
-            Box(
-                Modifier
-                    .size(BarHeight)
-                    .shadow(8.dp, CircleShape, ambientColor = c.shadow, spotColor = c.shadow)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(c.accentStart, c.accentEnd)))
-                    .pressable(action.onClick, onClickLabel = action.label)
-                    .semantics { contentDescription = action.label },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(action.icon, null, tint = c.onAccent, modifier = Modifier.size(26.dp))
-            }
-        }
     }
 }
 
 @Composable
-private fun NavTab(item: NavItem, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun NavTab(item: NavItem, selected: Boolean, modifier: Modifier, onTap: () -> Unit) {
     val c = Griip.colors
     val fg by animateColorAsState(if (selected) c.onAccent else c.textSecondary, Motion.quick(), label = "navTabFg")
     val description = if (item.badge > 0) "${item.label}, ${item.badge}" else item.label
@@ -117,11 +97,13 @@ private fun NavTab(item: NavItem, selected: Boolean, modifier: Modifier, onClick
             .heightIn(min = 52.dp)
             .clip(ItemShape)
             .background(if (selected) Brush.horizontalGradient(listOf(c.accentStart, c.accentEnd)) else SolidColor(Color.Transparent))
-            .selectable(selected = selected, onClick = onClick, role = Role.Tab)
+            .selectable(selected = selected, onClick = onTap, role = Role.Tab)
+            // One node for TalkBack: "DMs, 3, tab, selected". The cleared node needs its own click action.
             .clearAndSetSemantics {
                 contentDescription = description
                 this.selected = selected
                 role = Role.Tab
+                onClick { onTap(); true }
             }
             .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

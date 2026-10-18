@@ -31,6 +31,20 @@ class ChatListRulesTest {
     }
 
     @Test
+    fun theDmsTabListsPeopleChatsWhileItsArchiveStillRestoresChannels() {
+        val general = conv("general", type = "CHANNEL", unread = 3)
+        val list = all + general
+        fun dms(query: String = "", archived: Boolean = false, filter: Int = ChatListRules.ALL) =
+            ChatListRules.visible(list, filter, query, archived, peopleOnly = true) { it.name!! }.map { it.id }
+        assertEquals(listOf("ann", "team"), dms()) // channels are on Home
+        assertEquals(listOf("old project", "news"), dms(archived = true)) // an archived channel can still be restored here
+        assertEquals(emptyList<String>(), dms(query = "gen"))
+        assertEquals(listOf("ann"), dms(filter = ChatListRules.UNREAD))
+        assertEquals(1, ChatListRules.unreadCount(list, peopleOnly = true))
+        assertEquals(2, ChatListRules.unreadCount(list))
+    }
+
+    @Test
     fun theNameFilterStillFindsArchivedChats() {
         assertEquals(listOf("old project"), visible(query = "OLD"))
         assertEquals(listOf("news"), visible(query = "ne", archived = true))

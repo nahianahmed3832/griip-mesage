@@ -136,9 +136,6 @@ fun rememberCallPermission(): (video: Boolean, onGranted: () -> Unit) -> Unit {
     }
 }
 
-private val StageTop = Color(0xFF101614)
-private val StageBottom = Color(0xFF101614)
-
 @Composable
 fun CallOverlay() {
     val container = LocalContainer.current
@@ -183,7 +180,7 @@ fun CallOverlay() {
     }
     val showChrome = chromeVisible || !autoHide
     Box(
-        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(StageTop, StageBottom)))
+        Modifier.fillMaxSize().background(Griip.colors.callStage)
             .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
                 chromeVisible = !showChrome || !autoHide
                 lastTouch = System.currentTimeMillis()

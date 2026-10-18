@@ -9,7 +9,7 @@
 > - **Ivory** (`IvoryColors`): warm ivory `#F7F2ED`, dark type `#1C1716`, charcoal buttons `#221B1A`, 3:1 input outlines.
 >   Welcome, sign-up and sign-in always use it (light and dark mode alike), with dark status-bar icons.
 > - **Cocoa** (`CocoaColors`): background `#171313`, raised surface `#292120`, text `#FFF8F3` / `#B8AAA5`, a peach `#F6A585`
->   → pink `#EE8AA6` accent. Ready for the home, chat and profile screens (UI-002, UI-003); nothing signed-in uses it yet.
+>   → pink `#EE8AA6` accent. Since UI-002 it is the palette of every signed-in screen (tabs, settings, workspace, calls, the chat screen's colours), whatever the app theme; the chat and profile layouts follow in UI-003.
 >
 > New tokens: `outline`, `accentStart`, `accentEnd`, `onAccent` (every palette), `Griip.type.hero` (32/38 ExtraBold),
 > `Space.screen` (24 dp), `Shapes.field` (16 dp) and `Shapes.panel` (24 dp). `ProvideGriipPalette(colors) { }` draws a

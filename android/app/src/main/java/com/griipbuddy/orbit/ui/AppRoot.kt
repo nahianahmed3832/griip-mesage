@@ -21,17 +21,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.rounded.Chat
-import androidx.compose.material.icons.outlined.Call
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Workspaces
-import androidx.compose.material.icons.outlined.People
-import androidx.compose.material.icons.rounded.People
-import androidx.compose.material.icons.rounded.Call
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Notifications
 import com.griipbuddy.orbit.ui.theme.CocoaColors
+import com.griipbuddy.orbit.ui.theme.DarkSurfaceSystemBars
 import com.griipbuddy.orbit.ui.theme.ProvideGriipPalette
-import androidx.compose.material.icons.rounded.Workspaces
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -54,11 +50,15 @@ import com.griipbuddy.orbit.data.repo.SessionState
 import com.griipbuddy.orbit.di.AppContainer
 import com.griipbuddy.orbit.ui.components.AppBackground
 import com.griipbuddy.orbit.ui.components.FloatingNavBar
-import com.griipbuddy.orbit.ui.components.NavAction
 import com.griipbuddy.orbit.ui.components.NavItem
 import com.griipbuddy.orbit.ui.screens.calls.CallOverlay
 import com.griipbuddy.orbit.ui.screens.calls.CallsScreen
+import com.griipbuddy.orbit.ui.screens.chats.ChatListRules
 import com.griipbuddy.orbit.ui.screens.chats.ChatsScreen
+import com.griipbuddy.orbit.ui.screens.chats.DmListRequest
+import com.griipbuddy.orbit.ui.screens.home.ActivityFeedScreen
+import com.griipbuddy.orbit.ui.screens.home.WorkspaceHomeRules
+import com.griipbuddy.orbit.ui.screens.home.WorkspaceHomeScreen
 import com.griipbuddy.orbit.ui.screens.chats.NewChatScreen
 import com.griipbuddy.orbit.ui.screens.conversation.ConversationInfoScreen
 import com.griipbuddy.orbit.ui.screens.conversation.ConversationScreen
@@ -78,16 +78,20 @@ import com.griipbuddy.orbit.ui.screens.workspace.WorkspaceScreen
 
 val LocalContainer = staticCompositionLocalOf<AppContainer> { error("no container") }
 
-/** Space the tab bar covers at the bottom of the tab screens (Chats, Calls, Contacts, Settings); 0 elsewhere. */
+/** Space the tab bar covers at the bottom of the tab screens (Home, DMs, Activity). Other screens don't use it. */
 val LocalTabBarPadding = androidx.compose.runtime.compositionLocalOf { 0.dp }
 
 object Routes {
-    /** Kept for old deep links and back stacks: it now opens the chat list. */
+    /** The Home tab: the selected workspace at a glance (UI-002). The start screen. */
     const val HOME = "home"
+    /** The DMs tab: direct messages and groups (the chat list; the route keeps its old name for back stacks). */
     const val CHATS = "chats"
+    /** The Activity tab: @mentions, missed calls, the workspace change log. Not [activity], one workspace's log. */
+    const val ACTIVITY = "activity"
+    /** Call history and new calls; opens from Home's Calls card, Activity, the DMs menu and the profile menu. */
     const val CALLS = "calls"
     const val WORKSPACE = "workspace"
-    /** The Settings tab (profile, account, privacy, appearance, notifications, calls, about). */
+    /** Settings (profile, account, privacy, appearance, notifications, calls, about), from your avatar on Home. */
     const val PROFILE = "profile"
     const val JOIN = "join"
     const val NEW_CHAT = "newchat"
@@ -115,8 +119,11 @@ object Routes {
     fun invites(orgId: String) = "invites/$orgId"
     fun activity(orgId: String) = "activity/$orgId"
     fun user(id: String) = "user/$id"
-    /** The bottom bar: personal communication first (2026-10-17); workspaces open from Contacts. */
-    val tabs = setOf(CHATS, CALLS, CONTACTS, PROFILE)
+    /**
+     * The bottom bar (UI-002): exactly Home, DMs and Activity. Calls, Contacts, Settings and the Workspace screen open
+     * from Home, its menus and the DMs menu, with Back.
+     */
+    val tabs = setOf(HOME, CHATS, ACTIVITY)
 }
 
 @Composable
@@ -126,22 +133,41 @@ fun AppRoot(container: AppContainer, pendingConversation: String?, pendingInvite
         val call by container.calls.state.collectAsStateWithLifecycle()
         // In picture-in-picture only the call is drawn (CallPip).
         val pip by com.griipbuddy.orbit.call.CallPip.active.collectAsStateWithLifecycle()
-        if (pip && call.phase != CallPhase.Idle) {
-            com.griipbuddy.orbit.ui.screens.calls.CallPipView(call)
-            return@CompositionLocalProvider
-        }
-        AppBackground {
-            when (val s = session) {
-                is SessionState.SignedOut -> OnboardingFlow(pendingInvite)
-                is SessionState.Revoked -> RevokedScreen(s.reason)
-                is SessionState.SignedIn -> MainNav(container, pendingConversation, pendingInvite, onPendingHandled)
+        SignedInPalette(session is SessionState.SignedIn) {
+            if (pip && call.phase != CallPhase.Idle) {
+                com.griipbuddy.orbit.ui.screens.calls.CallPipView(call)
+            } else {
+                AppBackground {
+                    when (val s = session) {
+                        is SessionState.SignedOut -> OnboardingFlow(pendingInvite)
+                        is SessionState.Revoked -> RevokedScreen(s.reason)
+                        is SessionState.SignedIn -> MainNav(container, pendingConversation, pendingInvite, onPendingHandled)
+                    }
+                    AnimatedVisibility(
+                        visible = call.phase != CallPhase.Idle,
+                        enter = slideInVertically(tween(260)) { it / 3 } + fadeIn(tween(200)),
+                        exit = slideOutVertically(tween(220)) { it / 3 } + fadeOut(tween(200)),
+                    ) { CallOverlay() }
+                }
             }
-            AnimatedVisibility(
-                visible = call.phase != CallPhase.Idle,
-                enter = slideInVertically(tween(260)) { it / 3 } + fadeIn(tween(200)),
-                exit = slideOutVertically(tween(220)) { it / 3 } + fadeOut(tween(200)),
-            ) { CallOverlay() }
         }
+    }
+}
+
+/**
+ * Orbit's signed-in identity (UI-002, owner's decision 2026-10-18): every signed-in screen, sheet, dialog and call screen
+ * is drawn in the Cocoa palette, whatever the app theme, with light system-bar icons. Signed out, the screens keep
+ * their own palette (Ivory, UI-001).
+ */
+@Composable
+private fun SignedInPalette(signedIn: Boolean, content: @Composable () -> Unit) {
+    if (!signedIn) {
+        content()
+        return
+    }
+    ProvideGriipPalette(CocoaColors) {
+        DarkSurfaceSystemBars()
+        content()
     }
 }
 
@@ -150,7 +176,10 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
-    val unread by container.conversations.totalUnread().collectAsStateWithLifecycle(0)
+    val conversations = remember(container) { container.conversations.observeAll() }
+    val convs by conversations.collectAsStateWithLifecycle(emptyList())
+    // Home's "See all" opens the DMs tab filtered to unread.
+    val dmRequest = remember { DmListRequest() }
 
     LaunchedEffect(pendingConversation, pendingInvite) {
         if (pendingConversation != null) {
@@ -173,15 +202,21 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
         androidx.compose.runtime.CompositionLocalProvider(LocalTabBarPadding provides with(density) { barHeight.toDp() }) {
         NavHost(
             nav,
-            startDestination = Routes.CHATS,
+            startDestination = Routes.HOME,
             modifier = Modifier.fillMaxSize(),
             enterTransition = { motion.enter(this, forward = true) },
             exitTransition = { motion.exit(this, forward = true) },
             popEnterTransition = { motion.enter(this, forward = false) },
             popExitTransition = { motion.exit(this, forward = false) },
         ) {
-            composable(Routes.CHATS) { ChatsScreen(nav) }
-            composable(Routes.HOME) { ChatsScreen(nav) }
+            composable(Routes.HOME) {
+                WorkspaceHomeScreen(nav, onSeeAllUnreadDms = {
+                    dmRequest.open(ChatListRules.UNREAD)
+                    nav.switchTab(Routes.CHATS)
+                })
+            }
+            composable(Routes.CHATS) { ChatsScreen(nav, dmRequest) }
+            composable(Routes.ACTIVITY) { ActivityFeedScreen(nav) }
             composable(Routes.CALLS) { CallsScreen(nav) }
             composable(Routes.WORKSPACE) { WorkspaceScreen(nav) }
             composable(Routes.CONTACTS) { com.griipbuddy.orbit.ui.screens.contacts.ContactsScreen(nav) }
@@ -211,29 +246,22 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             composable(Routes.BLOCKED) { com.griipbuddy.orbit.ui.screens.profile.BlockedUsersScreen(nav) }
         }
         }
-        if (route in Routes.tabs || route == Routes.HOME) {
-            val tab = if (route == Routes.HOME) Routes.CHATS else route
-            // The floating bar is drawn in the Cocoa palette on every tab (UI-002); its action starts what the tab is
-            // about through the existing flows: a call on Calls, a new chat everywhere else.
-            val action = if (tab == Routes.CALLS) {
-                NavAction(Icons.Rounded.Add, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.home_start_call)) { nav.navigate(Routes.NEW_CHAT + "?mode=call") }
-            } else {
-                NavAction(Icons.Rounded.Add, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.chats_new_chat)) { nav.navigate(Routes.NEW_CHAT + "?mode=dm") }
-            }
-            ProvideGriipPalette(CocoaColors) {
-                FloatingNavBar(
-                    items = listOf(
-                        NavItem(Routes.CHATS, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_chats), Icons.AutoMirrored.Outlined.Chat, Icons.AutoMirrored.Rounded.Chat, badge = unread),
-                        NavItem(Routes.CALLS, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_calls), Icons.Outlined.Call, Icons.Rounded.Call),
-                        NavItem(Routes.CONTACTS, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_contacts), Icons.Outlined.People, Icons.Rounded.People),
-                        NavItem(Routes.PROFILE, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_settings), Icons.Outlined.Settings, Icons.Rounded.Settings),
-                    ),
-                    selectedRoute = tab,
-                    onSelect = { item -> nav.switchTab(item.route) },
-                    action = action,
-                    modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { barHeight = it.height },
-                )
-            }
+        if (route in Routes.tabs) {
+            // The floating bar (UI-002). No action button: each tab offers its own New action where an existing flow
+            // supports it.
+            val homeBadge = remember(convs) { WorkspaceHomeRules.homeBadge(convs) }
+            val dmBadge = remember(convs) { WorkspaceHomeRules.dmBadge(convs) }
+            val activityBadge = remember(convs) { WorkspaceHomeRules.activityBadge(convs) }
+            FloatingNavBar(
+                items = listOf(
+                    NavItem(Routes.HOME, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_home), Icons.Outlined.Home, Icons.Rounded.Home, badge = homeBadge),
+                    NavItem(Routes.CHATS, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_dms), Icons.AutoMirrored.Outlined.Chat, Icons.AutoMirrored.Rounded.Chat, badge = dmBadge),
+                    NavItem(Routes.ACTIVITY, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.nav_activity), Icons.Outlined.Notifications, Icons.Rounded.Notifications, badge = activityBadge),
+                ),
+                selectedRoute = route,
+                onSelect = { item -> nav.switchTab(item.route) },
+                modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { barHeight = it.height },
+            )
         }
     }
 }
@@ -278,11 +306,8 @@ class NavMotion(private val animate: Boolean) {
 
 /** Pure navigation-motion rules (unit-tested in `NavMotionTest`). */
 object NavMotionRules {
-    /** Switching between the bottom-bar tabs (Chats and its alias Home count as one tab). */
-    fun isTabSwitch(from: String?, to: String?): Boolean {
-        fun tab(r: String?) = if (r == Routes.HOME) Routes.CHATS else r
-        return tab(from) in Routes.tabs && tab(to) in Routes.tabs
-    }
+    /** Switching between the bottom-bar tabs (Home, DMs, Activity). */
+    fun isTabSwitch(from: String?, to: String?): Boolean = from in Routes.tabs && to in Routes.tabs
 
     /** Animations play unless the system animator scale is 0 ("Remove animations" / animations off). */
     fun animationsEnabled(animatorScale: Float): Boolean = animatorScale > 0f

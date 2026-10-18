@@ -9,29 +9,22 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.People
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import com.griipbuddy.orbit.ui.components.AccentChip
-import com.griipbuddy.orbit.ui.theme.CocoaColors
-import com.griipbuddy.orbit.ui.theme.DarkSurfaceSystemBars
 import com.griipbuddy.orbit.ui.theme.Motion
-import com.griipbuddy.orbit.ui.theme.ProvideGriipPalette
 import androidx.compose.ui.Alignment
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.outlined.NotificationsActive
-import androidx.compose.material.icons.outlined.NotificationsOff
-import androidx.compose.material.icons.outlined.MarkChatRead
-import androidx.compose.material.icons.outlined.MarkChatUnread
 import androidx.compose.material.icons.outlined.Archive
-import androidx.compose.material.icons.outlined.Unarchive
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.ui.res.stringResource
 import com.griipbuddy.orbit.R
 import com.griipbuddy.orbit.data.db.ConversationEntity
 import com.griipbuddy.orbit.call.CallPhase
 import com.griipbuddy.orbit.ui.components.GlassSheet
-import com.griipbuddy.orbit.ui.components.MenuRow
 import com.griipbuddy.orbit.ui.components.ShimmerList
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -104,19 +97,31 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 
 /**
- * The home screen: the chat list in the Cocoa palette (UI-002), whatever the app theme. Light system-bar icons while
- * it is shown; the floating tab bar is drawn by MainNav over it.
+ * Lets another screen open the DMs tab with a filter: Home's "See all" under Unread DMs asks for [ChatListRules.UNREAD].
+ * The DMs tab takes the request once, the next time it is shown.
  */
-@Composable
-fun ChatsScreen(nav: NavHostController) {
-    ProvideGriipPalette(CocoaColors) {
-        DarkSurfaceSystemBars()
-        ChatsHome(nav)
+@Stable
+class DmListRequest {
+    var filter by mutableStateOf<Int?>(null)
+        private set
+
+    fun open(filter: Int) {
+        this.filter = filter
     }
+
+    fun consume(): Int? = filter.also { this.filter = null }
 }
 
+/**
+ * The DMs tab (UI-002): direct messages and personal groups, with search, the name filter, the All / Unread / Direct /
+ * Groups chips, swipe and long-press actions, and the archived list. Channels are on Home. The tab bar is drawn by
+ * MainNav over it.
+ */
 @Composable
-private fun ChatsHome(nav: NavHostController) {
+fun ChatsScreen(nav: NavHostController, request: DmListRequest) = ChatsHome(nav, request)
+
+@Composable
+private fun ChatsHome(nav: NavHostController, request: DmListRequest) {
     val container = LocalContainer.current
     val c = Griip.colors
     val me = container.session.session?.userId
@@ -138,44 +143,46 @@ private fun ChatsHome(nav: NavHostController) {
     var undo by remember { mutableStateOf<ConversationEntity?>(null) }
     androidx.activity.compose.BackHandler(enabled = archivedView) { archivedView = false }
     LaunchedEffect(undo) { if (undo != null) { delay(5_000); undo = null } }
+    // Home's "See all" (unread DMs): show that filter on the main list.
+    LaunchedEffect(request.filter) {
+        request.consume()?.let {
+            filter = it
+            query = ""
+            archivedView = false
+        }
+    }
     var refreshing by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     val permission = com.griipbuddy.orbit.ui.screens.calls.rememberCallPermission()
+    val actions = rememberChatListActions()
     LaunchedEffect(Unit) { runCatching { container.conversations.refresh() }; refreshing = false }
 
-    val filters = listOf(R.string.filter_all, R.string.filter_unread, R.string.filter_direct, R.string.filter_groups, R.string.filter_channels).map { stringResource(it) }
-    val shown = ChatListRules.visible(convs, filter, query, archivedView) { ConversationRepository.title(it, me) }
+    val filters = listOf(R.string.filter_all, R.string.filter_unread, R.string.filter_direct, R.string.filter_groups).map { stringResource(it) }
+    val shown = ChatListRules.visible(convs, filter, query, archivedView, peopleOnly = true) { ConversationRepository.title(it, me) }
     val archivedInfo = ChatListRules.archived(convs)
-    val people = remember(convs, users, me) { HomeRules.quickContacts(convs, users.associateBy { it.id }, me) }
-    fun toggleRead(conv: ConversationEntity) {
-        scope.launch {
-            if (ChatListRules.swipeMarksRead(conv)) {
-                container.conversations.markRead(conv.id)
-                container.notifier.clear(conv.id)
-            } else container.conversations.markUnread(conv.id)
-        }
-    }
+    val noPeopleChats = convs.none(ChatListRules::isPeople)
     fun toggleArchive(conv: ConversationEntity) {
         val archive = !ChatListRules.isArchived(conv)
-        scope.launch { container.conversations.setArchived(conv.id, archive) }
+        actions.setArchived(conv, archive)
         undo = if (archive) conv else null
-    }
-    fun toggleMute(conv: ConversationEntity) {
-        scope.launch { container.conversations.setMuted(conv.id, !conv.muted) }
     }
     val online = users.associate { it.id to it.online }
     val liveCall = if (call.phase == CallPhase.Idle) convs.firstOrNull { it.activeCallId != null } else null
-    // The overflow menu holds what the app already does; a new chat is the floating "+".
+    // What the app already does, beside a new message (the New button): groups, calls, people, invites.
     val menu = listOf(
         HomeMenuItem(stringResource(R.string.chats_new_group), Icons.Outlined.GroupAdd) { nav.navigate(Routes.NEW_CHAT + "?mode=group") },
         HomeMenuItem(stringResource(R.string.home_start_call), Icons.Outlined.Call) { nav.navigate(Routes.NEW_CHAT + "?mode=call") },
+        HomeMenuItem(stringResource(R.string.home_call_history), Icons.Outlined.History) { nav.navigate(Routes.CALLS) },
+        HomeMenuItem(stringResource(R.string.contacts_title), Icons.Outlined.People) { nav.navigate(Routes.CONTACTS) },
         HomeMenuItem(stringResource(R.string.contacts_invite), Icons.Outlined.QrCodeScanner) { nav.navigate(Routes.JOIN + "?code=") },
     )
     val list = rememberLazyListState()
     val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0 } }
+    val fabVisible by com.griipbuddy.orbit.ui.screens.home.rememberFabVisible(list)
+    val barPadding = com.griipbuddy.orbit.ui.LocalTabBarPadding.current
 
     Box(Modifier.fillMaxSize().background(c.background)) {
-        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 24.dp + com.griipbuddy.orbit.ui.LocalTabBarPadding.current)) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 88.dp + barPadding)) {
             if (archivedView) {
                 item(key = "archived-bar") {
                     GriipTopBar(
@@ -185,35 +192,22 @@ private fun ChatsHome(nav: NavHostController) {
                 }
                 item(key = "archived-filter") { SearchPill(query, { query = it }, stringResource(R.string.chats_filter_hint), Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
             } else item(key = "header") {
-                // A warm cocoa glow behind the header that settles into the list's background (the reference's backdrop).
+                // A warm cocoa glow behind the header that settles into the list's background.
                 Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(c.canvasTop, c.canvasMid, c.background)))) {
-                    HomeTopBar(stringResource(R.string.chats_title), onSearch = { nav.navigate(Routes.SEARCH) }, menu = menu)
+                    HomeTopBar(stringResource(R.string.nav_dms), onSearch = { nav.navigate(Routes.SEARCH) }, menu = menu)
                     SearchPill(query, { query = it }, stringResource(R.string.chats_filter_hint), Modifier.padding(horizontal = Space.gutter, vertical = 6.dp))
-                    if (people.isNotEmpty() && query.isBlank()) {
-                        Spacer(Modifier.height(6.dp))
-                        QuickContactsStrip(
-                            people, onNew = { nav.navigate(Routes.NEW_CHAT + "?mode=dm") },
-                            onOpen = { nav.navigate(Routes.conversation(it.conversationId)) },
-                        )
-                    }
                     Spacer(Modifier.height(6.dp))
                     ChipRow {
                         filters.forEachIndexed { i, f ->
-                            AccentChip(f, filter == i, { filter = i }, count = if (i == ChatListRules.UNREAD) ChatListRules.unreadCount(convs) else null)
+                            AccentChip(f, filter == i, { filter = i }, count = if (i == ChatListRules.UNREAD) ChatListRules.unreadCount(convs, peopleOnly = true) else null)
                         }
                     }
                     Spacer(Modifier.height(6.dp))
                 }
             }
             item(key = "connection") { ConnectionBanner(conn, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) { container.realtime.reconnectNow() } }
-            item(key = "notification-problems") {
-                // Blocked or silenced notifications are the first thing to fix: shown here, at most one at a time.
-                val settings by container.settings.state.collectAsStateWithLifecycle()
-                val problems = com.griipbuddy.orbit.ui.screens.home.rememberNotificationProblems(settings)
-                com.griipbuddy.orbit.ui.screens.home.NotificationProblems(problems, Modifier.padding(horizontal = Space.gutter), onlySevere = true, max = 1)
-            }
             if (liveCall != null) item(key = "live-call") {
-                val title = ConversationRepository.title(liveCall, me).let { if (liveCall.type == "CHANNEL") "#$it" else it }
+                val title = listTitle(liveCall, me)
                 StatusBanner(
                     "${if (liveCall.activeCallVideo) "Video" else "Voice"} call in progress · $title", BannerKind.Success,
                     Modifier.padding(horizontal = Space.gutter, vertical = 4.dp), icon = Icons.Rounded.Call, action = "Join",
@@ -236,24 +230,24 @@ private fun ChatsHome(nav: NavHostController) {
                     EmptyState(
                         Icons.Outlined.ChatBubbleOutline,
                         when {
-                            convs.isEmpty() -> stringResource(R.string.chats_empty)
+                            noPeopleChats && !archivedView && query.isBlank() -> stringResource(R.string.chats_empty)
                             query.isNotBlank() -> "No chats named \"${query.trim()}\""
                             archivedView -> "No archived chats"
                             else -> "Nothing here"
                         },
                         when {
-                            convs.isEmpty() -> stringResource(R.string.chats_empty_body)
-                            query.isNotBlank() -> "Search also finds people and message text."
+                            noPeopleChats && !archivedView && query.isBlank() -> stringResource(R.string.chats_empty_body)
+                            query.isNotBlank() -> "Search also finds people, channels and message text."
                             archivedView -> "Swipe a chat left to archive it. You stay in it and can restore it any time."
                             else -> "Try another filter."
                         },
                         action = when {
                             archivedView && query.isBlank() -> null
-                            convs.isEmpty() -> "New message"
+                            noPeopleChats && query.isBlank() -> "New message"
                             query.isNotBlank() -> "Search everywhere"
                             else -> null
                         },
-                        onAction = { if (convs.isEmpty()) nav.navigate(Routes.NEW_CHAT + "?mode=dm") else nav.navigate(Routes.SEARCH) },
+                        onAction = { if (query.isBlank()) nav.navigate(Routes.NEW_CHAT + "?mode=dm") else nav.navigate(Routes.SEARCH) },
                     )
                 }
             }
@@ -262,7 +256,7 @@ private fun ChatsHome(nav: NavHostController) {
                 val names = typing[conv.id]?.keys?.mapNotNull { id -> users.firstOrNull { it.id == id }?.displayName } ?: emptyList()
                 SwipeableChat(
                     archived = ChatListRules.isArchived(conv), unread = conv.unreadCount > 0, muted = conv.muted,
-                    onToggleRead = { toggleRead(conv) }, onToggleArchive = { toggleArchive(conv) }, onToggleMute = { toggleMute(conv) },
+                    onToggleRead = { actions.toggleRead(conv) }, onToggleArchive = { toggleArchive(conv) }, onToggleMute = { actions.toggleMute(conv) },
                     modifier = Modifier.animateItem(),
                 ) {
                     ConversationRow(
@@ -276,45 +270,28 @@ private fun ChatsHome(nav: NavHostController) {
         // Once the list scrolls under the transparent status bar, a scrim keeps the clock and icons readable.
         val scrim by animateFloatAsState(if (scrolled) 0.94f else 0f, Motion.quick(), label = "statusScrim")
         Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).graphicsLayer { alpha = scrim }.background(c.background))
+        com.griipbuddy.orbit.ui.screens.home.ComposeFab(
+            stringResource(R.string.chats_new_chat), { nav.navigate(Routes.NEW_CHAT + "?mode=dm") },
+            Modifier.align(Alignment.BottomEnd).padding(end = Space.gutter, bottom = barPadding + 12.dp),
+            visible = !archivedView && fabVisible && undo == null,
+        )
         undo?.let { conv ->
-            val title = ConversationRepository.title(conv, me).let { if (conv.type == "CHANNEL") "#$it" else it }
             com.griipbuddy.orbit.ui.components.UndoBar(
-                stringResource(R.string.chats_archived_toast, title), onUndo = {
-                    scope.launch { container.conversations.setArchived(conv.id, false) }
+                stringResource(R.string.chats_archived_toast, listTitle(conv, me)), onUndo = {
+                    actions.setArchived(conv, false)
                     undo = null
                 },
-                Modifier.align(Alignment.BottomCenter).padding(start = Space.gutter, end = Space.gutter, bottom = 16.dp + com.griipbuddy.orbit.ui.LocalTabBarPadding.current),
+                Modifier.align(Alignment.BottomCenter).padding(start = Space.gutter, end = Space.gutter, bottom = 16.dp + barPadding),
             )
         }
     }
 
     actionsFor?.let { conv ->
-        val title = ConversationRepository.title(conv, me).let { if (conv.type == "CHANNEL") "#$it" else it }
-        GlassSheet({ actionsFor = null }, title = title) {
-            MenuRow(
-                if (conv.muted) Icons.Outlined.NotificationsActive else Icons.Outlined.NotificationsOff,
-                if (conv.muted) "Unmute notifications" else "Mute notifications",
-                subtitle = if (conv.muted) null else "You'll still get notified when someone @mentions you",
-                onClick = { scope.launch { container.conversations.setMuted(conv.id, !conv.muted) }; actionsFor = null }, trailing = null,
-            )
-            if (conv.unreadCount > 0) MenuRow(
-                Icons.Outlined.MarkChatRead, "Mark as read", subtitle = "Only on this device; no read receipt is sent",
-                onClick = { toggleRead(conv); actionsFor = null }, trailing = null,
-            ) else MenuRow(
-                Icons.Outlined.MarkChatUnread, "Mark as unread", subtitle = "Only on this device; nothing is sent",
-                onClick = { toggleRead(conv); actionsFor = null }, trailing = null,
-            )
-            val archived = ChatListRules.isArchived(conv)
-            MenuRow(
-                if (archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, if (archived) "Unarchive" else "Archive",
-                subtitle = if (archived) "Back to your chat list" else "Only on this phone; you stay in the chat and can restore it",
-                onClick = { toggleArchive(conv); actionsFor = null }, trailing = null,
-            )
-            MenuRow(
-                Icons.Outlined.Info, if (conv.type == "DM") "Contact info" else if (conv.type == "GROUP") "Group info" else "Channel info",
-                onClick = { actionsFor = null; nav.navigate(Routes.info(conv.id)) }, trailing = null,
-            )
-        }
+        ChatActionsSheet(
+            conv, me, onDismiss = { actionsFor = null },
+            onToggleMute = { actions.toggleMute(conv) }, onToggleRead = { actions.toggleRead(conv) },
+            onToggleArchive = { toggleArchive(conv) }, onInfo = { nav.navigate(Routes.info(conv.id)) },
+        )
     }
 }
 
