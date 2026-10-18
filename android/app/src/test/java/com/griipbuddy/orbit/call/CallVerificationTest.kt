@@ -48,4 +48,18 @@ class CallVerificationTest {
         assertFalse(CallPip.eligible(CallPhase.Outgoing))
         assertFalse(CallPip.eligible(CallPhase.Idle))
     }
+
+    @Test
+    fun pictureInPictureForVideoCallsOnlyAndNeverWhileSharing() {
+        val connected = CallUiState(phase = CallPhase.Connected)
+        val remoteCam = ParticipantUi("b.1", "b", "Bea", isLocal = false, speaking = false, micOn = true, camera = null, screen = null, cameraOn = true)
+        val remoteVoice = remoteCam.copy(cameraOn = false)
+        assertTrue(CallPip.eligible(connected.copy(video = true)))
+        assertTrue(CallPip.eligible(connected.copy(participants = listOf(remoteCam)))) // a voice call where the other person turned video on
+        // A voice call carries on in the background with its notification instead (UI-003).
+        assertFalse(CallPip.eligible(connected.copy(participants = listOf(remoteVoice))))
+        // Sharing this phone's screen: the window would be captured into the share and cover what's shown.
+        assertFalse(CallPip.eligible(connected.copy(video = true, screenSharing = true)))
+        assertFalse(CallPip.eligible(CallUiState(phase = CallPhase.Incoming, video = true)))
+    }
 }

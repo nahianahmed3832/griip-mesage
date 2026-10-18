@@ -67,11 +67,12 @@ class CallMediaPolicyTest {
     }
 
     @Test
-    fun controlsHideOnlyOverVideoInAConnectedCall() {
-        assertTrue(CallChrome.autoHides(hasVideo = true, phase = CallPhase.Connected, menuOpen = false))
-        assertFalse(CallChrome.autoHides(hasVideo = false, phase = CallPhase.Connected, menuOpen = false)) // voice call
-        assertFalse(CallChrome.autoHides(hasVideo = true, phase = CallPhase.Incoming, menuOpen = false)) // answer/decline must stay
-        assertFalse(CallChrome.autoHides(hasVideo = true, phase = CallPhase.Reconnecting, menuOpen = false))
-        assertFalse(CallChrome.autoHides(hasVideo = true, phase = CallPhase.Connected, menuOpen = true))
+    fun controlsCanBeHiddenOnlyOverVideoInAConnectedCall() {
+        // UI-003: hidden only by the person's tap, never on a timer; and only where hiding them is harmless.
+        assertTrue(CallChrome.canHide(hasVideo = true, phase = CallPhase.Connected, menuOpen = false))
+        assertFalse(CallChrome.canHide(hasVideo = false, phase = CallPhase.Connected, menuOpen = false)) // voice call
+        assertFalse(CallChrome.canHide(hasVideo = true, phase = CallPhase.Incoming, menuOpen = false)) // answer/decline must stay
+        assertFalse(CallChrome.canHide(hasVideo = true, phase = CallPhase.Reconnecting, menuOpen = false))
+        assertFalse(CallChrome.canHide(hasVideo = true, phase = CallPhase.Connected, menuOpen = true)) // a sheet, prompt or error
     }
 }

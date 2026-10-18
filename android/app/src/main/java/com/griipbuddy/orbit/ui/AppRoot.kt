@@ -1,5 +1,6 @@
 package com.griipbuddy.orbit.ui
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavBackStackEntry
@@ -17,7 +18,11 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.rounded.Chat
@@ -131,26 +136,54 @@ fun AppRoot(container: AppContainer, pendingConversation: String?, pendingInvite
     CompositionLocalProvider(LocalContainer provides container) {
         val session by container.session.state.collectAsStateWithLifecycle()
         val call by container.calls.state.collectAsStateWithLifecycle()
-        // In picture-in-picture only the call is drawn (CallPip).
+        val minimized by container.calls.minimized.collectAsStateWithLifecycle()
+        // In picture-in-picture only the call is drawn (CallPip), on top of the app, which stays composed underneath:
+        // replacing the app with the call view used to drop navigation and the minimised state on the way back (UI-003).
         val pip by com.griipbuddy.orbit.call.CallPip.active.collectAsStateWithLifecycle()
+        val inCall = call.phase != CallPhase.Idle
+        val showPanel = inCall && minimized && call.phase != CallPhase.Incoming && !pip
+        var panelRoutes by remember { mutableStateOf(false) }
+        // Passing call notices ("Screen sharing stopped"), whether the call is full screen or minimised.
+        val appContext = LocalContext.current
+        LaunchedEffect(call.notice) { call.notice?.let { android.widget.Toast.makeText(appContext, it, android.widget.Toast.LENGTH_SHORT).show(); container.calls.clearNotice() } }
         SignedInPalette(session is SessionState.SignedIn) {
-            if (pip && call.phase != CallPhase.Idle) {
-                com.griipbuddy.orbit.ui.screens.calls.CallPipView(call)
-            } else {
+            Box(Modifier.fillMaxSize()) {
                 AppBackground {
-                    when (val s = session) {
-                        is SessionState.SignedOut -> OnboardingFlow(pendingInvite)
-                        is SessionState.Revoked -> RevokedScreen(s.reason)
-                        // Orbit 2.0: a new recovery key, the start choice or a legacy account's move come before the app.
-                        is SessionState.SignedIn -> com.griipbuddy.orbit.ui.screens.account.AccountGate(container) { join ->
-                            MainNav(container, pendingConversation, pendingInvite ?: join, onPendingHandled)
+                    Column(Modifier.fillMaxSize()) {
+                        // The minimised call takes its own space above the app (UI-003): the app moves down instead of
+                        // being covered, so no back arrow or header action ends up under the call.
+                        if (showPanel) {
+                            com.griipbuddy.orbit.ui.screens.calls.MiniCallPanel(
+                                call,
+                                onExpand = container.calls::expand,
+                                onMic = { container.calls.toggleMic() },
+                                onAudio = { if (com.griipbuddy.orbit.ui.screens.calls.CallControlsRules.opensPicker(call)) panelRoutes = true else container.calls.toggleSpeaker() },
+                                onEnd = container.calls::hangup,
+                            )
+                        }
+                        Box(Modifier.weight(1f).fillMaxWidth().then(if (showPanel) Modifier.consumeWindowInsets(WindowInsets.statusBars) else Modifier)) {
+                            when (val s = session) {
+                                is SessionState.SignedOut -> OnboardingFlow(pendingInvite)
+                                is SessionState.Revoked -> RevokedScreen(s.reason)
+                                // Orbit 2.0: a new recovery key, the start choice or a legacy account's move come before the app.
+                                is SessionState.SignedIn -> com.griipbuddy.orbit.ui.screens.account.AccountGate(container) { join ->
+                                    MainNav(container, pendingConversation, pendingInvite ?: join, onPendingHandled)
+                                }
+                            }
                         }
                     }
                     AnimatedVisibility(
-                        visible = call.phase != CallPhase.Idle,
+                        visible = inCall && !pip && (!minimized || call.phase == CallPhase.Incoming),
                         enter = slideInVertically(tween(260)) { it / 3 } + fadeIn(tween(200)),
                         exit = slideOutVertically(tween(220)) { it / 3 } + fadeOut(tween(200)),
                     ) { CallOverlay() }
+                }
+                if (pip && inCall) com.griipbuddy.orbit.ui.screens.calls.CallPipView(call)
+                if (panelRoutes && showPanel) {
+                    com.griipbuddy.orbit.ui.screens.calls.AudioRouteSheet(
+                        call, onPick = { container.calls.selectAudioRoute(it); panelRoutes = false },
+                        onDismiss = { panelRoutes = false; container.calls.clearRouteError() },
+                    )
                 }
             }
         }

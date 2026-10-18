@@ -2,6 +2,9 @@ package com.griipbuddy.orbit.call
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Build
 import android.util.Log
 import com.griipbuddy.orbit.crypto.b64
 import com.griipbuddy.orbit.crypto.randomBytes
@@ -50,6 +53,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -86,6 +91,7 @@ data class CallUiState(
     val micOn: Boolean = true,
     val cameraOn: Boolean = false,
     val screenSharing: Boolean = false,
+    /** The call's sound is on the speaker now (from [audioRoute]; kept for the picture-in-picture and older callers). */
     val speakerOn: Boolean = false,
     val participants: List<ParticipantUi> = emptyList(),
     val connectedAt: Long? = null,
@@ -107,6 +113,16 @@ data class CallUiState(
     val verification: CallVerification.Code? = null,
     /** 1:1: the other person's connection dropped; the call waits [CallRecovery.PEER_WINDOW_MS] for them. */
     val peerReconnecting: Boolean = false,
+    /** The output the phone reports for the call's sound now (UI-003); null until LiveKit has started its audio. */
+    val audioRoute: AudioRoute? = null,
+    /** The outputs this call can use (speaker, earpiece, a headset…). */
+    val audioRoutes: List<AudioRoute> = emptyList(),
+    /** A route change the phone didn't apply; shown with the route picker until the next change. */
+    val routeError: String? = null,
+    /** Whether sound actually arrives (inbound audio bytes) from the people whose microphone is on. */
+    val remoteAudio: MediaFlow = MediaFlow.None,
+    /** A short notice for the call screen ("Screen sharing stopped"); cleared when shown. */
+    val notice: String? = null,
 )
 
 /**
@@ -150,6 +166,23 @@ class CallManager(
     private var releaseJob: Job? = null
     private var audioListener: ((List<AudioDevice>, AudioDevice?) -> Unit)? = null
     private val sampler = VideoStatsSampler()
+    private val audioSampler = AudioStatsSampler()
+    private val audioManager by lazy { context.getSystemService(AudioManager::class.java) }
+    /** The output the person picked in this call (re-applied after a rejoin); null: automatic (CallAudioPolicy). */
+    @Volatile private var userRoute: AudioRoute? = null
+    /** The room whose first device list has been handled (the person's choice re-applied once per room). */
+    @Volatile private var routedRoom: Room? = null
+    private var routeCheck: Job? = null
+    /** Our own Stop (vs. Android or the status bar stopping the capture): only the latter gets a notice. */
+    @Volatile private var stoppingShare = false
+    /** One teardown per call even when a hang-up, an "ended" event and a disconnect arrive on different threads at once. */
+    private val finishLock = Any()
+    private val _minimized = MutableStateFlow(false)
+    /**
+     * The call shrunk to the in-app call panel (UI-003) while the person uses the rest of Orbit. It lives here, not in the
+     * call screen, so navigation, rotation, picture-in-picture and the notification's "return to call" all agree on it.
+     */
+    val minimized: StateFlow<Boolean> = _minimized
     /** When each participant identity was first seen in this call: tiles keep their places as people come and go. */
     private val firstSeen = HashMap<String, Long>()
     private var seenCounter = 0L
@@ -166,6 +199,9 @@ class CallManager(
                 val call = f.call ?: return@collect
                 // Call history: the conversation's entry for this call follows the server's record of it.
                 if (f.event == "ring" || f.event == "started" || f.event == "ended") scope.launch { runCatching { messages.recordCall(call) } }
+                // The conversation's "call in progress · Join" banner follows the call's own events. It used to change only
+                // when the conversation list was reloaded, so it stayed after the call had ended (seen on the phone, UI-003).
+                scope.launch { runCatching { syncActiveCall(call, f.event.orEmpty()) } }
                 when (f.event) {
                     "ring" -> onRing(call)
                     "ended" -> if (call.id == _state.value.callId) finish(remoteReason = call.endReason ?: "ended", notifyServer = false)
@@ -180,9 +216,20 @@ class CallManager(
             }
         }
         scope.launch { messages.callInvites.collect { /* key arrival is read from DB when joining */ } }
+        // The ongoing-call notification follows the call (mute, sharing, connected time) with its own actions (UI-003).
+        scope.launch {
+            state.map { CallService.Info.of(it) }.distinctUntilChanged().collect { info -> if (info != null && room != null) CallService.update(context, info) }
+        }
         // Ring recovery: the server rings only live sockets, so after every reconnect (once the backlog,
         // and with it any call key, has drained) look for calls that started ringing while we were away.
         scope.launch { messages.backlogDrained.collect { drained -> if (drained) recoverRinging() } }
+    }
+
+    private suspend fun syncActiveCall(call: CallDto, event: String) {
+        when {
+            event == "ended" || call.state == "ENDED" -> db.conversations().clearActiveCall(call.conversationId, call.id)
+            event == "ring" || event == "started" || event == "updated" -> db.conversations().setActiveCall(call.conversationId, call.id, call.video)
+        }
     }
 
     private suspend fun recoverRinging() {
@@ -220,6 +267,7 @@ class CallManager(
             return
         }
         markHandled(call.id)
+        _minimized.value = false
         val conv = db.conversations().get(call.conversationId) ?: conversations.refreshOne(call.conversationId)
         val me = session.session?.userId
         val title = conv?.let { ConversationRepository.title(it, me) } ?: "Incoming call"
@@ -243,7 +291,7 @@ class CallManager(
         _state.value = CallUiState(
             phase = CallPhase.Outgoing, conversationId = conversationId, title = conv?.let { ConversationRepository.title(it, me) } ?: "Call",
             colorIndex = conv?.let { ConversationRepository.peer(it, me)?.avatarColor } ?: 0, video = video, cameraOn = video,
-            isGroup = conv?.type != "DM", speakerOn = video,
+            isGroup = conv?.type != "DM",
         )
         try {
             val res = try {
@@ -266,7 +314,7 @@ class CallManager(
         val s = _state.value
         val callId = s.callId ?: return
         IncomingCallNotifier.cancel(context)
-        _state.update { it.copy(phase = CallPhase.Connecting, cameraOn = it.video, speakerOn = it.video) }
+        _state.update { it.copy(phase = CallPhase.Connecting, cameraOn = it.video) }
         try {
             val res = api.post<CallRes>("/v1/calls/$callId/join")
             val key = waitForKey(callId)
@@ -280,7 +328,7 @@ class CallManager(
     suspend fun join(conversationId: String, callId: String, video: Boolean) {
         if (_state.value.phase != CallPhase.Idle) return
         val conv = db.conversations().get(conversationId)
-        _state.value = CallUiState(phase = CallPhase.Connecting, callId = callId, conversationId = conversationId, title = conv?.let { ConversationRepository.title(it, session.session?.userId) } ?: "Call", video = video, cameraOn = video, isGroup = conv?.type != "DM", speakerOn = true)
+        _state.value = CallUiState(phase = CallPhase.Connecting, callId = callId, conversationId = conversationId, title = conv?.let { ConversationRepository.title(it, session.session?.userId) } ?: "Call", video = video, cameraOn = video, isGroup = conv?.type != "DM")
         try {
             val res = api.post<CallRes>("/v1/calls/$callId/join")
             connect(callId, res.media!!, waitForKey(callId), video)
@@ -347,7 +395,10 @@ class CallManager(
         cryptorGuard = tracker?.let { t -> FrameCryptorGuard(onState = { k, st -> if (room === r) onE2eeState(t, k, st) }, log = diag::log) }
         _state.update { it.copy(security = if (key != null) MediaSecurity.Unknown else MediaSecurity.TransportOnly) }
         eventsJob = scope.launch { r.events.events.collect { ev -> onRoomEvent(ev) } }
-        CallService.start(context, _state.value.title, video)
+        // Set before connecting, when LiveKit starts the phone's call audio: a headset first, then the speaker for video
+        // and group calls, the earpiece for 1:1 voice calls. LiveKit's own default put the speaker first for every call.
+        r.audioSwitchHandler?.preferredDeviceList = CallAudioPolicy.preferred(video, _state.value.isGroup).mapNotNull(::deviceClass)
+        CallService.start(context, CallService.Info.of(_state.value) ?: CallService.Info(_state.value.title, video, _state.value.isGroup))
         val t0 = System.currentTimeMillis()
         try {
             r.connect(media.url, media.token)
@@ -369,13 +420,17 @@ class CallManager(
             _state.update { it.copy(error = CallFailure.CAMERA) }
         }
         watchAudioRoute(r)
-        setSpeaker(_state.value.speakerOn)
         runCatching { api.post<CallRes>("/v1/calls/$callId/connected") }
         _state.update {
             it.copy(
                 phase = if (r.remoteParticipants.isEmpty() && !it.isGroup) CallPhase.Outgoing else CallPhase.Connected,
                 connectedAt = if (r.remoteParticipants.isNotEmpty() || it.isGroup) System.currentTimeMillis() else null,
             )
+        }
+        // Joining people already in the room (an answered incoming call, a running group call) is answering it too: the
+        // log used to record that only when someone joined after us, so every answered incoming call showed as missed.
+        if (r.remoteParticipants.isNotEmpty()) scope.launch {
+            db.calls().getLog(callId)?.takeIf { it.answeredAt == null }?.let { db.calls().upsertLog(it.copy(answeredAt = System.currentTimeMillis())) }
         }
         refreshParticipants()
     }
@@ -387,29 +442,41 @@ class CallManager(
     private fun startMediaMonitor(r: Room) {
         mediaJob?.cancel()
         val monitor = MediaFlowMonitor()
+        // Sound on its own (UI-003): video can flow while a person's audio doesn't, which reads as "too quiet".
+        val audioMonitor = MediaFlowMonitor()
         mediaJob = scope.launch {
             while (isActive && room === r) {
                 delay(2000)
                 var total: Long? = null
+                var audio: Long? = null
                 var path: String? = null
                 for (rp in r.remoteParticipants.values) {
-                    for ((_, t) in rp.audioTrackPublications + rp.videoTrackPublications) {
+                    for ((pub, t) in rp.audioTrackPublications + rp.videoTrackPublications) {
                         val report = runCatching { t?.getRTCStats() }.getOrNull() ?: continue
                         val stats = report.statsMap.values
                         val bytes = stats.filter { it.type == "inbound-rtp" }.sumOf { (it.members["bytesReceived"] as? Number)?.toLong() ?: 0L }
                         total = (total ?: 0L) + bytes
+                        if (pub.kind == Track.Kind.AUDIO && !pub.muted) audio = (audio ?: 0L) + bytes
                         if (path == null) path = MediaPath.describe(stats)
                     }
                 }
                 if (room !== r) break
                 val before = _state.value
                 val flow = monitor.sample(total)
+                val audioFlow = audioMonitor.sample(audio)
                 if (flow != before.media || (path != null && path != before.path)) diag.log("media $flow via ${path ?: before.path ?: "unknown path"}")
-                _state.update { if (it.media == flow && (path == null || it.path == path)) it else it.copy(media = flow, path = path ?: it.path) }
+                if (audioFlow != before.remoteAudio) diag.log("remote audio $audioFlow")
+                _state.update {
+                    if (it.media == flow && it.remoteAudio == audioFlow && (path == null || it.path == path)) it
+                    else it.copy(media = flow, remoteAudio = audioFlow, path = path ?: it.path)
+                }
                 val stats = runCatching { sampleStats(r) }.getOrNull()
                 if (room !== r) break
                 if (stats != null) {
-                    if (++ticks % 3 == 0) diag.log("stats send cam=${stats.sendingCamera?.describe()} screen=${stats.sendingScreen?.describe()} | recv video=${stats.receivingVideo?.describe()} screen=${stats.receivingScreen?.describe()} | route=${stats.audioRoute}")
+                    if (++ticks % 3 == 0) {
+                        diag.log("stats send cam=${stats.sendingCamera?.describe()} screen=${stats.sendingScreen?.describe()} | recv video=${stats.receivingVideo?.describe()} screen=${stats.receivingScreen?.describe()} | route=${stats.audioRoute}")
+                        diag.log("audio recv=${stats.receivingAudio?.describe()} mic=${stats.sendingAudioDb} dBFS volume=${stats.callVolume}")
+                    }
                     _state.update { it.copy(stats = stats.copy(echoCanceller = it.stats?.echoCanceller)) }
                 }
             }
@@ -417,6 +484,7 @@ class CallManager(
     }
 
     private var ticks = 0
+    private var micStatsLogged = false
 
     /** Sender and receiver video numbers for the largest camera and screen streams, plus the current audio route. */
     private suspend fun sampleStats(r: Room): CallMediaStats {
@@ -445,39 +513,111 @@ class CallManager(
             if (pub.source == Track.Source.SCREEN_SHARE) { if (recvScreen == null) recvScreen = v } else if (recvVideo == null) recvVideo = v
         }
         sampler.forget(keys)
-        val route = r.audioSwitchHandler?.selectedAudioDevice?.let { audioRouteName(it) }
-        return CallMediaStats(sendCam, sendScreen, recvVideo, recvScreen, route)
-    }
-
-    private fun audioRouteName(d: AudioDevice): String = when (d) {
-        is AudioDevice.Speakerphone -> "speaker"
-        is AudioDevice.Earpiece -> "earpiece"
-        is AudioDevice.WiredHeadset -> "wired headset"
-        is AudioDevice.BluetoothHeadset -> "bluetooth"
-        else -> d.javaClass.simpleName
+        // Sound: the loudest remote stream (a group's current speaker), the microphone's level as sent, and the call volume.
+        val audioKeys = HashSet<String>()
+        var recvAudio: AudioStats? = null
+        for (rp in r.remoteParticipants.values) for ((pub, t) in rp.audioTrackPublications) {
+            if (pub.muted || t == null) continue
+            val report = runCatching { t.getRTCStats() }.getOrNull() ?: continue
+            val key = "in:" + pub.sid
+            audioKeys += key
+            val a = audioSampler.inbound(key, report.statsMap.values.map { it.type to it.members }) ?: continue
+            if (recvAudio == null || (a.levelDb ?: -100) > (recvAudio.levelDb ?: -100)) recvAudio = a
+        }
+        audioSampler.forget(audioKeys)
+        val micReport = r.localParticipant.audioTrackPublications.firstOrNull { !it.first.muted }?.second
+            ?.let { t -> runCatching { t.getRTCStats() }.getOrNull() }
+        if (micReport != null && !micStatsLogged) {
+            micStatsLogged = true
+            micReport.statsMap.values.filter { it.type == "media-source" }.forEach { diag.log("mic stats fields: ${it.members.keys.sorted()}") }
+        }
+        val micDb = micReport?.let { rep -> audioSampler.outboundLevel(rep.statsMap.values.map { it.type to it.members }) }
+        val volume = runCatching { audioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL) to audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL) }.getOrNull()
+        val route = actualRoute(r)?.label
+        return CallMediaStats(
+            sendCam, sendScreen, recvVideo, recvScreen, route,
+            receivingAudio = recvAudio, sendingAudioDb = micDb,
+            callVolume = volume?.let { (v, m) -> CallAudioPolicy.describeVolume(v, m) },
+            volumeLow = volume?.let { (v, m) -> CallAudioPolicy.volumeLow(v, m) } ?: false,
+        )
     }
 
     /**
-     * Keeps the speaker button true to the actual route, applies the wanted speaker setting once the device list is known
-     * (it can be empty right after joining), and logs route changes (device types only).
+     * Follows LiveKit's audio devices (UI-003): the call screen shows the route the phone actually uses, a headset that
+     * appears takes over, and the person's earlier choice is applied again in a new room (after a rejoin). Logs device
+     * types only, never names.
      */
     private fun watchAudioRoute(r: Room) {
         val handler = r.audioSwitchHandler ?: return
         audioListener?.let { runCatching { handler.unregisterAudioDeviceChangeListener(it) } }
-        var applied = handler.availableAudioDevices.isNotEmpty()
-        val listener: (List<AudioDevice>, AudioDevice?) -> Unit = { devices, selected ->
-            diag.log("audio route ${selected?.let(::audioRouteName)} of ${devices.joinToString { audioRouteName(it) }}")
-            if (room === r) {
-                if (!applied && devices.isNotEmpty()) {
-                    applied = true
-                    setSpeaker(_state.value.speakerOn)
-                } else if (selected != null) {
-                    _state.update { it.copy(speakerOn = selected is AudioDevice.Speakerphone) }
+        val listener: (List<AudioDevice>, AudioDevice?) -> Unit = { devices, selected -> if (room === r) onAudioDevices(r, devices, selected) }
+        audioListener = listener
+        handler.registerAudioDeviceChangeListener(listener)
+        onAudioDevices(r, handler.availableAudioDevices, handler.selectedAudioDevice)
+    }
+
+    private fun onAudioDevices(r: Room, devices: List<AudioDevice>, selected: AudioDevice?) {
+        val routes = devices.map(::routeOf)
+        val current = selected?.let(::routeOf)
+        val before = _state.value.audioRoutes
+        diag.log("audio route ${current?.kind} of ${routes.joinToString { it.kind.name }}")
+        val handler = r.audioSwitchHandler
+        val chosen = userRoute
+        when {
+            routes.isEmpty() -> {}
+            // A headset plugged in or connected mid-call wins over a speaker/earpiece choice (the person's, or the
+            // automatic move to the speaker when the camera came on), as on a phone call.
+            before.isNotEmpty() && CallAudioPolicy.headsetArrived(before, routes) -> {
+                userRoute = null
+                if (current?.kind != AudioRouteKind.Bluetooth && current?.kind != AudioRouteKind.Wired) handler?.selectDevice(null)
+            }
+            // First device list of a room (a rejoin): the person's choice again, if that output is still there.
+            routedRoom !== r -> {
+                routedRoom = r
+                if (chosen != null && !CallAudioPolicy.matches(chosen, current)) {
+                    devices.firstOrNull { CallAudioPolicy.matches(chosen, routeOf(it)) }?.let { handler?.selectDevice(it) }
                 }
             }
         }
-        audioListener = listener
-        handler.registerAudioDeviceChangeListener(listener)
+        _state.update { it.copy(audioRoutes = routes, audioRoute = current, speakerOn = current?.kind == AudioRouteKind.Speaker) }
+    }
+
+    private fun routeOf(d: AudioDevice): AudioRoute = when (d) {
+        is AudioDevice.Speakerphone -> AudioRoute(AudioRouteKind.Speaker)
+        is AudioDevice.Earpiece -> AudioRoute(AudioRouteKind.Earpiece)
+        is AudioDevice.WiredHeadset -> AudioRoute(AudioRouteKind.Wired)
+        is AudioDevice.BluetoothHeadset -> AudioRoute(AudioRouteKind.Bluetooth, d.name)
+        else -> AudioRoute(AudioRouteKind.Other, d.name)
+    }
+
+    private fun deviceClass(k: AudioRouteKind): Class<out AudioDevice>? = when (k) {
+        AudioRouteKind.Speaker -> AudioDevice.Speakerphone::class.java
+        AudioRouteKind.Earpiece -> AudioDevice.Earpiece::class.java
+        AudioRouteKind.Bluetooth -> AudioDevice.BluetoothHeadset::class.java
+        AudioRouteKind.Wired -> AudioDevice.WiredHeadset::class.java
+        AudioRouteKind.Other -> null
+    }
+
+    /**
+     * Where the phone really sends call audio. On Android 12+ that's the communication device the system reports, which
+     * catches a route LiveKit asked for but the system refused; on older versions, what LiveKit selected.
+     */
+    private fun actualRoute(r: Room): AudioRoute? {
+        if (Build.VERSION.SDK_INT >= 31) {
+            val info = runCatching { audioManager.communicationDevice }.getOrNull()
+            if (info != null) return routeOfInfo(info)
+        }
+        return r.audioSwitchHandler?.selectedAudioDevice?.let(::routeOf)
+    }
+
+    @androidx.annotation.RequiresApi(31)
+    private fun routeOfInfo(info: AudioDeviceInfo): AudioRoute = when (info.type) {
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE -> AudioRoute(AudioRouteKind.Speaker)
+        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> AudioRoute(AudioRouteKind.Earpiece)
+        AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_USB_HEADSET -> AudioRoute(AudioRouteKind.Wired)
+        // Matched by kind only: the system's product name and the Bluetooth name can be written differently.
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET, AudioDeviceInfo.TYPE_BLE_SPEAKER, AudioDeviceInfo.TYPE_HEARING_AID -> AudioRoute(AudioRouteKind.Bluetooth)
+        else -> AudioRoute(AudioRouteKind.Other)
     }
 
     /** Room options per [CallMediaPolicy]: explicit camera settings, and screen share tuned for readable text. */
@@ -633,8 +773,16 @@ class CallManager(
 
     fun toggleCamera() = scope.launch {
         val r = room ?: return@launch
-        runCatching { r.localParticipant.setCameraEnabled(!r.localParticipant.isCameraEnabled) }
-            .onFailure { _state.update { s -> s.copy(error = "Camera unavailable") } }
+        val turningOn = !r.localParticipant.isCameraEnabled
+        runCatching { r.localParticipant.setCameraEnabled(turningOn) }
+            .onSuccess {
+                // Video is watched at arm's length: a call on the earpiece moves to the speaker (not if the person chose it).
+                val s = _state.value
+                if (turningOn && CallAudioPolicy.speakerForVideo(s.audioRoute, userRoute?.kind)) {
+                    s.audioRoutes.firstOrNull { it.kind == AudioRouteKind.Speaker }?.let { r.audioSwitchHandler?.selectDevice(deviceFor(r, it)) }
+                }
+            }
+            .onFailure { _state.update { s -> s.copy(error = CallFailure.CAMERA) } }
         refreshParticipants()
     }
 
@@ -644,21 +792,78 @@ class CallManager(
         track?.switchCamera(position = if (pos == io.livekit.android.room.track.CameraPosition.FRONT) io.livekit.android.room.track.CameraPosition.BACK else io.livekit.android.room.track.CameraPosition.FRONT)
     }
 
-    fun setSpeaker(on: Boolean) {
-        val handler = room?.audioSwitchHandler ?: return
-        val target = handler.availableAudioDevices.firstOrNull { if (on) it is AudioDevice.Speakerphone else it !is AudioDevice.Speakerphone }
-        if (target != null) handler.selectDevice(target)
-        _state.update { it.copy(speakerOn = on) }
+    /**
+     * Sends the call's sound to [route] (UI-003). The choice sticks for this call (and after a rejoin), and is checked
+     * against what the phone reports a moment later: a route the system didn't apply shows a recoverable error instead
+     * of a button that claims a route the phone isn't using.
+     */
+    fun selectAudioRoute(route: AudioRoute) {
+        val r = room ?: return
+        val device = deviceFor(r, route)
+        if (device == null) {
+            _state.update { it.copy(routeError = CallAudioPolicy.routeFailed(route)) }
+            return
+        }
+        userRoute = route
+        _state.update { it.copy(routeError = null) }
+        r.audioSwitchHandler?.selectDevice(device)
+        routeCheck?.cancel()
+        routeCheck = scope.launch {
+            delay(ROUTE_CHECK_MS)
+            if (room !== r || userRoute != route) return@launch
+            val actual = actualRoute(r)
+            if (!CallAudioPolicy.matches(route, actual)) {
+                diag.log("audio route check failed: asked ${route.kind}, phone uses ${actual?.kind}")
+                _state.update { it.copy(routeError = CallAudioPolicy.routeFailed(route)) }
+            }
+        }
     }
 
-    /** Called with the MediaProjection consent result. Never invoked without the system dialog. */
+    /** The speaker button with only the speaker and the earpiece available: one tap switches between them. */
+    fun toggleSpeaker() {
+        val s = _state.value
+        CallAudioPolicy.toggleTarget(s.audioRoute, s.audioRoutes)?.let(::selectAudioRoute)
+    }
+
+    fun clearRouteError() = _state.update { it.copy(routeError = null) }
+
+    private fun deviceFor(r: Room, route: AudioRoute): AudioDevice? =
+        r.audioSwitchHandler?.availableAudioDevices?.firstOrNull { CallAudioPolicy.matches(route, routeOf(it)) }
+
+    /** Shrinks the call to the in-app call panel; the call and its media carry on (nothing is released). */
+    fun minimize() {
+        val p = _state.value.phase
+        if (p != CallPhase.Idle && p != CallPhase.Incoming) _minimized.value = true
+    }
+
+    /** Back to the full call screen (the panel, picture-in-picture or the notification). */
+    fun expand() {
+        _minimized.value = false
+    }
+
+    fun clearNotice() = _state.update { it.copy(notice = null) }
+
+    /**
+     * Called with the MediaProjection consent result. Never invoked without the system dialog. The capture runs in
+     * LiveKit's mediaProjection service with Orbit's own notification (who sees what, and a Stop action). When Android
+     * or the person ends the capture from outside the call screen, LiveKit unpublishes the track; it's never restarted
+     * on its own, and the call screen says it stopped.
+     */
     fun startScreenShare(resultData: Intent) = scope.launch {
         val r = room ?: return@launch
+        if (_state.value.phase != CallPhase.Connected) {
+            _state.update { it.copy(error = "Screen sharing can start once the call is connected.") }
+            return@launch
+        }
+        stoppingShare = false
         try {
-            r.localParticipant.setScreenShareEnabled(true, ScreenCaptureParams(resultData, onStop = {
-                Log.i(TAG, "screen capture stopped by the system")
-                scope.launch { refreshParticipants() }
-            }))
+            val params = ScreenCaptureParams(
+                resultData,
+                notificationId = CallService.SHARE_NOTIFICATION_ID,
+                notification = CallService.shareNotification(context, _state.value.title),
+                onStop = { scope.launch { onCaptureStopped(r) } },
+            )
+            if (!r.localParticipant.setScreenShareEnabled(true, params)) _state.update { it.copy(error = "Screen sharing failed to start") }
         } catch (e: Exception) {
             Log.w(TAG, "screen share start failed: ${e.javaClass.simpleName}")
             _state.update { it.copy(error = "Screen sharing failed to start") }
@@ -666,8 +871,21 @@ class CallManager(
         refreshParticipants()
     }
 
+    private fun onCaptureStopped(r: Room) {
+        if (room !== r) return
+        val ours = stoppingShare
+        stoppingShare = false
+        Log.i(TAG, "screen capture stopped (${if (ours) "Stop in Orbit" else "by Android or the status bar"})")
+        if (!ours) _state.update { it.copy(notice = "Screen sharing stopped") }
+        refreshParticipants()
+    }
+
+    /** Stops sharing only; the call goes on (leaving is the End button). */
     fun stopScreenShare() = scope.launch {
-        runCatching { room?.localParticipant?.setScreenShareEnabled(false, null) }
+        val r = room ?: return@launch
+        if (!r.localParticipant.isScreenShareEnabled) return@launch
+        stoppingShare = true
+        runCatching { r.localParticipant.setScreenShareEnabled(false, null) }
         refreshParticipants()
     }
 
@@ -679,8 +897,14 @@ class CallManager(
     }
 
     private fun finish(remoteReason: String, notifyServer: Boolean) {
-        val s = _state.value
-        if (s.phase == CallPhase.Idle) return
+        // Claimed under a lock: a hang-up, the server's "ended" frame and a room disconnect can arrive on different
+        // threads at the same moment, and each used to run the teardown (disconnect and release twice on one Room).
+        val s = synchronized(finishLock) {
+            val cur = _state.value
+            if (cur.phase == CallPhase.Idle || cur.phase == CallPhase.Ended) return
+            _state.value = cur.copy(phase = CallPhase.Ended, endReason = remoteReason, participants = emptyList())
+            cur
+        }
         markHandled(s.callId)
         Log.i(TAG, "call ending: reason=$remoteReason notifyServer=$notifyServer phase=${s.phase} participants=${s.participants.size}")
         val id = s.callId
@@ -697,7 +921,6 @@ class CallManager(
             }
         }
         teardown()
-        _state.value = s.copy(phase = CallPhase.Ended, endReason = remoteReason, participants = emptyList())
         scope.launch {
             delay(1500)
             if (_state.value.phase == CallPhase.Ended) reset()
@@ -705,8 +928,12 @@ class CallManager(
     }
 
     private fun fail(msg: String) {
+        synchronized(finishLock) {
+            val p = _state.value.phase
+            if (p == CallPhase.Idle || p == CallPhase.Ended) return
+            _state.update { it.copy(phase = CallPhase.Ended, error = msg, endReason = "error") }
+        }
         teardown()
-        _state.update { it.copy(phase = CallPhase.Ended, error = msg, endReason = "error") }
         scope.launch {
             delay(3500)
             if (_state.value.phase == CallPhase.Ended) reset()
@@ -732,7 +959,8 @@ class CallManager(
     private fun rejoin() {
         val s = _state.value
         val callId = s.callId ?: return finish("disconnected", notifyServer = true)
-        _state.update { it.copy(phase = CallPhase.Reconnecting) }
+        // A screen share ends with the old room (Android's consent is single-use): say so instead of dropping it silently.
+        _state.update { it.copy(phase = CallPhase.Reconnecting, notice = if (it.screenSharing) "Screen sharing stopped while reconnecting. Tap Share to start again." else it.notice) }
         rejoinJob = scope.launch {
             val started = System.currentTimeMillis()
             var attempt = 0
@@ -770,6 +998,9 @@ class CallManager(
     }
 
     private fun teardown() {
+        routeCheck?.cancel()
+        routeCheck = null
+        routedRoom = null
         peerWait?.cancel()
         peerWait = null
         rejoinJob?.cancel()
@@ -803,10 +1034,16 @@ class CallManager(
     }
 
     private fun reset() {
+        userRoute = null
+        _minimized.value = false
         _state.value = CallUiState()
+        // No call any more: no ongoing-call notification either, whatever raced the service's stop.
+        if (room == null) CallService.cancelNotification(context)
     }
 
     companion object {
         private const val TAG = "CallManager"
+        /** How long after a route change the phone's reported route is checked. */
+        private const val ROUTE_CHECK_MS = 1500L
     }
 }

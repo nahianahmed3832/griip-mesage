@@ -66,6 +66,13 @@ data class CallMediaStats(
     val receivingScreen: VideoStats? = null,
     val audioRoute: String? = null,
     val echoCanceller: String? = null,
+    /** The loudest remote sound arriving now (UI-003 loudness diagnostics). */
+    val receivingAudio: AudioStats? = null,
+    /** The microphone's level as sent, dBFS. */
+    val sendingAudioDb: Int? = null,
+    /** The phone's call volume, "3 of 7". */
+    val callVolume: String? = null,
+    val volumeLow: Boolean = false,
 )
 
 /**

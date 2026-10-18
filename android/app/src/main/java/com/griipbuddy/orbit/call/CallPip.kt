@@ -15,15 +15,23 @@ import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * Picture-in-picture for an ongoing call (2026-10-17, docs/CALLING_AND_E2EE.md › Minimised calls). Leaving Orbit during
- * a connected call shrinks it into a small window with Mute and Hang up; tapping it returns to the full call screen.
- * It never starts on its own outside a call. Rules unit-tested in `CallVerificationTest`.
+ * a connected video call shrinks it into a small window with Mute and Hang up; tapping it returns to the full call
+ * screen. It never starts on its own outside a call. Rules unit-tested in `CallVerificationTest`.
+ *
+ * UI-003: only calls with video get it (a voice call keeps going in the background with its notification, like a phone
+ * call, instead of covering other apps with an avatar), and not while this phone shares its screen: the window would be
+ * captured into the share and cover what the person is showing.
  */
 object CallPip {
     /** Whether the activity is showing in picture-in-picture now (the UI draws only the call then). */
     val active = MutableStateFlow(false)
 
-    /** Calls that get picture-in-picture: connected or reconnecting, not ringing. */
+    /** Calls in a state that can be shown small: connected or reconnecting, not ringing. */
     fun eligible(phase: CallPhase): Boolean = phase == CallPhase.Connected || phase == CallPhase.Reconnecting
+
+    /** Whether this call goes into picture-in-picture when the person leaves Orbit. */
+    fun eligible(s: CallUiState): Boolean =
+        eligible(s.phase) && !s.screenSharing && (s.video || s.participants.any { !it.isLocal && (it.cameraOn || it.screen != null) })
 
     fun supported(activity: Activity): Boolean =
         Build.VERSION.SDK_INT >= 26 && activity.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
@@ -44,7 +52,7 @@ object CallPip {
                 ),
             )
         // Android 12+: gesture navigation enters it smoothly while a call is on, and never otherwise.
-        if (Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(eligible(s.phase)).setSeamlessResizeEnabled(video)
+        if (Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(eligible(s)).setSeamlessResizeEnabled(video)
         return b.build()
     }
 }

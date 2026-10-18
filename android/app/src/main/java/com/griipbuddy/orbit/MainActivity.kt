@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         val s = (application as GriipApp).container?.calls?.state?.value ?: return
-        if (Build.VERSION.SDK_INT in 26..30 && com.griipbuddy.orbit.call.CallPip.eligible(s.phase) && com.griipbuddy.orbit.call.CallPip.supported(this)) {
+        if (Build.VERSION.SDK_INT in 26..30 && com.griipbuddy.orbit.call.CallPip.eligible(s) && com.griipbuddy.orbit.call.CallPip.supported(this)) {
             com.griipbuddy.orbit.call.CallPip.params(this, s)?.let { runCatching { enterPictureInPictureMode(it) } }
         }
     }
@@ -42,6 +42,8 @@ class MainActivity : ComponentActivity() {
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         com.griipbuddy.orbit.call.CallPip.active.value = isInPictureInPictureMode
+        // Back from the small window: the full call screen, not the in-app call panel.
+        if (!isInPictureInPictureMode) (application as GriipApp).container?.calls?.expand()
     }
 
     // The app's own language on Android 12 and older (Android 13+ handles it itself). docs/LANGUAGES.md
@@ -129,6 +131,8 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         intent ?: return
         intent.getStringExtra(EXTRA_CONVERSATION)?.let { pendingConversation = it }
+        // The ongoing-call notification (UI-003): straight back to the full call screen.
+        if (intent.getBooleanExtra(EXTRA_OPEN_CALL, false)) (application as GriipApp).container?.calls?.expand()
         val data = intent.data
         if (data != null && data.scheme == "griip" && data.host == "invite") {
             pendingInvite = InviteCodes.fromScan(data.toString()) // same rule as the in-app scanner

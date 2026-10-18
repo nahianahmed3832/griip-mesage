@@ -19,6 +19,14 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE removed = 0 ORDER BY CASE WHEN lastMessageAt > 0 THEN lastMessageAt ELSE serverUpdatedAt END DESC, id")
     fun observeAll(): Flow<List<ConversationEntity>>
 
+    /** A live call in this conversation, from the server's call events (UI-003: the "Join" banners follow them). */
+    @Query("UPDATE conversations SET activeCallId = :callId, activeCallVideo = :video WHERE id = :cid")
+    suspend fun setActiveCall(cid: String, callId: String, video: Boolean)
+
+    /** That call ended: the banner goes, unless another call has started there meanwhile. */
+    @Query("UPDATE conversations SET activeCallId = NULL WHERE id = :cid AND activeCallId = :callId")
+    suspend fun clearActiveCall(cid: String, callId: String)
+
     @Query("SELECT * FROM conversations WHERE id = :id")
     fun observe(id: String): Flow<ConversationEntity?>
 
