@@ -1,12 +1,15 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  Orbit operations administrator (docs/AWS_STORAGE_PLAN.md). An IAM user for creating and maintaining Orbit's storage
-  stacks from the command line instead of the root user, limited to Orbit's stacks, buckets, runtime users and budgets.
-  Runtime users it creates must carry the orbit-runtime-boundary permissions boundary, so it can't hand out more than
-  access to Orbit's buckets. Its access key is created separately and kept in the operator's local AWS config.
+  Orbit operations administrator (docs/AWS_STORAGE_PLAN.md, docs/ORBIT_SES_SETUP_2026-10-18.md). An IAM user for
+  creating and maintaining Orbit's storage and mail stacks from the command line instead of the root user, limited to
+  Orbit's stacks, buckets, SES identities, runtime users and budgets. Runtime users it creates must carry the
+  orbit-runtime-boundary permissions boundary, so it can't hand out more than access to Orbit's buckets and sending
+  through SES. Its access key is created separately and kept in the operator's local AWS config.
 
 Resources:
-  # The most any Orbit runtime user (orbit-api-*) may ever be allowed, whatever its own policy says.
+  # The most any Orbit runtime user (orbit-api-*) may ever be allowed, whatever its own policy says. Its Description
+  # (and OpsAdminPolicy's) stays as first deployed: changing a managed policy's description replaces it, which fails
+  # for a named policy.
   RuntimeBoundary:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -28,6 +31,14 @@ Resources:
             Effect: Allow
             Action: s3:ListBucket
             Resource: arn:aws:s3:::griipbuddy-orbit-*
+          # Account emails (orbit-mail.yaml). The runtime user's own policy narrows this to one From address and the
+          # server's IP; identity/* also covers a verified sandbox test recipient.
+          - Sid: OrbitMailSending
+            Effect: Allow
+            Action: ses:SendEmail
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ses:*:${AWS::AccountId}:identity/*"
+              - !Sub "arn:${AWS::Partition}:ses:*:${AWS::AccountId}:configuration-set/orbit-*"
 
   OpsAdminPolicy:
     Type: AWS::IAM::ManagedPolicy
@@ -47,17 +58,54 @@ Resources:
               - ce:GetCostAndUsage
               - ce:GetCostForecast
               - pricing:GetProducts
+              # SES sandbox status and quotas, and the listings CloudFormation's SES handlers make. The v1
+              # DescribeConfigurationSet has no resource type.
+              - ses:GetAccount
+              - ses:ListEmailIdentities
+              - ses:ListConfigurationSets
+              - ses:DescribeConfigurationSet
             Resource: "*"
           - Sid: OrbitStacks
             Effect: Allow
             Action: cloudformation:*
-            Resource: !Sub "arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/orbit-storage-*/*"
+            Resource:
+              - !Sub "arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/orbit-storage-*/*"
+              - !Sub "arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/orbit-mail-*/*"
           - Sid: OrbitBuckets
             Effect: Allow
             Action: s3:*
             Resource:
               - arn:aws:s3:::griipbuddy-orbit-*
               - arn:aws:s3:::griipbuddy-orbit-*/*
+          # What CloudFormation needs for orbit-mail.yaml's identity and configuration set (their resource schemas'
+          # handler permissions), plus verifying a sandbox test recipient. Not sending: only runtime users send.
+          - Sid: OrbitMail
+            Effect: Allow
+            Action:
+              - ses:CreateEmailIdentity
+              - ses:GetEmailIdentity
+              - ses:DeleteEmailIdentity
+              - ses:PutEmailIdentityDkimAttributes
+              - ses:PutEmailIdentityDkimSigningAttributes
+              - ses:PutEmailIdentityMailFromAttributes
+              - ses:PutEmailIdentityFeedbackAttributes
+              - ses:PutEmailIdentityConfigurationSetAttributes
+              - ses:CreateConfigurationSet
+              - ses:GetConfigurationSet
+              - ses:DeleteConfigurationSet
+              - ses:PutConfigurationSetDeliveryOptions
+              - ses:PutConfigurationSetReputationOptions
+              - ses:PutConfigurationSetSendingOptions
+              - ses:PutConfigurationSetSuppressionOptions
+              - ses:PutConfigurationSetTrackingOptions
+              - ses:PutConfigurationSetVdmOptions
+              - ses:PutConfigurationSetArchivingOptions
+              - ses:TagResource
+              - ses:UntagResource
+              - ses:ListTagsForResource
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ses:*:${AWS::AccountId}:identity/*"
+              - !Sub "arn:${AWS::Partition}:ses:*:${AWS::AccountId}:configuration-set/orbit-*"
           # Runtime users only with the boundary above, so their policies can't grant more than it allows.
           - Sid: RuntimeUsersWithBoundary
             Effect: Allow

@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Orbit account emails (verification and password-reset codes) through Amazon SES (docs/ORBIT_SES_SETUP_2026-10-18.md).
+  A sending domain signed with Easy DKIM, a configuration set every send uses, and a least-privilege IAM user that may
+  only send from Orbit's one address, from the API server's address. Its access key is created separately and written
+  straight to the server's .env, never into this stack's outputs.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [test, prod]
+    Description: test or prod. Names the configuration set and the IAM user, so both can exist. An SES identity exists
+      once per account and region, so a test stack needs its own MailDomain (a subdomain, for example).
+  MailDomain:
+    Type: String
+    Description: The domain Orbit sends from, verified through its DKIM records (for example griipbuddy.cloud).
+    AllowedPattern: "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+  SenderLocalPart:
+    Type: String
+    Default: no-reply
+    Description: The part before the @ of the one From address the server may use. MAIL_FROM must use exactly this
+      address, in lowercase, because the IAM condition compares it case-sensitively.
+    AllowedPattern: "^[a-z0-9]([a-z0-9._-]{0,62}[a-z0-9])?$"
+  MailFromSubdomain:
+    Type: String
+    Default: bounce
+    Description: Subdomain of MailDomain for the custom MAIL FROM (Return-Path) domain, so SPF aligns with MailDomain as
+      well as DKIM. Empty to keep amazonses.com. Not the server's MAIL_FROM setting.
+    AllowedPattern: "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)?$"
+  ServerIp:
+    Type: String
+    Default: 72.60.107.88/32
+    Description: The API server's public IPv4 address (for the test stack, the machine running the tests). Sending from
+      anywhere else is refused, so a leaked key is useless elsewhere.
+  SandboxTestRecipient:
+    Type: String
+    Default: ""
+    Description: While the account is in the SES sandbox, one recipient address verified in SES for a test send. Leave
+      empty, or set it back to empty, once production access is granted.
+    AllowedPattern: "^([^@\\s]+@[^@\\s]+)?$"
+  PermissionsBoundaryArn:
+    Type: String
+    Default: ""
+    Description: The orbit-runtime-boundary policy from orbit-ops-admin.yaml (required when that user creates the stack).
+
+Conditions:
+  HasBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
+  HasMailFromDomain: !Not [!Equals [!Ref MailFromSubdomain, ""]]
+  HasSandboxRecipient: !Not [!Equals [!Ref SandboxTestRecipient, ""]]
+
+Resources:
+  MailConfigurationSet:
+    Type: AWS::SES::ConfigurationSet
+    Properties:
+      # Matches the configuration-set/orbit-* pattern in orbit-ops-admin.yaml.
+      Name: !Sub "orbit-mail-${Environment}"
+      # Codes are only delivered over TLS to the recipient's mail server, never in plain text.
+      DeliveryOptions:
+        TlsPolicy: REQUIRE
+      ReputationOptions:
+        ReputationMetricsEnabled: true
+      # The switch that stops all of Orbit's email at once: set it to false (docs/ORBIT_SES_SETUP_2026-10-18.md §6).
+      SendingOptions:
+        SendingEnabled: true
+      # Addresses that bounce or complain aren't sent to again.
+      SuppressionOptions:
+        SuppressedReasons: [BOUNCE, COMPLAINT]
+      # No open or click tracking: the emails are plain text, without links or pixels.
+      Tags:
+        - Key: app
+          Value: orbit
+        - Key: env
+          Value: !Ref Environment
+
+  MailIdentity:
+    Type: AWS::SES::EmailIdentity
+    # The DKIM records in DNS belong to this identity. A new one would need new records and a new verification, and
+    # sign-up email stops in between, so a stack deletion or replacement leaves it in place.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      EmailIdentity: !Ref MailDomain
+      # Easy DKIM: SES holds the keys and rotates them; DNS points at them through three CNAME records (the outputs).
+      DkimSigningAttributes:
+        NextSigningKeyLength: RSA_2048_BIT
+      DkimAttributes:
+        SigningEnabled: true
+      # Every send from this domain uses the configuration set, although the server doesn't name one.
+      ConfigurationSetAttributes:
+        ConfigurationSetName: !Ref MailConfigurationSet
+      # Until the MX record exists, SES falls back to amazonses.com instead of refusing to send.
+      MailFromAttributes: !If
+        - HasMailFromDomain
+        - MailFromDomain: !Sub "${MailFromSubdomain}.${MailDomain}"
+          BehaviorOnMxFailure: USE_DEFAULT_VALUE
+        - !Ref AWS::NoValue
+      Tags:
+        - Key: app
+          Value: orbit
+        - Key: env
+          Value: !Ref Environment
+
+  SenderUser:
+    Type: AWS::IAM::User
+    Properties:
+      # Matches the orbit-api-* pattern that orbit-ops-admin may create, only with the boundary attached.
+      UserName: !Sub "orbit-api-mail-${Environment}-${AWS::Region}"
+      PermissionsBoundary: !If [HasBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Tags:
+        - Key: app
+          Value: orbit
+        - Key: env
+          Value: !Ref Environment
+
+  SenderPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: orbit-mail-send
+      Users:
+        - !Ref SenderUser
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # SES API v2 SendEmail, the only call the server makes (server/src/accounts/mailer.ts), with Orbit's address
+          # as the From address and only from the server. The configuration set is listed because SES also authorizes
+          # a send against the configuration set it uses. No ses:SendRawEmail: that's API v1 and SMTP, which the server
+          # doesn't use.
+          - Sid: SendFromOrbitAddress
+            Effect: Allow
+            Action: ses:SendEmail
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${MailIdentity}"
+              - !Sub "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/${MailConfigurationSet}"
+            Condition:
+              StringEquals:
+                ses:FromAddress: !Sub "${SenderLocalPart}@${MailDomain}"
+              IpAddress:
+                aws:SourceIp: !Ref ServerIp
+          # In the sandbox, SES can also authorize the send against the verified recipient's own identity.
+          - !If
+            - HasSandboxRecipient
+            - Sid: SandboxTestRecipient
+              Effect: Allow
+              Action: ses:SendEmail
+              Resource: !Sub "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SandboxTestRecipient}"
+              Condition:
+                StringEquals:
+                  ses:FromAddress: !Sub "${SenderLocalPart}@${MailDomain}"
+                IpAddress:
+                  aws:SourceIp: !Ref ServerIp
+            - !Ref AWS::NoValue
+
+Outputs:
+  DkimRecord1:
+    Value: !Sub "${MailIdentity.DkimDNSTokenName1} CNAME ${MailIdentity.DkimDNSTokenValue1}"
+    Description: DKIM record 1 of 3 (name, type, value). SES verifies the domain once all three are in DNS.
+  DkimRecord2:
+    Value: !Sub "${MailIdentity.DkimDNSTokenName2} CNAME ${MailIdentity.DkimDNSTokenValue2}"
+    Description: DKIM record 2 of 3 (name, type, value).
+  DkimRecord3:
+    Value: !Sub "${MailIdentity.DkimDNSTokenName3} CNAME ${MailIdentity.DkimDNSTokenValue3}"
+    Description: DKIM record 3 of 3 (name, type, value).
+  MailFromMxRecord:
+    Condition: HasMailFromDomain
+    Value: !Sub "${MailFromSubdomain}.${MailDomain} MX 10 feedback-smtp.${AWS::Region}.amazonses.com"
+    Description: Custom MAIL FROM domain, record 1 of 2 (name, type, priority, value).
+  MailFromSpfRecord:
+    Condition: HasMailFromDomain
+    Value: !Sub '${MailFromSubdomain}.${MailDomain} TXT "v=spf1 include:amazonses.com ~all"'
+    Description: Custom MAIL FROM domain, record 2 of 2 (name, type, value).
+  MailFrom:
+    Value: !Sub "Orbit <${SenderLocalPart}@${MailDomain}>"
+    Description: MAIL_FROM (quote it in .env)
+  Region:
+    Value: !Ref AWS::Region
+    Description: SES_REGION
+  ConfigurationSetName:
+    Value: !Ref MailConfigurationSet
+    Description: Used by every send from MailDomain; its SendingEnabled option stops all of Orbit's email.
+  SenderUserName:
+    Value: !Ref SenderUser
+    Description: Create its access key separately (docs/ORBIT_SES_SETUP_2026-10-18.md); it is never an output here.
