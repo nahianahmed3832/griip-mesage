@@ -155,6 +155,25 @@ export async function buildApp(
   // LiveKit webhooks: keep the raw string, the signature covers the exact bytes.
   app.addContentTypeParser("application/webhook+json", { parseAs: "string" }, (_req, body, done) => done(null, body));
 
+  // Cross-origin browser apps (WEB_ORIGINS): only the listed origins get CORS answers; everyone else gets none, so their
+  // pages can't read this API's responses. No cookies are used, so CORS here never carries ambient credentials.
+  if (config.webOrigins.length) {
+    const allowed = new Set(config.webOrigins);
+    app.addHook("onRequest", async (req, reply) => {
+      const origin = req.headers.origin;
+      if (!origin || !allowed.has(origin)) return;
+      reply.header("access-control-allow-origin", origin).header("vary", "Origin");
+      if (req.method === "OPTIONS") {
+        return reply
+          .header("access-control-allow-methods", "GET, POST, PUT, PATCH, DELETE")
+          .header("access-control-allow-headers", "authorization, content-type")
+          .header("access-control-max-age", "600")
+          .code(204)
+          .send();
+      }
+    });
+  }
+
   await app.register(rateLimit, {
     global: true,
     max: config.rateLimitPerMinute,

@@ -121,6 +121,12 @@ export interface Config {
    * every entry, including ones a client sends itself, so per-address limits can be dodged (logged at start).
    */
   trustProxy: boolean | string[];
+  /**
+   * WEB_ORIGINS: the browser apps allowed to use this API from another origin (CORS) and to open its WebSocket, e.g.
+   * "https://web.griipbuddy.cloud". Empty (the default): no cross-origin access, and WebSocket origins aren't checked.
+   * Requests without an Origin (the phone apps) are never affected. Tokens are bearer tokens, never cookies.
+   */
+  webOrigins: string[];
   /** Abuse controls (docs/ABUSE_CONTROLS.md). 0 turns a limit off. */
   abuse: AbuseConfig;
   /** Optional display name for this instance, shown on client setup screens (INSTANCE_NAME). */
@@ -195,6 +201,25 @@ export interface AbuseConfig {
   wsMaxSocketsPerDevice: number;
   /** How long a socket opened without an Authorization header (a browser) has to send its {t:"auth"} frame. */
   wsAuthTimeoutMs: number;
+}
+
+/** WEB_ORIGINS: comma-separated origins (scheme, host and port only); https, or http for localhost in development. */
+export function webOrigins(raw: string | undefined): string[] {
+  const out: string[] = [];
+  for (const part of (raw ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
+    let u: URL;
+    try {
+      u = new URL(part);
+    } catch {
+      throw new Error(`WEB_ORIGINS: "${part}" isn't an origin like https://web.example.com`);
+    }
+    const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+    if ((u.protocol !== "https:" && !(u.protocol === "http:" && local)) || u.pathname !== "/" || u.search || u.hash || u.username) {
+      throw new Error(`WEB_ORIGINS: "${part}" must be an https origin without a path`);
+    }
+    out.push(u.origin);
+  }
+  return [...new Set(out)];
 }
 
 /** TRUST_PROXY: false | true | comma-separated proxy addresses, CIDRs or names (loopback, linklocal, uniquelocal). */
@@ -366,6 +391,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
           }
         : null,
     trustProxy: trustProxy(env.TRUST_PROXY),
+    webOrigins: webOrigins(env.WEB_ORIGINS),
     abuse: abuseConfig(int),
     instanceName: (env.INSTANCE_NAME ?? "").trim().slice(0, 80) || null,
     federation: federationConfig(env, dataDir, int),

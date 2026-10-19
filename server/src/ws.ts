@@ -39,6 +39,12 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
   };
 
   app.get("/v1/ws", { websocket: true }, (socket, req) => {
+    // A browser page from an origin not in WEB_ORIGINS can't use this socket (when the list is set). Apps send no Origin.
+    const origin = req.headers.origin;
+    if (origin && ctx.config.webOrigins.length && !ctx.config.webOrigins.includes(origin)) {
+      socket.close(4403, "origin not allowed");
+      return;
+    }
     const header = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : undefined;
     // Browsers can't set headers on a WebSocket: they send {t:"auth", token} as their first frame instead (never in the
     // URL, so the token stays out of logs). Any other first frame, or none in time, closes the socket.
