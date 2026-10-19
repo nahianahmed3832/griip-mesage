@@ -126,6 +126,9 @@ class MessageRepository(
     val orgEvents: SharedFlow<String> = _orgEvents
     private val _orgDeleted = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val orgDeleted: SharedFlow<String> = _orgDeleted
+    private val _prefsUpdated = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    /** Workspaces whose personal preferences another device of this person changed ("prefs.updated"). */
+    val prefsUpdated: SharedFlow<String> = _prefsUpdated
     private val _transfer = MutableStateFlow<Map<String, Float>>(emptyMap())
     val transferProgress: StateFlow<Map<String, Float>> = _transfer
     val backlogDrained = MutableStateFlow(false)
@@ -162,6 +165,8 @@ class MessageRepository(
     fun observeThread(cid: String, root: String) = db.messages().observeThread(cid, root)
     fun observeThreadCounts(cid: String) = db.messages().observeThreadCounts(cid)
     fun observePinned(cid: String) = db.messages().observePinned(cid)
+    fun observeWithFiles(cid: String, limit: Int) = db.messages().observeWithFiles(cid, limit)
+    fun observeThreadReplies(me: String, since: Long, limit: Int) = db.messages().observeThreadReplies(me, since, limit)
     fun observeMessage(id: String) = db.messages().observe(id)
     suspend fun search(q: String, cid: String? = null): List<MessageEntity> {
         val esc = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -790,6 +795,7 @@ class MessageRepository(
                 _orgEvents.tryEmit(id)
             }
             "devices.changed" -> f.userId?.let { directory.invalidateUser(it) }
+            "prefs.updated" -> f.workspaceId?.let { _prefsUpdated.tryEmit(it) }
             "call" -> _callFrames.tryEmit(f)
         }
     }

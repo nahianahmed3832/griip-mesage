@@ -144,4 +144,33 @@ class WorkspaceHomeRulesTest {
         // Still loading: the first load decides.
         assertFalse(WorkspaceHomeRules.selectionUnknown(null, "o2"))
     }
+
+    @Test
+    fun starredFollowsThePersonsOrderAndTheWorkspace() {
+        val convs = listOf(conv("general"), conv("sales", orgId = "o2"), conv("ann", type = "DM", unread = 1), conv("design"))
+        val order = listOf("design", "ann", "sales", "missing", "general")
+        assertEquals(listOf("design", "ann", "general"), WorkspaceHomeRules.starred(convs, "o1", order).map { it.id })
+        assertEquals(listOf("ann"), WorkspaceHomeRules.starred(convs, "o1", order, unreadOnly = true).map { it.id })
+    }
+
+    @Test
+    fun customSectionsKeepTheirOrderAndLeaveTheirChannelsOutOfTheGroups() {
+        val convs = listOf(conv("general"), conv("design", unread = 2), conv("ann", type = "DM"), conv("sales", orgId = "o2"))
+        val sections = listOf(
+            "o1" to com.griipbuddy.orbit.data.api.NavSectionDto("s_a", "Projects", listOf("design", "general", "gone")),
+            "personal" to com.griipbuddy.orbit.data.api.NavSectionDto("s_p", "People", listOf("ann"), collapsed = true),
+            "o2" to com.griipbuddy.orbit.data.api.NavSectionDto("s_o", "Other org", listOf("sales")),
+        )
+        val shown = WorkspaceHomeRules.customSections(convs, "o1", sections)
+        assertEquals(listOf("Projects", "People", "Other org"), shown.map { it.name })
+        assertEquals(listOf("design", "general"), shown[0].items.map { it.id })
+        assertTrue(shown[1].collapsed)
+        assertTrue(shown[2].items.isEmpty()) // another workspace's channel isn't shown here
+        // Unread only: sections without an unread conversation are hidden.
+        assertEquals(listOf("Projects"), WorkspaceHomeRules.customSections(convs, "o1", sections, unreadOnly = true).map { it.name })
+        assertEquals(listOf("design"), WorkspaceHomeRules.customSections(convs, "o1", sections, unreadOnly = true)[0].items.map { it.id })
+        // A placed channel isn't listed again under its group.
+        val groups = WorkspaceHomeRules.channelGroups(convs, "o1", "Acme", placed = setOf("design", "general"))
+        assertTrue(groups.isEmpty())
+    }
 }

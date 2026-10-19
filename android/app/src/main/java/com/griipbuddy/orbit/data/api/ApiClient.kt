@@ -47,6 +47,9 @@ class ApiClient(
         .build()
 
     private val json = GriipJson
+
+    /** The server this client talks to right now (a profile's address can change while signing up). */
+    fun serverAddress(): String = baseUrl().trimEnd('/')
     private val reauthLock = Mutex()
     private val jsonType = "application/json".toMediaType()
 

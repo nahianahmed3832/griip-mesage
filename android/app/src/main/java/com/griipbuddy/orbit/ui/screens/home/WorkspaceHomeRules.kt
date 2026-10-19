@@ -1,11 +1,25 @@
 package com.griipbuddy.orbit.ui.screens.home
 
 import androidx.compose.runtime.Immutable
+import com.griipbuddy.orbit.data.api.NavSectionDto
 import com.griipbuddy.orbit.data.api.OrgDto
 import com.griipbuddy.orbit.data.db.CallLogEntity
 import com.griipbuddy.orbit.data.db.ConversationEntity
 import com.griipbuddy.orbit.ui.screens.calls.CallLogText
 import com.griipbuddy.orbit.ui.screens.chats.ChatListRules
+
+/** A custom section on Home (docs/WORKSPACE_ADMINISTRATION.md › Personal sections). */
+@Immutable
+data class CustomSection(
+    /** "personal" or the organisation id whose preferences hold it. */
+    val workspaceId: String,
+    val id: String,
+    val name: String,
+    val collapsed: Boolean,
+    val items: List<ConversationEntity>,
+) {
+    val unread: Int get() = items.count { it.unreadCount > 0 }
+}
 
 /** A collapsible group of channels on the Home tab: one organisation, branch or team and its channels you've joined. */
 @Immutable
@@ -68,10 +82,17 @@ object WorkspaceHomeRules {
      * in that order then by name, channels by name. [unreadOnly]: only channels with unread messages, and only groups
      * that still have one.
      */
-    fun channelGroups(convs: List<ConversationEntity>, orgId: String?, orgName: String, unreadOnly: Boolean = false): List<ChannelGroup> {
+    fun channelGroups(
+        convs: List<ConversationEntity>,
+        orgId: String?,
+        orgName: String,
+        unreadOnly: Boolean = false,
+        placed: Set<String> = emptySet(),
+    ): List<ChannelGroup> {
         if (orgId == null) return emptyList()
         return convs.asSequence()
-            .filter { it.type == "CHANNEL" && it.orgId == orgId && it.joined && listed(it) && (!unreadOnly || it.unreadCount > 0) }
+            // A channel that's starred or in a custom section shows there instead of twice.
+            .filter { it.type == "CHANNEL" && it.orgId == orgId && it.joined && listed(it) && it.id !in placed && (!unreadOnly || it.unreadCount > 0) }
             .groupBy { "${it.scope ?: "ORG"}:${it.scopeId ?: orgId}" }
             .map { (key, channels) ->
                 val first = channels.first()
@@ -79,6 +100,34 @@ object WorkspaceHomeRules {
                 ChannelGroup(key, title, first.scope, channels.sortedWith(compareBy({ it.name.orEmpty().lowercase() }, { it.id })))
             }
             .sortedWith(compareBy({ scopeOrder[it.scope] ?: scopeOrder.size }, { it.title.lowercase() }, { it.key }))
+    }
+
+    /**
+     * Starred conversations in this workspace's view (its channels, and DMs and groups, which belong to every view), in
+     * the person's own order ([order]). Starring is personal and kept for every device of the person
+     * ([com.griipbuddy.orbit.data.repo.NavPreferences]). [unreadOnly]: only those with unread messages.
+     */
+    fun starred(convs: List<ConversationEntity>, orgId: String?, order: List<String>, unreadOnly: Boolean = false): List<ConversationEntity> =
+        ordered(convs, order).filter { listed(it) && inWorkspace(it, orgId) && (!unreadOnly || it.unreadCount > 0) }
+
+    /**
+     * The person's custom sections for this workspace's view, each with its conversations in their order. Conversations
+     * no longer on this phone (left, deleted) are skipped. [unreadOnly]: only sections that still have an unread one.
+     */
+    fun customSections(
+        convs: List<ConversationEntity>,
+        orgId: String?,
+        sections: List<Pair<String, NavSectionDto>>,
+        unreadOnly: Boolean = false,
+    ): List<CustomSection> = sections.mapNotNull { (workspaceId, s) ->
+        val items = ordered(convs, s.items).filter { listed(it) && inWorkspace(it, orgId) && (!unreadOnly || it.unreadCount > 0) }
+        if (unreadOnly && items.isEmpty()) null else CustomSection(workspaceId, s.id, s.name, s.collapsed, items)
+    }
+
+    private fun ordered(convs: List<ConversationEntity>, ids: List<String>): List<ConversationEntity> {
+        if (ids.isEmpty()) return emptyList()
+        val byId = convs.associateBy { it.id }
+        return ids.mapNotNull { byId[it] }
     }
 
     /** The Unreads card: unread conversations in this workspace's view. */

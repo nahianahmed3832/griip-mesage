@@ -92,6 +92,22 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :cid AND pinned = 1 AND deleted = 0 ORDER BY sortTs DESC")
     fun observePinned(cid: String): Flow<List<MessageEntity>>
 
+    /**
+     * Replies by others since [since] in threads you're part of (you started the thread or replied in it), newest first:
+     * the Activity tab's thread replies. Uses the threadRootId and senderUserId indexes.
+     */
+    @Query(
+        """SELECT r.* FROM messages r WHERE r.threadRootId IS NOT NULL AND r.deleted = 0 AND r.senderUserId != :me AND r.sortTs > :since
+           AND (EXISTS (SELECT 1 FROM messages root WHERE root.id = r.threadRootId AND root.senderUserId = :me)
+                OR EXISTS (SELECT 1 FROM messages mine WHERE mine.threadRootId = r.threadRootId AND mine.senderUserId = :me))
+           ORDER BY r.sortTs DESC LIMIT :limit""",
+    )
+    fun observeThreadReplies(me: String, since: Long, limit: Int): Flow<List<MessageEntity>>
+
+    /** Messages with files in a conversation, newest first: the channel details' Files section (this phone's history). */
+    @Query("SELECT * FROM messages WHERE conversationId = :cid AND deleted = 0 AND attachmentsJson != '[]' ORDER BY sortTs DESC LIMIT :limit")
+    fun observeWithFiles(cid: String, limit: Int): Flow<List<MessageEntity>>
+
     @Query("SELECT * FROM messages WHERE id = :id")
     suspend fun get(id: String): MessageEntity?
 

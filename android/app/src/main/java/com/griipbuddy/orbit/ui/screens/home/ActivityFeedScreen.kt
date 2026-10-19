@@ -10,10 +10,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.CallMissed
+import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -41,7 +43,8 @@ import com.griipbuddy.orbit.ui.theme.Space
 /**
  * The Activity tab (UI-002): what needs you, from this phone's own data. Unread @mentions in every workspace (opening
  * the chat clears them), incoming calls you missed in the last week, and, if the server lets you see it, the selected
- * workspace's change log. No reactions or thread replies: nothing on the phone tracks those yet.
+ * workspace's change log, and replies in threads you started or replied in (unseen first; opening the thread marks them
+ * seen). No reactions: nothing on the phone tracks those yet.
  */
 @Composable
 fun ActivityFeedScreen(nav: NavHostController) = ActivityFeed(nav)
@@ -53,9 +56,11 @@ private fun ActivityFeed(nav: NavHostController) {
     val me = container.session.session?.userId
     val vm = containerViewModel { ActivityViewModel(it) }
     val loaded by vm.conversations.collectAsStateWithLifecycle()
+    val users by vm.users.collectAsStateWithLifecycle()
     val convs = loaded.orEmpty()
     val callLog by vm.callLog.collectAsStateWithLifecycle()
     val orgLog by vm.orgLog.collectAsStateWithLifecycle()
+    val threads by vm.threads.collectAsStateWithLifecycle()
     val conn by container.realtime.state.collectAsStateWithLifecycle()
     val mentions = remember(convs) { WorkspaceHomeRules.allMentions(convs) }
     val missed = remember(callLog) {
@@ -75,7 +80,7 @@ private fun ActivityFeed(nav: NavHostController) {
                 item(key = "loading") { ShimmerList(5, Modifier.padding(top = 8.dp)) }
                 return@LazyColumn
             }
-            if (mentions.isEmpty() && missed.isEmpty()) {
+            if (mentions.isEmpty() && missed.isEmpty() && threads.isEmpty()) {
                 item(key = "empty") {
                     EmptyState(Icons.Outlined.NotificationsNone, stringResource(R.string.activity_empty_title), stringResource(R.string.activity_empty_body))
                 }
@@ -89,6 +94,24 @@ private fun ActivityFeed(nav: NavHostController) {
                         onClick = { nav.navigate(Routes.conversation(conv.id)) },
                         subtitle = conv.scopeName?.takeIf { conv.type == "CHANNEL" }, bold = true,
                         trailing = { HomeCount(conv.mentionCount, accent = true, description = stringResource(R.string.home_mention_count, conv.mentionCount), prefix = "@") },
+                    )
+                }
+            }
+            if (threads.isNotEmpty()) {
+                item(key = "threads-header") { HomeSectionHeader(stringResource(R.string.activity_threads)) }
+                items(threads, key = { "thread-" + it.rootId }) { t ->
+                    val conv = byId[t.conversationId]
+                    val sender = users.firstOrNull { it.id == t.latest.senderUserId }?.displayName ?: stringResource(R.string.activity_someone)
+                    HomeListRow(
+                        conv?.let { listTitle(it, me) } ?: stringResource(R.string.activity_thread),
+                        leading = { if (conv != null) ChannelOrAvatar(conv, me) else Icon(Icons.Outlined.Forum, null, tint = c.textSecondary, modifier = Modifier.size(20.dp)) },
+                        onClick = { nav.navigate(Routes.conversation(t.conversationId, t.rootId)) },
+                        subtitle = "$sender: ${t.latest.text.ifBlank { stringResource(R.string.activity_thread_attachment) }}".take(120),
+                        bold = t.unseen > 0,
+                        trailing = {
+                            if (t.unseen > 0) HomeCount(t.unseen, accent = true, description = if (t.unseen == 1) stringResource(R.string.activity_thread_new_one) else stringResource(R.string.activity_thread_new, t.unseen))
+                            else Text(TimeFmt.listStamp(t.latest.sortTs), style = Griip.type.caption, color = c.textTertiary)
+                        },
                     )
                 }
             }

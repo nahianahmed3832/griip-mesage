@@ -14,11 +14,19 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
     private val lock = Mutex()
     private var cached: ServerInfo? = null
     private var at = 0L
+    /** Which server [cached] describes: a new account's address is set after its profile exists (2026-10-19 fix). */
+    private var cachedFor: String? = null
 
     private suspend fun info(): ServerInfo? = lock.withLock {
+        val address = api.serverAddress()
+        if (cachedFor != address) {
+            cached = null
+            cachedFor = address
+        }
         if (cached != null && clock() - at < TTL_MS) return cached
         val fresh = runCatching { api.get<ServerInfo>("/v1/server-info") }.getOrNull()
-        if (fresh != null) {
+        // Only if the address didn't change while asking: an answer from the old server never describes the new one.
+        if (fresh != null && api.serverAddress() == address) {
             cached = fresh
             at = clock()
         }
@@ -45,6 +53,12 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val ORG_DELETE = "org-delete"
         const val DIRECT_UPLOAD = "direct-upload"
         const val PUSH_UNIFIEDPUSH = "push-unifiedpush"
+        /** Channel access modes, invitation states, archived branches and teams (docs/WORKSPACE_ADMINISTRATION.md). */
+        const val WORKSPACE_ADMIN = "workspace-admin"
+        /** Personal navigation preferences kept on the server: starred, sections, notification levels (2026-10-19). */
+        const val NAV_PREFERENCES = "nav-preferences"
+        /** Organisation avatars (2026-10-19). */
+        const val ORG_PHOTOS = "org-photos"
         private const val TTL_MS = 5 * 60_000L
     }
 }

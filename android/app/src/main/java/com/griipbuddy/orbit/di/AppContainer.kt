@@ -31,6 +31,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -70,6 +71,10 @@ class AppContainer(
         java.io.File(app.filesDir, profile.attachmentsDir), com.griipbuddy.orbit.data.repo.AttachmentUploader(api, features),
     ) { notifier.show(it) }
     val orgs = OrgRepository(api, db, conversations, users)
+    /** Starred, sections, collapsed groups and mutes, kept on the server for every device (docs/WORKSPACE_ADMINISTRATION.md). */
+    val navPrefs = com.griipbuddy.orbit.data.repo.NavPreferences(api, db, features, scope)
+    /** When each thread was last opened on this phone (Activity's thread replies). */
+    val threadSeen = com.griipbuddy.orbit.data.repo.ThreadSeen(db)
     val federation = com.griipbuddy.orbit.data.repo.FederationRepository(api)
     /** Encrypted message history on the server (docs/MESSAGE_HISTORY.md). */
     val history = com.griipbuddy.orbit.data.repo.HistorySync(api, db, session, features, conversations, scope)
@@ -92,7 +97,21 @@ class AppContainer(
         calls.start()
         history.start()
         scope.launch { orgs.loadSelection() }
-        scope.launch { messages.orgDeleted.collect { runCatching { orgs.forget(it) } } }
+        scope.launch { runCatching { threadSeen.load() } }
+        // The personal workspace's preferences, then the selected organisation's whenever it changes.
+        scope.launch { runCatching { navPrefs.load(com.griipbuddy.orbit.data.repo.NavPreferences.PERSONAL) } }
+        scope.launch { orgs.selectedOrg.collect { id -> if (id != null) runCatching { navPrefs.load(id) } } }
+        scope.launch { messages.prefsUpdated.collect { ws -> runCatching { navPrefs.sync(ws) } } }
+        // Conversations that arrive later (a new channel, the first list after sign-in) get their synced mute state.
+        scope.launch {
+            conversations.observeAll().map { list -> list.map { it.id }.toSet() }.distinctUntilChanged()
+                .collect { runCatching { navPrefs.reapplyMutes() } }
+        }
+        // Waiting changes go out when the connection comes back.
+        scope.launch {
+            realtime.state.collect { if (it == ConnState.Connected) navPrefs.prefs.value.keys.forEach { ws -> runCatching { navPrefs.sync(ws) } } }
+        }
+        scope.launch { messages.orgDeleted.collect { runCatching { orgs.forget(it) }; runCatching { navPrefs.forget(it) } } }
         scope.launch {
             combine(session.state, appState.foreground, settings.state, calls.state, appState.wakeHolds) { s, fg, st, call, wake ->
                 s is SessionState.SignedIn && (fg || st.backgroundConnection || call.phase != CallPhase.Idle || wake > 0)

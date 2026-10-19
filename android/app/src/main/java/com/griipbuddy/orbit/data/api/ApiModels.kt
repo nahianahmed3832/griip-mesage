@@ -109,6 +109,8 @@ import kotlinx.serialization.json.JsonObject
     val archived: Boolean = false, val createdAt: Long = 0, val updatedAt: Long = 0, val memberCount: Int = 0,
     val members: List<UserDto>? = null, val joined: Boolean = true, val myRole: String? = null,
     val canPost: Boolean = true, val canManage: Boolean = false, val activeCall: ActiveCallDto? = null,
+    /** May switch the channel between public, private and announcement (scope managers; false from older servers). */
+    val canManageAccess: Boolean = false,
     /** Whether this server lets you use @everyone here (false from older servers, which don't support it). */
     val canMentionAll: Boolean = false,
     val federation: ConversationFederationDto? = null,
@@ -129,7 +131,7 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class ChannelRes(val channel: ConversationDto)
 @Serializable data class DmReq(val userId: String)
 @Serializable data class GroupReq(val name: String, val memberIds: List<String>)
-@Serializable data class PatchConversationReq(val name: String? = null, val topic: String? = null, val archived: Boolean? = null)
+@Serializable data class PatchConversationReq(val name: String? = null, val topic: String? = null, val archived: Boolean? = null, val kind: String? = null)
 @Serializable data class RoleReq(val role: String)
 
 // ───────── Messages & queue ─────────
@@ -180,6 +182,8 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class OrgDto(
     val id: String, val name: String, val slug: String = "", val description: String? = null, val myRole: String? = null,
     val memberCount: Int = 0, val createdAt: Long = 0,
+    /** The organisation's avatar revision (servers with `org-photos`); null without one. */
+    val photoRev: Long? = null,
 )
 @Serializable data class OrgsRes(val orgs: List<OrgDto>)
 @Serializable data class OrgRes(val org: OrgDto)
@@ -199,6 +203,10 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class OrgPermissions(
     val canManageOrg: Boolean = false, val canInvite: Boolean = false, val canCreateChannels: Boolean = false,
     val canViewDirectory: Boolean = false, val isOwner: Boolean = false,
+    /** Everyone but the last owner may leave (server ≥ workspace-admin; older servers: decided from the role). */
+    val canLeave: Boolean? = null,
+    /** May see archived branches and teams to restore them (server ≥ workspace-admin). */
+    val canRestore: Boolean = false,
 )
 @Serializable data class OrgDetailRes(
     val org: OrgDto, val branches: List<BranchDto>, val departments: List<DepartmentDto>, val teams: List<TeamDto>,
@@ -223,6 +231,8 @@ import kotlinx.serialization.json.JsonObject
     val id: String, val code: String? = null, val hint: String? = null, val role: String, val branchId: String? = null,
     val teamId: String? = null, val maxUses: Int, val uses: Int = 0, val createdAt: Long = 0, val expiresAt: Long,
     val revokedAt: Long? = null, val active: Boolean = true,
+    /** "active" | "revoked" | "expired" | "used_up" (server ≥ workspace-admin; null from older servers). */
+    val status: String? = null, val createdBy: String? = null, val createdByName: String? = null,
 )
 @Serializable data class InviteRes(val invite: InviteDto)
 @Serializable data class InvitesRes(val invites: List<InviteDto>)
@@ -235,6 +245,33 @@ import kotlinx.serialization.json.JsonObject
 )
 @Serializable data class ActivityRes(val activity: List<ActivityDto>)
 @Serializable data class MoveReq(val toTeamId: String)
+/** Organization name and description; a JSON null description clears it ([GriipJson] omits plain nulls). */
+@Serializable data class UpdateOrgReq(val name: String, val description: kotlinx.serialization.json.JsonElement)
+/** Branch edits; a JSON null clears a field. */
+@Serializable data class UpdateBranchReq(
+    val name: String, val description: kotlinx.serialization.json.JsonElement, val location: kotlinx.serialization.json.JsonElement,
+)
+@Serializable data class UpdateTeamReq(val name: String, val description: kotlinx.serialization.json.JsonElement)
+@Serializable data class ArchiveReq(val archived: Boolean)
+/** A member's title; a JSON null clears it. */
+@Serializable data class OrgTitleReq(val title: kotlinx.serialization.json.JsonElement)
+@Serializable data class ArchivedBranchDto(val id: String, val name: String, val description: String? = null, val location: String? = null, val archivedAt: Long = 0)
+@Serializable data class ArchivedTeamDto(
+    val id: String, val name: String, val description: String? = null, val branchId: String? = null, val crossBranch: Boolean = false,
+    val archivedAt: Long = 0, val branchArchived: Boolean = false,
+)
+/** What the caller may restore (GET /v1/orgs/:id/archived). */
+@Serializable data class ArchivedRes(val branches: List<ArchivedBranchDto> = emptyList(), val teams: List<ArchivedTeamDto> = emptyList())
+
+// ───────── Personal navigation preferences (servers with `nav-preferences`, docs/WORKSPACE_ADMINISTRATION.md) ─────────
+@Serializable data class NavSectionDto(val id: String, val name: String, val items: List<String> = emptyList(), val collapsed: Boolean = false)
+/** Starred conversations, custom sections, collapsed Home groups and notification levels ("mentions", "none"; absent = "all"). */
+@Serializable data class NavPrefsDto(
+    val starred: List<String> = emptyList(), val sections: List<NavSectionDto> = emptyList(),
+    val collapsed: List<String> = emptyList(), val notify: Map<String, String> = emptyMap(),
+)
+@Serializable data class NavPrefsRes(val workspaceId: String, val rev: Int = 0, val updatedAt: Long? = null, val prefs: NavPrefsDto = NavPrefsDto())
+@Serializable data class PutNavPrefsReq(val baseRev: Int, val prefs: NavPrefsDto)
 
 // ───────── Calls ─────────
 @Serializable data class CallParticipantDto(val userId: String, val deviceId: String, val joinedAt: Long)
@@ -261,6 +298,8 @@ import kotlinx.serialization.json.JsonObject
 /** Raw realtime frame; fields depend on `t`. */
 @Serializable data class RealtimeFrame(
     val t: String,
+    /** "prefs.updated": which workspace's personal preferences changed on another device of this person. */
+    val workspaceId: String? = null,
     val items: List<QueueItem>? = null,
     val more: Boolean? = null,
     val backlog: Boolean? = null,

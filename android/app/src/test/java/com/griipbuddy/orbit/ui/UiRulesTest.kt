@@ -87,8 +87,15 @@ class UiRulesTest {
     @Test
     fun everyLanguageHasEveryStringWithTheSamePlaceholders() {
         val res = File("src/main/res")
-        fun strings(folder: String): Map<String, String> =
-            Regex("""<string name="([a-z0-9_]+)">(.*?)</string>""").findAll(File(res, "$folder/strings.xml").readText()).associate { it.groupValues[1] to it.groupValues[2] }
+        // Every generated table: strings.xml, strings_account.xml (Orbit 2.0) and strings_workspace.xml (2026-10-19).
+        val tables = listOf("strings.xml", "strings_account.xml", "strings_workspace.xml")
+        fun strings(folder: String): Map<String, String> = tables.flatMap { table ->
+            Regex("""<string name="([a-z0-9_]+)">(.*?)</string>""").findAll(File(res, "$folder/$table").readText()).map { it.groupValues[1] to it.groupValues[2] }.toList()
+        }.toMap()
+        for (folder in listOf("values", "values-zh-rCN", "values-bn")) {
+            val keys = tables.flatMap { table -> Regex("""<string name="([a-z0-9_]+)">""").findAll(File(res, "$folder/$table").readText()).map { it.groupValues[1] }.toList() }
+            assertEquals("$folder has a key in two tables", keys.size, keys.toSet().size)
+        }
         val en = strings("values")
         val placeholders = Regex("""%\d\$[ds]""")
         for (folder in listOf("values", "values-zh-rCN", "values-bn")) {

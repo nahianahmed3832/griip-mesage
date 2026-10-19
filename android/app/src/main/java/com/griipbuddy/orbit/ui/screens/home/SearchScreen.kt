@@ -14,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.griipbuddy.orbit.R
 import com.griipbuddy.orbit.ui.components.BannerKind
 import com.griipbuddy.orbit.ui.components.StatusBanner
 import androidx.compose.runtime.LaunchedEffect
@@ -60,10 +62,17 @@ fun SearchScreen(nav: NavHostController) {
     var peopleFailed by remember { mutableStateOf(false) }
     val convs by container.conversations.observeAll().collectAsStateWithLifecycle(emptyList())
     val scope = rememberCoroutineScope()
+    // Workspaces you belong to (the cached list) and channels you could join in the selected one (the server's list,
+    // which includes only channels you're allowed to see: private ones you're not in never appear).
+    val selectedOrg by container.orgs.selectedOrg.collectAsStateWithLifecycle()
+    var orgs by remember { mutableStateOf<List<com.griipbuddy.orbit.data.api.OrgDto>>(emptyList()) }
+    var channels by remember { mutableStateOf<List<com.griipbuddy.orbit.data.api.ConversationDto>>(emptyList()) }
+    LaunchedEffect(Unit) { orgs = container.orgs.cachedOrgs().orEmpty() }
     LaunchedEffect(q) {
-        if (q.isBlank()) { people = emptyList(); messages = emptyList(); searching = false; return@LaunchedEffect }
+        if (q.isBlank()) { people = emptyList(); messages = emptyList(); channels = emptyList(); searching = false; return@LaunchedEffect }
         searching = true
         delay(250)
+        channels = selectedOrg?.let { id -> runCatching { container.orgs.channels(id, q.trim()) }.getOrDefault(emptyList()).filter { !it.joined && !it.archived } }.orEmpty()
         messages = container.messages.search(q.trim())
         val found = runCatching { container.users.search(q.trim()) }
         peopleFailed = found.isFailure
@@ -71,6 +80,8 @@ fun SearchScreen(nav: NavHostController) {
         searching = false
     }
     val convMatches = if (q.isBlank()) emptyList() else convs.filter { ConversationRepository.title(it, me).contains(q.trim(), ignoreCase = true) }
+    val orgMatches = if (q.isBlank()) emptyList() else orgs.filter { it.name.contains(q.trim(), ignoreCase = true) }
+    val selectedName = orgs.firstOrNull { it.id == selectedOrg }?.name.orEmpty()
 
     Column(Modifier.fillMaxSize().imePadding()) {
         GriipTopBar("Search", onBack = { nav.popBackStack() })
@@ -82,7 +93,7 @@ fun SearchScreen(nav: NavHostController) {
         if (searching) androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), color = c.primary, trackColor = c.surfaceVariant)
         if (peopleFailed && !searching) StatusBanner("Couldn't search people right now. Chats and messages on this phone are still searched.", BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp))
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp, top = 8.dp)) {
-            if (q.isNotBlank() && !searching && convMatches.isEmpty() && people.isEmpty() && messages.isEmpty()) {
+            if (q.isNotBlank() && !searching && convMatches.isEmpty() && people.isEmpty() && messages.isEmpty() && channels.isEmpty() && orgMatches.isEmpty()) {
                 item { EmptyState(Icons.Outlined.SearchOff, "No results", "Message search covers the history stored on this device.") }
             }
             if (convMatches.isNotEmpty()) item { SectionHeader("Conversations", Modifier.padding(vertical = 8.dp)) }
@@ -94,6 +105,35 @@ fun SearchScreen(nav: NavHostController) {
                     leading = { ConversationAvatar(conv, me, size = 44.dp) },
                     trailing = { ArrowKnob() },
                     onClick = { nav.navigate(Routes.conversation(conv.id)) },
+                )
+            }
+            if (channels.isNotEmpty()) item { SectionHeader(stringResource(R.string.search_channels, selectedName), Modifier.padding(vertical = 8.dp)) }
+            items(channels.take(8), key = { "ch" + it.id }) { ch ->
+                ListCard(
+                    "#${ch.name}", Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
+                    subtitle = listOfNotNull(ch.topic, ch.scopeName).joinToString(" · ").ifBlank { null },
+                    leading = {
+                        com.griipbuddy.orbit.ui.components.IconTile(com.griipbuddy.orbit.ui.screens.chats.channelIcon(ch.kind), c.textSecondary, c.surfaceVariant, size = 44.dp)
+                    },
+                    trailing = {
+                        com.griipbuddy.orbit.ui.components.PillButton(stringResource(R.string.search_join), {
+                            scope.launch { runCatching { container.conversations.join(ch.id) }.onSuccess { nav.navigate(Routes.conversation(ch.id)) } }
+                        }, tone = com.griipbuddy.orbit.ui.components.ButtonTone.Glass, height = 36.dp)
+                    },
+                )
+            }
+            if (orgMatches.isNotEmpty()) item { SectionHeader(stringResource(R.string.search_workspaces), Modifier.padding(vertical = 8.dp)) }
+            items(orgMatches, key = { "o" + it.id }) { o ->
+                val current = o.id == selectedOrg
+                ListCard(
+                    o.name, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
+                    subtitle = o.description ?: "@${o.slug}",
+                    leading = { com.griipbuddy.orbit.ui.components.OrgMark(o.id, o.name, com.griipbuddy.orbit.ui.screens.workspace.WorkspaceList.colorSeed(o), o.photoRev, size = 44.dp) },
+                    trailing = {
+                        if (current) com.griipbuddy.orbit.ui.components.TagPill(stringResource(R.string.search_current), c.primaryDeep, c.primarySoft)
+                        else Text(stringResource(R.string.search_switch), style = Griip.type.label, color = c.primaryDeep)
+                    },
+                    onClick = if (current) null else ({ scope.launch { container.orgs.select(o.id); nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = false } } } }),
                 )
             }
             if (people.isNotEmpty()) item { SectionHeader("People", Modifier.padding(vertical = 8.dp)) }

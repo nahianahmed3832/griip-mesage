@@ -46,6 +46,13 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val rootMessage = (threadRoot?.let { c.messages.observeMessage(it) } ?: flowOf(null)).stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val threadCounts = c.messages.observeThreadCounts(conversationId).map { l -> l.associate { it.root to it.n } }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    init {
+        // An open thread is seen up to its newest message, including replies that arrive while it's open (Activity).
+        if (threadRoot != null) viewModelScope.launch {
+            messages.collect { list -> list.maxOfOrNull { it.sortTs }?.let { c.threadSeen.markSeen(threadRoot, it) } }
+        }
+    }
     val pinned = c.messages.observePinned(conversationId).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val users = c.db.users().observeAll().map { l -> l.associateBy { it.id } }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     val typing = combine(c.messages.typing, users) { t, u -> t[conversationId]?.keys?.filter { it != me }?.mapNotNull { u[it]?.displayName ?: "Someone" } ?: emptyList() }

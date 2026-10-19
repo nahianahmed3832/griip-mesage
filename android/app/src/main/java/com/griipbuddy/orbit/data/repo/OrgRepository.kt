@@ -27,6 +27,12 @@ import com.griipbuddy.orbit.data.api.RoleReq
 import com.griipbuddy.orbit.data.api.TeamDepartmentReq
 import com.griipbuddy.orbit.data.api.UpdateDepartmentReq
 import com.griipbuddy.orbit.data.api.UsersRes
+import com.griipbuddy.orbit.data.api.ArchiveReq
+import com.griipbuddy.orbit.data.api.ArchivedRes
+import com.griipbuddy.orbit.data.api.UpdateBranchReq
+import com.griipbuddy.orbit.data.api.UpdateOrgReq
+import com.griipbuddy.orbit.data.api.UpdateTeamReq
+import com.griipbuddy.orbit.data.api.OrgTitleReq
 import com.griipbuddy.orbit.data.db.GriipDatabase
 import com.griipbuddy.orbit.data.db.KvEntity
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -90,8 +96,40 @@ class OrgRepository(
 
     suspend fun create(name: String, description: String?, requestId: String? = null) =
         api.post<CreateOrgReq, OrgRes>("/v1/orgs", CreateOrgReq(name, description, requestId)).org
-    suspend fun rename(orgId: String, name: String, description: String?) =
-        api.patch<CreateOrgReq, OrgRes>("/v1/orgs/$orgId", CreateOrgReq(name, description)).org
+    /** Name and description (owners and admins; the server checks). A blank description clears it. */
+    suspend fun updateOrg(orgId: String, name: String, description: String?) =
+        api.patch<UpdateOrgReq, OrgRes>("/v1/orgs/$orgId", UpdateOrgReq(name.trim(), jsonOrNull(description))).org.also { runCatching { orgs() } }
+
+    /**
+     * Leaves the organization: the server removes [myUserId]'s branch, team and channel memberships (the last owner is
+     * refused with 409). Afterwards its channels show as left on this phone and another workspace is selected.
+     */
+    suspend fun leave(orgId: String, myUserId: String) {
+        api.delete<OkRes>("/v1/orgs/$orgId/members/$myUserId")
+        forget(orgId)
+        runCatching { orgs() }
+        runCatching { conversations.refresh() }
+    }
+
+    /** Sets the organisation's avatar (owners and admins): a JPEG the phone has already prepared. */
+    suspend fun setOrgPhoto(orgId: String, jpeg: ByteArray): Long? =
+        api.sendBytes("PUT", "/v1/orgs/$orgId/photo", jpeg, com.griipbuddy.orbit.data.api.PhotoRes.serializer()).photoRev.also { runCatching { orgs() } }
+    suspend fun removeOrgPhoto(orgId: String) {
+        api.delete<com.griipbuddy.orbit.data.api.PhotoRes>("/v1/orgs/$orgId/photo")
+        runCatching { orgs() }
+    }
+
+    suspend fun editBranch(id: String, name: String, description: String?, location: String?) =
+        api.patch<UpdateBranchReq, OkRes>("/v1/branches/$id", UpdateBranchReq(name.trim(), jsonOrNull(description), jsonOrNull(location)))
+    suspend fun setBranchArchived(id: String, archived: Boolean) = api.patch<ArchiveReq, OkRes>("/v1/branches/$id", ArchiveReq(archived))
+    suspend fun editTeam(id: String, name: String, description: String?) =
+        api.patch<UpdateTeamReq, OkRes>("/v1/teams/$id", UpdateTeamReq(name.trim(), jsonOrNull(description)))
+    suspend fun setTeamArchived(id: String, archived: Boolean) = api.patch<ArchiveReq, OkRes>("/v1/teams/$id", ArchiveReq(archived))
+    /** Archived branches and teams the caller may restore (servers with `workspace-admin`). */
+    suspend fun archived(orgId: String) = api.get<ArchivedRes>("/v1/orgs/$orgId/archived")
+
+    /** A trimmed value, or JSON null to clear the field when it's blank. */
+    private fun jsonOrNull(v: String?): kotlinx.serialization.json.JsonElement = v?.trim()?.takeIf { it.isNotEmpty() }?.let { JsonPrimitive(it) } ?: JsonNull
 
     suspend fun createBranch(orgId: String, name: String, location: String?) =
         api.post<CreateBranchReq, kotlinx.serialization.json.JsonObject>("/v1/orgs/$orgId/branches", CreateBranchReq(name, null, location))
@@ -118,6 +156,9 @@ class OrgRepository(
 
     suspend fun setOrgRole(orgId: String, userId: String, role: String) = api.patch<OrgRoleReq, OkRes>("/v1/orgs/$orgId/members/$userId", OrgRoleReq(role = role))
     suspend fun removeFromOrg(orgId: String, userId: String) = api.delete<OkRes>("/v1/orgs/$orgId/members/$userId")
+    /** A member's job title; blank clears it. */
+    suspend fun setOrgTitle(orgId: String, userId: String, title: String) =
+        api.patch<OrgTitleReq, OkRes>("/v1/orgs/$orgId/members/$userId", OrgTitleReq(jsonOrNull(title)))
     suspend fun setBranchMember(branchId: String, userId: String, role: String?) =
         if (role == null) api.delete<OkRes>("/v1/branches/$branchId/members/$userId") else api.put<RoleReq, OkRes>("/v1/branches/$branchId/members/$userId", RoleReq(role))
     suspend fun setTeamMember(teamId: String, userId: String, role: String?) =

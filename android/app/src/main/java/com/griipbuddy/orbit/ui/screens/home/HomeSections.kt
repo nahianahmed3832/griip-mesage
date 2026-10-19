@@ -124,7 +124,7 @@ fun WorkspaceHeader(
                     .padding(end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (org != null) MarkTile(org.name, WorkspaceList.colorSeed(org), size = 40.dp)
+                if (org != null) com.griipbuddy.orbit.ui.components.OrgMark(org.id, org.name, WorkspaceList.colorSeed(org), org.photoRev, size = 40.dp)
                 else IconTile(Icons.Outlined.Workspaces, c.peach, c.peachSoft, size = 40.dp)
                 Spacer(Modifier.width(10.dp))
                 Text(
@@ -234,6 +234,32 @@ fun HomeSectionHeader(
             onClick { onToggle(); true }
         }
     } else Modifier
+    val actionButton: @Composable () -> Unit = {
+        if (action != null && onAction != null) {
+            Text(
+                action, style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = c.primary,
+                modifier = Modifier.heightIn(min = HeaderControl).clip(Shapes.pill).pressable(onAction).padding(horizontal = 10.dp, vertical = 14.dp),
+            )
+        }
+    }
+    if (expanded != null && action != null && onAction != null) {
+        // Collapsible with an action (a custom section's "Edit"): the title and chevron toggle, the action is its own
+        // button, so both stay reachable by touch and by screen readers.
+        Row(modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = HeaderControl), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.weight(1f).heightIn(min = HeaderControl).then(toggle).padding(start = Space.gutter + 4.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    title, style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = c.textSecondary,
+                    modifier = Modifier.weight(1f).semantics { heading() },
+                )
+                Chevron(expanded)
+            }
+            Box(Modifier.padding(end = Space.gutter - 4.dp)) { actionButton() }
+        }
+        return
+    }
     Row(
         modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = HeaderControl).then(toggle).padding(start = Space.gutter + 4.dp, end = Space.gutter - 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -242,13 +268,7 @@ fun HomeSectionHeader(
             title, style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = c.textSecondary,
             modifier = Modifier.weight(1f).semantics { heading() },
         )
-        if (expanded != null) Chevron(expanded)
-        else if (action != null && onAction != null) {
-            Text(
-                action, style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = c.primary,
-                modifier = Modifier.heightIn(min = HeaderControl).clip(Shapes.pill).pressable(onAction).padding(horizontal = 10.dp, vertical = 14.dp),
-            )
-        }
+        if (expanded != null) Chevron(expanded) else actionButton()
     }
 }
 

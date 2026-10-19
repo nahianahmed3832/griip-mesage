@@ -1,7 +1,10 @@
 package com.griipbuddy.orbit.ui.screens.chats
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.StarOutline
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MarkChatRead
 import androidx.compose.material.icons.outlined.MarkChatUnread
@@ -36,9 +39,13 @@ class ChatListActions(private val container: AppContainer, private val scope: Co
         scope.launch { container.conversations.setArchived(conv.id, archived) }
     }
 
+    /** Mutes or unmutes on every device of this person (servers with `nav-preferences`; otherwise this phone only). */
     fun toggleMute(conv: ConversationEntity) {
-        scope.launch { container.conversations.setMuted(conv.id, !conv.muted) }
+        scope.launch { container.navPrefs.setMuted(conv, !conv.muted) }
     }
+
+    /** Stars or unstars a conversation for this person (kept on the server, so every device shows it). */
+    fun toggleStar(conv: ConversationEntity) = container.navPrefs.toggleStar(conv)
 }
 
 @Composable
@@ -65,8 +72,23 @@ fun ChatActionsSheet(
     onToggleRead: () -> Unit,
     onToggleArchive: () -> Unit,
     onInfo: () -> Unit,
+    starred: Boolean = false,
+    onToggleStar: (() -> Unit)? = null,
+    /** Opens the section picker: a custom section, Starred, or back to its usual group (Home). */
+    onMoveToSection: (() -> Unit)? = null,
 ) {
     GlassSheet(onDismiss, title = listTitle(conv, myUserId)) {
+        if (onToggleStar != null) MenuRow(
+            if (starred) Icons.Rounded.Star else Icons.Outlined.StarOutline,
+            androidx.compose.ui.res.stringResource(if (starred) com.griipbuddy.orbit.R.string.star_remove else com.griipbuddy.orbit.R.string.star_add),
+            subtitle = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.star_note),
+            onClick = { onToggleStar(); onDismiss() }, trailing = null,
+        )
+        if (onMoveToSection != null) MenuRow(
+            Icons.Outlined.Folder, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.sec_move_to),
+            subtitle = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.sec_move_to_sub),
+            onClick = { onDismiss(); onMoveToSection() }, trailing = null,
+        )
         MenuRow(
             if (conv.muted) Icons.Outlined.NotificationsActive else Icons.Outlined.NotificationsOff,
             if (conv.muted) "Unmute notifications" else "Mute notifications",

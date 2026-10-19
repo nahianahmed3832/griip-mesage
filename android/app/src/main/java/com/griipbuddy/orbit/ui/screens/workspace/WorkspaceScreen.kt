@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.ManageAccounts
 import androidx.compose.material.icons.outlined.PostAdd
 import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.Workspaces
 import androidx.compose.material.icons.rounded.Lock
@@ -140,6 +141,7 @@ fun WorkspaceScreen(nav: NavHostController) {
     var branchFilter by rememberSaveable { mutableStateOf<String?>(null) }
     var showSwitcher by remember { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<String?>(null) }
+    var archivedReload by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     LaunchedEffect(Unit) { vm.refresh() }
 
     val d = detail
@@ -167,7 +169,7 @@ fun WorkspaceScreen(nav: NavHostController) {
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), shape = Shapes.hero) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    MarkTile(d.org.name, WorkspaceList.colorSeed(d.org), size = 56.dp)
+                    com.griipbuddy.orbit.ui.components.OrgMark(d.org.id, d.org.name, WorkspaceList.colorSeed(d.org), d.org.photoRev, size = 56.dp)
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(d.org.name, style = Griip.type.title, color = c.textPrimary)
@@ -210,7 +212,7 @@ fun WorkspaceScreen(nav: NavHostController) {
                         leading = { MarkTile(t.name, t.name.hashCode(), size = 50.dp) },
                         meta = {
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                TagPill("${t.memberCount} members", c.textSecondary, c.surfaceVariant)
+                                TagPill(if (t.memberCount == 1) "1 member" else "${t.memberCount} members", c.textSecondary, c.surfaceVariant)
                                 if (t.crossBranch) TagPill("Cross-branch", c.lavender, c.lavenderSoft) else branch?.let { TagPill(it, c.primaryDeep, c.primarySoft) }
                                 t.myRole?.let { RoleBadge(it) }
                             }
@@ -257,6 +259,11 @@ fun WorkspaceScreen(nav: NavHostController) {
             else -> {
                 item {
                     GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), contentPadding = PaddingValues(6.dp)) {
+                        MenuRow(
+                            Icons.Outlined.Settings, androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.ws_settings_open),
+                            subtitle = androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.ws_your_role, roleLabel(d.org.myRole)),
+                            onClick = { sheet = "settings" },
+                        )
                         if (d.permissions.canViewDirectory) MenuRow(Icons.Outlined.ManageAccounts, "Members & roles", subtitle = "Directory, branches, teams, roles", onClick = { nav.navigate(Routes.members(d.org.id)) })
                         if (d.permissions.canInvite) MenuRow(Icons.Outlined.GroupAdd, "Invitations", subtitle = "Create invite codes & QR, revoke", tint = c.peach, tintBg = c.peachSoft, onClick = { nav.navigate(Routes.invites(d.org.id)) })
                         if (d.permissions.canViewDirectory) MenuRow(Icons.Outlined.History, "Branch & team activity", tint = c.lavender, tintBg = c.lavenderSoft, onClick = { nav.navigate(Routes.activity(d.org.id)) })
@@ -277,9 +284,11 @@ fun WorkspaceScreen(nav: NavHostController) {
                 items(d.branches, key = { "b" + it.id }) { b ->
                     ListCard(
                         b.name, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                        subtitle = listOfNotNull(b.location, "${b.memberCount} members", "${d.departments.count { it.branchId == b.id }} departments").joinToString(" · "),
+                        subtitle = listOfNotNull(b.location, if (b.memberCount == 1) "1 member" else "${b.memberCount} members", d.departments.count { it.branchId == b.id }.let { if (it == 1) "1 department" else "$it departments" }).joinToString(" · "),
                         leading = { MarkTile(b.name, b.name.hashCode() + 3, size = 46.dp) },
                         trailing = { if (b.myRole != null) RoleBadge(b.myRole) else if (!b.canAccess) Icon(Icons.Rounded.Lock, "No access", tint = c.textTertiary) },
+                        // Managers and org admins edit the branch; org admins can also archive it (EditBranchSheet).
+                        onClick = if (b.canManage) ({ sheet = "branch:" + b.id }) else null,
                     )
                 }
                 val depts = d.departments.filter { dep -> d.branches.any { it.id == dep.branchId } } // archived branches aren't listed
@@ -296,6 +305,7 @@ fun WorkspaceScreen(nav: NavHostController) {
                         onClick = if (branch.canManage) ({ sheet = "dept:" + dep.id }) else null,
                     )
                 }
+                item(key = "archived") { ArchivedScopesSection(d, archivedReload) { vm.refresh() } }
                 // Owner only, at the very end of Manage: far from switching workspaces, so a tap there can't reach it.
                 if (DeleteWorkspaceRules.visible(d.org.myRole)) {
                     item {
@@ -325,12 +335,21 @@ fun WorkspaceScreen(nav: NavHostController) {
             "department" -> CreateDepartmentSheet(det, { sheet = null }) { vm.refresh() }
             "team" -> CreateTeamSheet(det, branchFilter, { sheet = null }) { vm.refresh() }
             "channel" -> CreateChannelSheet(det, branchFilter, { sheet = null }) { id -> vm.refresh(); nav.navigate(Routes.conversation(id)) }
+            "settings" -> WorkspaceSettingsSheet(det, onDismiss = { sheet = null }, onChanged = { vm.refresh() }, onLeft = { name ->
+                sheet = null
+                android.widget.Toast.makeText(ctx, ctx.getString(com.griipbuddy.orbit.R.string.ws_left, name), android.widget.Toast.LENGTH_SHORT).show()
+                vm.refresh()
+            })
             "delete" -> if (DeleteWorkspaceRules.visible(det.org.myRole)) DeleteWorkspaceSheet(det, onDismiss = { sheet = null }, onDeleted = { name ->
                 sheet = null
                 android.widget.Toast.makeText(ctx, "Deleted “$name”", android.widget.Toast.LENGTH_SHORT).show()
                 vm.refresh()
             })
-            else -> sheet?.removePrefix("dept:")?.takeIf { sheet!!.startsWith("dept:") }?.let { id ->
+            else -> if (sheet?.startsWith("branch:") == true) {
+                det.branches.firstOrNull { it.id == sheet?.removePrefix("branch:") }?.let { b ->
+                    EditBranchSheet(det, b, onDismiss = { sheet = null }) { vm.refresh(); archivedReload++ }
+                }
+            } else sheet?.removePrefix("dept:")?.takeIf { sheet!!.startsWith("dept:") }?.let { id ->
                 det.departments.firstOrNull { it.id == id }?.let { dep -> EditDepartmentSheet(det, dep, { sheet = null }) { vm.refresh() } }
             }
         }

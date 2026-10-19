@@ -86,7 +86,7 @@ fun WorkspaceRail(orgs: List<OrgDto>, selectedId: String?, onSelect: (String) ->
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Box(Modifier.padding(top = 4.dp).border(2.dp, ring, Shapes.iconTile).padding(3.dp)) {
-                    MarkTile(o.name, WorkspaceList.colorSeed(o), size = 46.dp)
+                    com.griipbuddy.orbit.ui.components.OrgMark(o.id, o.name, WorkspaceList.colorSeed(o), o.photoRev, size = 46.dp)
                 }
                 Spacer(Modifier.height(4.dp))
                 Box(Modifier.height(3.dp).width(bar).clip(Shapes.pill).background(c.primary))
@@ -125,7 +125,7 @@ fun WorkspaceSwitcherList(orgs: List<OrgDto>, selectedId: String?, onSelect: (St
             val selected = o.id == selectedId
             ListCard(
                 o.name, Modifier.padding(vertical = 4.dp), subtitle = WorkspaceList.subtitle(o, o.name.trim().lowercase() in shared),
-                leading = { MarkTile(o.name, WorkspaceList.colorSeed(o), size = 42.dp) },
+                leading = { com.griipbuddy.orbit.ui.components.OrgMark(o.id, o.name, WorkspaceList.colorSeed(o), o.photoRev, size = 42.dp) },
                 trailing = {
                     Column(horizontalAlignment = Alignment.End) {
                         RoleBadge(o.myRole)

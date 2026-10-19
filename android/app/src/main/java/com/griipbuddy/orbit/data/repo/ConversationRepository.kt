@@ -103,8 +103,11 @@ class ConversationRepository(
         return ConversationRepository.members(conv).map { com.griipbuddy.orbit.data.model.MentionMember(it.id, it.username, it.displayName) }
     }
 
-    suspend fun update(id: String, name: String? = null, topic: String? = null, archived: Boolean? = null) =
-        upsertFromServer(api.patch<PatchConversationReq, ConversationRes>("/v1/conversations/$id", PatchConversationReq(name, topic, archived)).conversation)
+    suspend fun update(id: String, name: String? = null, topic: String? = null, archived: Boolean? = null, kind: String? = null) =
+        upsertFromServer(api.patch<PatchConversationReq, ConversationRes>("/v1/conversations/$id", PatchConversationReq(name, topic, archived, kind)).conversation)
+
+    /** The server's current view of a conversation, with fields the local table doesn't keep (who may change its access). */
+    suspend fun fetch(id: String): ConversationDto = api.get<ConversationRes>("/v1/conversations/$id").conversation.also { upsertFromServer(it) }
 
     suspend fun join(id: String) = upsertFromServer(api.post<ConversationRes>("/v1/conversations/$id/join").conversation)
 

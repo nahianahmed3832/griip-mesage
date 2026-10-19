@@ -58,6 +58,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.griipbuddy.orbit.data.api.NavPrefsDto
+import com.griipbuddy.orbit.data.model.NavOp
+import com.griipbuddy.orbit.data.model.NavPrefsRules
+import com.griipbuddy.orbit.data.repo.NavPreferences
 import com.griipbuddy.orbit.R
 import com.griipbuddy.orbit.call.CallPhase
 import com.griipbuddy.orbit.data.api.OrgDto
@@ -107,8 +111,6 @@ private val FabClearance = 88.dp
 @Composable
 fun WorkspaceHomeScreen(nav: NavHostController, onSeeAllUnreadDms: () -> Unit) = WorkspaceHome(nav, onSeeAllUnreadDms)
 
-private val collapsedSaver = listSaver<Set<String>, String>(save = { it.toList() }, restore = { it.toSet() })
-
 @Composable
 private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit) {
     val container = LocalContainer.current
@@ -123,6 +125,7 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
     val orgError by vm.orgError.collectAsStateWithLifecycle()
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
     val selectedId by vm.selectedOrg.collectAsStateWithLifecycle()
+    val detail by vm.detail.collectAsStateWithLifecycle()
     val conn by container.realtime.state.collectAsStateWithLifecycle()
     val call by container.calls.state.collectAsStateWithLifecycle()
     val settings by container.settings.state.collectAsStateWithLifecycle()
@@ -131,12 +134,14 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
     val actions = rememberChatListActions()
     val scope = rememberCoroutineScope()
     val permission = com.griipbuddy.orbit.ui.screens.calls.rememberCallPermission()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     var unreadOnly by rememberSaveable { mutableStateOf(false) }
-    var collapsed by rememberSaveable(stateSaver = collapsedSaver) { mutableStateOf(emptySet<String>()) }
     var mentionsOpen by rememberSaveable { mutableStateOf(true) }
     var sheet by rememberSaveable { mutableStateOf<HomeSheet?>(null) }
     var actionsFor by remember { mutableStateOf<ConversationEntity?>(null) }
+    var movingFor by remember { mutableStateOf<ConversationEntity?>(null) }
+    var editingSection by remember { mutableStateOf<CustomSection?>(null) }
     var undo by remember { mutableStateOf<ConversationEntity?>(null) }
     androidx.compose.runtime.LaunchedEffect(undo) { if (undo != null) { delay(5_000); undo = null } }
 
@@ -144,7 +149,27 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
     val orgName = org?.name ?: stringResource(R.string.home_no_workspace)
     val unreadDms = remember(convs) { WorkspaceHomeRules.unreadDms(convs) }
     val mentions = remember(convs, org?.id) { WorkspaceHomeRules.mentions(convs, org?.id) }
-    val groups = remember(convs, org?.id, orgName, unreadOnly) { WorkspaceHomeRules.channelGroups(convs, org?.id, orgName, unreadOnly) }
+    // Personal arrangement (starred, sections, collapsed groups): this workspace's and the personal one's, synced.
+    val navPrefs by container.navPrefs.prefs.collectAsStateWithLifecycle()
+    val starredIds by container.navPrefs.starred.collectAsStateWithLifecycle()
+    val orgPrefs = org?.id?.let { navPrefs[it] } ?: NavPrefsDto()
+    val personalPrefs = navPrefs[NavPreferences.PERSONAL] ?: NavPrefsDto()
+    val collapsed = remember(orgPrefs) { orgPrefs.collapsed.toSet() }
+    val starred = remember(convs, org?.id, orgPrefs, personalPrefs, unreadOnly) {
+        WorkspaceHomeRules.starred(convs, org?.id, orgPrefs.starred + personalPrefs.starred, unreadOnly)
+    }
+    val sections = remember(convs, org?.id, orgPrefs, personalPrefs, unreadOnly) {
+        WorkspaceHomeRules.customSections(
+            convs, org?.id, orgPrefs.sections.map { (org?.id ?: NavPreferences.PERSONAL) to it } + personalPrefs.sections.map { NavPreferences.PERSONAL to it }, unreadOnly,
+        )
+    }
+    val placed = remember(orgPrefs, personalPrefs) { NavPrefsRules.placed(orgPrefs) + NavPrefsRules.placed(personalPrefs) }
+    val groups = remember(convs, org?.id, orgName, unreadOnly, placed) { WorkspaceHomeRules.channelGroups(convs, org?.id, orgName, unreadOnly, placed) }
+    fun setCollapsed(key: String, value: Boolean) { org?.id?.let { container.navPrefs.change(it, NavOp.Collapse(key, value)) } }
+    fun setAllCollapsed(value: Boolean) {
+        groups.filter { (it.key in collapsed) != value }.forEach { setCollapsed(it.key, value) }
+        sections.filter { it.collapsed != value }.forEach { container.navPrefs.change(it.workspaceId, NavOp.CollapseSection(it.id, value)) }
+    }
     val drafts = remember(convs) { WorkspaceHomeRules.drafts(convs) }
     val unreadChats = remember(convs, org?.id) { WorkspaceHomeRules.unreadChats(convs, org?.id) }
     val missed = remember(callLog) { WorkspaceHomeRules.missedCalls(callLog, System.currentTimeMillis(), WorkspaceHomeRules.MISSED_CALLS_CARD_WINDOW_MS).size }
@@ -191,8 +216,8 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
                     filter = {
                         HomeFilterButton(
                             unreadOnly, { unreadOnly = it },
-                            onExpandAll = { collapsed = emptySet() },
-                            onCollapseAll = { collapsed = groups.map { it.key }.toSet() },
+                            onExpandAll = { setAllCollapsed(false) },
+                            onCollapseAll = { setAllCollapsed(true) },
                         )
                     },
                 )
@@ -230,6 +255,12 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
                 return@LazyColumn
             }
 
+            starredSection(starred, me, onOpen = ::open, onLongPress = { actionsFor = it })
+            customSectionsList(
+                sections, me,
+                onToggle = { s -> container.navPrefs.change(s.workspaceId, NavOp.CollapseSection(s.id, !s.collapsed)) },
+                onEdit = { editingSection = it }, onOpen = ::open, onLongPress = { actionsFor = it },
+            )
             unreadDmsSection(
                 unreadDms, me, online, onSeeAll = onSeeAllUnreadDms, onOpen = ::open, onLongPress = { actionsFor = it },
             )
@@ -247,7 +278,7 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
             } else {
                 channelSection(
                     groups, collapsed, unreadOnly, me,
-                    onToggle = { key -> collapsed = if (key in collapsed) collapsed - key else collapsed + key },
+                    onToggle = { key -> setCollapsed(key, key !in collapsed) },
                     onOpen = ::open, onLongPress = { actionsFor = it },
                     onBrowse = { nav.navigate(Routes.WORKSPACE) },
                 )
@@ -257,7 +288,7 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
         val scrim by animateFloatAsState(if (scrolled) 0.94f else 0f, Motion.quick(), label = "homeStatusScrim")
         Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).graphicsLayer { alpha = scrim }.background(c.background))
         ComposeFab(
-            stringResource(R.string.chats_new_chat), { nav.navigate(Routes.NEW_CHAT + "?mode=dm") },
+            stringResource(R.string.new_fab), { sheet = HomeSheet.New },
             Modifier.align(Alignment.BottomEnd).padding(end = Space.gutter, bottom = barPadding + 12.dp),
             visible = fabVisible && undo == null,
         )
@@ -278,7 +309,37 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
             onSelect = { id -> vm.switchOrg(id); sheet = null },
             onManage = { sheet = null; nav.navigate(Routes.WORKSPACE) },
             onJoin = { sheet = null; nav.navigate(Routes.JOIN + "?code=") },
+            onSettings = if (detail?.org?.id == org?.id && detail != null) ({ sheet = HomeSheet.Settings }) else null,
         )
+        HomeSheet.Settings -> detail?.let { d ->
+            com.griipbuddy.orbit.ui.screens.workspace.WorkspaceSettingsSheet(
+                d, onDismiss = { sheet = null }, onChanged = { vm.reloadDetail(); vm.refresh() },
+                onLeft = { name ->
+                    sheet = null
+                    android.widget.Toast.makeText(context, context.getString(R.string.ws_left, name), android.widget.Toast.LENGTH_SHORT).show()
+                    vm.refresh()
+                },
+            )
+        }
+        HomeSheet.New -> NewActionsSheet(detail?.takeIf { it.org.id == org?.id }, onDismiss = { sheet = null }) { action ->
+            sheet = when (action) {
+                NewAction.CHANNEL -> HomeSheet.NewChannel
+                else -> null
+            }
+            when (action) {
+                NewAction.MESSAGE -> nav.navigate(Routes.NEW_CHAT + "?mode=dm")
+                NewAction.GROUP -> nav.navigate(Routes.NEW_CHAT + "?mode=group")
+                NewAction.INVITE -> org?.id?.let { nav.navigate(Routes.invites(it)) }
+                NewAction.WORKSPACE -> nav.navigate(Routes.JOIN + "?code=")
+                NewAction.CHANNEL -> Unit
+            }
+        }
+        HomeSheet.NewChannel -> detail?.takeIf { it.org.id == org?.id }?.let { d ->
+            com.griipbuddy.orbit.ui.screens.workspace.CreateChannelSheet(d, null, { sheet = null }) { id ->
+                sheet = null
+                nav.navigate(Routes.conversation(id))
+            }
+        }
         HomeSheet.Profile -> ProfileSheet(
             me, myName, meUser?.username?.takeIf { it.isNotBlank() } ?: container.session.session?.username, meUser,
             onDismiss = { sheet = null },
@@ -291,12 +352,41 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
             conv, me, onDismiss = { actionsFor = null },
             onToggleMute = { actions.toggleMute(conv) }, onToggleRead = { actions.toggleRead(conv) },
             onToggleArchive = { archive(conv) }, onInfo = { nav.navigate(Routes.info(conv.id)) },
+            starred = conv.id in starredIds, onToggleStar = { actions.toggleStar(conv) },
+            onMoveToSection = { movingFor = conv },
+        )
+    }
+    movingFor?.let { conv -> SectionPickerSheet(conv, onDismiss = { movingFor = null }) }
+    editingSection?.let { section -> SectionEditSheet(section, onDismiss = { editingSection = null }) }
+}
+
+/** Starred conversations (personal, on every device of the person), above everything else; hidden when nothing is starred. */
+private fun LazyListScope.starredSection(
+    starred: List<ConversationEntity>,
+    me: String?,
+    onOpen: (ConversationEntity) -> Unit,
+    onLongPress: (ConversationEntity) -> Unit,
+) {
+    if (starred.isEmpty()) return
+    item(key = "starred-header") { HomeSectionHeader(stringResource(R.string.home_starred)) }
+    items(starred, key = { "starred-" + it.id }) { conv ->
+        val unread = conv.unreadCount > 0
+        HomeListRow(
+            listTitle(conv, me).removePrefix("#"),
+            leading = { ChannelOrAvatar(conv, me) },
+            onClick = { onOpen(conv) }, onLongClick = { onLongPress(conv) },
+            subtitle = conv.scopeName?.takeIf { conv.type == "CHANNEL" }, bold = unread && !conv.muted, dim = conv.muted,
+            modifier = Modifier.animateItem(),
+            trailing = {
+                if (conv.mentionCount > 0) HomeCount(conv.mentionCount, accent = true, description = stringResource(R.string.home_mention_count, conv.mentionCount), prefix = "@")
+                else HomeCount(conv.unreadCount, accent = false, description = stringResource(R.string.home_unread_messages, conv.unreadCount))
+            },
         )
     }
 }
 
 /** The bottom sheets Home can show (saved across rotation). */
-private enum class HomeSheet { Workspaces, Profile, Drafts }
+private enum class HomeSheet { Workspaces, Profile, Drafts, Settings, New, NewChannel }
 
 /** Filter and options: show only unread channels, and open or close every channel group at once. */
 @Composable
@@ -452,10 +542,15 @@ private fun WorkspacesSheet(
     onSelect: (String) -> Unit,
     onManage: () -> Unit,
     onJoin: () -> Unit,
+    onSettings: (() -> Unit)?,
 ) {
     GlassSheet(onDismiss, title = stringResource(R.string.home_workspaces)) {
         WorkspaceSwitcherList(orgs, selectedId, onSelect)
         Spacer(Modifier.height(10.dp))
+        if (onSettings != null) {
+            PillButton(stringResource(R.string.ws_settings_open), onSettings, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, height = 50.dp)
+            Spacer(Modifier.height(8.dp))
+        }
         if (selectedId != null) {
             PillButton(stringResource(R.string.home_manage_workspace), onManage, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, height = 50.dp)
             Spacer(Modifier.height(8.dp))

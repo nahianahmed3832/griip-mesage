@@ -138,6 +138,7 @@ private fun ChatsHome(nav: NavHostController, request: DmListRequest) {
     var filter by rememberSaveable { mutableIntStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
     var actionsFor by remember { mutableStateOf<ConversationEntity?>(null) }
+    var movingFor by remember { mutableStateOf<ConversationEntity?>(null) }
     // The archived list (local to this phone), and the chat just archived, for Undo.
     var archivedView by rememberSaveable { mutableStateOf(false) }
     var undo by remember { mutableStateOf<ConversationEntity?>(null) }
@@ -287,12 +288,16 @@ private fun ChatsHome(nav: NavHostController, request: DmListRequest) {
     }
 
     actionsFor?.let { conv ->
+        val starredIds by container.navPrefs.starred.collectAsStateWithLifecycle()
         ChatActionsSheet(
             conv, me, onDismiss = { actionsFor = null },
             onToggleMute = { actions.toggleMute(conv) }, onToggleRead = { actions.toggleRead(conv) },
             onToggleArchive = { toggleArchive(conv) }, onInfo = { nav.navigate(Routes.info(conv.id)) },
+            starred = conv.id in starredIds, onToggleStar = { actions.toggleStar(conv) },
+            onMoveToSection = { movingFor = conv },
         )
     }
+    movingFor?.let { conv -> com.griipbuddy.orbit.ui.screens.home.SectionPickerSheet(conv, onDismiss = { movingFor = null }) }
 }
 
 /** Pick people → open a DM, create a group (mode=group) or start a call (mode=call). */

@@ -21,15 +21,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Login
 import androidx.compose.material.icons.outlined.Apartment
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PostAdd
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.DropdownMenu
@@ -49,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -56,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import com.griipbuddy.orbit.R
 import com.griipbuddy.orbit.data.api.ActivityDto
 import com.griipbuddy.orbit.data.api.ConversationDto
 import com.griipbuddy.orbit.data.api.InviteDto
@@ -111,6 +118,7 @@ fun TeamScreen(nav: NavHostController, orgId: String, teamId: String) {
     var showAdd by remember { mutableStateOf(false) }
     var showChannel by remember { mutableStateOf(false) }
     var moveFor by remember { mutableStateOf<UserDto?>(null) }
+    var showEdit by remember { mutableStateOf(false) }
     LaunchedEffect(reload) {
         runCatching { container.orgs.detail(orgId) }.onSuccess { detail = it }.onFailure { error = it.friendly() }
         runCatching { container.orgs.teamMembers(teamId) }.onSuccess { members = it }.onFailure { error = it.friendly() }
@@ -144,6 +152,10 @@ fun TeamScreen(nav: NavHostController, orgId: String, teamId: String) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         PillButton("Add member", { showAdd = true }, Modifier.weight(1f), tone = ButtonTone.Glass, showKnob = false, leadingIcon = Icons.Outlined.PersonAdd, height = 46.dp)
                         PillButton("Channel", { showChannel = true }, Modifier.weight(1f), tone = ButtonTone.Glass, showKnob = false, leadingIcon = Icons.Outlined.PostAdd, height = 46.dp)
+                    }
+                    if (ScopeAdmin.canEditTeam(team)) {
+                        Spacer(Modifier.height(10.dp))
+                        PillButton(stringResource(R.string.team_edit), { showEdit = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.Edit, height = 46.dp)
                     }
                     // A department only groups a branch's teams (D-15); cross-branch teams have none.
                     val depts = detail?.departments.orEmpty().filter { it.branchId == team.branchId }
@@ -205,6 +217,9 @@ fun TeamScreen(nav: NavHostController, orgId: String, teamId: String) {
             reload++; nav.navigate(Routes.conversation(id))
         }
     }
+    if (showEdit) detail?.let { d ->
+        team?.let { t -> EditTeamSheet(d, t, onDismiss = { showEdit = false }, onSaved = { reload++ }, onArchived = { nav.popBackStack() }) }
+    }
     moveFor?.let { u ->
         GlassSheet({ moveFor = null }, title = "Move ${u.displayName} to…") {
             detail?.teams?.filter { it.id != teamId && it.canManage }?.forEach { t ->
@@ -231,7 +246,12 @@ fun MembersScreen(nav: NavHostController, orgId: String) {
     var manage by remember { mutableStateOf<UserDto?>(null) }
     var roleFilter by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
-    LaunchedEffect(reload) { runCatching { container.orgs.detail(orgId) }.onSuccess { detail = it } }
+    // Owners in the whole directory (not the filtered list), so an owner is offered "step down" only when another owner exists.
+    var ownerCount by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(reload) {
+        runCatching { container.orgs.detail(orgId) }.onSuccess { detail = it }
+        runCatching { container.orgs.members(orgId) }.onSuccess { all -> ownerCount = WorkspaceRoles.ownerCount(all.map { it.orgRole }) }
+    }
     LaunchedEffect(q, reload) {
         delay(200)
         runCatching { container.orgs.members(orgId, q) }.onSuccess { list = it }.onFailure { error = it.friendly() }
@@ -241,6 +261,7 @@ fun MembersScreen(nav: NavHostController, orgId: String) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
         item { GriipTopBar("Members & roles", subtitle = detail?.org?.name, onBack = { nav.popBackStack() }) }
         item { SearchPill(q, { q = it }, "Search the directory", Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
+        item { RolesGuideCard(Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
         item {
             ChipRow {
                 PillChip("Everyone", roleFilter == null, { roleFilter = null }, count = list?.size)
@@ -263,16 +284,20 @@ fun MembersScreen(nav: NavHostController, orgId: String) {
                     }
                 },
                 trailing = { ArrowKnob() },
-                onClick = { if (canManage) manage = u else nav.navigate(Routes.user(u.id)) },
+                onClick = { if (canManage || u.id == container.session.session?.userId) manage = u else nav.navigate(Routes.user(u.id)) },
             )
         }
     }
-    manage?.let { u -> detail?.let { d -> MemberSheet(d, u, onDismiss = { manage = null }, onOpenProfile = { manage = null; nav.navigate(Routes.user(u.id)) }) { reload++ } } }
+    manage?.let { u ->
+        detail?.let { d ->
+            MemberSheet(d, u, ownerCount, onDismiss = { manage = null }, onOpenProfile = { manage = null; nav.navigate(Routes.user(u.id)) }) { reload++ }
+        }
+    }
     @Suppress("UNUSED_VARIABLE") val s = scope
 }
 
 @Composable
-private fun MemberSheet(d: OrgDetailRes, u: UserDto, onDismiss: () -> Unit, onOpenProfile: () -> Unit, onChanged: () -> Unit) {
+private fun MemberSheet(d: OrgDetailRes, u: UserDto, ownerCount: Int?, onDismiss: () -> Unit, onOpenProfile: () -> Unit, onChanged: () -> Unit) {
     val container = LocalContainer.current
     val c = Griip.colors
     val scope = rememberCoroutineScope()
@@ -297,13 +322,10 @@ private fun MemberSheet(d: OrgDetailRes, u: UserDto, onDismiss: () -> Unit, onOp
         }
         error?.let { Spacer(Modifier.height(8.dp)); StatusBanner(it, BannerKind.Error) }
         LazyColumn(Modifier.fillMaxWidth().height(420.dp)) {
-            if (d.permissions.canManageOrg && u.id != me) item {
-                SectionHeader("Organization role", Modifier.padding(top = 14.dp, bottom = 6.dp))
-                ChipRow {
-                    listOf("OWNER", "ADMIN", "MEMBER", "GUEST").forEach { r ->
-                        PillChip(r.lowercase().replaceFirstChar { it.uppercase() }, role == r, { act({ container.orgs.setOrgRole(d.org.id, u.id, r) }) { role = r } })
-                    }
-                }
+            // Only the roles this person may give (WorkspaceRoles mirrors the server); risky changes ask first.
+            item {
+                OrgRoleSection(d, u.copy(orgRole = role), ownerCount, onRole = { r -> role = r; onChanged() }, onError = { error = it })
+                OrgTitleField(d, u, onSaved = onChanged, onError = { error = it })
             }
             item { SectionHeader("Branches", Modifier.padding(top = 14.dp, bottom = 6.dp)) }
             items(d.branches, key = { "b" + it.id }) { b ->
@@ -338,9 +360,9 @@ private fun MemberSheet(d: OrgDetailRes, u: UserDto, onDismiss: () -> Unit, onOp
                     } else RoleBadge(cur)
                 }
             }
-            if (d.permissions.canManageOrg && u.id != me) item {
+            if (WorkspaceRoles.canRemove(d.org.myRole, role, self = u.id == me)) item {
                 Spacer(Modifier.height(16.dp))
-                PillButton("Remove from organization", { confirmRemove = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, showKnob = false, leadingIcon = Icons.Outlined.DeleteOutline, height = 48.dp)
+                PillButton(stringResource(R.string.member_remove), { confirmRemove = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, showKnob = false, leadingIcon = Icons.Outlined.DeleteOutline, height = 48.dp)
             }
         }
     }
@@ -369,6 +391,9 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
     var uses by remember { mutableIntStateOf(10) }
     var hours by remember { mutableIntStateOf(72) }
     var busy by remember { mutableStateOf(false) }
+    // null: every invite; true: only usable ones; false: revoked, expired and used up.
+    var stateFilter by remember { mutableStateOf<Boolean?>(null) }
+    var revokeFor by remember { mutableStateOf<InviteDto?>(null) }
     LaunchedEffect(reload) {
         runCatching { container.orgs.detail(orgId) }.onSuccess { d ->
             detail = d
@@ -423,18 +448,51 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
             }
         }
         item { SectionHeader("Recent invites", Modifier.padding(top = 10.dp, bottom = 6.dp)) }
+        item {
+            ChipRow {
+                PillChip(stringResource(R.string.inv_filter_all), stateFilter == null, { stateFilter = null }, count = invites?.size)
+                PillChip(stringResource(R.string.inv_filter_active), stateFilter == true, { stateFilter = true })
+                PillChip(stringResource(R.string.inv_filter_ended), stateFilter == false, { stateFilter = false })
+            }
+        }
+        val now = System.currentTimeMillis()
+        val shownInvites = InviteStates.filter(invites.orEmpty(), stateFilter, now)
         if (invites?.isEmpty() == true) item { EmptyState(Icons.Outlined.GroupAdd, "No invites yet", "Codes you create appear here so you can revoke them.") }
-        items(invites.orEmpty(), key = { it.id }) { inv ->
+        else if (invites != null && shownInvites.isEmpty()) item {
+            Text(
+                stringResource(if (stateFilter == true) R.string.inv_none_active else R.string.inv_none_ended), style = Griip.type.bodySmall, color = c.textSecondary,
+                modifier = Modifier.padding(horizontal = Space.gutter, vertical = 8.dp),
+            )
+        }
+        items(shownInvites, key = { it.id }) { inv ->
             val scopeName = listOfNotNull(d?.branches?.firstOrNull { it.id == inv.branchId }?.name, d?.teams?.firstOrNull { it.id == inv.teamId }?.name).joinToString(" · ").ifEmpty { "Organization" }
+            val state = InviteStates.of(inv, now)
+            val usable = state == InviteState.ACTIVE
             ListCard(
-                "…${inv.hint} · ${inv.role.lowercase()}", Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                subtitle = "$scopeName · ${inv.uses}/${inv.maxUses} used · " + if (inv.revokedAt != null) "revoked" else if (!inv.active) "expired" else "expires ${TimeFmt.listStamp(inv.expiresAt)}",
-                leading = { IconTile(Icons.AutoMirrored.Outlined.Login, if (inv.active) c.primary else c.textTertiary, if (inv.active) c.primarySoft else c.surfaceVariant, size = 42.dp) },
+                "…${inv.hint} · ${roleLabel(inv.role)}", Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
+                subtitle = listOfNotNull(
+                    scopeName,
+                    stringResource(R.string.inv_uses, inv.uses, inv.maxUses),
+                    if (usable) stringResource(R.string.inv_expires, TimeFmt.listStamp(inv.expiresAt)) else null,
+                    inv.createdByName?.let { stringResource(R.string.inv_created_by, it) },
+                ).joinToString(" · "),
+                leading = { IconTile(Icons.AutoMirrored.Outlined.Login, if (usable) c.primary else c.textTertiary, if (usable) c.primarySoft else c.surfaceVariant, size = 42.dp) },
+                meta = { InviteStatePill(state) },
                 trailing = {
-                    if (inv.active) PillButton("Revoke", { scope.launch { runCatching { container.orgs.revokeInvite(inv.id) }.onFailure { error = it.friendly() }; reload++ } }, tone = ButtonTone.Glass, showKnob = false, height = 36.dp)
+                    if (usable) PillButton(stringResource(R.string.inv_revoke), { revokeFor = inv }, tone = ButtonTone.Glass, showKnob = false, height = 36.dp)
                 },
             )
         }
+    }
+    revokeFor?.let { inv ->
+        ConfirmDialog(
+            stringResource(R.string.inv_revoke_title), stringResource(R.string.inv_revoke_body, inv.hint ?: ""), stringResource(R.string.inv_revoke),
+            onConfirm = {
+                revokeFor = null
+                scope.launch { runCatching { container.orgs.revokeInvite(inv.id) }.onFailure { error = it.friendly() }; reload++ }
+            },
+            onDismiss = { revokeFor = null }, destructive = true,
+        )
     }
     created?.let { inv ->
         GlassSheet({ created = null }, title = "Invite ready") {
@@ -453,6 +511,19 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
             }
         }
     }
+}
+
+/** An invitation's state as a small coloured label. */
+@Composable
+private fun InviteStatePill(state: InviteState) {
+    val c = Griip.colors
+    val (label, fg, bg) = when (state) {
+        InviteState.ACTIVE -> Triple(stringResource(R.string.inv_status_active), c.success, c.successSoft)
+        InviteState.USED_UP -> Triple(stringResource(R.string.inv_status_used_up), c.textSecondary, c.surfaceVariant)
+        InviteState.EXPIRED -> Triple(stringResource(R.string.inv_status_expired), c.warning, c.warningSoft)
+        InviteState.REVOKED -> Triple(stringResource(R.string.inv_status_revoked), c.danger, c.dangerSoft)
+    }
+    TagPill(label, fg, bg)
 }
 
 fun qrBitmap(text: String, size: Int = 512): Bitmap {
@@ -501,6 +572,17 @@ private fun describe(a: ActivityDto): Pair<androidx.compose.ui.graphics.vector.I
         "member.leave" -> Icons.AutoMirrored.Outlined.Login to "Left the organization"
         "call.start" -> Icons.Rounded.Call to "Started a ${a.detail} call"
         "channel.archive" -> Icons.Outlined.Campaign to "Archived a channel"
+        "channel.restore" -> Icons.Outlined.Campaign to "Restored a channel"
+        "channel.update" -> Icons.Outlined.Campaign to "Edited a channel"
+        "channel.access" -> Icons.Outlined.Lock to "Changed who can see a channel (${a.detail?.lowercase()?.replace("→", " → ") ?: ""})"
+        "branch.archive" -> Icons.Outlined.Archive to "Archived branch ${a.detail ?: ""}"
+        "branch.restore" -> Icons.Outlined.Unarchive to "Restored branch ${a.detail ?: ""}"
+        "branch.update" -> Icons.Outlined.Apartment to "Edited branch ${a.detail ?: ""}"
+        "team.archive" -> Icons.Outlined.Archive to "Archived team ${a.detail ?: ""}"
+        "team.restore" -> Icons.Outlined.Unarchive to "Restored team ${a.detail ?: ""}"
+        "team.update" -> Icons.Outlined.Groups to "Edited team ${a.detail ?: ""}"
+        "org.update" -> Icons.Outlined.Edit to "Edited the workspace's details"
+        "org.photo" -> Icons.Outlined.Image to if (a.detail == "removed") "Removed the workspace photo" else "Changed the workspace photo"
         else -> Icons.Outlined.History to a.action.replace('.', ' ')
     }
 }

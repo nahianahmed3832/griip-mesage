@@ -57,15 +57,20 @@ class ProfileRepository(
      * The cached photo of [userId] at [rev], downloading it once if needed; null when there is none or it isn't
      * visible to this account. Older revisions are removed.
      */
-    suspend fun photo(userId: String, rev: Long): File? = withContext(Dispatchers.IO) {
-        val safe = userId.replace(Regex("[^A-Za-z0-9_-]"), "_")
+    suspend fun photo(userId: String, rev: Long): File? = cachedPhoto(userId, rev, "/v1/users/$userId/photo")
+
+    /** An organisation's avatar at [rev] (members only), cached like people's photos (ids never clash: "o_…" vs "u_…"). */
+    suspend fun orgPhoto(orgId: String, rev: Long): File? = cachedPhoto(orgId, rev, "/v1/orgs/$orgId/photo")
+
+    private suspend fun cachedPhoto(ownerId: String, rev: Long, path: String): File? = withContext(Dispatchers.IO) {
+        val safe = ownerId.replace(Regex("[^A-Za-z0-9_-]"), "_")
         val file = File(photoDir, "$safe-$rev.jpg")
         if (file.length() > 0) return@withContext file
         val lock = synchronized(locks) { locks.getOrPut(safe) { Mutex() } }
         lock.withLock {
             if (file.length() > 0) return@withLock file
             val part = File(photoDir, "$safe-$rev.part")
-            runCatching { api.downloadTo("/v1/users/$userId/photo", part) {} }.getOrElse { part.delete(); return@withLock null }
+            runCatching { api.downloadTo(path, part) {} }.getOrElse { part.delete(); return@withLock null }
             if (!part.renameTo(file)) return@withLock null
             photoDir.listFiles()?.filter { it.name.startsWith("$safe-") && it != file }?.forEach { it.delete() }
             file

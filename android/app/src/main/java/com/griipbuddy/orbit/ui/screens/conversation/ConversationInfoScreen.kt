@@ -81,7 +81,17 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
     var showEdit by remember { mutableStateOf(false) }
     var confirmLeave by remember { mutableStateOf(false) }
     var reload by remember { mutableStateOf(0) }
-    LaunchedEffect(reload) { runCatching { container.conversations.members(conversationId) }.onSuccess { members = it }.onFailure { error = it.friendly() } }
+    // The server's current view (who may change the channel's access) and whether it supports access modes at all.
+    var dto by remember { mutableStateOf<com.griipbuddy.orbit.data.api.ConversationDto?>(null) }
+    var accessFeature by remember { mutableStateOf<Boolean?>(null) }
+    val files by container.messages.observeWithFiles(conversationId, CHANNEL_FILES_SHOWN).collectAsStateWithLifecycle(emptyList())
+    LaunchedEffect(reload) {
+        runCatching { container.conversations.members(conversationId) }.onSuccess { members = it }.onFailure { error = it.friendly() }
+        if (conv?.type == "CHANNEL" || conv == null) {
+            accessFeature = container.features.has(com.griipbuddy.orbit.data.repo.ServerFeatures.WORKSPACE_ADMIN)
+            runCatching { container.conversations.fetch(conversationId) }.onSuccess { dto = it }
+        }
+    }
 
     val cv = conv ?: return
     val title = ConversationRepository.title(cv, me)
@@ -107,10 +117,17 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
             }
         }
         error?.let { item { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) } }
+        if (cv.type == "CHANNEL") {
+            item(key = "about") { ChannelAboutCard(cv, Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
+            item(key = "access") {
+                ChannelAccessCard(cv, dto, accessFeature, onChanged = { reload++ }, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 6.dp))
+            }
+        }
+        item(key = "settings-header") { SectionHeader(androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.ch_notifications), Modifier.padding(top = 10.dp, bottom = 2.dp)) }
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), contentPadding = PaddingValues(6.dp)) {
                 MenuRow(Icons.Outlined.NotificationsOff, "Mute notifications", subtitle = "Mentions still notify you", trailing = {
-                    GriipSwitch(cv.muted, { v -> scope.launch { container.conversations.setMuted(conversationId, v) } })
+                    GriipSwitch(cv.muted, { v -> scope.launch { container.navPrefs.setMuted(cv, v) } })
                 })
                 if (cv.type == "DM") {
                     ConversationRepository.peer(cv, me)?.let { p ->
@@ -132,7 +149,7 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
             }
         }
         if (pinned.isNotEmpty()) {
-            item { SectionHeader("Pinned messages", Modifier.padding(top = 12.dp, bottom = 6.dp)) }
+            item { SectionHeader(androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.ch_pinned), Modifier.padding(top = 12.dp, bottom = 6.dp)) }
             items(pinned, key = { "pin" + it.id }) { m ->
                 ListCard(
                     m.text.ifEmpty { "📎 Attachment" }, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
@@ -142,7 +159,8 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
                 )
             }
         }
-        item { SectionHeader("Members (${members.size})", Modifier.padding(top = 12.dp, bottom = 6.dp)) }
+        channelFilesSection(files, names = { m -> container.messages.attachments(m).map { it.name to it.size } }, onOpen = { nav.popBackStack() })
+        item { SectionHeader(androidx.compose.ui.res.stringResource(com.griipbuddy.orbit.R.string.ch_members, members.size), Modifier.padding(top = 12.dp, bottom = 6.dp)) }
         items(members, key = { it.id }) { u ->
             var menu by remember { mutableStateOf(false) }
             ListCard(

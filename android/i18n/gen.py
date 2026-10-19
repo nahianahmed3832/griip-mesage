@@ -1,9 +1,10 @@
-"""Writes res/values{,-zh-rCN,-bn}/strings.xml from strings.py and strings_account.xml from strings_account.py
-(docs/LANGUAGES.md). Run: python3 -I -B android/i18n/gen.py (-B: don't rewrite the tracked __pycache__)."""
+"""Writes res/values{,-zh-rCN,-bn}/strings.xml from strings.py, strings_account.xml from strings_account.py and
+strings_workspace.xml from strings_workspace.py (docs/LANGUAGES.md). Run: python3 -I -B android/i18n/gen.py (-B: don't rewrite the tracked __pycache__)."""
 import sys, re, os
 sys.path.insert(0, os.path.dirname(__file__))
 from strings import S
 from strings_account import S as ACCOUNT
+from strings_workspace import S as WORKSPACE
 res = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "src", "main", "res")
 def esc(v):
     v = v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -35,3 +36,10 @@ for lang, folder, idx in [("en", "values", 0), ("zh", "values-zh-rCN", 1), ("bn"
     acct.append('</resources>')
     open(f"{res}/{folder}/strings_account.xml", "w").write("\n".join(acct) + "\n")
     print(folder, "account", len(ACCOUNT))
+    # Workspace administration strings (2026-10-19): strings_workspace.py.
+    ws = ['<?xml version="1.0" encoding="utf-8"?>', '<!-- Workspace administration strings (docs/LANGUAGES.md). Generated from strings_workspace.py. -->', '<resources>']
+    for k, v in WORKSPACE.items():
+        ws.append(f'    <string name="{k}">{esc(v[idx])}</string>')
+    ws.append('</resources>')
+    open(f"{res}/{folder}/strings_workspace.xml", "w").write("\n".join(ws) + "\n")
+    print(folder, "workspace", len(WORKSPACE))

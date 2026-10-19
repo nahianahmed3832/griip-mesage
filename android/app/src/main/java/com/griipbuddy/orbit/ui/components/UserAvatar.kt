@@ -26,7 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** Decoded photos shared by every avatar on screen (a few dozen small bitmaps at most). */
-private object AvatarMemory {
+internal object AvatarMemory {
     private val cache = object : android.util.LruCache<String, ImageBitmap>(64) {}
     fun get(k: String): ImageBitmap? = cache.get(k)
     fun put(k: String, v: ImageBitmap) { cache.put(k, v) }
