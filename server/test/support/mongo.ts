@@ -11,10 +11,10 @@ export function testDbName(prefix = "t"): string {
 
 /**
  * The MongoDB settings a test server gets: none, unless the test asks for MongoDB domains itself or the run sets
- * ORBIT_TEST_MONGO_DOMAINS (then every suite runs with those domains in MongoDB). Always the run's local replica set.
+ * MELDIQ_TEST_MONGO_DOMAINS (then every suite runs with those domains in MongoDB). Always the run's local replica set.
  */
 export function testMongoEnv(env: Record<string, string>): Record<string, string> {
-  const domains = env.MONGODB_DOMAINS ?? process.env.ORBIT_TEST_MONGO_DOMAINS;
+  const domains = env.MONGODB_DOMAINS ?? process.env.MELDIQ_TEST_MONGO_DOMAINS;
   if (!domains && !env.MONGODB_URI) return {};
   return { MONGODB_URI: env.MONGODB_URI ?? inject("mongoUri"), MONGODB_DB: env.MONGODB_DB ?? testDbName(), MONGODB_DOMAINS: domains ?? "" };
 }

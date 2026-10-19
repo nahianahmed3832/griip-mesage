@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { SendEmailCommand, SESv2Client } from "@aws-sdk/client-sesv2";
+import nodemailer from "nodemailer";
 import type { MailConfig } from "./config.js";
 
 export interface MailMessage {
@@ -67,6 +68,48 @@ export class SesMailer implements Mailer {
   }
 }
 
+/** The part of a nodemailer transport this mailer uses (tests pass a fake). */
+export interface SmtpSender {
+  sendMail(message: { from: string; to: string; subject: string; text: string }): Promise<unknown>;
+}
+
+/**
+ * Any SMTP provider (Hostinger Mail for development and early testing). Always encrypted: TLS from the start on port
+ * 465, or a required STARTTLS upgrade elsewhere, with the server's certificate checked. Errors are passed on without
+ * the message (it holds a code); nodemailer's own logging stays off.
+ */
+export class SmtpMailer implements Mailer {
+  readonly kind = "smtp" as const;
+  readonly available = true;
+  constructor(
+    private readonly transport: SmtpSender,
+    private readonly from: string,
+  ) {}
+
+  async send(m: MailMessage): Promise<void> {
+    await this.transport.sendMail({ from: this.from, to: m.to, subject: m.subject, text: m.text });
+  }
+}
+
+/** Connection timeouts for SMTP: a slow provider must not hold a sign-up request open. */
+const SMTP_TIMEOUT_MS = 15_000;
+
+export function smtpTransport(config: Extract<MailConfig, { transport: "smtp" }>): SmtpSender {
+  return nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    requireTLS: !config.secure,
+    auth: config.auth ?? undefined,
+    tls: { minVersion: "TLSv1.2", rejectUnauthorized: true },
+    connectionTimeout: SMTP_TIMEOUT_MS,
+    greetingTimeout: SMTP_TIMEOUT_MS,
+    socketTimeout: SMTP_TIMEOUT_MS,
+    logger: false,
+    debug: false,
+  });
+}
+
 export function createMailer(config: MailConfig): Mailer {
   switch (config.transport) {
     case "none":
@@ -75,24 +118,26 @@ export function createMailer(config: MailConfig): Mailer {
       return new FileMailer(config.dir, config.from);
     case "ses":
       return new SesMailer(new SESv2Client({ region: config.region, ...(config.credentials ? { credentials: config.credentials } : {}) }), config.from);
+    case "smtp":
+      return new SmtpMailer(smtpTransport(config), config.from);
   }
 }
 
 /**
  * The texts of account emails. Plain text, no links: the person types the code into the app. Nothing anyone typed (a
- * name) goes into them, so the sign-up form can't be used to send someone else's words from Orbit's address.
+ * name) goes into them, so the sign-up form can't be used to send someone else's words from Meldiq's address.
  */
 export const mailTexts = {
   verifyEmail: (code: string): Omit<MailMessage, "to"> => ({
-    subject: `${code} is your Orbit verification code`,
-    text: `Hello,\n\nYour Orbit verification code is ${code}. It expires in 15 minutes.\n\nIf you didn't create an Orbit account, you can ignore this email.`,
+    subject: `${code} is your Meldiq verification code`,
+    text: `Hello,\n\nYour Meldiq verification code is ${code}. It expires in 15 minutes.\n\nIf you didn't create a Meldiq account, you can ignore this email.`,
   }),
   resetPassword: (code: string): Omit<MailMessage, "to"> => ({
-    subject: "Reset your Orbit password",
-    text: `Hello,\n\nYour Orbit password reset code is ${code}. It expires in 15 minutes.\n\nIf you didn't ask to reset your password, ignore this email: your password stays the same.`,
+    subject: "Reset your Meldiq password",
+    text: `Hello,\n\nYour Meldiq password reset code is ${code}. It expires in 15 minutes.\n\nIf you didn't ask to reset your password, ignore this email: your password stays the same.`,
   }),
   alreadyRegistered: (): Omit<MailMessage, "to"> => ({
-    subject: "Someone tried to create an Orbit account with your email",
-    text: "Hello,\n\nSomeone tried to create a new Orbit account with this email address, which already has an account. If it was you, sign in instead, or reset your password from the sign-in screen.\n\nIf it wasn't you, you don't need to do anything.",
+    subject: "Someone tried to create a Meldiq account with your email",
+    text: "Hello,\n\nSomeone tried to create a new Meldiq account with this email address, which already has an account. If it was you, sign in instead, or reset your password from the sign-in screen.\n\nIf it wasn't you, you don't need to do anything.",
   }),
 };

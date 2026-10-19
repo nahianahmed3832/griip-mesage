@@ -1,4 +1,4 @@
--- Griip Message relay schema v1.
+-- Meldiq relay schema v1.
 -- Permanent organisational metadata and temporary delivery data are kept in clearly
 -- separated tables. No table stores message plaintext. Message envelopes exist only in
 -- `delivery_queue` (ciphertext, max 7 days) and are deleted on acknowledgement or expiry.

@@ -30,7 +30,7 @@ export interface S3Config {
    * a shared config profile, or `credential_process`, which is how IAM Roles Anywhere supplies temporary credentials).
    */
   credentials: { accessKeyId: string; secretAccessKey: string; sessionToken?: string } | null;
-  /** Server-side encryption requested on every write (in addition to Orbit's own end-to-end encryption). */
+  /** Server-side encryption requested on every write (in addition to Meldiq's own end-to-end encryption). */
   sse: "AES256" | "aws:kms" | null;
   kmsKeyId: string | null;
   /** Downloads redirect to a short-lived presigned URL instead of streaming through this server. */
@@ -54,7 +54,7 @@ export class S3Error extends Error {
 }
 
 /**
- * Amazon S3 (or a compatible store) as Orbit's blob store, through the AWS SDK for JavaScript v3. Objects are private:
+ * Amazon S3 (or a compatible store) as Meldiq's blob store, through the AWS SDK for JavaScript v3. Objects are private:
  * the bucket needs no public access. Object keys are "<prefix><kind>/<random id>": no names, conversations or users.
  */
 export class S3BlobStore implements BlobStore {
@@ -72,7 +72,7 @@ export class S3BlobStore implements BlobStore {
       forcePathStyle: cfg.forcePathStyle,
       credentials: cfg.credentials ?? undefined,
       maxAttempts: 4,
-      // Checksums are explicit (SHA-256 where Orbit has one), never computed implicitly into presigned URLs.
+      // Checksums are explicit (SHA-256 where Meldiq has one), never computed implicitly into presigned URLs.
       requestChecksumCalculation: "WHEN_REQUIRED",
       responseChecksumValidation: "WHEN_REQUIRED",
     });

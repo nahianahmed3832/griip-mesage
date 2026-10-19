@@ -40,7 +40,7 @@ describe("Orbit 2.0 sign-up and email verification", () => {
     const c = await new AccountClient(h.baseUrl, email("taken")).signUp(mailer);
     const again = await c.req("POST", "/v2/auth/register", { name: "Someone", email: c.email, password: "another long password" });
     expect(again).toEqual({ status: "verification_sent", email: c.email });
-    expect(mailer.lastSubject(c.email)).toMatch(/tried to create an Orbit account/);
+    expect(mailer.lastSubject(c.email)).toMatch(/tried to create a Meldiq account/);
     // The original password still works; the attempt changed nothing.
     await c.signIn();
   });

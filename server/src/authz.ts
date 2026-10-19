@@ -1,4 +1,6 @@
 import type { DB } from "./db.js";
+import { isPermission, type Permission } from "./permissions/catalog.js";
+import { type Actor, effectivePermissions, type RoleGrant } from "./permissions/rules.js";
 import { forbidden, notFound } from "./util.js";
 
 /**
@@ -45,8 +47,80 @@ export interface BranchRow {
   archived_at: number | null;
 }
 
+/** A custom role as assigned to someone (src/permissions, docs/WORKSPACE_ROLES.md). */
+export interface AssignedRole extends RoleGrant {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+/** Stored permission lists are written by validated routes; anything unknown (a key from a newer server) is ignored. */
+export function parsePermissionList(json: string): Permission[] {
+  try {
+    const v: unknown = JSON.parse(json);
+    return Array.isArray(v) ? v.filter((k): k is Permission => typeof k === "string" && isPermission(k)) : [];
+  } catch {
+    return [];
+  }
+}
+
 export class Authz {
   constructor(private db: DB) {}
+
+  /** The custom roles [userId] holds in [orgId] (archived roles grant and restrict nothing). */
+  assignedRoles(orgId: string, userId: string): AssignedRole[] {
+    const rows = this.db
+      .prepare(
+        `SELECT r.id, r.name, r.color, r.permissions, r.denies FROM org_role_members m JOIN org_roles r ON r.id = m.role_id
+         WHERE m.org_id = ? AND m.user_id = ? AND r.archived_at IS NULL ORDER BY r.position, r.name`,
+      )
+      .all(orgId, userId) as { id: string; name: string; color: string | null; permissions: string; denies: string }[];
+    return rows.map((r) => ({ id: r.id, name: r.name, color: r.color, permissions: parsePermissionList(r.permissions), denies: parsePermissionList(r.denies) }));
+  }
+
+  /**
+   * Effective permissions in a workspace: the base role's, plus custom roles' grants, minus their restrictions
+   * (src/permissions/rules.ts). Empty for someone who isn't a member: deny by default.
+   */
+  permissions(orgId: string, userId: string): Set<Permission> {
+    return this.actor(orgId, userId)?.perms ?? new Set();
+  }
+
+  can(orgId: string, userId: string, permission: Permission): boolean {
+    return this.permissions(orgId, userId).has(permission);
+  }
+
+  /** The member's base role and effective permissions, or null for someone outside the workspace. */
+  actor(orgId: string, userId: string): (Actor & { perms: Set<Permission> }) | null {
+    const base = this.orgRole(orgId, userId);
+    return base ? { base, perms: effectivePermissions(base, this.assignedRoles(orgId, userId)) } : null;
+  }
+
+  /**
+   * What the member's custom roles would give them on another base role. A guest keeps their roles while only the
+   * guest-safe parts count, so promoting them back brings the rest back: whoever promotes must reach that too.
+   */
+  permissionsAs(orgId: string, userId: string, base: OrgRole): Set<Permission> {
+    return effectivePermissions(base, this.assignedRoles(orgId, userId));
+  }
+
+  /** Members of the workspace who hold [permission] now (to tell them about something waiting for them). */
+  workspaceMembersWith(orgId: string, permission: Permission): string[] {
+    const ids = (this.db.prepare("SELECT user_id FROM org_members WHERE org_id = ?").all(orgId) as { user_id: string }[]).map((r) => r.user_id);
+    return ids.filter((id) => this.can(orgId, id, permission));
+  }
+
+  /** The workspace's active custom role ids. */
+  workspaceRoleIds(orgId: string): string[] {
+    return (this.db.prepare("SELECT id FROM org_roles WHERE org_id = ? AND archived_at IS NULL").all(orgId) as { id: string }[]).map((r) => r.id);
+  }
+
+  /** 404 for outsiders (the workspace's existence stays hidden), 403 without the permission. Returns the base role. */
+  requirePermission(orgId: string, userId: string, permission: Permission, message?: string): OrgRole {
+    const role = this.requireOrgMember(orgId, userId);
+    if (!this.can(orgId, userId, permission)) throw forbidden(message ?? "You don't have permission to do that in this workspace");
+    return role;
+  }
 
   orgRole(orgId: string, userId: string): OrgRole | null {
     const r = this.db.prepare("SELECT role FROM org_members WHERE org_id = ? AND user_id = ?").get(orgId, userId) as
@@ -95,11 +169,11 @@ export class Authz {
   }
 
   canManageBranch(branch: BranchRow, userId: string): boolean {
-    return this.isOrgAdmin(branch.org_id, userId) || this.branchRole(branch.id, userId) === "MANAGER";
+    return this.can(branch.org_id, userId, "teams.manage") || this.branchRole(branch.id, userId) === "MANAGER";
   }
 
   canManageTeam(team: TeamRow, userId: string): boolean {
-    if (this.isOrgAdmin(team.org_id, userId)) return true;
+    if (this.can(team.org_id, userId, "teams.manage")) return true;
     if (team.branch_id && this.branchRole(team.branch_id, userId) === "MANAGER") return true;
     return this.teamRole(team.id, userId) === "LEAD";
   }
@@ -108,7 +182,8 @@ export class Authz {
   canAccessBranch(branch: BranchRow, userId: string): boolean {
     const role = this.orgRole(branch.org_id, userId);
     if (!role || role === "GUEST") return false;
-    return role === "OWNER" || role === "ADMIN" || this.branchRole(branch.id, userId) !== null;
+    if (role === "OWNER" || role === "ADMIN" || this.branchRole(branch.id, userId) !== null) return true;
+    return this.can(branch.org_id, userId, "teams.manage");
   }
 
   canAccessTeam(team: TeamRow, userId: string): boolean {
@@ -137,7 +212,7 @@ export class Authz {
     if (conv.type === "DM") return false;
     if (conv.type === "GROUP") return this.conversationRole(conv.id, userId) === "ADMIN";
     if (!conv.org_id) return false;
-    if (this.isOrgAdmin(conv.org_id, userId)) return true;
+    if (this.can(conv.org_id, userId, "channels.manage")) return true;
     if (conv.scope === "BRANCH" && conv.scope_id) {
       const b = this.branch(conv.scope_id);
       if (b && this.branchRole(b.id, userId) === "MANAGER") return true;
@@ -157,7 +232,7 @@ export class Authz {
    */
   canManageChannelAccess(conv: ConversationRow, userId: string): boolean {
     if (conv.type !== "CHANNEL" || !conv.org_id) return false;
-    if (this.isOrgAdmin(conv.org_id, userId)) return true;
+    if (this.can(conv.org_id, userId, "channels.visibility")) return true;
     if (conv.scope === "BRANCH" && conv.scope_id) {
       const b = this.branch(conv.scope_id);
       return !!b && this.branchRole(b.id, userId) === "MANAGER";
@@ -174,7 +249,7 @@ export class Authz {
    * runs their team but can't archive it, as only org admins archive branches.
    */
   canArchiveTeam(team: TeamRow, userId: string): boolean {
-    if (this.isOrgAdmin(team.org_id, userId)) return true;
+    if (this.can(team.org_id, userId, "teams.manage")) return true;
     return !!team.branch_id && this.branchRole(team.branch_id, userId) === "MANAGER";
   }
 
@@ -231,7 +306,11 @@ export class Authz {
   canPost(conv: ConversationRow, userId: string): boolean {
     if (conv.archived_at || this.conversationScopeArchived(conv)) return false;
     if (!this.isMember(conv.id, userId)) return false;
-    if (conv.type === "CHANNEL" && conv.kind === "ANNOUNCEMENT") return this.canManageConversation(conv, userId);
+    if (conv.type !== "CHANNEL" || !conv.org_id) return true;
+    // A workspace role may restrict posting (a read-only member); announcements need a manager or `messages.announce`.
+    const perms = this.permissions(conv.org_id, userId);
+    if (!perms.has("messages.post")) return false;
+    if (conv.kind === "ANNOUNCEMENT") return perms.has("messages.announce") || this.canManageConversation(conv, userId);
     return true;
   }
 
@@ -291,7 +370,7 @@ export class Authz {
     const actorRole = this.orgRole(orgId, userId);
     if (!actorRole || actorRole === "GUEST") return false;
     if (role === "ADMIN") return actorRole === "OWNER";
-    if (actorRole === "OWNER" || actorRole === "ADMIN") return true;
+    if (this.can(orgId, userId, "members.invite")) return true;
     const branch = branchId ? this.branch(branchId) : undefined;
     const team = teamId ? this.team(teamId) : undefined;
     return (!!branch && this.canManageBranch(branch, userId)) || (!!team && this.canManageTeam(team, userId));

@@ -35,7 +35,7 @@ interface Row {
 /** Stored documents were validated on the way in; a row that no longer parses reads as empty rather than failing. */
 function fromRow(r: Row): StoredPrefs {
   const parsed = zNavPrefs.safeParse(JSON.parse(r.doc));
-  const prefs = parsed.success ? parsed.data : { starred: [], sections: [], collapsed: [], notify: {} };
+  const prefs = parsed.success ? parsed.data : { starred: [], sections: [], collapsed: [], notify: {}, saved: [] };
   return { userId: r.user_id, workspaceId: r.workspace_id, prefs, rev: r.rev, updatedAt: r.updated_at };
 }
 

@@ -7,7 +7,12 @@ export type MailConfig =
   | { transport: "none" }
   /** Development: each message is written to a file in [dir] (mode 0600) instead of being sent. */
   | { transport: "file"; dir: string; from: string }
-  | { transport: "ses"; from: string; region: string; credentials: { accessKeyId: string; secretAccessKey: string } | null };
+  | { transport: "ses"; from: string; region: string; credentials: { accessKeyId: string; secretAccessKey: string } | null }
+  /**
+   * Any SMTP provider (Hostinger Mail for development and early testing, 2026-10-19). [secure]: TLS from the first byte
+   * (port 465); otherwise STARTTLS is required, never plain text.
+   */
+  | { transport: "smtp"; from: string; host: string; port: number; secure: boolean; auth: { user: string; pass: string } | null };
 
 export interface AccountsConfig {
   appEnv: AppEnv;
@@ -54,13 +59,44 @@ function appEnv(v: string | undefined): AppEnv {
   throw new Error("APP_ENV must be development, staging or production");
 }
 
+/**
+ * The sender: MAIL_FROM ("Meldiq <no-reply@example.com>"), or MAIL_FROM_NAME and MAIL_FROM_ADDRESS. The name may not carry
+ * characters that would break the header.
+ */
+function mailFrom(env: NodeJS.ProcessEnv): string {
+  const from = (env.MAIL_FROM ?? "").trim();
+  if (from) return from;
+  const address = (env.MAIL_FROM_ADDRESS ?? "").trim();
+  if (!address) return "";
+  if (!/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(address)) throw new Error("MAIL_FROM_ADDRESS must be an email address");
+  const name = (env.MAIL_FROM_NAME ?? "").trim();
+  if (/[\r\n<>"]/.test(name)) throw new Error("MAIL_FROM_NAME may not contain line breaks, quotes or angle brackets");
+  return name ? `${name} <${address}>` : address;
+}
+
+function smtpConfig(env: NodeJS.ProcessEnv, from: string): MailConfig {
+  if (!from) throw new Error("MAIL_TRANSPORT=smtp needs MAIL_FROM (or MAIL_FROM_ADDRESS), the mailbox the SMTP account may send as");
+  const host = (env.SMTP_HOST ?? "").trim();
+  if (!host || /[\s/]/.test(host)) throw new Error("MAIL_TRANSPORT=smtp needs SMTP_HOST (a host name, as the provider gives it)");
+  const port = Number((env.SMTP_PORT ?? "465").trim());
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("SMTP_PORT must be a port number");
+  const secureRaw = (env.SMTP_SECURE ?? "").trim().toLowerCase();
+  if (secureRaw && !["true", "false"].includes(secureRaw)) throw new Error("SMTP_SECURE must be true or false");
+  // Port 465 is TLS from the start; anything else upgrades with STARTTLS (required, see mailer.ts).
+  const secure = secureRaw ? secureRaw === "true" : port === 465;
+  const user = env.SMTP_USER?.trim();
+  const pass = env.SMTP_PASS;
+  if (!!user !== !!pass) throw new Error("Set both SMTP_USER and SMTP_PASS, or neither");
+  return { transport: "smtp", from, host, port, secure, auth: user && pass ? { user, pass } : null };
+}
+
 function mailConfig(env: NodeJS.ProcessEnv, dataDir: string, deployment: AppEnv): MailConfig {
   const transport = (env.MAIL_TRANSPORT ?? "none").trim();
-  const from = (env.MAIL_FROM ?? "").trim();
+  const from = mailFrom(env);
   if (transport === "none") return { transport: "none" };
   if (transport === "file") {
     if (deployment === "production") throw new Error("MAIL_TRANSPORT=file writes codes to disk: not allowed with APP_ENV=production");
-    return { transport: "file", dir: env.MAIL_FILE_DIR ?? path.join(dataDir, "mail"), from: from || "Orbit <no-reply@localhost>" };
+    return { transport: "file", dir: env.MAIL_FILE_DIR ?? path.join(dataDir, "mail"), from: from || "Meldiq <no-reply@localhost>" };
   }
   if (transport === "ses") {
     if (!from) throw new Error("MAIL_TRANSPORT=ses needs MAIL_FROM, an address verified in Amazon SES");
@@ -74,7 +110,8 @@ function mailConfig(env: NodeJS.ProcessEnv, dataDir: string, deployment: AppEnv)
       credentials: id && secret ? { accessKeyId: id, secretAccessKey: secret } : null,
     };
   }
-  throw new Error("MAIL_TRANSPORT must be none, file or ses");
+  if (transport === "smtp") return smtpConfig(env, from);
+  throw new Error("MAIL_TRANSPORT must be none, file, ses or smtp");
 }
 
 export function accountsConfig(env: NodeJS.ProcessEnv, dataDir: string, int: (name: string, def: number) => number): AccountsConfig {

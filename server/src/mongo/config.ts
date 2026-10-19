@@ -3,7 +3,7 @@
  * SQLite exactly as before. MONGODB_DOMAINS lists the data that is authoritative in MongoDB instead; each domain moves
  * as a whole, with its own migration (src/mongo/migrate.ts), so no table ever has two writable copies.
  */
-export const MONGO_DOMAINS = ["accounts", "preferences"] as const;
+export const MONGO_DOMAINS = ["accounts", "preferences", "integrations"] as const;
 export type MongoDomain = (typeof MONGO_DOMAINS)[number];
 
 export interface MongoConfig {
@@ -16,7 +16,7 @@ export interface MongoConfig {
   timeoutMs: number;
 }
 
-const DEFAULT_DB = "orbit";
+const DEFAULT_DB = "meldiq";
 const DEFAULT_POOL = 20;
 const DEFAULT_TIMEOUT_MS = 5000;
 

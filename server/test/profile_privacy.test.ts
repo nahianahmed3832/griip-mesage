@@ -17,7 +17,7 @@ beforeAll(async () => {
   eve = await h.client("eve");
   await alice.req("POST", "/v1/conversations/dm", { userId: bob.userId });
   await alice.req("PATCH", "/v1/users/me", {
-    firstName: "Alice", lastName: "Ahmed", statusText: "Working on Orbit", birthday: "1994-03-21", phone: "+880 1712-345678",
+    firstName: "Alice", lastName: "Ahmed", statusText: "Working on Meldiq", birthday: "1994-03-21", phone: "+880 1712-345678",
   });
 });
 afterAll(async () => h.close());
@@ -32,7 +32,7 @@ describe("profile", () => {
   it("birthday and phone are private by default; names and bio are public", async () => {
     for (const viewer of [bob, eve]) {
       const u = (await viewer.req("GET", `/v1/users/${alice.userId}`)).user;
-      expect(u).toMatchObject({ username: alice.username, displayName: "Alice A", firstName: "Alice", statusText: "Working on Orbit" });
+      expect(u).toMatchObject({ username: alice.username, displayName: "Alice A", firstName: "Alice", statusText: "Working on Meldiq" });
       expect(u.birthday).toBeUndefined();
       expect(u.phone).toBeUndefined();
       expect(u.privacy).toBeUndefined(); // only the owner sees their settings
@@ -44,7 +44,7 @@ describe("profile", () => {
     const toBob = (await bob.req("GET", `/v1/users/${alice.userId}`)).user;
     const toEve = (await eve.req("GET", `/v1/users/${alice.userId}`)).user;
     expect(toBob.birthday).toBe("1994-03-21");
-    expect(toBob.statusText).toBe("Working on Orbit");
+    expect(toBob.statusText).toBe("Working on Meldiq");
     expect(toEve.birthday).toBeUndefined();
     expect(toEve.statusText).toBeNull();
     // Lists and search show only what's public to everyone.
@@ -71,7 +71,7 @@ describe("profile", () => {
     expect((await alice.req("PATCH", "/v1/users/me", { birthday: "--02-29" })).user.birthday).toBe("--02-29"); // no year
     const cleared = (await alice.req("PATCH", "/v1/users/me", { lastName: null })).user;
     expect(cleared.lastName).toBeUndefined();
-    expect(cleared).toMatchObject({ firstName: "Alice", phone: "+8801712345678", statusText: "Working on Orbit" }); // untouched fields stay
+    expect(cleared).toMatchObject({ firstName: "Alice", phone: "+8801712345678", statusText: "Working on Meldiq" }); // untouched fields stay
   });
 
   it("usernames change once an hour and stay unique", async () => {

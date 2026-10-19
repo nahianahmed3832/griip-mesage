@@ -53,7 +53,7 @@ export function usernameCandidate(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "")
     .slice(0, 16);
-  const stem = base.length >= 2 ? base : "orbit";
+  const stem = base.length >= 2 ? base : "meldiq";
   return `${stem}${crypto.randomInt(1000, 10000)}`;
 }
 
@@ -68,7 +68,7 @@ function freeUsername(ctx: AppContext, wanted: string | undefined, name: string)
     const c = usernameCandidate(name);
     if (zUsername.safeParse(c).success && !ctx.db.prepare("SELECT 1 FROM users WHERE username = ?").get(c)) return c;
   }
-  return `orbit${crypto.randomBytes(5).toString("hex")}`;
+  return `meldiq${crypto.randomBytes(5).toString("hex")}`;
 }
 
 function insertDevice(ctx: AppContext, userId: string, d: DeviceKeys, t: number): string {

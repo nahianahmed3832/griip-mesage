@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Griip Message API — multi-stage build, runs as non-root.
+# Meldiq API (formerly Orbit and Griip Message) — multi-stage build, runs as non-root.
 FROM node:22.22.3-alpine3.24 AS build
 WORKDIR /app
 RUN apk add --no-cache python3 make g++

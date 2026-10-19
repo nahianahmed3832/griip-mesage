@@ -131,6 +131,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const role = authz.requireOrgMember(orgId, userId);
     const org = db.prepare("SELECT * FROM orgs WHERE id = ?").get(orgId);
     const isAdmin = role === "OWNER" || role === "ADMIN";
+    const perms = authz.permissions(orgId, userId);
     const branches = (db.prepare("SELECT * FROM branches WHERE org_id = ? AND archived_at IS NULL ORDER BY name").all(orgId) as BranchRow[]).map(
       (b) => ({
         id: b.id,
@@ -173,23 +174,36 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       teams,
       stats: { members: orgSummary(ctx, org, userId).memberCount, teams: teams.length, channels: channelCount, branches: branches.length },
       permissions: {
-        canManageOrg: isAdmin,
-        canInvite: isAdmin || branches.some((b) => b.canManage) || teams.some((t) => t.canManage),
-        canCreateChannels: isAdmin || branches.some((b) => b.canManage) || teams.some((t) => t.canManage),
-        canViewDirectory: role !== "GUEST",
+        canManageOrg: perms.has("workspace.edit"),
+        canInvite: perms.has("members.invite") || branches.some((b) => b.canManage) || teams.some((t) => t.canManage),
+        canCreateChannels: perms.has("channels.create") || branches.some((b) => b.canManage) || teams.some((t) => t.canManage),
+        canViewDirectory: perms.has("members.view"),
         isOwner: role === "OWNER",
         // Everyone may leave except the last owner, who must make someone else an owner first.
         canLeave: role !== "OWNER" || ownerCount(orgId) > 1,
         // Owners and admins see archived branches and teams (GET /v1/orgs/:id/archived); branch managers see their teams.
-        canRestore: isAdmin || branches.some((b) => b.canManage),
+        canRestore: perms.has("teams.manage") || branches.some((b) => b.canManage),
+        // Custom roles and apps (2026-10-19, docs/WORKSPACE_ROLES.md, docs/INTEGRATIONS.md). Additive: older apps ignore them.
+        canViewRoles: perms.has("roles.view"),
+        canManageRoles: perms.has("roles.manage"),
+        canAssignRoles: perms.has("roles.assign"),
+        canViewAudit: perms.has("audit.view"),
+        canViewUsage: perms.has("workspace.usage.view"),
+        canViewApps: perms.has("integrations.view"),
+        canManageApps: perms.has("integrations.install") || perms.has("integrations.configure"),
+        canManagePolicies: perms.has("policies.manage"),
+        canTransferOwnership: perms.has("workspace.transfer"),
+        effective: [...perms].sort(),
       },
+      // The custom roles the caller holds here (name and colour, for their own profile).
+      myRoles: authz.assignedRoles(orgId, userId).map((r) => ({ id: r.id, name: r.name, color: r.color })),
     };
   });
 
   app.patch("/v1/orgs/:orgId", auth, async (req) => {
     const { userId } = me(req);
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
-    authz.requireOrgAdmin(orgId, userId);
+    authz.requirePermission(orgId, userId, "workspace.edit", "Only people who can edit the workspace can do that");
     const body = parse(z.object({ name: zName.optional(), description: zOptText }), req.body);
     const o = db.prepare("SELECT * FROM orgs WHERE id = ?").get(orgId) as any;
     db.prepare("UPDATE orgs SET name = ?, description = ?, updated_at = ? WHERE id = ?").run(
@@ -209,7 +223,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   app.put("/v1/orgs/:orgId/photo", auth, async (req) => {
     const { userId } = me(req);
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
-    authz.requireOrgAdmin(orgId, userId);
+    authz.requirePermission(orgId, userId, "workspace.edit", "Only people who can edit the workspace can change its photo");
     const buf = await readJpegBody(req, "Workspace photos");
     const previous = (db.prepare("SELECT photo_rev FROM orgs WHERE id = ?").get(orgId) as { photo_rev: number | null } | undefined)?.photo_rev ?? null;
     const rev = Math.max(now(), (previous ?? 0) + 1);
@@ -228,7 +242,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   app.delete("/v1/orgs/:orgId/photo", auth, async (req) => {
     const { userId } = me(req);
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
-    authz.requireOrgAdmin(orgId, userId);
+    authz.requirePermission(orgId, userId, "workspace.edit", "Only people who can edit the workspace can change its photo");
     const previous = (db.prepare("SELECT photo_rev FROM orgs WHERE id = ?").get(orgId) as { photo_rev: number | null }).photo_rev;
     db.prepare("UPDATE orgs SET photo_rev = NULL, updated_at = ? WHERE id = ?").run(now(), orgId);
     if (previous) {
@@ -314,6 +328,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       .immediate();
     if (!result) return replay();
     await ctx.prefs.deleteForWorkspace(orgId);
+    // Its apps: every connection revoked at the provider (best effort) and every record removed.
+    await ctx.integrations.forgetWorkspace(orgId);
 
     ctx.audit({
       actorId: actor,
@@ -336,7 +352,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   app.post("/v1/orgs/:orgId/branches", auth, async (req) => {
     const { userId } = me(req);
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
-    authz.requireOrgAdmin(orgId, userId);
+    authz.requirePermission(orgId, userId, "teams.create", "Only organization owners and admins can create branches");
     const body = parse(z.object({ name: zName, description: zOptText, location: zOptText }), req.body);
     const id = newId("b");
     const t = now();
@@ -360,7 +376,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const b = loadBranch(id, userId);
     if (!authz.canManageBranch(b, userId)) throw forbidden();
     const body = parse(z.object({ name: zName.optional(), description: zOptText, location: zOptText, archived: z.boolean().optional() }), req.body);
-    if (body.archived !== undefined && !authz.isOrgAdmin(b.org_id, userId)) throw forbidden("Only org admins can archive branches");
+    if (body.archived !== undefined && !authz.can(b.org_id, userId, "teams.manage")) throw forbidden("Only org admins can archive branches");
     db.prepare("UPDATE branches SET name = ?, description = ?, location = ?, archived_at = ?, updated_at = ? WHERE id = ?").run(
       body.name ?? b.name,
       body.description === undefined ? b.description : body.description,
@@ -460,8 +476,10 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     if (branchId) {
       const b = authz.branch(branchId);
       if (!b || b.org_id !== orgId) throw badRequest("Unknown branch");
-      if (!authz.canManageBranch(b, userId)) throw forbidden("Only org admins or this branch's managers can create teams here");
-    } else if (!authz.isOrgAdmin(orgId, userId)) {
+      if (!authz.canManageBranch(b, userId) && !authz.can(orgId, userId, "teams.create")) {
+        throw forbidden("Only org admins or this branch's managers can create teams here");
+      }
+    } else if (!authz.can(orgId, userId, "teams.create")) {
       throw forbidden("Only org admins can create cross-branch teams");
     }
     const id = newId("t");
@@ -545,8 +563,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const { userId } = me(req);
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
     authz.requireOrgMember(orgId, userId);
-    const isAdmin = authz.isOrgAdmin(orgId, userId);
-    const branches = isAdmin
+    const branches = authz.can(orgId, userId, "teams.manage")
       ? (db.prepare("SELECT * FROM branches WHERE org_id = ? AND archived_at IS NOT NULL ORDER BY name").all(orgId) as BranchRow[])
       : [];
     const teams = (db.prepare("SELECT * FROM teams WHERE org_id = ? AND archived_at IS NOT NULL ORDER BY name").all(orgId) as TeamRow[]).filter((t) =>
@@ -573,6 +590,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
     const role = authz.requireOrgMember(orgId, userId);
     if (role === "GUEST") throw forbidden("Guests cannot browse the organization directory");
+    if (!authz.can(orgId, userId, "members.view")) throw forbidden("Your role doesn't include the member directory");
     const { q } = parse(z.object({ q: z.string().trim().max(40).optional() }), req.query);
     const like = q ? `%${q.toLowerCase().replace(/[%_\\]/g, (c) => "\\" + c)}%` : "%";
     const rows = db
@@ -588,6 +606,13 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const teamRows = db
       .prepare("SELECT tm.user_id, tm.team_id, tm.role FROM team_members tm JOIN teams t ON t.id = tm.team_id WHERE t.org_id = ?")
       .all(orgId) as any[];
+    // Custom roles (docs/WORKSPACE_ROLES.md): names and colours only; what each grants is on GET /v1/orgs/:id/roles.
+    const roleRows = db
+      .prepare(
+        `SELECT m.user_id, r.id, r.name, r.color FROM org_role_members m JOIN org_roles r ON r.id = m.role_id
+         WHERE m.org_id = ? AND r.archived_at IS NULL ORDER BY r.position, r.name`,
+      )
+      .all(orgId) as { user_id: string; id: string; name: string; color: string | null }[];
     return {
       members: rows.map((u) =>
         memberView(ctx, userId, u, {
@@ -596,6 +621,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
           title: u.title,
           branches: branchRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.branch_id, role: r.role })),
           teams: teamRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.team_id, role: r.role })),
+          customRoles: roleRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.id, name: r.name, color: r.color })),
         }),
       ),
     };
@@ -605,17 +631,21 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const actor = me(req).userId;
     const p = parse(z.object({ orgId: z.string().max(64), userId: z.string().max(64) }), req.params);
     const body = parse(z.object({ role: z.enum(["OWNER", "ADMIN", "MEMBER", "GUEST"]).optional(), title: zOptText }), req.body);
-    const actorRole = authz.requireOrgMember(p.orgId, actor);
+    authz.requireOrgMember(p.orgId, actor);
+    const actorNow = authz.actor(p.orgId, actor)!;
     const targetRole = authz.orgRole(p.orgId, p.userId);
     if (!targetRole) throw notFound("Member not found");
     const self = actor === p.userId;
-    // Rules in roles.ts (docs/WORKSPACE_ADMINISTRATION.md): owners manage everything but keep one owner; admins manage
-    // members and guests and may step down themselves; nobody else changes roles.
+    const targetPerms = authz.permissions(p.orgId, p.userId);
+    // Rules in roles.ts (docs/WORKSPACE_ADMINISTRATION.md, WORKSPACE_ROLES.md): owners manage everything but keep one
+    // owner; admins (and `members.roles`) switch members and guests, admins may step down; nobody else changes roles.
     if (body.role && body.role !== targetRole) {
-      const refusal = orgRoleChangeRefusal(actorRole, targetRole, body.role, self, ownerCount(p.orgId));
+      // The actor must reach the person both as they are and as they'd be (a guest's held roles count again once promoted).
+      const reach = new Set([...targetPerms, ...authz.permissionsAs(p.orgId, p.userId, body.role)]);
+      const refusal = orgRoleChangeRefusal(actorNow, targetRole, body.role, self, ownerCount(p.orgId), reach);
       if (refusal) throw refusal.status === 409 ? conflict(refusal.message) : forbidden(refusal.message);
     }
-    if (body.title !== undefined && !titleChangeAllowed(actorRole, targetRole, self)) {
+    if (body.title !== undefined && !titleChangeAllowed(actorNow, targetRole, self, targetPerms)) {
       throw forbidden("You can't change this person's title");
     }
     const removedFrom: string[] = [];
@@ -645,8 +675,14 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const targetRole = authz.orgRole(p.orgId, p.userId);
     if (!targetRole) throw notFound("Member not found");
     const self = actor === p.userId;
-    if (!self && !removalAllowed(actorRole, targetRole)) {
-      throw forbidden(actorRole === "ADMIN" ? "Admins cannot remove owners or admins" : "Only owners and admins can remove people");
+    if (!self && !removalAllowed(authz.actor(p.orgId, actor)!, targetRole, authz.permissions(p.orgId, p.userId))) {
+      throw forbidden(
+        actorRole === "ADMIN"
+          ? "Admins cannot remove owners or admins"
+          : authz.can(p.orgId, actor, "members.remove")
+            ? "You can't remove someone who holds powers you don't have"
+            : "Only owners and admins can remove people",
+      );
     }
     if (targetRole === "OWNER" && ownerCount(p.orgId) <= 1) throw conflict("Transfer ownership before the last owner leaves");
     const affected: string[] = [];
@@ -658,6 +694,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     })();
     // Their arrangement of this workspace (starred, sections) goes with them.
     await ctx.prefs.deleteForMember(p.userId, p.orgId);
+    // And their personal app connections in this workspace (revoked, deleted).
+    await ctx.integrations.forgetMember(p.orgId, p.userId);
     ctx.audit({ actorId: actor, orgId: p.orgId, action: self ? "member.leave" : "member.remove", target: p.userId });
     notifyOrg(ctx, p.orgId);
     for (const c of affected) notifyConversation(ctx, c, [p.userId]);
@@ -680,13 +718,13 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       if (!authz.canManageBranch(b, actor)) throw forbidden();
       // Only org admins may appoint/remove branch managers.
       const current = authz.branchRole(b.id, target);
-      if ((role === "MANAGER" || current === "MANAGER") && !authz.isOrgAdmin(orgId, actor)) throw forbidden("Only org admins can change branch managers");
+      if ((role === "MANAGER" || current === "MANAGER") && !authz.can(orgId, actor, "teams.manage")) throw forbidden("Only org admins can change branch managers");
     } else {
       const t = loadTeam(scopeId, actor);
       orgId = t.org_id;
       if (!authz.canManageTeam(t, actor)) throw forbidden();
       const current = authz.teamRole(t.id, target);
-      const isLeadOnly = !authz.isOrgAdmin(orgId, actor) && !(t.branch_id && authz.branchRole(t.branch_id, actor) === "MANAGER");
+      const isLeadOnly = !authz.can(orgId, actor, "teams.manage") && !(t.branch_id && authz.branchRole(t.branch_id, actor) === "MANAGER");
       if (isLeadOnly && (role === "LEAD" || current === "LEAD")) throw forbidden("Only managers can change team leads");
       // Cross-branch control: a branch team may only contain members of that branch.
       if (role && t.branch_id && authz.branchRole(t.branch_id, target) === null) {
@@ -817,7 +855,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const actor = me(req).userId;
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
     authz.requireOrgMember(orgId, actor);
-    const isAdmin = authz.isOrgAdmin(orgId, actor);
+    const isAdmin = authz.can(orgId, actor, "members.invites.manage");
     const rows = db
       .prepare("SELECT i.*, u.display_name AS creator_name FROM invitations i LEFT JOIN users u ON u.id = i.created_by WHERE i.org_id = ? ORDER BY i.created_at DESC LIMIT 100")
       .all(orgId) as any[];
@@ -851,7 +889,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const inv = db.prepare("SELECT * FROM invitations WHERE id = ?").get(id) as any;
     if (!inv) throw notFound("Invite not found");
     authz.requireOrgMember(inv.org_id, actor);
-    if (inv.created_by !== actor && !authz.isOrgAdmin(inv.org_id, actor)) throw forbidden();
+    if (inv.created_by !== actor && !authz.can(inv.org_id, actor, "members.invites.manage")) throw forbidden();
     db.prepare("UPDATE invitations SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL").run(now(), id);
     ctx.audit({ actorId: actor, orgId: inv.org_id, action: "invite.revoke", target: id });
     return { ok: true };
@@ -919,7 +957,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     authz.requireOrgMember(orgId, actor);
     let scopeId: string | null = null;
     if (body.scope === "ORG") {
-      if (!authz.isOrgAdmin(orgId, actor)) throw forbidden("Only org admins can create organization-wide channels");
+      if (!authz.can(orgId, actor, "channels.create")) throw forbidden("Only org admins can create organization-wide channels");
     } else if (body.scope === "BRANCH") {
       const b = body.scopeId ? authz.branch(body.scopeId) : undefined;
       if (!b || b.org_id !== orgId) throw badRequest("Unknown branch");
@@ -1022,7 +1060,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
     const role = authz.requireOrgMember(orgId, actor);
     if (role === "GUEST") throw forbidden();
-    const isAdmin = role === "OWNER" || role === "ADMIN";
+    const isAdmin = authz.can(orgId, actor, "audit.view");
     const rows = db.prepare("SELECT * FROM audit_log WHERE org_id = ? ORDER BY id DESC LIMIT 500").all(orgId) as any[];
     const names = new Map<string, string>();
     const nameOf = (id: string | null) => {

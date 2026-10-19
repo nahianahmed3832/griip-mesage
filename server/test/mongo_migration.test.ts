@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { MongoClient } from "mongodb";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { describeTables, EXCLUDED_TABLES, indexesFor, TABLE_DOMAINS, validatorFor } from "../src/mongo/catalog.js";
-import { domainTables, OrbitMongo } from "../src/mongo/client.js";
+import { domainTables, MeldiqMongo } from "../src/mongo/client.js";
 import { mongoConfig, redactUri } from "../src/mongo/config.js";
 import { openMongo } from "../src/mongo/index.js";
 import { authorityOf, exportToSqlite, migrateToMongo, setAuthority, verify } from "../src/mongo/migrate.js";
@@ -21,11 +21,11 @@ const mailer = new MemoryMailer();
 let h: Harness;
 let alice: GriipClient, bob: GriipClient;
 let raw: MongoClient;
-const opened: OrbitMongo[] = [];
+const opened: MeldiqMongo[] = [];
 
 const cfg = (dbName: string, domains: string[] = []) => mongoConfig({ MONGODB_URI: uri, MONGODB_DB: dbName, MONGODB_DOMAINS: domains.join(",") }, "development", (_n, d) => d)!;
 async function connectAll(dbName = testDbName("mig")) {
-  const m = await OrbitMongo.connect(cfg(dbName), describeTables(h.ctx.db));
+  const m = await MeldiqMongo.connect(cfg(dbName), describeTables(h.ctx.db));
   opened.push(m);
   return m;
 }
@@ -83,7 +83,7 @@ describe("catalog", () => {
 });
 
 // Integration tests that build every collection and copy every table: slower than unit tests, above all when the whole
-// suite shares the one local replica set (ORBIT_TEST_MONGO_DOMAINS runs).
+// suite shares the one local replica set (MELDIQ_TEST_MONGO_DOMAINS runs).
 const HEAVY = { timeout: 60_000 };
 
 describe("collections", HEAVY, () => {
@@ -176,7 +176,7 @@ describe("migration", HEAVY, () => {
 describe("rollback (MongoDB back to SQLite)", HEAVY, () => {
   it("restores the domain's tables, including writes made after the cutover", async () => {
     const dbName = testDbName("rb");
-    const m = await OrbitMongo.connect(cfg(dbName), domainTables(h.ctx.db, ["preferences"]));
+    const m = await MeldiqMongo.connect(cfg(dbName), domainTables(h.ctx.db, ["preferences"]));
     opened.push(m);
     const tables = domainTables(h.ctx.db, ["preferences"]);
     await migrateToMongo(h.ctx.db, m, tables);
@@ -192,7 +192,7 @@ describe("rollback (MongoDB back to SQLite)", HEAVY, () => {
   });
 
   it("refuses a restore that would leave broken references, and changes nothing", async () => {
-    const m = await OrbitMongo.connect(cfg(testDbName("rb")), domainTables(h.ctx.db, ["preferences"]));
+    const m = await MeldiqMongo.connect(cfg(testDbName("rb")), domainTables(h.ctx.db, ["preferences"]));
     opened.push(m);
     const tables = domainTables(h.ctx.db, ["preferences"]);
     await migrateToMongo(h.ctx.db, m, tables);
@@ -210,7 +210,7 @@ describe("authority guards", () => {
   it("refuses to use MongoDB for a domain whose rows are still only in SQLite, then accepts it once migrated", async () => {
     const config = cfg(testDbName("auth"), ["preferences"]);
     await expect(openMongo(config, h.ctx.db)).rejects.toThrow(/still only in SQLite/);
-    const m = await OrbitMongo.connect(config, domainTables(h.ctx.db, ["preferences"]));
+    const m = await MeldiqMongo.connect(config, domainTables(h.ctx.db, ["preferences"]));
     opened.push(m);
     await migrateToMongo(h.ctx.db, m, domainTables(h.ctx.db, ["preferences"]));
     await setAuthority(m, "preferences", "mongodb", "test");

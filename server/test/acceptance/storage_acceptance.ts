@@ -105,7 +105,7 @@ async function login(username: string, token: string, userId: string): Promise<G
   return c;
 }
 
-/** GET as [token]: the server's redirect, then the bytes from the link (no Orbit token sent there). */
+/** GET as [token]: the server's redirect, then the bytes from the link (no Meldiq token sent there). */
 async function download(token: string, id: string, range?: string) {
   const r = await send("GET", `${baseUrl}/v1/attachments/${id}`, { authorization: `Bearer ${token}` });
   if (r.status !== 302) return { status: r.status, link: null as string | null, body: r.body };

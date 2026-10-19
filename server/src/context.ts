@@ -6,8 +6,10 @@ import type { Config } from "./config.js";
 import type { DB } from "./db.js";
 import type { Hub } from "./hub.js";
 import type { Federation } from "./federation/service.js";
+import type { Entitlements } from "./entitlements.js";
+import type { Integrations } from "./integrations/index.js";
 import type { LiveKitService } from "./livekit.js";
-import type { OrbitMongo } from "./mongo/client.js";
+import type { MeldiqMongo } from "./mongo/client.js";
 import type { PreferenceStore } from "./preferences/store.js";
 import type { PushService } from "./push/service.js";
 import type { BlobStore } from "./storage/index.js";
@@ -30,7 +32,11 @@ export interface AppContext {
   /** Personal navigation preferences (src/preferences): SQLite, or MongoDB when MONGODB_DOMAINS includes "preferences". */
   prefs: PreferenceStore;
   /** Present when MONGODB_URI is set: the domains in MONGODB_DOMAINS live there (docs/MONGODB.md). */
-  mongo?: OrbitMongo;
+  mongo?: MeldiqMongo;
+  /** Plan-based limits (src/entitlements.ts, docs/PLANS.md): none by default. */
+  entitlements: Entitlements;
+  /** Apps, connected accounts and their events (src/integrations, docs/INTEGRATIONS.md). */
+  integrations: Integrations;
   log: FastifyBaseLogger;
   audit: (e: { actorId?: string | null; orgId?: string | null; action: string; target?: string | null; detail?: string | null }) => void;
 }

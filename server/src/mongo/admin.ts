@@ -4,7 +4,7 @@ import { backupDatabase } from "../backup.js";
 import type { Config } from "../config.js";
 import { type DB, openDatabase } from "../db.js";
 import { describeTables, EXCLUDED_TABLES, type TableSpec } from "./catalog.js";
-import { domainTables, OrbitMongo } from "./client.js";
+import { domainTables, MeldiqMongo } from "./client.js";
 import { MONGO_DOMAINS, type MongoDomain, redactUri } from "./config.js";
 import { authorityOf, exportToSqlite, migrateToMongo, setAuthority, type TableReport, verify } from "./migrate.js";
 
@@ -18,7 +18,7 @@ import { authorityOf, exportToSqlite, migrateToMongo, setAuthority, type TableRe
  *   mongo-rollback <domain> --yes      back up SQLite, copy the domain back from MongoDB, verify, make SQLite its home
  *   mongo-dryrun [--snapshot <file>] [--keep]
  *                                      copy every table of a snapshot (or this database) into a throwaway database
- *                                      orbit_dryrun_<time>, twice, and verify both runs; dropped unless --keep
+ *                                      meldiq_dryrun_<time>, twice, and verify both runs; dropped unless --keep
  */
 export const MONGO_COMMANDS = ["mongo-status", "mongo-migrate", "mongo-verify", "mongo-rollback", "mongo-dryrun"];
 
@@ -58,9 +58,9 @@ async function backupFirst(cfg: Config, db: DB, label: string): Promise<string> 
   return file;
 }
 
-async function connect(cfg: Config, tables: TableSpec[], dbName?: string): Promise<OrbitMongo> {
+async function connect(cfg: Config, tables: TableSpec[], dbName?: string): Promise<MeldiqMongo> {
   if (!cfg.mongo) throw new Error("MONGODB_URI is not set");
-  return OrbitMongo.connect(dbName ? { ...cfg.mongo, dbName } : cfg.mongo, tables);
+  return MeldiqMongo.connect(dbName ? { ...cfg.mongo, dbName } : cfg.mongo, tables);
 }
 
 export async function runMongoCommand(cmd: string, rest: string[], cfg: Config, db: DB): Promise<number> {
@@ -160,7 +160,7 @@ export async function runMongoCommand(cmd: string, rest: string[], cfg: Config, 
       const i = rest.indexOf("--snapshot");
       const source = i >= 0 ? openDatabase(rest[i + 1]) : db;
       const tables = describeTables(source);
-      const dbName = `orbit_dryrun_${Date.now().toString(36)}`;
+      const dbName = `meldiq_dryrun_${Date.now().toString(36)}`;
       console.log(`Dry run into ${dbName}; not copied (by design): ${Object.keys(EXCLUDED_TABLES).join(", ")}`);
       const mongo = await connect(cfg, tables, dbName);
       try {

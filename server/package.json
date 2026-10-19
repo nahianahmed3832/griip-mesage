@@ -1,8 +1,8 @@
 {
-  "name": "griip-message-server",
-  "version": "0.5.0",
+  "name": "meldiq-server",
+  "version": "0.6.0",
   "private": true,
-  "description": "Griip Message relay/API server (internal beta)",
+  "description": "Meldiq relay/API server (internal beta)",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -26,6 +26,7 @@
     "fastify": "5.12.7",
     "livekit-server-sdk": "2.19.1",
     "mongodb": "7.7.0",
+    "nodemailer": "10.0.14",
     "zod": "3.25.76"
   },
   "devDependencies": {

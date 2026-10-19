@@ -34,6 +34,8 @@ export interface CleanupResult {
   disabledDisconnected: number;
   callRecordsPruned: number;
   auditPruned: number;
+  /** Expired sign-in flows, webhook delivery ids, channel notifications from apps and old finished jobs. */
+  integrations: number;
 }
 
 /**
@@ -82,6 +84,7 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     disabledDisconnected,
     callRecordsPruned: 0,
     auditPruned: 0,
+    integrations: 0,
   };
   // Operational history (RETENTION.md, D16): ended calls and old audit rows don't accumulate forever.
   const callCutoff = t - ctx.config.callRecordRetentionDays * 86_400_000;
@@ -96,6 +99,7 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     r.callRecordsPruned = oldCalls.length;
   }
   r.auditPruned = db.prepare("DELETE FROM audit_log WHERE at <= ?").run(t - ctx.config.auditRetentionDays * 86_400_000).changes;
+  r.integrations = await ctx.integrations.purge(t);
   r.blobsDeleted = await processBlobDeletes(ctx);
   r.uploadsCleaned = await processAbandonedUploads(ctx);
   // Call membership: anyone no longer admitted (removed from the conversation, revoked device,

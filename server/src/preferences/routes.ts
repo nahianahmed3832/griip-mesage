@@ -13,7 +13,7 @@ function view(workspaceId: string, s: StoredPrefs | null) {
 
 /**
  * Personal navigation preferences (docs/WORKSPACE_ADMINISTRATION.md › Personal sections): starred conversations, custom
- * sections, collapsed groups and notification levels, kept on the server so every device of the person shows the same
+ * sections, collapsed groups, notification levels and saved messages, kept on the server so every device of the person shows the same
  * Home. Only the person themselves can read or write theirs.
  */
 export default async function preferenceRoutes(app: FastifyInstance, ctx: AppContext) {
@@ -43,7 +43,10 @@ export default async function preferenceRoutes(app: FastifyInstance, ctx: AppCon
         (r) => r.conversation_id,
       ),
     );
-    const prefs = normalizePrefs(body.prefs, (id) => mine.has(id));
+    // A client that doesn't know saved messages leaves the field out: keep the stored list. If the document changed
+    // since that copy was read, the revision check below refuses the write, so nothing stale is kept.
+    const saved = body.prefs.saved ?? (await ctx.prefs.get(userId, workspaceId))?.prefs.saved ?? [];
+    const prefs = normalizePrefs({ ...body.prefs, saved }, (id) => mine.has(id));
     const result = await ctx.prefs.put(userId, workspaceId, prefs, body.baseRev, now());
     if (!result.ok) {
       throw new ApiError(409, "stale_preferences", "These preferences changed on another device. Apply your change to this copy and try again.", {

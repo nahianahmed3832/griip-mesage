@@ -1,7 +1,7 @@
 import type { Collection } from "mongodb";
 import { type NavPrefs, type StoredPrefs, zNavPrefs } from "../preferences/schema.js";
 import type { PreferenceStore, PrefsWrite } from "../preferences/store.js";
-import { isDuplicateKey, type OrbitMongo } from "./client.js";
+import { isDuplicateKey, type MeldiqMongo } from "./client.js";
 
 /** The nav_preferences collection: the SQLite row's fields, with the document embedded instead of JSON text. */
 interface PrefsDoc {
@@ -15,7 +15,7 @@ interface PrefsDoc {
 
 function fromDoc(d: PrefsDoc): StoredPrefs {
   const parsed = zNavPrefs.safeParse(d.doc);
-  const prefs = parsed.success ? parsed.data : { starred: [], sections: [], collapsed: [], notify: {} };
+  const prefs = parsed.success ? parsed.data : { starred: [], sections: [], collapsed: [], notify: {}, saved: [] };
   return { userId: d.user_id, workspaceId: d.workspace_id, prefs, rev: d.rev, updatedAt: d.updated_at };
 }
 
@@ -28,7 +28,7 @@ export class MongoPreferenceStore implements PreferenceStore {
   readonly backend = "mongodb" as const;
   private readonly col: Collection<PrefsDoc>;
 
-  constructor(mongo: OrbitMongo) {
+  constructor(mongo: MeldiqMongo) {
     this.col = mongo.db.collection<PrefsDoc>("nav_preferences");
   }
 

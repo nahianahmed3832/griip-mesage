@@ -5,7 +5,7 @@ import { describeTables, indexesFor, type TableSpec, validatorFor } from "./cata
 import { type MongoConfig, type MongoDomain, redactUri } from "./config.js";
 
 /** Bumped whenever the collections' validators or indexes change; recorded in orbit_meta. */
-export const MONGO_SCHEMA_VERSION = 1;
+export const MONGO_SCHEMA_VERSION = 2;
 export const META_COLLECTION = "orbit_meta";
 
 export interface Logger {
@@ -20,7 +20,7 @@ export interface Logger {
  * multi-step writes through [transaction], which carries the session implicitly ([session]), so store methods don't
  * need a session parameter.
  */
-export class OrbitMongo {
+export class MeldiqMongo {
   private readonly txContext = new AsyncLocalStorage<ClientSession>();
 
   private constructor(
@@ -31,9 +31,9 @@ export class OrbitMongo {
   ) {}
 
   /** Connects, checks the deployment and prepares the collections of [tables] (validators and indexes). */
-  static async connect(config: MongoConfig, tables: TableSpec[], log?: Logger): Promise<OrbitMongo> {
+  static async connect(config: MongoConfig, tables: TableSpec[], log?: Logger): Promise<MeldiqMongo> {
     const client = new MongoClient(config.uri, {
-      appName: "orbit-api",
+      appName: "meldiq-api",
       maxPoolSize: config.maxPoolSize,
       minPoolSize: 0,
       serverSelectionTimeoutMS: config.timeoutMs,
@@ -50,7 +50,7 @@ export class OrbitMongo {
       const db = client.db(config.dbName);
       const hello = (await db.admin().command({ hello: 1 })) as { setName?: string; msg?: string };
       const supportsTransactions = !!hello.setName || hello.msg === "isdbgrid";
-      const mongo = new OrbitMongo(client, db, config, supportsTransactions);
+      const mongo = new MeldiqMongo(client, db, config, supportsTransactions);
       await mongo.ensureSchema(tables);
       log?.info({ db: config.dbName, domains: [...config.domains], transactions: supportsTransactions }, "MongoDB connected");
       return mongo;

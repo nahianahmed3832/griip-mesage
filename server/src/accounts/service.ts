@@ -373,7 +373,7 @@ export class AccountService {
       if (user?.disabled_at) throw sessionEnded("account_disabled");
     }
     const deviceId = body.device ? this.provenDevice(a, body.device) : null;
-    const issued = await this.sessions.issue(a.id, body.deviceName ?? "Orbit app", deviceId, now());
+    const issued = await this.sessions.issue(a.id, body.deviceName ?? "Meldiq app", deviceId, now());
     this.ctx.audit({ actorId: a.user_id, action: "account.login", target: issued.session.id, detail: deviceId ? "device" : null });
     return this.respond(issued, (await this.store.accountById(a.id))!);
   }

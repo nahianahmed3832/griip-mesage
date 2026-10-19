@@ -14,7 +14,7 @@ import { type AppContext, authenticateRequest } from "./context.js";
 import { type DB, openDatabase } from "./db.js";
 import { Hub } from "./hub.js";
 import { LiveKitService } from "./livekit.js";
-import type { OrbitMongo } from "./mongo/client.js";
+import type { MeldiqMongo } from "./mongo/client.js";
 import { openMongo } from "./mongo/index.js";
 import { MongoPreferenceStore } from "./mongo/preferences.js";
 import { type PushDeps, PushService } from "./push/service.js";
@@ -26,6 +26,11 @@ import conversationRoutes from "./routes/conversations.js";
 import historyRoutes from "./routes/history.js";
 import messageRoutes from "./routes/messages.js";
 import orgRoutes from "./routes/orgs.js";
+import roleRoutes from "./routes/roles.js";
+import type { FetchLike } from "./integrations/http.js";
+import { Integrations } from "./integrations/index.js";
+import { Entitlements } from "./entitlements.js";
+import integrationRoutes from "./integrations/routes.js";
 import preferenceRoutes from "./preferences/routes.js";
 import { SqlitePreferenceStore } from "./preferences/store.js";
 import pushRoutes from "./routes/push.js";
@@ -33,7 +38,7 @@ import userRoutes from "./routes/users.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
-export const VERSION = "0.5.0";
+export const VERSION = "0.6.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
@@ -50,7 +55,15 @@ export interface BuiltApp {
 
 export async function buildApp(
   config: Config,
-  opts: { db?: DB; logger?: boolean; push?: PushDeps; mailer?: Mailer; mongo?: OrbitMongo } = {},
+  opts: {
+    db?: DB;
+    logger?: boolean;
+    push?: PushDeps;
+    mailer?: Mailer;
+    mongo?: MeldiqMongo;
+    /** Replaces the network for provider calls (tests: test/support/fakeProviders.ts). */
+    integrationsFetch?: FetchLike;
+  } = {},
 ): Promise<BuiltApp> {
   const app = Fastify({
     logger:
@@ -61,6 +74,16 @@ export async function buildApp(
             // Never log credentials. Request bodies are not logged at all (default), so
             // message ciphertext and keys never reach the logs either.
             redact: { paths: ["req.headers.authorization", "req.headers.cookie"], remove: true },
+            // App sign-in pages carry one-time codes in the query (OAuth code and state, begin tokens): logged without it.
+            serializers: {
+              req: (r: { method: string; url: string; hostname?: string; ip?: string; socket?: { remotePort?: number } }) => ({
+                method: r.method,
+                url: r.url.startsWith("/v1/integrations/") ? r.url.split("?")[0] : r.url,
+                hostname: r.hostname,
+                remoteAddress: r.ip,
+                remotePort: r.socket?.remotePort,
+              }),
+            },
           },
     trustProxy: config.trustProxy,
     bodyLimit: 256 * 1024,
@@ -95,6 +118,20 @@ export async function buildApp(
   }
   ctx.accounts = new Accounts(ctx, { mailer: opts.mailer });
   ctx.prefs = ctx.mongo?.owns("preferences") ? new MongoPreferenceStore(ctx.mongo) : new SqlitePreferenceStore(db);
+  ctx.entitlements = new Entitlements(config.entitlements);
+  ctx.integrations = new Integrations({
+    entitlements: ctx.entitlements,
+    db,
+    authz: ctx.authz,
+    hub: ctx.hub,
+    log: app.log,
+    audit: ctx.audit,
+    config: config.integrations,
+    mongo: ctx.mongo,
+    fetch: opts.integrationsFetch,
+  });
+  ctx.integrations.start();
+  app.addHook("onClose", async () => ctx.integrations.stop());
 
   if (config.trustProxy === true) {
     app.log.warn("TRUST_PROXY=true believes X-Forwarded-For entries clients send themselves, so per-address limits can be dodged. Set the proxy's addresses instead, e.g. TRUST_PROXY=loopback,uniquelocal (docs/ABUSE_CONTROLS.md)");
@@ -161,7 +198,7 @@ export async function buildApp(
 
   // Public, non-sensitive server info for client setup screens. Additive only: clients ignore unknown fields.
   app.get("/v1/server-info", async () => ({
-    name: "Griip Message relay",
+    name: "Meldiq relay",
     infoVersion: SERVER_INFO_VERSION,
     api: API_VERSION,
     minClientApi: MIN_CLIENT_API,
@@ -196,9 +233,10 @@ export async function buildApp(
     push: config.push ? { unifiedPushHosts: config.push.unifiedPushHosts } : null,
   }));
 
-  for (const r of [authRoutes, userRoutes, orgRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, preferenceRoutes, wsRoutes]) {
+  for (const r of [authRoutes, userRoutes, orgRoutes, roleRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, preferenceRoutes, wsRoutes]) {
     await app.register(async (scope) => r(scope, ctx));
   }
+  await app.register(async (scope) => integrationRoutes(scope, ctx, ctx.integrations));
   await app.register(async (scope) => accountRoutes(scope, ctx, ctx.accounts));
   const fed = ctx.federation;
   if (fed) {
@@ -210,7 +248,26 @@ export async function buildApp(
 
 /** Feature names in /v1/server-info (2026-10-17 onwards). */
 export function serverFeatures(config: Config, directUploads = false): string[] {
-  const f = ["profiles", "profile-photos", "privacy", "phone-lookup", "chunked-attachments", "call-reconnect", "org-delete", "accounts-v2", "workspaces-v2", "files-1g", "workspace-admin", "nav-preferences", "org-photos"];
+  const f = [
+    "profiles",
+    "profile-photos",
+    "privacy",
+    "phone-lookup",
+    "chunked-attachments",
+    "call-reconnect",
+    "org-delete",
+    "accounts-v2",
+    "workspaces-v2",
+    "files-1g",
+    "workspace-admin",
+    "nav-preferences",
+    // Saved messages (Later) in the personal preferences document (2026-10-19).
+    "saved-items",
+    "org-photos",
+    // 2026-10-19: custom workspace roles (docs/WORKSPACE_ROLES.md) and the app directory (docs/INTEGRATIONS.md).
+    "custom-roles",
+    "integrations",
+  ];
   if (config.accounts.legacy.migration) f.push("legacy-migration");
   if (directUploads) f.push("direct-upload");
   if (config.history.enabled) f.push("history");

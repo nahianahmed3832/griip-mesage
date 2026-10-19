@@ -5,6 +5,7 @@ import { buildApp, type BuiltApp } from "../../src/app.js";
 import { loadConfig } from "../../src/config.js";
 import type { Mailer } from "../../src/accounts/mailer.js";
 import type { PushDeps } from "../../src/push/service.js";
+import type { FetchLike } from "../../src/integrations/http.js";
 import { GriipClient } from "./griipClient.js";
 import { dropTestDatabase, testMongoEnv } from "./mongo.js";
 
@@ -21,7 +22,7 @@ let counter = 0;
  * [push]: replaces DNS and the network for push wake-ups (test/push_wakeup.test.ts). [mailer]: receives account emails
  * (test/support/accounts.ts MemoryMailer); without one, MAIL_TRANSPORT decides (none by default).
  */
-export async function startServer(env: Record<string, string> = {}, opts: { push?: PushDeps; mailer?: Mailer } = {}): Promise<Harness> {
+export async function startServer(env: Record<string, string> = {}, opts: { push?: PushDeps; mailer?: Mailer; integrationsFetch?: FetchLike } = {}): Promise<Harness> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "griip-test-"));
   const config = loadConfig({
     DATA_DIR: dir,
@@ -42,11 +43,11 @@ export async function startServer(env: Record<string, string> = {}, opts: { push
     // Account suites make many sign-ins from 127.0.0.1; the per-network limit itself is tested on its own.
     AUTH_RATE_LIMIT_PER_MINUTE: "10000",
     ACCOUNT_EMAILS_PER_NETWORK_PER_HOUR: "10000",
-    // ORBIT_TEST_MONGO_DOMAINS=accounts,preferences runs every suite with those domains in MongoDB (docs/MONGODB.md).
+    // MELDIQ_TEST_MONGO_DOMAINS=accounts,preferences runs every suite with those domains in MongoDB (docs/MONGODB.md).
     ...testMongoEnv(env),
     ...env,
   } as NodeJS.ProcessEnv);
-  const built = await buildApp(config, { logger: false, push: opts.push, mailer: opts.mailer });
+  const built = await buildApp(config, { logger: false, push: opts.push, mailer: opts.mailer, integrationsFetch: opts.integrationsFetch });
   await built.app.listen({ host: "127.0.0.1", port: 0 });
   const addr = built.app.server.address();
   const port = typeof addr === "object" && addr ? addr.port : 0;

@@ -13,6 +13,7 @@ import type { DB } from "../db.js";
 export type TableDomain =
   | "accounts"
   | "preferences"
+  | "integrations"
   | "identity"
   | "workspace"
   | "conversations"
@@ -40,6 +41,17 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   account_codes: "accounts",
   legacy_tickets: "accounts",
   nav_preferences: "preferences",
+  // Apps and connected accounts (2026-10-19, docs/INTEGRATIONS.md): async stores, so they can live in MongoDB.
+  integration_installs: "integrations",
+  integration_accounts: "integrations",
+  integration_credentials: "integrations",
+  integration_oauth_states: "integrations",
+  integration_subscriptions: "integrations",
+  integration_deliveries: "integrations",
+  integration_jobs: "integrations",
+  integration_channel_events: "integrations",
+  integration_policies: "integrations",
+  integration_hooks: "integrations",
   users: "identity",
   devices: "identity",
   user_blocks: "identity",
@@ -55,6 +67,9 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   invitations: "workspace",
   org_deletions: "workspace",
   audit_log: "workspace",
+  // Custom roles live with the rest of authorisation, which is synchronous on the message path (docs/WORKSPACE_ROLES.md).
+  org_roles: "workspace",
+  org_role_members: "workspace",
   conversations: "conversations",
   conversation_members: "conversations",
   mention_all_events: "conversations",

@@ -12,7 +12,7 @@ import type {
   SessionRow,
   TicketRow,
 } from "../accounts/store.js";
-import { isDuplicateKey, type OrbitMongo } from "./client.js";
+import { isDuplicateKey, type MeldiqMongo } from "./client.js";
 
 /** The parts of the encryption identity the account store needs; they stay in SQLite (identity domain). */
 export interface IdentityRows {
@@ -78,7 +78,7 @@ export class MongoAccountStore implements AccountStore {
   private readonly tickets: Collection<TicketDoc>;
 
   constructor(
-    private readonly mongo: OrbitMongo,
+    private readonly mongo: MeldiqMongo,
     private readonly identity: IdentityRows,
   ) {
     if (!mongo.supportsTransactions) throw new Error("Accounts in MongoDB need a replica set or Atlas cluster (transactions)");

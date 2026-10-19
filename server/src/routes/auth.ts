@@ -34,10 +34,10 @@ const zDevice = z.object({
  */
 function requireLegacy(ctx: AppContext, what: "registration" | "login"): void {
   if (what === "registration" && !ctx.config.accounts.legacy.registration) {
-    throw new ApiError(410, "legacy_registration_closed", "This version of Orbit can't create accounts any more. Update the app to sign up.");
+    throw new ApiError(410, "legacy_registration_closed", "This version of the app can't create accounts any more. Update the app to sign up.");
   }
   if (what === "login" && !ctx.config.accounts.legacy.login) {
-    throw new ApiError(410, "legacy_login_closed", "This version of Orbit can't sign in any more. Update the app and sign in with your email.");
+    throw new ApiError(410, "legacy_login_closed", "This version of the app can't sign in any more. Update the app and sign in with your email.");
   }
 }
 

@@ -50,7 +50,7 @@ describe("the 1 GiB limit in configuration", () => {
     expect(() => loadConfig({ ...base, MAIL_TRANSPORT: "file" } as NodeJS.ProcessEnv)).toThrow(/not allowed with APP_ENV=production/);
     expect(() => loadConfig({ ...base, PASSWORD_SCRYPT_LOG_N: "12" } as NodeJS.ProcessEnv)).toThrow(/not allowed with APP_ENV=production/);
     expect(() => loadConfig({ ...base, MAIL_TRANSPORT: "ses" } as NodeJS.ProcessEnv)).toThrow(/MAIL_FROM/);
-    expect(loadConfig({ ...base, MAIL_TRANSPORT: "ses", MAIL_FROM: "Orbit <no-reply@example.com>" } as NodeJS.ProcessEnv).accounts.mail.transport).toBe("ses");
+    expect(loadConfig({ ...base, MAIL_TRANSPORT: "ses", MAIL_FROM: "Meldiq <no-reply@example.com>" } as NodeJS.ProcessEnv).accounts.mail.transport).toBe("ses");
   });
 });
 

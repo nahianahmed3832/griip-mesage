@@ -15,9 +15,9 @@ const FAILURES_PER_USERNAME = 10;
 const FAILURES_PER_NETWORK = 30;
 
 const verificationFailed = () =>
-  new ApiError(401, "legacy_verification_failed", "That username and recovery key don't match an Orbit account. Check both and try again.");
+  new ApiError(401, "legacy_verification_failed", "That username and recovery key don't match an account. Check both and try again.");
 const invalidTicket = () => new ApiError(401, "invalid_ticket", "This step took too long. Start again with your username and recovery key.");
-const closed = () => new ApiError(410, "migration_closed", "Moving old Orbit accounts has ended on this server.");
+const closed = () => new ApiError(410, "migration_closed", "Moving older accounts has ended on this server.");
 
 export interface LegacyVerified {
   ticket: string;
@@ -118,7 +118,7 @@ export class LegacyMigrationService {
     }
     const byEmail = await store.accountByEmail(body.email);
     if (byEmail && byEmail.id !== linked?.id && (byEmail.email_verified_at || byEmail.user_id)) {
-      throw new ApiError(409, "email_taken", "That email already has an Orbit account. Use another address, or sign in with it.");
+      throw new ApiError(409, "email_taken", "That email already has a Meldiq account. Use another address, or sign in with it.");
     }
     // An unverified, unlinked sign-up with this address (nobody proved it) gives way to the proven legacy account.
     if (byEmail && byEmail.id !== linked?.id) await store.deleteUnverifiedAccount(byEmail.id);
@@ -145,7 +145,7 @@ export class LegacyMigrationService {
         updated_at: t,
         disabled_at: null,
       });
-      if (!ok) throw new ApiError(409, "email_taken", "That email already has an Orbit account. Use another address, or sign in with it.");
+      if (!ok) throw new ApiError(409, "email_taken", "That email already has a Meldiq account. Use another address, or sign in with it.");
     }
     await store.useTicket(ticketHash, id, t);
     return (await store.accountById(id))!;

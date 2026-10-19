@@ -44,7 +44,7 @@ export function postWake(target: WakeTarget, opts: PostOptions): Promise<WakeRes
         port: target.url.port ? Number(target.url.port) : 443,
         path: `${target.url.pathname}${target.url.search}`,
         method: "POST",
-        headers: { "content-length": "0", ttl: String(opts.ttlSeconds), urgency: "high", "user-agent": "orbit-push/1" },
+        headers: { "content-length": "0", ttl: String(opts.ttlSeconds), urgency: "high", "user-agent": "meldiq-push/1" },
         lookup: pinned,
         agent: false,
         ca: opts.ca,

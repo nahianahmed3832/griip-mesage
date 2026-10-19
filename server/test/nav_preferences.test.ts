@@ -49,8 +49,34 @@ describe("navigation preferences", () => {
       sections: [{ id: "s_projects", name: "Projects", items: [random], collapsed: true }],
       collapsed: ["dms", "branch:b_x"],
       notify: { [general]: "mentions" },
+      saved: [],
     });
     expect((await prefsOf(alice, orgId)).prefs).toEqual(r.prefs);
+  });
+
+  it("keeps saved messages (ids and times only), drops other people's conversations and duplicates", async () => {
+    expect((await alice.req("GET", "/v1/server-info")).features).toEqual(expect.arrayContaining(["saved-items"]));
+    const base = (await prefsOf(bob, "personal")).rev;
+    const r = await put(bob, "personal", base, {
+      saved: [
+        { conversationId: dm, messageId: "m_saved_1", savedAt: 1000, remindAt: 5000 },
+        { conversationId: dm, messageId: "m_saved_1", savedAt: 1001 },
+        { conversationId: privateCh, messageId: "m_saved_2", savedAt: 1002 },
+        { conversationId: general, messageId: "m_saved_3", savedAt: 1003, done: true },
+      ],
+    });
+    expect(r.prefs.saved).toEqual([
+      { conversationId: dm, messageId: "m_saved_1", savedAt: 1000, remindAt: 5000, done: false },
+      { conversationId: general, messageId: "m_saved_3", savedAt: 1003, remindAt: null, done: true },
+    ]);
+    // A client that doesn't know saved messages (no "saved" field) keeps the list instead of emptying it.
+    const older = await put(bob, "personal", r.rev, { starred: [dm] });
+    expect(older.prefs.starred).toEqual([dm]);
+    expect(older.prefs.saved.map((x: { messageId: string }) => x.messageId)).toEqual(["m_saved_1", "m_saved_3"]);
+    // An explicit empty list clears it.
+    expect((await put(bob, "personal", older.rev, { starred: [dm], saved: [] })).prefs.saved).toEqual([]);
+    // Message content is never accepted.
+    await expectStatus(put(bob, "personal", older.rev + 1, { saved: [{ conversationId: dm, messageId: "m_x", savedAt: 1, text: "secret" }] }), 400);
   });
 
   it("refuses a write based on a stale revision and returns the current copy", async () => {

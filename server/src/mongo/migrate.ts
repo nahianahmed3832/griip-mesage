@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { Binary, type AnyBulkWriteOperation, type Document } from "mongodb";
 import type { DB } from "../db.js";
 import { docId, type TableDomain, type TableSpec, toDocument, toRow } from "./catalog.js";
-import { META_COLLECTION, type OrbitMongo } from "./client.js";
+import { META_COLLECTION, type MeldiqMongo } from "./client.js";
 
 /**
  * Moving tables between SQLite and MongoDB (docs/MONGODB.md › Migration). Copies in primary-key order, in batches, with
@@ -112,7 +112,7 @@ function idKey(id: unknown): string {
  * checkpoint says it finished is copied again from the start (cheap upserts), so a re-run also picks up rows written
  * since; run it during the write freeze for the final pass.
  */
-export async function migrateToMongo(db: DB, mongo: OrbitMongo, tables: TableSpec[], opts: MigrateOptions = {}): Promise<TableReport[]> {
+export async function migrateToMongo(db: DB, mongo: MeldiqMongo, tables: TableSpec[], opts: MigrateOptions = {}): Promise<TableReport[]> {
   const batch = Math.max(1, opts.batchSize ?? DEFAULT_BATCH);
   const meta = mongo.db.collection<Checkpoint>(META_COLLECTION);
   const reports: TableReport[] = [];
@@ -148,7 +148,7 @@ export async function migrateToMongo(db: DB, mongo: OrbitMongo, tables: TableSpe
 }
 
 /** Removes destination documents whose id the source no longer has. */
-async function pruneExtra(db: DB, mongo: OrbitMongo, t: TableSpec): Promise<number> {
+async function pruneExtra(db: DB, mongo: MeldiqMongo, t: TableSpec): Promise<number> {
   const source = new Set<string>();
   for (const rows of sourceBatches(db, t, 5000, null)) for (const r of rows) source.add(idKey(docId(t, r)));
   const col = mongo.db.collection<Document>(t.name);
@@ -159,7 +159,7 @@ async function pruneExtra(db: DB, mongo: OrbitMongo, t: TableSpec): Promise<numb
 }
 
 /** Compares SQLite and MongoDB for [tables]: counts, id sets, per-row content and the set checksums. */
-export async function verify(db: DB, mongo: OrbitMongo, tables: TableSpec[]): Promise<TableReport[]> {
+export async function verify(db: DB, mongo: MeldiqMongo, tables: TableSpec[]): Promise<TableReport[]> {
   const out: TableReport[] = [];
   for (const t of tables) {
     const started = Date.now();
@@ -214,7 +214,7 @@ export async function verify(db: DB, mongo: OrbitMongo, tables: TableSpec[]): Pr
  * The caller backs the SQLite file up first (admin.ts does); MongoDB is only read. Children of the domain are written
  * after their parents, and foreign keys are checked at the end, so a dangling reference aborts the whole restore.
  */
-export async function exportToSqlite(mongo: OrbitMongo, db: DB, tables: TableSpec[]): Promise<TableReport[]> {
+export async function exportToSqlite(mongo: MeldiqMongo, db: DB, tables: TableSpec[]): Promise<TableReport[]> {
   const docs = new Map<string, Record<string, unknown>[]>();
   for (const t of tables) docs.set(t.name, (await mongo.db.collection<Document>(t.name).find({}).toArray()) as Record<string, unknown>[]);
   db.pragma("foreign_keys = OFF");
@@ -241,12 +241,12 @@ export async function exportToSqlite(mongo: OrbitMongo, db: DB, tables: TableSpe
 export type Authority = "sqlite" | "mongodb";
 
 /** Which store is authoritative for [domain], as recorded in MongoDB (null: never migrated). */
-export async function authorityOf(mongo: OrbitMongo, domain: string): Promise<Authority | null> {
+export async function authorityOf(mongo: MeldiqMongo, domain: string): Promise<Authority | null> {
   const d = await mongo.db.collection<{ _id: string; store: Authority }>(META_COLLECTION).findOne({ _id: `authority:${domain}` });
   return d?.store ?? null;
 }
 
-export async function setAuthority(mongo: OrbitMongo, domain: string, store: Authority, detail: string): Promise<void> {
+export async function setAuthority(mongo: MeldiqMongo, domain: string, store: Authority, detail: string): Promise<void> {
   await mongo.db
     .collection<{ _id: string }>(META_COLLECTION)
     .updateOne({ _id: `authority:${domain}` }, { $set: { store, at: Date.now(), detail } }, { upsert: true });
