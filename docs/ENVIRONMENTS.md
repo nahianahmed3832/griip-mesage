@@ -50,6 +50,7 @@ invitations) and `meldiq://integrations` (sign-in return).
 | Provider webhooks | same | `/v1/integrations/webhooks/<connector>` |
 | Incoming webhooks | same | `/v1/integrations/hooks/<id>` |
 | Back to the app after a sign-in | `INTEGRATIONS_APP_RETURN_URL` (default `meldiq://integrations`) | — |
+| Back to a web client after a sign-in | `INTEGRATIONS_WEB_RETURN_URLS` (none by default; https hash-route addresses, matched by exact origin) | — |
 | Push wake-ups (ntfy) | `PUSH_UNIFIEDPUSH_HOSTS` (allowed push hosts) and ntfy's `base-url` (`deploy/ntfy/server.yml`) | ntfy's host |
 | Federation | `FEDERATION_DOMAIN`, `FEDERATION_PUBLIC_URL` (not deployed) | `/.well-known/griip-server` (protocol name kept), `/fed/v1/…`, `/v1/federation/…` |
 | Mail sender | `MAIL_FROM` (an SES-verified address or domain) | — |

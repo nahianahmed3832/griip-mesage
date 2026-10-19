@@ -120,7 +120,9 @@ export default async function integrationRoutes(app: FastifyInstance, ctx: AppCo
   // ───────────── Connecting accounts ─────────────
   app.post("/v1/orgs/:orgId/integrations/:connectorId/connect", auth, async (req) => {
     const p = P(req);
-    return accounts.startConnect(k, p.orgId, me(req).userId, p.connectorId);
+    // `return`: a web client's exact origin (location.origin), checked against INTEGRATIONS_WEB_RETURN_URLS.
+    const body = parse(z.object({ return: z.string().max(200).optional() }), req.body ?? {});
+    return accounts.startConnect(k, p.orgId, me(req).userId, p.connectorId, body.return);
   });
   app.get("/v1/integrations/flows/:flowId", auth, async (req) => {
     const { flowId } = parse(z.object({ flowId: zId }), req.params);
@@ -152,7 +154,9 @@ export default async function integrationRoutes(app: FastifyInstance, ctx: AppCo
     }
     reply.header("set-cookie", `${BROWSER_COOKIE}=; Path=/v1/integrations/oauth; Max-Age=0; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`);
     const query = out.flowId ? new URLSearchParams({ flow: out.flowId, result: out.result, ...(out.finish ? { finish: out.finish } : {}) }) : null;
-    const back = query ? `${svc.config.appReturnUrl}?${query}` : svc.config.appReturnUrl;
+    // A web address ends in a hash route without a query, so the parameters stay in the fragment.
+    const base = out.webReturn ?? svc.config.appReturnUrl;
+    const back = query ? `${base}?${query}` : base;
     return sendPage(
       reply,
       out.ok ? 200 : 400,

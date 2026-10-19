@@ -68,15 +68,17 @@ export async function finishFlow(c: GriipClient, flowId: string, code: string | 
 
 /**
  * Connects [c]'s sandbox account in [orgId] through the whole browser flow. [person] picks the sandbox identity;
- * "deny" refuses at the consent page. Options let a test break one step (drop the cookie) or leave the finishing to it.
+ * "deny" refuses at the consent page; [returnTo] is the web origin a browser client names. Options let a test break one
+ * step (drop the cookie) or leave the finishing to it.
  */
 export async function sandboxConnect(
   h: Harness,
   c: GriipClient,
   orgId: string,
-  opts: { person?: "sam" | "alex" | "deny"; dropCookie?: boolean; connector?: string; skipFinish?: boolean } = {},
+  opts: { person?: "sam" | "alex" | "deny"; dropCookie?: boolean; connector?: string; skipFinish?: boolean; returnTo?: string } = {},
 ): Promise<ConnectOutcome> {
-  const start = await c.req("POST", `/v1/orgs/${orgId}/integrations/${opts.connector ?? "meldiq-sandbox"}/connect`);
+  const body = opts.returnTo === undefined ? undefined : { return: opts.returnTo };
+  const start = await c.req("POST", `/v1/orgs/${orgId}/integrations/${opts.connector ?? "meldiq-sandbox"}/connect`, body);
   const begin = await browse(h, start.beginUrl);
   if (begin.status !== 302 || !begin.location) throw new Error(`begin failed: ${begin.status} ${begin.html.slice(0, 200)}`);
   const consent = await browse(h, begin.location);

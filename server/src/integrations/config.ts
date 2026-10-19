@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { webReturnUrlsFrom } from "./returns.js";
 import { type TokenKeyring, keyringFrom } from "./tokens.js";
 import type { ProviderId } from "./types.js";
 
@@ -41,6 +42,8 @@ export interface IntegrationsConfig {
   publicUrl: string | null;
   /** Where the browser goes after a callback: the app's own link (no secret is ever put in it). */
   appReturnUrl: string;
+  /** Web clients' return addresses by exact origin (INTEGRATIONS_WEB_RETURN_URLS, src/integrations/returns.ts). */
+  webReturnUrls: ReadonlyMap<string, string>;
   /** Seals stored tokens (AES-256-GCM). Null: nothing can be connected (needs configuration). */
   keyring: TokenKeyring | null;
   /** Platform administrators (user ids): the global app registry. Never grants anything inside a workspace. */
@@ -148,6 +151,7 @@ export function integrationsConfig(env: NodeJS.ProcessEnv, appEnv: string, int: 
   return {
     publicUrl,
     appReturnUrl: (env.INTEGRATIONS_APP_RETURN_URL ?? "meldiq://integrations").trim(),
+    webReturnUrls: webReturnUrlsFrom(env.INTEGRATIONS_WEB_RETURN_URLS, production),
     keyring,
     platformAdmins: new Set((env.PLATFORM_ADMIN_USER_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean)),
     disabled: new Set((env.INTEGRATIONS_DISABLED ?? "").split(",").map((s) => s.trim()).filter(Boolean)),

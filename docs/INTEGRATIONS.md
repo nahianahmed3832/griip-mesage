@@ -66,6 +66,18 @@ on the finished flow) each have their own message. Residual risk: an app on the 
 scheme could read a finish code, but would still need the starter's Meldiq session to use it; verified https App Links
 would remove that, and are a follow-up.
 
+**Returning to a web client.** Meldiq Web sends `{"return": location.origin}` with the connect request (step 1). The
+value must equal, character for character, the origin of an address listed in `INTEGRATIONS_WEB_RETURN_URLS`
+(comma-separated, for example `https://web.meldiq.app/#/workspace/apps`); anything else, including encodings,
+user-info, another scheme, port or a trailing slash, is refused with 400 `return_not_allowed` before a flow exists.
+Without `return` the phone link is used, unchanged. The origin is sealed with the flow, and every page of that flow
+(approved, denied, wrong browser, used, expired) links to **the configured address** for it, never to the request's
+text, with the parameters appended to its hash route: `https://web.meldiq.app/#/workspace/apps?flow=…&result=…&finish=…`.
+Listed addresses must be https (plain http only for localhost outside production), with no user-info or query, and end
+in a hash route, so the finish code stays in the browser's fragment (never the web host's logs or a Referer). An origin
+removed from the list while a sign-in is out sends that sign-in back to the phone link. Code: `src/integrations/returns.ts`;
+tests: `test/integrations_web_return.test.ts`.
+
 ## 4. Credentials
 
 - Sealed with **AES-256-GCM** under `INTEGRATIONS_TOKEN_KEY` (32 bytes), the AEAD the project already uses; no new
@@ -167,7 +179,8 @@ loses their personal connections; uninstalling revokes every connection of that 
 
 Environment (deploy/.env.example): `INTEGRATIONS_PUBLIC_URL` (https in production), `INTEGRATIONS_TOKEN_KEY`
 (`openssl rand -base64 32`), per-provider client credentials (`*_FILE` variants for mounted secrets),
-`PLATFORM_ADMIN_USER_IDS`, `INTEGRATIONS_DISABLED`, `INTEGRATIONS_SANDBOX=on` (refused in production),
+`INTEGRATIONS_WEB_RETURN_URLS` (web clients' return addresses, §3), `PLATFORM_ADMIN_USER_IDS`, `INTEGRATIONS_DISABLED`,
+`INTEGRATIONS_SANDBOX=on` (refused in production),
 `ENTITLEMENT_LIMITS` (docs/PLANS.md). Each provider's setup steps are in its catalog entry (shown to admins while it
 needs configuration) and on `GET /v1/platform/integrations` for platform admins, with the redirect URI
 (`<public URL>/v1/integrations/oauth/callback`) and webhook URLs.

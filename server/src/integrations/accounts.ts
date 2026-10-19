@@ -4,8 +4,9 @@ import type { Connector } from "./connector.js";
 import { ProviderError } from "./http.js";
 import { type Kernel, providerFailure } from "./kernel.js";
 import { accessAllows, listOf } from "./policy.js";
-import type { AccountRow } from "./store.js";
-import { open, pkceChallenge, randomSecret, safeEqual, seal } from "./tokens.js";
+import { webReturnOrigin } from "./returns.js";
+import type { AccountRow, OAuthStateRow } from "./store.js";
+import { open, pkceChallenge, randomSecret, safeEqual, seal, type TokenKeyring } from "./tokens.js";
 import type { TokenSet } from "./types.js";
 
 /**
@@ -33,6 +34,28 @@ export const BROWSER_COOKIE = "meldiq_oauth";
 const FINISH_WINDOW_MS = 3 * 60_000;
 const ONE_TIME_CODE = /^[A-Za-z0-9_-]{20,64}$/;
 
+/** What a flow keeps sealed: the state, the PKCE verifier, the provider's code once approved, the web origin to return to. */
+interface FlowSecrets {
+  s: string;
+  v: string | null;
+  c?: string;
+  r?: string | null;
+}
+const openFlow = (ring: TokenKeyring, row: OAuthStateRow) => JSON.parse(open(ring, row.verifier!, PKCE_PURPOSE, row.id)) as FlowSecrets;
+
+/** The web address a flow's pages link back to: its sealed origin while the server still lists it, else null (the app). */
+function webReturn(k: Kernel, row: OAuthStateRow): string | null {
+  const ring = k.deps.config.keyring;
+  if (!ring || !row.verifier) return null;
+  try {
+    const { r } = openFlow(ring, row);
+    return (r && k.deps.config.webReturnUrls.get(r)) || null;
+  } catch (e) {
+    k.deps.log.warn({ flowId: row.id, error: (e as Error).message }, "integration sign-in can't be opened; its page links back to the app");
+    return null;
+  }
+}
+
 export function callbackUrl(k: Kernel): string {
   if (!k.deps.config.publicUrl) throw new ApiError(409, "needs_configuration", "This server has no public address for app sign-ins (INTEGRATIONS_PUBLIC_URL)");
   return `${k.deps.config.publicUrl}/v1/integrations/oauth/callback`;
@@ -57,7 +80,9 @@ async function requireMayConnect(k: Kernel, orgId: string, userId: string, conne
   return { install, granted, oauth: connector.oauth };
 }
 
-export async function startConnect(k: Kernel, orgId: string, userId: string, connectorId: string) {
+/** [returnTo]: the web origin a browser client started from (src/integrations/returns.ts); absent for the phone. */
+export async function startConnect(k: Kernel, orgId: string, userId: string, connectorId: string, returnTo?: string) {
+  const returnOrigin = webReturnOrigin(k.deps.config.webReturnUrls, returnTo);
   const connector = k.connector(connectorId);
   const def = connector.def;
   k.rate(`connect:${userId}`, k.deps.config.connectPerMinute);
@@ -82,8 +107,9 @@ export async function startConnect(k: Kernel, orgId: string, userId: string, con
     connector_id: def.id,
     user_id: userId,
     owner_type: "member",
-    // The state and verifier, sealed to this flow: needed again at begin and callback, never stored in the clear.
-    verifier: seal(ring, JSON.stringify({ s: state, v: verifier }), PKCE_PURPOSE, id),
+    // The state and verifier, sealed to this flow: needed again at begin and callback, never stored in the clear. The
+    // return origin rides along, so the browser side can't change where its pages link back to.
+    verifier: seal(ring, JSON.stringify({ s: state, v: verifier, r: returnOrigin } satisfies FlowSecrets), PKCE_PURPOSE, id),
     redirect_uri: redirectUri,
     scopes: JSON.stringify(scopes),
     created_at: t,
@@ -105,9 +131,10 @@ export async function startConnect(k: Kernel, orgId: string, userId: string, con
 
 export type BrowserOutcome =
   | { kind: "redirect"; location: string; cookie: string }
-  | { kind: "page"; ok: boolean; title: string; message: string; flowId: string | null; result: string; finish: string | null };
+  /** webReturn: the web client's address to link back to; null for the app's own link (INTEGRATIONS_APP_RETURN_URL). */
+  | { kind: "page"; ok: boolean; title: string; message: string; flowId: string | null; result: string; finish: string | null; webReturn: string | null };
 
-const page = (ok: boolean, title: string, message: string, flowId: string | null, result: string, finish: string | null = null): BrowserOutcome => ({
+const page = (ok: boolean, title: string, message: string, flowId: string | null, result: string, finish: string | null = null, webReturn: string | null = null): BrowserOutcome => ({
   kind: "page",
   ok,
   title,
@@ -115,20 +142,22 @@ const page = (ok: boolean, title: string, message: string, flowId: string | null
   flowId,
   result,
   finish,
+  webReturn,
 });
 
 export async function begin(k: Kernel, flowId: string, beginToken: string): Promise<BrowserOutcome> {
   const row = await k.deps.store.state(flowId);
   const ring = k.deps.config.keyring;
   if (!row || !ring || !ONE_TIME_CODE.test(beginToken)) return page(false, "Link not valid", "This sign-in link isn't valid. Start again from Meldiq.", null, "invalid");
-  if (row.expires_at <= k.now) return page(false, "Link expired", "This sign-in link has expired. Start again from Meldiq.", row.id, "expired");
+  const back = webReturn(k, row);
+  if (row.expires_at <= k.now) return page(false, "Link expired", "This sign-in link has expired. Start again from Meldiq.", row.id, "expired", null, back);
   const browser = randomSecret(32);
   if (!(await k.deps.store.claimBegin(row.id, sha256Hex(beginToken), sha256Hex(browser), k.now))) {
-    return page(false, "Link already used", "This sign-in link was already opened. Start again from Meldiq.", row.id, "used");
+    return page(false, "Link already used", "This sign-in link was already opened. Start again from Meldiq.", row.id, "used", null, back);
   }
   const connector = k.connectors.get(row.connector_id);
-  if (!connector?.oauth) return page(false, "Not available", "This app isn't available on this server any more.", row.id, "failed");
-  const { s, v } = JSON.parse(open(ring, row.verifier!, PKCE_PURPOSE, row.id)) as { s: string; v: string | null };
+  if (!connector?.oauth) return page(false, "Not available", "This app isn't available on this server any more.", row.id, "failed", null, back);
+  const { s, v } = openFlow(ring, row);
   const location = connector.oauth.authorizeUrl({
     state: s,
     redirectUri: row.redirect_uri,
@@ -143,13 +172,14 @@ export async function callback(k: Kernel, q: { state?: string; code?: string; er
   if (!q.state || !/^[A-Za-z0-9_-]{20,100}$/.test(q.state)) return page(false, "Sign-in not recognised", "Meldiq didn't start this sign-in. Start again from Meldiq.", null, "invalid");
   const row = await k.deps.store.stateByHash(sha256Hex(q.state));
   if (!row) return page(false, "Sign-in not recognised", "Meldiq didn't start this sign-in, or it was already used. Start again from Meldiq.", null, "invalid");
+  const back = webReturn(k, row);
   const sameBrowser = !!cookie && !!row.browser_hash && sha256Hex(cookie) === row.browser_hash;
   if (!(await k.deps.store.claimCallback(row.id, k.now))) {
-    return page(false, "Sign-in already finished", "This sign-in was already used or has expired. Start again from Meldiq.", row.id, "used");
+    return page(false, "Sign-in already finished", "This sign-in was already used or has expired. Start again from Meldiq.", row.id, "used", null, back);
   }
   const fail = async (result: "denied" | "failed", message: string, title = "Couldn't connect") => {
     await k.deps.store.finishState(row.id, result, message, null);
-    return page(false, title, message, row.id, result);
+    return page(false, title, message, row.id, result, null, back);
   };
   if (!sameBrowser) return fail("failed", "This sign-in was finished in a different browser than the one Meldiq opened. Start again from Meldiq on this device.");
   if (q.error) return fail("denied", q.error === "access_denied" ? "You didn't allow access. Nothing was connected." : "The provider didn't complete the sign-in. Nothing was connected.", "Not connected");
@@ -164,13 +194,13 @@ export async function callback(k: Kernel, q: { state?: string; code?: string; er
     return fail("failed", providerFailure(e, connector.def.name).message);
   }
   // Nothing is connected from the browser: the code waits, sealed, for the person who started this sign-in.
-  const { s, v } = JSON.parse(open(ring, row.verifier!, PKCE_PURPOSE, row.id)) as { s: string; v: string | null };
+  const { s, v, r } = openFlow(ring, row);
   const finishCode = randomSecret(24);
-  const sealed = seal(ring, JSON.stringify({ s, v, c: q.code }), PKCE_PURPOSE, row.id);
+  const sealed = seal(ring, JSON.stringify({ s, v, c: q.code, r } satisfies FlowSecrets), PKCE_PURPOSE, row.id);
   if (!(await k.deps.store.approveState(row.id, sealed, sha256Hex(finishCode), k.now + FINISH_WINDOW_MS))) {
     return fail("failed", "This sign-in was already used or has expired. Start again from Meldiq.");
   }
-  return page(true, "Almost connected", `Return to Meldiq to finish connecting ${connector.def.name}.`, row.id, "approved", finishCode);
+  return page(true, "Almost connected", `Return to Meldiq to finish connecting ${connector.def.name}.`, row.id, "approved", finishCode, back);
 }
 
 /**
