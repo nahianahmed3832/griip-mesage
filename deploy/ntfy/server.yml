@@ -1,5 +1,5 @@
-# ntfy: the UnifiedPush server for Orbit's payload-free wake-ups (docs/BACKGROUND_DELIVERY.md, docs/PUSH_SERVER.md).
-# Phones' ntfy apps hold one connection here. The Orbit API sends a phone's topic an empty POST that only wakes Orbit.
+# ntfy: the UnifiedPush server for Meldiq's payload-free wake-ups (docs/BACKGROUND_DELIVERY.md, docs/PUSH_SERVER.md).
+# Phones' ntfy apps hold one connection here. The Meldiq API sends a phone's topic an empty POST that only wakes Meldiq.
 # Mounted read-only into the ntfy service of compose.yaml. It holds no secrets. Another deployment changes base-url only.
 base-url: "https://ntfy.griipbuddy.cloud"
 listen-http: ":80"           # inside the container; published on 127.0.0.1 only, TLS at the host nginx
@@ -22,9 +22,9 @@ enable-login: false
 enable-reservations: false
 web-root: "disable"          # no web app; the ntfy apps use only the topic URLs
 
-# UnifiedPush topics are rate-limited per subscribing phone, not per publisher. Every wake-up comes from the one Orbit
+# UnifiedPush topics are rate-limited per subscribing phone, not per publisher. Every wake-up comes from the one Meldiq
 # API, which would otherwise share a single budget. A publish to an "up" topic with no recent subscriber gets HTTP 507:
-# Orbit logs a failed wake-up, and the next message or call sends another.
+# Meldiq logs a failed wake-up, and the next message or call sends another.
 visitor-subscriber-rate-limiting: true
 
 # Not set, on purpose: attachment-cache-dir (no attachments), upstream-base-url (iOS only; it would send poll requests

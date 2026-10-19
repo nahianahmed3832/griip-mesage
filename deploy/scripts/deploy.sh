@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Deploy/redeploy Griip Message to a VPS over SSH. Only touches /opt/griip-internal-messaging
-# and Compose project griip-internal-messaging. Never runs global Docker cleanup.
+# Deploy/redeploy Meldiq (formerly Orbit / Griip Message) to a VPS over SSH. Only touches /opt/griip-internal-messaging
+# and Compose project griip-internal-messaging (names kept after the rebrand, see compose.yaml). Never runs global Docker cleanup.
 #   TARGET=root@your-vps ./deploy/scripts/deploy.sh
 set -euo pipefail
 : "${TARGET:?set TARGET=user@host}"

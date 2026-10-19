@@ -1,6 +1,8 @@
-# Griip Message — internal beta deployment.
-# Project name is fixed; every resource Compose creates is prefixed "griip-internal-messaging_".
-# Run only with project-scoped commands, e.g.:
+# Meldiq (formerly Orbit / Griip Message) — internal beta deployment.
+# Project name is fixed; every resource Compose creates is prefixed "griip-internal-messaging_". It keeps that name
+# after the Meldiq rebrand on purpose: the API's data volume is "griip-internal-messaging_api-data", and a renamed
+# project would start on new, empty volumes. Renaming is a planned, approved migration with the volume names pinned
+# (docs/MELDIQ_INFRASTRUCTURE_PLAN_2026-10-19.md › Docker). Run only with project-scoped commands, e.g.:
 #   docker compose -p griip-internal-messaging -f /opt/griip-internal-messaging/compose.yaml ps
 name: griip-internal-messaging
 

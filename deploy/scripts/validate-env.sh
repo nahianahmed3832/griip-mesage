@@ -108,7 +108,7 @@ if [ -n "${MONGODB_URI:-}" ]; then
     *) err "MONGODB_URI must start with mongodb:// or mongodb+srv://" ;;
   esac
   for d in $(echo "${MONGODB_DOMAINS:-}" | tr ',' ' '); do
-    case "$d" in accounts|preferences) ok "MongoDB holds: $d (migrated first with admin mongo-migrate)" ;; *) err "MONGODB_DOMAINS: unknown domain $d" ;; esac
+    case "$d" in accounts|preferences|integrations) ok "MongoDB holds: $d (migrated first with admin mongo-migrate)" ;; *) err "MONGODB_DOMAINS: unknown domain $d" ;; esac
   done
 elif [ -n "${MONGODB_DOMAINS:-}" ]; then
   err "MONGODB_DOMAINS needs MONGODB_URI"
@@ -126,7 +126,12 @@ case "${MAIL_TRANSPORT:-none}" in
   none) warn "MAIL_TRANSPORT = none: Orbit 2.0 sign-up and password reset answer 503 until email is set up" ;;
   file) if [ "${APP_ENV:-development}" = "production" ]; then err "MAIL_TRANSPORT=file writes codes to disk: not allowed in production"; else warn "MAIL_TRANSPORT = file: codes are written to disk (development only)"; fi ;;
   ses) if [ -z "${MAIL_FROM:-}" ]; then err "MAIL_TRANSPORT=ses needs MAIL_FROM (an SES-verified sender)"; else ok "account emails sent with Amazon SES from ${MAIL_FROM}"; fi ;;
-  *) err "MAIL_TRANSPORT must be none, file or ses (is ${MAIL_TRANSPORT})" ;;
+  smtp)
+    if [ -z "${MAIL_FROM:-}${MAIL_FROM_ADDRESS:-}" ]; then err "MAIL_TRANSPORT=smtp needs MAIL_FROM or MAIL_FROM_ADDRESS"; fi
+    if [ -z "${SMTP_HOST:-}" ]; then err "MAIL_TRANSPORT=smtp needs SMTP_HOST"; fi
+    if [ -n "${SMTP_USER:-}" ] && [ -z "${SMTP_PASS:-}" ]; then err "SMTP_USER is set without SMTP_PASS"; fi
+    if [ -n "${SMTP_HOST:-}" ]; then ok "account emails sent over SMTP via ${SMTP_HOST}:${SMTP_PORT:-465} (TLS required)"; fi ;;
+  *) err "MAIL_TRANSPORT must be none, file, ses or smtp (is ${MAIL_TRANSPORT})" ;;
 esac
 for v in LEGACY_REGISTRATION LEGACY_LOGIN LEGACY_MIGRATION; do
   eval "val=\${$v:-on}"
@@ -135,8 +140,8 @@ done
 case "${LEGACY_MIGRATION_REQUIRED:-off}" in
   on|true)
     case "${LEGACY_MIGRATION:-on}" in off|false) err "LEGACY_MIGRATION_REQUIRED=on needs LEGACY_MIGRATION=on" ;; esac
-    case "${MAIL_TRANSPORT:-none}" in ses|file) ok "LEGACY_MIGRATION_REQUIRED = on: updated apps must move before opening" ;;
-      *) err "LEGACY_MIGRATION_REQUIRED=on needs account email (MAIL_TRANSPORT=ses): the move ends with an emailed code" ;; esac ;;
+    case "${MAIL_TRANSPORT:-none}" in ses|smtp|file) ok "LEGACY_MIGRATION_REQUIRED = on: updated apps must move before opening" ;;
+      *) err "LEGACY_MIGRATION_REQUIRED=on needs account email (MAIL_TRANSPORT=ses or smtp): the move ends with an emailed code" ;; esac ;;
   off|false) ok "LEGACY_MIGRATION_REQUIRED = off" ;;
   *) err "LEGACY_MIGRATION_REQUIRED must be on or off (is ${LEGACY_MIGRATION_REQUIRED})" ;;
 esac
