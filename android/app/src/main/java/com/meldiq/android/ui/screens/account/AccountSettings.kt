@@ -64,6 +64,7 @@ fun AccountSecurityCard(modifier: Modifier = Modifier) {
     GlassCard(modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), contentPadding = PaddingValues(6.dp)) {
         MenuRow(Icons.Outlined.Email, stringResource(R.string.acct_settings_email), subtitle = account.email, trailing = null)
         MenuRow(Icons.Outlined.Password, stringResource(R.string.acct_settings_password), subtitle = stringResource(R.string.acct_settings_password_sub), onClick = { changing = true })
+        RecoveryCodesRow()
         MenuRow(Icons.AutoMirrored.Outlined.Logout, stringResource(R.string.acct_settings_logout), subtitle = stringResource(R.string.acct_settings_logout_sub), onClick = { confirmLogout = true })
     }
     message?.let { (text, kind) -> StatusBanner(text, kind, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) }

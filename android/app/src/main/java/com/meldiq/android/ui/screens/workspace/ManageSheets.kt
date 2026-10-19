@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Campaign
+import androidx.compose.material.icons.outlined.Headset
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material3.Text
@@ -179,6 +180,7 @@ fun CreateChannelSheet(d: OrgDetailRes, preselectBranch: String?, onDismiss: () 
     var scopeKind by remember { mutableStateOf(if (d.permissions.canManageOrg) "ORG" else if (branches.isNotEmpty()) "BRANCH" else "TEAM") }
     var scopeId by remember { mutableStateOf(preselectBranch?.takeIf { id -> branches.any { it.id == id } } ?: branches.firstOrNull()?.id) }
     var kind by remember { mutableStateOf("PUBLIC") }
+    var voice by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var topic by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -200,18 +202,28 @@ fun CreateChannelSheet(d: OrgDetailRes, preselectBranch: String?, onDismiss: () 
                 ChipRow { teams.forEach { t -> PillChip(t.name, scopeId == t.id, { scopeId = t.id }) } }
             }
             Spacer(Modifier.height(12.dp))
+            // Round 6: a voice room is a channel people drop into for a call; nobody rings.
+            Label("Channel or voice room")
+            ChipRow {
+                PillChip("Text channel", !voice, { voice = false }, icon = Icons.Outlined.Tag)
+                PillChip("Voice room", voice, { voice = true; if (kind == "ANNOUNCEMENT") kind = "PUBLIC" }, icon = Icons.Outlined.Headset)
+            }
+            Spacer(Modifier.height(12.dp))
             Label("Type")
             ChipRow {
                 PillChip("Public", kind == "PUBLIC", { kind = "PUBLIC" }, icon = Icons.Outlined.Tag)
                 PillChip("Private", kind == "PRIVATE", { kind = "PRIVATE" }, icon = Icons.Outlined.Lock)
-                PillChip("Announcements", kind == "ANNOUNCEMENT", { kind = "ANNOUNCEMENT" }, icon = Icons.Outlined.Campaign)
+                if (!voice) PillChip("Announcements", kind == "ANNOUNCEMENT", { kind = "ANNOUNCEMENT" }, icon = Icons.Outlined.Campaign)
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                when (kind) {
+                when {
+                    voice -> "Anyone in it can join its call at any time, without ringing anyone. Room managers can mute people and lower hands."
+                    else -> when (kind) {
                     "PRIVATE" -> "Only people you add can see and read it — even admins aren't added automatically."
                     "ANNOUNCEMENT" -> "Everyone in scope is added automatically; only managers can post."
                     else -> "Everyone in scope can find and join it."
+                    }
                 },
                 style = Griip.type.caption, color = Griip.colors.textTertiary,
             )
@@ -221,10 +233,10 @@ fun CreateChannelSheet(d: OrgDetailRes, preselectBranch: String?, onDismiss: () 
             GriipTextField(topic, { topic = it.take(300) }, "Topic (optional)")
             error?.let { Spacer(Modifier.height(10.dp)); StatusBanner(it, BannerKind.Error) }
             Spacer(Modifier.height(16.dp))
-            PillButton("Create channel", {
+            PillButton(if (voice) "Create voice room" else "Create channel", {
                 busy = true
                 scope.launch {
-                    runCatching { container.orgs.createChannel(d.org.id, CreateChannelReq(name.trim(), topic.trim().ifEmpty { null }, scopeKind, scopeId, kind)) }
+                    runCatching { container.orgs.createChannel(d.org.id, CreateChannelReq(name.trim(), topic.trim().ifEmpty { null }, scopeKind, scopeId, kind, voice = voice)) }
                         .onSuccess { onDismiss(); onDone(it.id) }.onFailure { error = it.friendly() }
                     busy = false
                 }

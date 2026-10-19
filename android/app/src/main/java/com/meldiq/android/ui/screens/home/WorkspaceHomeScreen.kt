@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.foundation.layout.heightIn
 import com.meldiq.android.ui.switchTab
 import androidx.compose.material.icons.outlined.AccountCircle
@@ -182,6 +183,9 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
     val unreadChats = remember(convs, org?.id) { WorkspaceHomeRules.unreadChats(convs, org?.id) }
     val missed = remember(callLog) { WorkspaceHomeRules.missedCalls(callLog, System.currentTimeMillis(), WorkspaceHomeRules.MISSED_CALLS_CARD_WINDOW_MS).size }
     val online = remember(users) { users.associate { it.id to it.online } }
+    val usersById = remember(users) { users.associateBy { it.id } }
+    // Voice rooms of this workspace (round 6): their own section, not among the text channels.
+    val voiceRooms = remember(convs, org?.id) { convs.filter { it.voice && it.orgId == org?.id && it.joined && !it.removed } }
     val liveCall = if (call.phase == CallPhase.Idle) convs.firstOrNull { it.activeCallId != null } else null
 
     fun open(conv: ConversationEntity) = nav.navigate(Routes.conversation(conv.id))
@@ -193,8 +197,20 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
 
     val openSaved = saved.count { !it.done }
     val overdue = saved.count { com.meldiq.android.data.model.ReminderTimes.overdue(it.remindAt, it.done, System.currentTimeMillis()) }
-    // The reference's quick cards: Threads, Later, Drafts & sent, then Calls (the row scrolls sideways).
-    val cards = listOf(
+    val reminderList by container.reminders.reminders.collectAsStateWithLifecycle()
+    val remindersOn by container.reminders.available.collectAsStateWithLifecycle()
+    val reminderGroups = remember(reminderList) { com.meldiq.android.data.model.ReminderRules.group(reminderList.filter { it.content?.source != "later" }) }
+    val reminderCard = if (!remindersOn) null else QuickCard(
+        Icons.Outlined.NotificationsActive, stringResource(R.string.rem_title),
+        when {
+            reminderGroups.overdue.isNotEmpty() -> stringResource(R.string.rem_overdue_count, reminderGroups.overdue.size)
+            reminderGroups.upcoming.isNotEmpty() -> stringResource(R.string.rem_upcoming_count, reminderGroups.upcoming.size)
+            else -> stringResource(R.string.rem_none)
+        },
+        active = reminderGroups.overdue.isNotEmpty(), onClick = { nav.navigate(Routes.REMINDERS) },
+    )
+    // The reference's quick cards: Threads, Later, Reminders, Drafts & sent, then Calls (the row scrolls sideways).
+    val cards = listOfNotNull(
         QuickCard(
             Icons.Outlined.Forum, stringResource(R.string.home_card_threads),
             if (threadUnseen > 0) stringResource(R.string.home_threads_new, threadUnseen) else stringResource(R.string.home_threads_none),
@@ -209,6 +225,8 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
             },
             active = overdue > 0, onClick = { nav.navigate(Routes.LATER) },
         ),
+        // Reminders kept by the server (round 6), only where the server offers them.
+        reminderCard,
         QuickCard(
             Icons.AutoMirrored.Outlined.Send, stringResource(R.string.home_card_drafts_sent),
             if (drafts.isNotEmpty()) stringResource(R.string.home_drafts_n, drafts.size) else stringResource(R.string.home_recent_sent),
@@ -308,6 +326,10 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
                     )
                 }
             } else {
+                voiceRoomsSection(
+                    voiceRooms, usersById, onOpen = ::open,
+                    onJoin = { room -> permission(false) { container.scope.launch { container.calls.startCall(room.id, false) } } },
+                )
                 channelSection(
                     groups, collapsed, unreadOnly, me,
                     onToggle = { key -> setCollapsed(key, key !in collapsed) },
@@ -518,7 +540,7 @@ private fun LazyListScope.channelSection(
     groups.forEach { group ->
         val expanded = group.key !in collapsed
         item(key = "group-" + group.key) { ChannelGroupHeader(group, expanded, { onToggle(group.key) }, Modifier.animateItem()) }
-        if (expanded) items(group.channels, key = { "channel-" + it.id }) { conv ->
+        if (expanded) items(group.channels.filterNot { it.voice }, key = { "channel-" + it.id }) { conv ->
             val unread = conv.unreadCount > 0
             HomeListRow(
                 listTitle(conv, me).removePrefix("#"),

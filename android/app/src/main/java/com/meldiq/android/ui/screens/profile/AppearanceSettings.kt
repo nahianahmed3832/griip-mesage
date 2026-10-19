@@ -53,9 +53,14 @@ fun AppearanceSettings(s: Settings, update: ((Settings) -> Settings) -> Unit) {
         )
         Label(stringResource(R.string.appearance_palette), Modifier.padding(top = 18.dp))
         Text(stringResource(R.string.appearance_palette_sub), style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(bottom = 8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MeldiqPalettes.ALL.forEach { preset ->
-                PaletteCard(preset, selected = s.palette == preset.id, dark = c.isDark, Modifier.weight(1f)) { update { it.copy(palette = preset.id) } }
+        // Two per row: four presets side by side leave too little room for their names at large text sizes.
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            MeldiqPalettes.ALL.chunked(2).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    row.forEach { preset ->
+                        PaletteCard(preset, selected = s.palette == preset.id, dark = c.isDark, Modifier.weight(1f)) { update { it.copy(palette = preset.id) } }
+                    }
+                }
             }
         }
         Label(stringResource(R.string.appearance_layout), Modifier.padding(top = 18.dp))
@@ -85,7 +90,8 @@ private fun PaletteCard(preset: MeldiqPalettes.Preset, selected: Boolean, dark: 
         when (preset.id) {
             "sunset" -> R.string.palette_sunset
             "meadow" -> R.string.palette_meadow
-            else -> R.string.palette_aurora
+            "aurora" -> R.string.palette_aurora
+            else -> R.string.palette_graphite
         },
     )
     val selectedText = stringResource(R.string.palette_selected)
@@ -98,7 +104,9 @@ private fun PaletteCard(preset: MeldiqPalettes.Preset, selected: Boolean, dark: 
                 contentDescription = if (selected) "$name, $selectedText" else name
             },
     ) {
-        Box(Modifier.fillMaxWidth().height(44.dp).background(p.headerBrush()), contentAlignment = Alignment.CenterEnd) {
+        // A flat header (Graphite) is shown as the page colour so the card still has two tones.
+        val strip = if (p.heroStart == p.heroEnd) Modifier.background(p.background) else Modifier.background(p.headerBrush())
+        Box(Modifier.fillMaxWidth().height(44.dp).then(strip), contentAlignment = Alignment.CenterEnd) {
             if (selected) Box(Modifier.padding(end = 8.dp).size(22.dp).clip(CircleShape).background(p.actionStart), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.Check, null, tint = p.onAction, modifier = Modifier.size(14.dp))
             }

@@ -132,6 +132,11 @@ fun OnboardingFlow(pendingInvite: String?, gateway: AuthGateway? = null) {
     BackHandler(enabled = step.back != null) { if (!busy) step.back?.let { step = it } }
 
     run {
+        // First run: a few pages on what Meldiq does, once, before Welcome (round 6).
+        if (!settings.introSeen && step == AuthStep.Welcome && !inAccountFlow) {
+            IntroScreen(onDone = { container.settings.update { it.copy(introSeen = true) } })
+            return@run
+        }
         if (inAccountFlow && accountsV2) {
             Box(Modifier.fillMaxSize().background(Griip.colors.background)) {
                 AccountOnboarding(serverSetup, serverAccounts?.inviteOnly == true, onExit = { inAccountFlow = false; step = AuthStep.Welcome }, onServer = { showServer = true })

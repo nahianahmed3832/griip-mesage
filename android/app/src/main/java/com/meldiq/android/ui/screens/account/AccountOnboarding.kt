@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
 /** The account flow's view model for this container (shared by the welcome screen, which picks the first step). */
 @Composable
 internal fun accountFlowViewModel(): AccountFlowViewModel =
-    containerViewModel("account.flow") { c -> AccountFlowViewModel(c.accounts, c.legacyMigration, { c.settings.current.serverUrl }) }
+    containerViewModel("account.flow") { c -> AccountFlowViewModel(c.accounts, c.legacyMigration, { c.settings.current.serverUrl }, recovery = c.recoveryCodes) }
 
 /**
  * Orbit 2.0 sign-up and sign-in (docs/ORBIT_2_ARCHITECTURE §2–5), inside the onboarding's ivory palette. [onExit] goes
@@ -71,6 +71,8 @@ internal fun AccountOnboarding(showServer: Boolean, inviteOnly: Boolean, onExit:
             AccountStep.StartFresh -> StartFreshScreen(vm, state, onBack = back)
             AccountStep.LegacyCredentials -> LegacyCredentialsScreen(vm, state, recognizedUsername = null, onBack = back, onLater = null)
             AccountStep.LegacyDetails -> LegacyDetailsScreen(vm, state, onBack = back)
+            AccountStep.Recover -> RecoverAccountScreen(vm, state, onBack = back)
+            AccountStep.RecoverConfirm -> RecoverConfirmScreen(vm, state, onBack = back)
         }
     }
     if (confirmErase) {

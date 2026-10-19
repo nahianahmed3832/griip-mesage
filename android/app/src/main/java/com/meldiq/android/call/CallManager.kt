@@ -16,6 +16,11 @@ import com.meldiq.android.data.api.CallsRes
 import com.meldiq.android.data.api.DeclineCallReq
 import com.meldiq.android.data.api.MediaGrant
 import com.meldiq.android.data.api.StartCallReq
+import com.meldiq.android.data.api.GriipJson
+import com.meldiq.android.data.api.HandReq
+import com.meldiq.android.data.api.ModerateReq
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import com.meldiq.android.data.db.CallLogEntity
 import com.meldiq.android.data.db.GriipDatabase
 import com.meldiq.android.data.repo.ConversationRepository
@@ -123,6 +128,12 @@ data class CallUiState(
     val remoteAudio: MediaFlow = MediaFlow.None,
     /** A short notice for the call screen ("Screen sharing stopped"); cleared when shown. */
     val notice: String? = null,
+    /** A voice room's call (round 6): people raise hands, and the room's managers can moderate. */
+    val voiceRoom: Boolean = false,
+    /** Voice rooms: who raised a hand, in order. */
+    val hands: List<String> = emptyList(),
+    /** Voice rooms: whether you manage this room (mute, lower hands, remove from the call). */
+    val canModerate: Boolean = false,
 )
 
 /**
@@ -198,7 +209,9 @@ class CallManager(
             messages.callFrames.collect { f ->
                 val call = f.call ?: return@collect
                 // Call history: the conversation's entry for this call follows the server's record of it.
-                if (f.event == "ring" || f.event == "started" || f.event == "ended") scope.launch { runCatching { messages.recordCall(call) } }
+                // A voice room's comings and goings aren't calls in the conversation's history.
+                if (!call.voiceRoom && (f.event == "ring" || f.event == "started" || f.event == "ended")) scope.launch { runCatching { messages.recordCall(call) } }
+                if (call.id == _state.value.callId && call.voiceRoom) _state.update { it.copy(voiceRoom = true, hands = call.hands) }
                 // The conversation's "call in progress · Join" banner follows the call's own events. It used to change only
                 // when the conversation list was reloaded, so it stayed after the call had ended (seen on the phone, UI-003).
                 scope.launch { runCatching { syncActiveCall(call, f.event.orEmpty()) } }
@@ -212,6 +225,11 @@ class CallManager(
                         IncomingCallNotifier.cancel(context)
                     }
                     "alerted" -> if (call.id == _state.value.callId && _state.value.phase == CallPhase.Outgoing) _state.update { it.copy(alerted = true) }
+                    // A voice room's manager muted this phone's microphone: show it off here too (only you can turn it on).
+                    "moderated" -> if (call.id == _state.value.callId && f.action == "mute") {
+                        scope.launch { runCatching { room?.localParticipant?.setMicrophoneEnabled(false) }; refreshParticipants() }
+                        _state.update { it.copy(notice = "A room manager muted your microphone") }
+                    }
                 }
             }
         }
@@ -228,8 +246,30 @@ class CallManager(
     private suspend fun syncActiveCall(call: CallDto, event: String) {
         when {
             event == "ended" || call.state == "ENDED" -> db.conversations().clearActiveCall(call.conversationId, call.id)
-            event == "ring" || event == "started" || event == "updated" -> db.conversations().setActiveCall(call.conversationId, call.id, call.video)
+            event == "ring" || event == "started" || event == "updated" -> {
+                db.conversations().setActiveCall(call.conversationId, call.id, call.video)
+                if (call.voiceRoom) {
+                    val people = call.participants.map { it.userId }.distinct()
+                    db.conversations().setRoomPeople(call.conversationId, GriipJson.encodeToString(ListSerializer(String.serializer()), people))
+                }
+            }
         }
+    }
+
+    /** Voice rooms: raise or lower your hand (everyone in the room sees the queue). */
+    fun raiseHand(raised: Boolean) = scope.launch {
+        val id = _state.value.callId ?: return@launch
+        runCatching { api.post<HandReq, CallRes>("/v1/calls/$id/hand", HandReq(raised)) }
+            .onSuccess { r -> _state.update { it.copy(hands = r.call.hands) } }
+            .onFailure { e -> _state.update { it.copy(notice = (e as? ApiException)?.message ?: "Couldn't change your hand") } }
+    }
+
+    /** Voice rooms, for the room's managers: "mute", "lower_hand" or "remove" someone. */
+    fun moderate(userId: String, action: String) = scope.launch {
+        val id = _state.value.callId ?: return@launch
+        runCatching { api.post<ModerateReq, CallRes>("/v1/calls/$id/moderate", ModerateReq(userId, action)) }
+            .onSuccess { r -> _state.update { it.copy(hands = r.call.hands) } }
+            .onFailure { e -> _state.update { it.copy(notice = (e as? ApiException)?.message ?: "That didn't work. Try again.") } }
     }
 
     private suspend fun recoverRinging() {
@@ -289,9 +329,11 @@ class CallManager(
         val conv = db.conversations().get(conversationId)
         val me = session.session?.userId
         _state.value = CallUiState(
-            phase = CallPhase.Outgoing, conversationId = conversationId, title = conv?.let { ConversationRepository.title(it, me) } ?: "Call",
+            // A voice room doesn't ring anyone: straight to connecting.
+            phase = if (conv?.voice == true) CallPhase.Connecting else CallPhase.Outgoing,
+            conversationId = conversationId, title = conv?.let { ConversationRepository.title(it, me) } ?: "Call",
             colorIndex = conv?.let { ConversationRepository.peer(it, me)?.avatarColor } ?: 0, video = video, cameraOn = video,
-            isGroup = conv?.type != "DM",
+            isGroup = conv?.type != "DM", voiceRoom = conv?.voice == true, canModerate = conv?.voice == true && conv.canManage,
         )
         try {
             val res = try {
@@ -301,7 +343,7 @@ class CallManager(
                 throw e
             }
             markHandled(res.call.id)
-            _state.update { it.copy(callId = res.call.id, alerted = res.call.alertedAt != null) }
+            _state.update { it.copy(callId = res.call.id, alerted = res.call.alertedAt != null, hands = res.call.hands) }
             val key = if (res.joinedExisting) waitForKey(res.call.id) else newKey().also { messages.sendCallKey(conversationId, res.call.id, video, it) }
             db.calls().upsertLog(CallLogEntity(res.call.id, conversationId, video, !res.joinedExisting, System.currentTimeMillis(), peerName = _state.value.title))
             connect(res.call.id, res.media!!, key, video)

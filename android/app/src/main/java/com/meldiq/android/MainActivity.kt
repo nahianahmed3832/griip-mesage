@@ -153,6 +153,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_CONVERSATION = "conversation"
+        /** [EXTRA_CONVERSATION]'s value that opens the Reminders screen instead of a conversation. */
+        const val TARGET_REMINDERS = "@reminders"
         const val EXTRA_OPEN_CALL = "open_call"
     }
 }

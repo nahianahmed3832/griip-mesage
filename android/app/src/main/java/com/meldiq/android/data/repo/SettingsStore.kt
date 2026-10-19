@@ -38,12 +38,14 @@ data class Settings(
     /** Message text size: 0.9 to 1.3. */
     val textScale: Float = 1f,
     val wallpaper: String = "none",
-    /** The colour preset (MeldiqPalettes: aurora, sunset or meadow). */
+    /** The colour preset (MeldiqPalettes: graphite, aurora, sunset or meadow). */
     val palette: String = MeldiqPalettes.DEFAULT,
     /** How conversations are drawn: a left-aligned stream with names and avatars (default), or bubbles. */
     val messageLayout: MessageLayout = MessageLayout.STREAM,
     /** The "Get started" checklist on Home was dismissed (or finished). */
     val setupDismissed: Boolean = false,
+    /** The first-run introduction pages were seen or skipped (replayable from Settings › Introduction). */
+    val introSeen: Boolean = false,
     /** Download received photos automatically: never, on Wi-Fi, or always. Files and videos are always tapped first. */
     val autoDownload: AutoDownload = AutoDownload.WIFI,
     // Notifications & sounds.
@@ -72,14 +74,14 @@ class SettingsStore(
     private val serverKey: String = "serverUrl",
     private val serverDefault: String = BuildConfig.DEFAULT_SERVER_URL,
 ) {
-    private val prefs = context.getSharedPreferences("griip_settings", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("griip_settings", Context.MODE_PRIVATE).also(::migrateDesign)
     private val _state = MutableStateFlow(read())
     val state: StateFlow<Settings> = _state
     val current: Settings get() = _state.value
 
     private fun read() = Settings(
         serverUrl = prefs.getString(serverKey, null) ?: serverDefault,
-        theme = runCatching { ThemeMode.valueOf(prefs.getString("theme", "SYSTEM")!!) }.getOrDefault(ThemeMode.SYSTEM),
+        theme = runCatching { ThemeMode.valueOf(prefs.getString("theme", null)!!) }.getOrDefault(DEFAULT_THEME),
         notifications = prefs.getBoolean("notifications", true),
         backgroundConnection = prefs.getBoolean("backgroundConnection", true),
         pushWakeups = prefs.getBoolean("pushWakeups", false),
@@ -96,6 +98,7 @@ class SettingsStore(
         palette = MeldiqPalettes.of(prefs.getString("palette", null)).id,
         messageLayout = runCatching { MessageLayout.valueOf(prefs.getString("messageLayout", null)!!) }.getOrDefault(MessageLayout.STREAM),
         setupDismissed = prefs.getBoolean("setupDismissed", false),
+        introSeen = prefs.getBoolean("introSeen", false),
         autoDownload = runCatching { AutoDownload.valueOf(prefs.getString("autoDownload", null)!!) }.getOrDefault(AutoDownload.WIFI),
         messageSound = prefs.getBoolean("messageSound", true),
         groupNotifications = prefs.getBoolean("groupNotifications", true),
@@ -127,6 +130,7 @@ class SettingsStore(
             .putString("palette", n.palette)
             .putString("messageLayout", n.messageLayout.name)
             .putBoolean("setupDismissed", n.setupDismissed)
+            .putBoolean("introSeen", n.introSeen)
             .putString("autoDownload", n.autoDownload.name)
             .putBoolean("messageSound", n.messageSound)
             .putBoolean("groupNotifications", n.groupNotifications)
@@ -137,5 +141,31 @@ class SettingsStore(
             .putBoolean("developerMode", n.developerMode)
             .apply()
         _state.value = read()
+    }
+
+    companion object {
+        /** Dark is the default look since the round-6 redesign (docs/DESIGN_SYSTEM.md). */
+        val DEFAULT_THEME = ThemeMode.DARK
+
+        /**
+         * The one-time move to the round-6 look for installs that predate it: the preset becomes Graphite, and "follow
+         * the system" (the old default) becomes dark. A light or dark mode someone chose is kept. Returns the new
+         * (theme, palette) pair; null theme means nothing was stored.
+         */
+        fun migratedDesign(theme: String?): Pair<String, String> {
+            val nextTheme = if (theme == null || theme == ThemeMode.SYSTEM.name) DEFAULT_THEME.name else theme
+            return nextTheme to MeldiqPalettes.DEFAULT
+        }
+
+        private fun migrateDesign(prefs: android.content.SharedPreferences) {
+            if (prefs.getInt("designVersion", 0) >= MeldiqPalettes.DESIGN_VERSION) return
+            val edit = prefs.edit().putInt("designVersion", MeldiqPalettes.DESIGN_VERSION)
+            // A fresh install has nothing stored yet and simply reads the defaults.
+            if (prefs.contains("theme") || prefs.contains("palette")) {
+                val (theme, palette) = migratedDesign(prefs.getString("theme", null))
+                edit.putString("theme", theme).putString("palette", palette)
+            }
+            edit.apply()
+        }
     }
 }

@@ -39,11 +39,20 @@ object Migrations {
         ),
         // v7 (2026-10-17): the queue for the encrypted history on the server (docs/MESSAGE_HISTORY.md), and its triggers.
         // Existing messages are queued by HistorySync when history is on, not here.
+        // v8 (2026-10-19, round 6): voice rooms. Every existing conversation is an ordinary one, with nobody in a room.
+        7 to listOf(
+            "ALTER TABLE `conversations` ADD COLUMN `voice` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE `conversations` ADD COLUMN `roomPeopleJson` TEXT",
+        ),
         6 to listOf(
             "CREATE TABLE IF NOT EXISTS `history_outbox` (`key` TEXT NOT NULL, `queuedAt` INTEGER NOT NULL, PRIMARY KEY(`key`))",
             "CREATE INDEX IF NOT EXISTS `index_history_outbox_queuedAt` ON `history_outbox` (`queuedAt`)",
         ) + HistoryTriggers.sql,
     )
+
+    init {
+        check(steps.keys.max() + 1 == GriipDatabase.VERSION) { "a migration step is missing" }
+    }
 
     fun all(): Array<Migration> = steps.map { (from, sql) ->
         object : Migration(from, from + 1) {

@@ -12,6 +12,7 @@ import com.meldiq.android.ui.media.MediaGallery
 import com.meldiq.android.ui.media.MediaViewer
 import com.meldiq.android.data.model.AttachmentRef
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Headset
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Share
 import android.widget.Toast
@@ -51,6 +52,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -385,6 +387,14 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val remoteMembers = conv?.let { ConversationRepository.remoteMembers(it) }.orEmpty()
     val federation by vm.c.conversations.federation.collectAsStateWithLifecycle()
     val remoteServers = federation[conversationId]?.servers.orEmpty()
+    var showSecurity by remember { mutableStateOf(false) }
+    val securityFacts = com.meldiq.android.data.model.ConversationSecurity.Facts(
+        type = conv?.type ?: "DM",
+        peerVerified = if (conv?.type == "DM") peerUser?.verified == true else null,
+        changedMembers = changedMembers.size,
+        otherServers = remoteServers.size.coerceAtLeast(if (remoteMembers.isNotEmpty()) 1 else 0),
+        callMediaE2ee = chatSettings.mediaE2ee,
+    )
     val subtitle = when {
         threadRoot != null -> "Thread"
         typing.isNotEmpty() -> if (isGroup) "${typing.first()} is typing…" else "typing…"
@@ -416,11 +426,19 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             }
             // With people on another server, calls need this server to host them (it says so per conversation).
             val canCall = remoteMembers.isEmpty() || federation[conversationId]?.calls == true
-            if (threadRoot == null && conv?.removed != true && canCall) {
+            if (threadRoot == null && conv?.removed != true && canCall && conv?.voice != true) {
                 CircleIconButton(Icons.Rounded.Videocam, "Video call", { permission(true) { vm.startCall(true) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
                 CircleIconButton(Icons.Rounded.Call, "Voice call", { permission(false) { vm.startCall(false) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
             }
+            if (threadRoot == null) SecurityPadlock(securityFacts) { showSecurity = true }
             CircleIconButton(Icons.Rounded.Search, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.conv_search), { searching = true }, tint = c.textSecondary)
+        }
+        if (showSecurity) {
+            ConversationSecuritySheet(
+                securityFacts, peerUser?.displayName ?: peer?.displayName,
+                onVerify = peer?.let { p -> { showSecurity = false; nav.navigate(Routes.user(p.id)) } },
+                onDismiss = { showSecurity = false },
+            )
         }
         if (!searching && threadRoot == null) {
             ConversationContextStrip(
@@ -453,7 +471,17 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             )
         }
         val activeCall = conv?.activeCallId
-        if (activeCall != null && call.phase == CallPhase.Idle && threadRoot == null) {
+        // A voice room (round 6): who's in it, and Join (which opens it when nobody is there yet).
+        if (conv?.voice == true && call.phase == CallPhase.Idle && threadRoot == null) {
+            val here = conv?.let { com.meldiq.android.ui.screens.home.roomPeople(it).size } ?: 0
+            StatusBanner(
+                if (here > 0) androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.vr_banner_here, here)
+                else androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.vr_banner_empty),
+                if (here > 0) BannerKind.Success else BannerKind.Info,
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Outlined.Headset,
+                action = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.vr_join), onAction = { permission(false) { vm.startCall(false) } },
+            )
+        } else if (activeCall != null && call.phase == CallPhase.Idle && threadRoot == null) {
             StatusBanner(
                 if (conv?.activeCallVideo == true) "A video call is in progress" else "A voice call is in progress", BannerKind.Success,
                 Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Rounded.Call, action = "Join", onAction = { permission(conv?.activeCallVideo == true) { vm.joinCall(activeCall, conv?.activeCallVideo == true) } },
@@ -889,6 +917,9 @@ private fun TypingRow(names: List<String>) {
     }
 }
 
+/** Past this many characters the composer's corners tighten, as it is about to wrap onto a second line. */
+private const val COMPOSER_PILL_CHARS = 40
+
 @Composable
 private fun Composer(
     text: TextFieldValue,
@@ -909,6 +940,11 @@ private fun Composer(
     focus: FocusRequester? = null,
 ) {
     val c = Griip.colors
+    // The field grows line by line (up to six, then scrolls inside); the growth is animated unless animations are off.
+    val reduced = com.meldiq.android.ui.theme.rememberReducedMotion()
+    val grow = if (reduced) androidx.compose.animation.core.snap() else com.meldiq.android.ui.theme.Motion.quick<androidx.compose.ui.unit.IntSize>()
+    val multiline = text.text.contains('\n') || text.text.length > COMPOSER_PILL_CHARS
+    val fieldShape = RoundedCornerShape(if (multiline) 18.dp else 24.dp)
     when (val d = voice.draft) {
         is VoiceDraftController.Draft.Recording -> {
             VoiceRecordingBar(d.startedAt, onCancelVoice, onStopRecording)
@@ -940,7 +976,8 @@ private fun Composer(
                 ComposerIcon(Icons.Outlined.AttachFile, "Attach a photo, video, file, contact or location", onAttach)
                 ComposerIcon(Icons.Outlined.EmojiEmotions, "Emoji and animated emoji", onEmoji)
                 Box(
-                    Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).background(c.surfaceVariant)
+                    Modifier.weight(1f).heightIn(min = 48.dp).animateContentSize(grow).clip(fieldShape)
+                        .background(c.surfaceVariant).border(1.dp, c.border, fieldShape)
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     contentAlignment = Alignment.CenterStart,
                 ) {

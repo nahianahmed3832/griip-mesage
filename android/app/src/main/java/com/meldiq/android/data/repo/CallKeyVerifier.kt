@@ -18,8 +18,11 @@ class CallKeyVerifier(private val lookup: suspend (callId: String) -> CallDto?) 
         val call = lookup(callId) ?: return Verdict.UNKNOWN_CALL
         return when {
             call.conversationId != conversationId -> Verdict.WRONG_CONVERSATION
-            call.createdBy != senderUserId -> Verdict.NOT_CREATOR
-            else -> Verdict.ACCEPT
+            call.createdBy == senderUserId -> Verdict.ACCEPT
+            // A voice room outlives whoever opened it (docs/VOICE_ROOMS.md): someone connected to the call right now,
+            // who holds the room's key already, may pass it on. The server's participant list says who is connected.
+            call.voiceRoom && call.participants.any { it.userId == senderUserId } -> Verdict.ACCEPT
+            else -> Verdict.NOT_CREATOR
         }
     }
 }

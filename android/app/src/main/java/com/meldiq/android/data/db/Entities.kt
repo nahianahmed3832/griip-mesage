@@ -43,6 +43,10 @@ data class ConversationEntity(
      * read-only).
      */
     val archivedAt: Long? = null,
+    /** A voice room (round 6, docs/VOICE_ROOMS.md). */
+    @androidx.room.ColumnInfo(defaultValue = "0") val voice: Boolean = false,
+    /** Voice rooms: the user ids in the room now (JSON list), from the server; null when nobody is in it. */
+    val roomPeopleJson: String? = null,
 )
 
 @kotlinx.serialization.Serializable

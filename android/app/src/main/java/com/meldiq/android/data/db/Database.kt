@@ -24,8 +24,12 @@ interface ConversationDao {
     suspend fun setActiveCall(cid: String, callId: String, video: Boolean)
 
     /** That call ended: the banner goes, unless another call has started there meanwhile. */
-    @Query("UPDATE conversations SET activeCallId = NULL WHERE id = :cid AND activeCallId = :callId")
+    @Query("UPDATE conversations SET activeCallId = NULL, roomPeopleJson = NULL WHERE id = :cid AND activeCallId = :callId")
     suspend fun clearActiveCall(cid: String, callId: String)
+
+    /** Voice rooms: who is in the room now (JSON list of user ids), from the call's own events. */
+    @Query("UPDATE conversations SET roomPeopleJson = :json WHERE id = :cid")
+    suspend fun setRoomPeople(cid: String, json: String?)
 
     @Query("SELECT * FROM conversations WHERE id = :id")
     fun observe(id: String): Flow<ConversationEntity?>
@@ -356,7 +360,7 @@ abstract class GriipDatabase : RoomDatabase() {
          * Schema version. Raising it needs a matching step in [Migrations] and the exported schema
          * committed under `app/schemas` (docs/DECISIONS.md D-13); `MigrationsTest` enforces both.
          */
-        const val VERSION = 7
+        const val VERSION = 8
 
         /**
          * The database file is encrypted with SQLCipher (AES-256) using a random passphrase that is

@@ -4,6 +4,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.material.icons.rounded.SignalCellularConnectedNoInternet0Bar
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.PanTool
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.Layout
@@ -287,7 +289,7 @@ fun CallOverlay() {
             }
             if (details) ConnectionDetails(s, Modifier.padding(top = 10.dp)) { details = false }
             if (verify) VerificationPanel(s, Modifier.padding(top = 10.dp)) { verify = false }
-            if (people) PeoplePanel(s.participants, Modifier.padding(top = 10.dp)) { people = false }
+            if (people) PeoplePanel(s, Modifier.padding(top = 10.dp), onModerate = { id, action -> calls.moderate(id, action) }) { people = false }
         }
 
         // Bottom: share indicator + controls, kept clear of the navigation bar, gesture area and cutouts.
@@ -320,6 +322,21 @@ fun CallOverlay() {
                     CallControlButton(if (s.video) Icons.Rounded.Videocam else Icons.Rounded.Call, "Accept", { permission(s.video) { scope.launch { calls.accept() } } }, positive = true)
                 }
             } else if (s.phase != CallPhase.Ended) {
+                // Voice rooms (round 6): ask to speak; everyone sees the hands in order in the People list.
+                if (s.voiceRoom && s.phase == CallPhase.Connected) {
+                    val me = container.session.session?.userId
+                    val raised = me != null && me in s.hands
+                    Row(
+                        Modifier.padding(bottom = 10.dp).clip(Shapes.pill).background(if (raised) Griip.colors.warning.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.16f))
+                            .pressable({ calls.raiseHand(!raised) }, onClickLabel = if (raised) "Lower your hand" else "Raise your hand").padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Rounded.PanTool, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (raised) "Lower hand" else "Raise hand", style = Griip.type.button, color = Color.White)
+                        if (s.hands.isNotEmpty()) Text("  ·  ${s.hands.size}", style = Griip.type.button, color = Color.White.copy(alpha = 0.8f))
+                    }
+                }
                 CallControlBar(
                     s,
                     onMic = { calls.toggleMic() },
@@ -543,19 +560,38 @@ private fun ScreenLabel(name: String, modifier: Modifier) {
     )
 }
 
-/** Who is in the call and their state, readable without relying on the tiles (also for screen readers). */
+/**
+ * Who is in the call and their state, readable without relying on the tiles (also for screen readers). In a voice
+ * room, raised hands come first and the room's managers get Mute, Lower hand and Remove for each person.
+ */
 @Composable
-private fun PeoplePanel(participants: List<ParticipantUi>, modifier: Modifier, onClose: () -> Unit) {
+private fun PeoplePanel(s: CallUiState, modifier: Modifier, onModerate: (String, String) -> Unit, onClose: () -> Unit) {
+    val participants = if (s.voiceRoom) s.participants.sortedBy { p -> s.hands.indexOf(p.userId).let { if (it < 0) Int.MAX_VALUE else it } } else s.participants
     Column(
         modifier.fillMaxWidth().widthIn(max = 520.dp).clip(Shapes.tile).background(Color.Black.copy(alpha = 0.75f))
             .pressable(onClose, onClickLabel = "Close the list of people").padding(14.dp),
     ) {
         Text("${participants.size} in this call", style = Griip.type.label, color = Color.White)
         participants.forEach { p ->
+            var menu by remember { mutableStateOf(false) }
             Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Avatar(p.name, p.userId.hashCode(), size = 28.dp, ring = false)
                 Spacer(Modifier.width(10.dp))
                 Text(if (p.isLocal) "You" else p.name, style = Griip.type.bodySmall, color = Color.White, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (p.userId in s.hands) Icon(Icons.Rounded.PanTool, "Hand raised", tint = Griip.colors.warning, modifier = Modifier.padding(end = 6.dp).size(16.dp))
+                if (s.voiceRoom && s.canModerate && !p.isLocal) {
+                    Box {
+                        Icon(
+                            Icons.Rounded.MoreVert, "Moderate ${p.name}", tint = Color.White,
+                            modifier = Modifier.size(28.dp).clip(CircleShape).pressable({ menu = true }, onClickLabel = "Moderate ${p.name}").padding(4.dp),
+                        )
+                        androidx.compose.material3.DropdownMenu(menu, { menu = false }) {
+                            androidx.compose.material3.DropdownMenuItem({ Text("Mute microphone") }, { menu = false; onModerate(p.userId, "mute") })
+                            if (p.userId in s.hands) androidx.compose.material3.DropdownMenuItem({ Text("Lower hand") }, { menu = false; onModerate(p.userId, "lower_hand") })
+                            androidx.compose.material3.DropdownMenuItem({ Text("Remove from call") }, { menu = false; onModerate(p.userId, "remove") })
+                        }
+                    }
+                }
                 val status = listOfNotNull(
                     if (p.speaking) "speaking" else null,
                     if (p.micOn) null else "muted",

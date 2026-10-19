@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 
 class ConversationRepository(
     private val api: ApiClient,
@@ -67,6 +68,8 @@ class ConversationRepository(
             lastSenderName = local?.lastSenderName, unreadCount = local?.unreadCount ?: 0, mentionCount = local?.mentionCount ?: 0,
             muted = local?.muted ?: false, draft = local?.draft, removed = !d.joined && local?.joined == true,
             archivedAt = local?.archivedAt,
+            voice = d.voice,
+            roomPeopleJson = d.activeCall?.participantIds?.let { GriipJson.encodeToString(ListSerializer(String.serializer()), it) },
         )
         if (d.joined || local != null) db.conversations().upsert(e)
         return e

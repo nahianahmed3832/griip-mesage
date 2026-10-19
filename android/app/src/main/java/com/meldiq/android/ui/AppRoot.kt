@@ -96,6 +96,10 @@ object Routes {
     const val CALLS = "calls"
     /** Messages saved for later, with reminders (Home's Later card, 2026-10-19). */
     const val LATER = "later"
+    /** The first-run introduction, replayed from Settings (round 6). */
+    const val INTRO = "intro"
+    /** Reminders: upcoming, overdue and done (round 6, docs/REMINDERS.md). */
+    const val REMINDERS = "reminders"
     const val WORKSPACE = "workspace"
     /** Settings (profile, account, privacy, appearance, notifications, calls, about), from your avatar on Home. */
     const val PROFILE = "profile"
@@ -220,7 +224,10 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
     val dmRequest = remember { DmListRequest() }
 
     LaunchedEffect(pendingConversation, pendingInvite) {
-        if (pendingConversation != null) {
+        if (pendingConversation == com.meldiq.android.MainActivity.TARGET_REMINDERS) {
+            nav.navigate(Routes.REMINDERS)
+            onPendingHandled()
+        } else if (pendingConversation != null) {
             nav.navigate(Routes.conversation(pendingConversation))
             onPendingHandled()
         } else if (pendingInvite != null) {
@@ -257,6 +264,8 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             composable(Routes.ACTIVITY) { ActivityFeedScreen(nav) }
             composable(Routes.CALLS) { CallsScreen(nav) }
             composable(Routes.LATER) { com.meldiq.android.ui.screens.home.LaterScreen(nav) }
+            composable(Routes.INTRO) { com.meldiq.android.ui.screens.onboarding.IntroScreen(onDone = { nav.popBackStack() }) }
+            composable(Routes.REMINDERS) { com.meldiq.android.ui.screens.reminders.RemindersScreen(nav) }
             composable(Routes.WORKSPACE) { WorkspaceScreen(nav) }
             composable(Routes.CONTACTS) { com.meldiq.android.ui.screens.contacts.ContactsScreen(nav) }
             composable(Routes.PROFILE) { com.meldiq.android.ui.screens.profile.SettingsHub(nav) }

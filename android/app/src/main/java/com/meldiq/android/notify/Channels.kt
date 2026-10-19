@@ -28,6 +28,8 @@ object Channels {
         private set
     const val ONGOING_CALL = "ongoing_call"
     const val CONNECTION = "connection"
+    /** Reminders the server fired (round 6, docs/REMINDERS.md). */
+    const val REMINDERS = "reminders"
 
     /** Channels these replace (the original ids, and other sound variants). */
     private val LEGACY = mapOf("msg" to listOf("messages"), "mention" to listOf("mentions"), "call" to listOf("incoming_call", "incoming_call_v2"))
@@ -51,6 +53,7 @@ object Channels {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(ONGOING_CALL, "Ongoing call", NotificationManager.IMPORTANCE_LOW))
         nm.createNotificationChannel(NotificationChannel(CONNECTION, "Background connection", NotificationManager.IMPORTANCE_MIN).apply { description = "Shown while Meldiq stays connected for background delivery" })
+        nm.createNotificationChannel(NotificationChannel(REMINDERS, "Reminders", NotificationManager.IMPORTANCE_HIGH).apply { description = "Reminders you set, and reminders for saved messages" })
     }
 
     /** After Settings › Notifications & Sounds changed. */

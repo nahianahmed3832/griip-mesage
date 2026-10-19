@@ -103,6 +103,20 @@ class AccountRepository(
         }
     }
 
+    /**
+     * The account this phone holds was recovered with a recovery code and now uses [newEmail] (docs/ACCOUNT_RECOVERY.md).
+     * The recovery itself proved control of the account under [oldEmail], so the profile follows it to the new address;
+     * signing in still proves this phone's device key. Any other account's recovery changes nothing here.
+     */
+    fun addressRecovered(oldEmail: String, newEmail: String) {
+        val r = vault.account() ?: return
+        val old = AccountRules.normalizeEmail(oldEmail)
+        if (AccountRules.normalizeEmail(r.email) != old) return
+        val address = AccountRules.normalizeEmail(newEmail)
+        vault.saveAccount(r.copy(email = address, tokens = null))
+        _phase.value = AccountPhase.SignedOut(address, null)
+    }
+
     // ───────────── Sign-up ─────────────
 
     suspend fun register(serverUrl: String, name: String, email: String, password: String, inviteCode: String?) {

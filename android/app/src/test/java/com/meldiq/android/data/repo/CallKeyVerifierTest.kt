@@ -12,6 +12,11 @@ import org.junit.Test
 class CallKeyVerifierTest {
     private val calls = mapOf(
         "call-1" to CallDto(id = "call-1", conversationId = "c1", createdBy = "alice", video = true, state = "RINGING", createdAt = 1),
+        // A voice room's call (round 6): bob is connected, mallory isn't.
+        "room-1" to CallDto(
+            id = "room-1", conversationId = "c1", createdBy = "alice", video = false, state = "ACTIVE", createdAt = 1, voiceRoom = true,
+            participants = listOf(com.meldiq.android.data.api.CallParticipantDto("bob", "d-bob", 2)),
+        ),
     )
     private val verifier = CallKeyVerifier { calls[it] }
 
@@ -29,6 +34,21 @@ class CallKeyVerifierTest {
     fun aKeySentFromAnotherConversationIsRefused() = runTest {
         // alice is the creator, but this key arrived in a different conversation from the call's
         assertEquals(Verdict.WRONG_CONVERSATION, verifier.check("call-1", "c2", "alice"))
+    }
+
+    @Test
+    fun inAVoiceRoomSomeoneConnectedMayPassTheKeyOn() = runTest {
+        assertEquals(Verdict.ACCEPT, verifier.check("room-1", "c1", "alice"))
+        assertEquals(Verdict.ACCEPT, verifier.check("room-1", "c1", "bob"))
+        // Not connected to the call: refused, as in any other call.
+        assertEquals(Verdict.NOT_CREATOR, verifier.check("room-1", "c1", "mallory"))
+        assertEquals(Verdict.WRONG_CONVERSATION, verifier.check("room-1", "c2", "bob"))
+    }
+
+    @Test
+    fun outsideVoiceRoomsOnlyTheCreatorCounts() = runTest {
+        val group = CallKeyVerifier { calls.getValue("call-1").copy(participants = listOf(com.meldiq.android.data.api.CallParticipantDto("bob", "d-bob", 2))) }
+        assertEquals(Verdict.NOT_CREATOR, group.check("call-1", "c1", "bob"))
     }
 
     @Test

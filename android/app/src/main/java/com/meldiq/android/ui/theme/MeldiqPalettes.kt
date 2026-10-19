@@ -6,7 +6,10 @@ import androidx.compose.ui.graphics.Color
 /**
  * The Meldiq palettes (2026-10-19, from the owner's three-theme reference and the logo; docs/DESIGN_SYSTEM.md):
  *
- * - **Aurora** (default): lavender → sky header, indigo actions and a violet accent, like the logo's ribbon. Dark mode
+ * - **Graphite** (default since round 6): the professional workspace look for long working days. Dark mode is
+ *   charcoal canvas, slate bars and cards, inset inputs, flat (no gradient) header and one restrained indigo accent
+ *   taken from the logo's ribbon. Light mode is the same design in neutral greys.
+ * - **Aurora**: lavender → sky header, indigo actions and a violet accent, like the logo's ribbon. Dark mode
  *   sits on the logo's own navy.
  * - **Sunset**: peach → pink header with magenta actions.
  * - **Meadow**: mint header with green actions.
@@ -16,7 +19,7 @@ import androidx.compose.ui.graphics.Color
  * outlines 3:1.
  */
 object MeldiqPalettes {
-    const val DEFAULT = "aurora"
+    const val DEFAULT = "graphite"
 
     data class Preset(val id: String, val label: String, val light: GriipColors, val dark: GriipColors)
 
@@ -28,6 +31,8 @@ object MeldiqPalettes {
         val action: Long, val onAction: Long, val accentStart: Long, val accentEnd: Long, val onAccent: Long,
         val headerStart: Long, val headerMid: Long, val headerEnd: Long, val badge: Long, val onBadge: Long,
         val bubbleOutgoing: Long, val onBubbleOutgoing: Long, val bubbleOutgoingMeta: Long, val navIndicator: Long,
+        /** Search field and chips on the header; null keeps the translucent white used on gradient headers. */
+        val headerField: Long? = null,
     )
 
     private fun shared(t: Tones, dark: Boolean): GriipColors {
@@ -63,11 +68,29 @@ object MeldiqPalettes {
             navIndicator = c(t.navIndicator),
             outline = c(t.outline),
             accentStart = c(t.accentStart), accentEnd = c(t.accentEnd), onAccent = c(t.onAccent),
-            headerField = Color.White.copy(alpha = if (dark) 0.10f else 0.70f),
+            headerField = t.headerField?.let(c) ?: Color.White.copy(alpha = if (dark) 0.10f else 0.70f),
             badge = c(t.badge), onBadge = c(t.onBadge),
         )
     }
 
+    private val graphiteLight = Tones(
+        background = 0xFFF4F5F7, surface = 0xFFFFFFFF, surfaceVariant = 0xFFEBECEF, border = 0xFFDCDEE3, outline = 0xFF7A7F8C,
+        textPrimary = 0xFF17181C, textSecondary = 0xFF4A4D57, textTertiary = 0xFF5D616C,
+        primary = 0xFF4B4FC9, primaryBright = 0xFF5B5FD8, primaryDeep = 0xFF353AA6, primarySoft = 0xFFE8E9FB, onPrimary = 0xFFFFFFFF,
+        action = 0xFF4B4FC9, onAction = 0xFFFFFFFF, accentStart = 0xFF4B4FC9, accentEnd = 0xFF4B4FC9, onAccent = 0xFFFFFFFF,
+        headerStart = 0xFFFFFFFF, headerMid = 0xFFFFFFFF, headerEnd = 0xFFFFFFFF, badge = 0xFFC42B32, onBadge = 0xFFFFFFFF,
+        bubbleOutgoing = 0xFFE6E7FA, onBubbleOutgoing = 0xFF17181C, bubbleOutgoingMeta = 0xFF4A4D70, navIndicator = 0xFFE3E4F7,
+        headerField = 0xFFEBECEF,
+    )
+    private val graphiteDark = Tones(
+        background = 0xFF1E1F24, surface = 0xFF26282E, surfaceVariant = 0xFF2F3138, border = 0xFF383B43, outline = 0xFF7A7F8C,
+        textPrimary = 0xFFECEDF0, textSecondary = 0xFFB6BAC3, textTertiary = 0xFF989DA8,
+        primary = 0xFFA5ADFF, primaryBright = 0xFFB8BEFF, primaryDeep = 0xFFC8CDFF, primarySoft = 0xFF2E3150, onPrimary = 0xFF14163A,
+        action = 0xFF5A5FD8, onAction = 0xFFFFFFFF, accentStart = 0xFF8B93FF, accentEnd = 0xFF8B93FF, onAccent = 0xFF14163A,
+        headerStart = 0xFF26282E, headerMid = 0xFF26282E, headerEnd = 0xFF26282E, badge = 0xFFF06A6F, onBadge = 0xFF2A0A0C,
+        bubbleOutgoing = 0xFF33365A, onBubbleOutgoing = 0xFFEEEFFD, bubbleOutgoingMeta = 0xFFBCC0E6, navIndicator = 0xFF383B52,
+        headerField = 0xFF1E1F24,
+    )
     private val auroraLight = Tones(
         background = 0xFFF4F5FB, surface = 0xFFFFFFFF, surfaceVariant = 0xFFECEEF8, border = 0xFFDDE0EE, outline = 0xFF7C82A8,
         textPrimary = 0xFF121433, textSecondary = 0xFF444868, textTertiary = 0xFF5A5E80,
@@ -118,10 +141,17 @@ object MeldiqPalettes {
     )
 
     val ALL: List<Preset> = listOf(
+        Preset("graphite", "Graphite", shared(graphiteLight, false), shared(graphiteDark, true)),
         Preset("aurora", "Aurora", shared(auroraLight, false), shared(auroraDark, true)),
         Preset("sunset", "Sunset", shared(sunsetLight, false), shared(sunsetDark, true)),
         Preset("meadow", "Meadow", shared(meadowLight, false), shared(meadowDark, true)),
     )
+
+    /**
+     * Version of the default look. Installs that predate [DESIGN_VERSION] move once to Graphite, and from following the
+     * system to dark mode (an explicit light or dark choice is kept): `SettingsStore` does this on first read.
+     */
+    const val DESIGN_VERSION = 2
 
     /** The preset with this id; anything else (older accent ids, a missing setting) is the default. */
     fun of(id: String?): Preset = ALL.firstOrNull { it.id == id } ?: ALL.first()

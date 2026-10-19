@@ -180,6 +180,24 @@ class AccountRepositoryTest {
     }
 
     @Test
+    fun `after a recovery to a new address, this phone's profile follows its own account and nobody else's`() = runBlocking {
+        val r = repo()
+        api.verifiedAccount("first@example.com")
+        r.login(URL, "first@example.com", PASSWORD)
+        r.logout()
+        // Someone else's recovery changes nothing here.
+        r.addressRecovered("stranger@example.com", "stranger.new@example.com")
+        assertEquals("first@example.com", vault.record!!.email)
+        // This account's recovery: the profile now belongs to the new address (phone test: sign-in was refused).
+        r.addressRecovered("First@Example.com", "First.New@Example.com")
+        assertEquals("first.new@example.com", vault.record!!.email)
+        assertNull(vault.record!!.tokens)
+        assertEquals(AccountPhase.SignedOut("first.new@example.com", null), r.phase.value)
+        r.requireProfileFor("first.new@example.com")
+        expectCode(OTHER_ACCOUNT_HERE) { r.requireProfileFor("first@example.com") }
+    }
+
+    @Test
     fun `another account can't sign up or move onto a phone holding one account's keys`() = runBlocking {
         val r = repo()
         api.verifiedAccount("owner@example.com")

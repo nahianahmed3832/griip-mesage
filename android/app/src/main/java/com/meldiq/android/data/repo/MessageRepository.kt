@@ -133,6 +133,9 @@ class MessageRepository(
     val orgEvents: SharedFlow<String> = _orgEvents
     private val _orgDeleted = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val orgDeleted: SharedFlow<String> = _orgDeleted
+    private val _reminderEvents = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    /** Reminders that went off or changed on another device ("reminder.due", "reminders.changed"): their ids. */
+    val reminderEvents: SharedFlow<String> = _reminderEvents
     private val _prefsUpdated = MutableSharedFlow<String>(extraBufferCapacity = 16)
     /** Workspaces whose personal preferences another device of this person changed ("prefs.updated"). */
     val prefsUpdated: SharedFlow<String> = _prefsUpdated
@@ -827,6 +830,7 @@ class MessageRepository(
             }
             "devices.changed" -> f.userId?.let { directory.invalidateUser(it) }
             "prefs.updated" -> f.workspaceId?.let { _prefsUpdated.tryEmit(it) }
+            "reminder.due", "reminders.changed" -> f.id?.let { _reminderEvents.tryEmit(it) }
             "integration.event" -> f.conversationId?.let { _appEvents.tryEmit(it) }
             "integration.updated" -> f.orgId?.let { _appUpdates.tryEmit(it) }
             "call" -> _callFrames.tryEmit(f)
@@ -1001,9 +1005,12 @@ class MessageRepository(
                 // Only the call's creator answers, in the call's own conversation, while the call is live (T5.3).
                 val callId = pl.callId ?: return
                 val k = db.calls().key(callId) ?: return
-                if (k.fromUserId != me || k.conversationId != item.conversationId || !keyRequests.shouldAnswer(callId)) return
+                if (k.conversationId != item.conversationId || !keyRequests.shouldAnswer(callId)) return
                 val call = runCatching { api.get<CallRes>("/v1/calls/$callId").call }.getOrNull() ?: return // the joiner asks again
-                if (call.state == "ENDED" || call.createdBy != me) return
+                if (call.state == "ENDED") return
+                // The creator answers; in a voice room, so does anyone connected who holds the key (docs/VOICE_ROOMS.md).
+                val mayAnswer = (k.fromUserId == me && call.createdBy == me) || (call.voiceRoom && call.participants.any { it.userId == me })
+                if (!mayAnswer) return
                 sendControl(item.conversationId, Payload(type = "call_invite", callId = callId, video = call.video, e2eeKey = k.key))
             }
             "call_invite" -> {
@@ -1023,7 +1030,9 @@ class MessageRepository(
                     return
                 }
                 val info = CallInfo(callId, pl.video == true)
-                db.messages().insertIgnore(
+                // A voice room's key: joining the room isn't a call to record in its conversation.
+                val voiceRoom = db.conversations().get(item.conversationId)?.voice == true
+                if (!voiceRoom) db.messages().insertIgnore(
                     MessageEntity(
                         id = "call-$callId", conversationId = item.conversationId, senderUserId = item.senderUserId, senderDeviceId = item.senderDeviceId,
                         outgoing = mine, kind = "call", text = if (pl.video == true) "Video call" else "Voice call", sentAt = serverTs, serverTs = serverTs,
@@ -1075,6 +1084,13 @@ class MessageRepository(
     suspend fun recordCall(call: CallDto) {
         val me = session.session?.userId ?: return
         if (db.conversations().get(call.conversationId) == null) return
+        // A voice room's comings and goings aren't calls in its history (docs/VOICE_ROOMS.md); an entry an earlier
+        // build made is removed (phone test: opening the room added "Group voice call in progress").
+        if (call.voiceRoom) {
+            db.messages().deleteLocal("call-${call.id}")
+            refreshPreview(call.conversationId)
+            return
+        }
         val declinedHere = db.calls().getLog(call.id)?.endReason == "declined"
         val info = CallHistory.summarize(call, me, declinedHere)
         val id = "call-${call.id}"

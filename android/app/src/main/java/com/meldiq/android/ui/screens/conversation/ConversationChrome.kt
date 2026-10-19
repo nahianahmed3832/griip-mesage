@@ -23,7 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
@@ -60,7 +59,8 @@ import com.meldiq.android.ui.theme.Shapes
 
 /**
  * Under the conversation header: a row of quiet chips for what the conversation holds (pinned messages, files, what
- * you saved for later) and a reminder that it's end-to-end encrypted. Each chip opens the matching view.
+ * you saved for later). Each chip opens the matching view. Encryption is the header's padlock since round 6
+ * ([SecurityPadlock]), not a permanent chip.
  */
 @Composable
 fun ConversationContextStrip(pinned: Int, saved: Int, onPinned: () -> Unit, onFiles: () -> Unit, onSaved: () -> Unit) {
@@ -70,7 +70,6 @@ fun ConversationContextStrip(pinned: Int, saved: Int, onPinned: () -> Unit, onFi
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StripChip(Icons.Outlined.Lock, stringResource(R.string.conv_encrypted), null)
         if (pinned > 0) StripChip(Icons.Outlined.PushPin, stringResource(R.string.conv_pinned, pinned), onPinned)
         StripChip(Icons.Outlined.Folder, stringResource(R.string.conv_files), onFiles)
         if (saved > 0) StripChip(Icons.Outlined.BookmarkBorder, stringResource(R.string.conv_saved, saved), onSaved)

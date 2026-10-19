@@ -104,7 +104,11 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class PresenceRes(val presence: List<PresenceDto>)
 
 // ───────── Conversations ─────────
-@Serializable data class ActiveCallDto(val id: String, val video: Boolean, val state: String, val startedAt: Long)
+@Serializable data class ActiveCallDto(
+    val id: String, val video: Boolean, val state: String, val startedAt: Long,
+    /** Voice rooms: who is in the room now (at most 12). */
+    val participantIds: List<String>? = null,
+)
 @Serializable data class ConversationDto(
     val id: String, val type: String, val orgId: String? = null, val scope: String? = null, val scopeId: String? = null,
     val scopeName: String? = null, val kind: String? = null, val name: String? = null, val topic: String? = null,
@@ -116,6 +120,8 @@ import kotlinx.serialization.json.JsonObject
     /** Whether this server lets you use @everyone here (false from older servers, which don't support it). */
     val canMentionAll: Boolean = false,
     val federation: ConversationFederationDto? = null,
+    /** A voice room (round 6, docs/VOICE_ROOMS.md): joining starts or joins its call, nobody rings. */
+    val voice: Boolean = false,
 )
 /** Servers of the people in a conversation who are on another server, as this server sees them. */
 @Serializable data class ConversationFederationDto(val servers: List<FederationServerDto> = emptyList(), val calls: Boolean = false)
@@ -240,6 +246,8 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class CreateChannelReq(
     val name: String, val topic: String? = null, val scope: String, val scopeId: String? = null, val kind: String,
     val autoJoin: Boolean? = null, val memberIds: List<String> = emptyList(),
+    /** A voice room (round 6). */
+    val voice: Boolean = false,
 )
 @Serializable data class OrgRoleReq(val role: String? = null, val title: String? = null)
 @Serializable data class InviteReq(val role: String, val branchId: String? = null, val teamId: String? = null, val maxUses: Int, val expiresInHours: Int)
@@ -308,6 +316,10 @@ import kotlinx.serialization.json.JsonObject
     val participants: List<CallParticipantDto> = emptyList(),
     /** Ended calls (server ≥ 2026-10-17): one entry per person who connected. Null from older servers: not known. */
     val attended: List<CallAttendanceDto>? = null,
+    /** The call of a voice room (round 6): no ringing, raised hands, room managers moderate. */
+    val voiceRoom: Boolean = false,
+    /** Voice rooms: who raised a hand, in order. */
+    val hands: List<String> = emptyList(),
 )
 @Serializable data class CallAttendanceDto(val userId: String, val joinedAt: Long, val leftAt: Long, val seconds: Long)
 @Serializable data class MediaGrant(val url: String, val token: String, val room: String)
@@ -315,6 +327,9 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class CallsRes(val calls: List<CallDto>)
 @Serializable data class StartCallReq(val conversationId: String, val video: Boolean)
 @Serializable data class DeclineCallReq(val reason: String)
+/** Voice rooms (round 6): raise or lower your hand; a manager's moderation of someone. */
+@Serializable data class HandReq(val raised: Boolean)
+@Serializable data class ModerateReq(val userId: String, val action: String)
 
 @Serializable data class ApiErrorBody(val error: ApiErrorDetail? = null)
 @Serializable data class ApiErrorDetail(val code: String = "", val message: String = "", val details: JsonElement? = null)
@@ -342,4 +357,9 @@ import kotlinx.serialization.json.JsonObject
     val deviceId: String? = null,
     /** "integration.updated": which app changed for this person (docs/INTEGRATIONS.md). */
     val connectorId: String? = null,
+    /** Voice rooms: what a moderator did to you ("mute", "lower_hand", "remove"). */
+    val action: String? = null,
+    /** "reminder.due" / "reminders.changed": which reminder (docs/REMINDERS.md). */
+    val id: String? = null,
+    val firedAt: Long? = null,
 )

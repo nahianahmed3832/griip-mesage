@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
@@ -199,6 +200,10 @@ fun SettingsHub(nav: NavHostController) {
                             container.settings.update { it.copy(developerMode = !it.developerMode) }
                         } else if (versionTaps == 1) nav.navigate(Routes.SECURITY)
                     },
+                )
+                MenuRow(
+                    Icons.Outlined.AutoStories, stringResource(R.string.settings_intro), subtitle = stringResource(R.string.settings_intro_sub),
+                    tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.INTRO) },
                 )
                 if (settings.developerMode) {
                     MenuRow(

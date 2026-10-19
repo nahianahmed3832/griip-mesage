@@ -56,6 +56,8 @@ class AppContainer(
     val accounts = com.meldiq.android.data.account.AccountRepository(accountApi, identity, session, session::deviceName)
     val legacyMigration = com.meldiq.android.data.account.LegacyMigration(accountApi, identity, session, accounts)
     val workspaces = com.meldiq.android.data.account.WorkspaceRepository(accountApi)
+    /** Recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md). */
+    val recoveryCodes = com.meldiq.android.data.account.RecoveryCodesApi(api)
     /** What this account's server supports (server-info features, 2026-10-17). */
     val features = com.meldiq.android.data.repo.ServerFeatures(api)
     val db: GriipDatabase = GriipDatabase.open(app, identity.databasePassphrase(), profile.dbName)
@@ -77,6 +79,9 @@ class AppContainer(
     val integrations = com.meldiq.android.data.repo.IntegrationRepository(api)
     /** Starred, sections, collapsed groups and mutes, kept on the server for every device (docs/WORKSPACE_ADMINISTRATION.md). */
     val navPrefs = com.meldiq.android.data.repo.NavPreferences(api, db, features, scope)
+    /** Reminders kept and fired by the server, sealed on this phone (docs/REMINDERS.md). */
+    val reminderNotifier = com.meldiq.android.notify.ReminderNotifier(app, db) { session.session?.userId }
+    val reminders = com.meldiq.android.data.repo.ReminderRepository(api, session, features) { reminderNotifier.show(it) }
     /** When each thread was last opened on this phone (Activity's thread replies). */
     val threadSeen = com.meldiq.android.data.repo.ThreadSeen(db)
     val federation = com.meldiq.android.data.repo.FederationRepository(api)
@@ -107,7 +112,16 @@ class AppContainer(
         scope.launch { orgs.selectedOrg.collect { id -> if (id != null) runCatching { navPrefs.load(id) } } }
         scope.launch { messages.prefsUpdated.collect { ws -> runCatching { navPrefs.sync(ws) } } }
         // Reminders for saved messages follow the synced list (set, changed or cleared on any of the person's devices).
-        scope.launch { navPrefs.saved.collect { runCatching { com.meldiq.android.notify.LaterReminders.sync(app, it) } } }
+        // A server that keeps reminders fires them (docs/REMINDERS.md); otherwise this phone's own timers do.
+        scope.launch {
+            navPrefs.saved.collect { saved ->
+                if (reminders.available.value) {
+                    runCatching { com.meldiq.android.notify.LaterReminders.sync(app, emptyList()) }
+                    runCatching { reminders.syncLater(saved) }
+                } else runCatching { com.meldiq.android.notify.LaterReminders.sync(app, saved) }
+            }
+        }
+        scope.launch { messages.reminderEvents.collect { runCatching { reminders.refresh() } } }
         // Conversations that arrive later (a new channel, the first list after sign-in) get their synced mute state.
         scope.launch {
             conversations.observeAll().map { list -> list.map { it.id }.toSet() }.distinctUntilChanged()
@@ -116,6 +130,15 @@ class AppContainer(
         // Waiting changes go out when the connection comes back.
         scope.launch {
             realtime.state.collect { if (it == ConnState.Connected) navPrefs.prefs.value.keys.forEach { ws -> runCatching { navPrefs.sync(ws) } } }
+        }
+        // Reminders that went off while this phone was offline (a push wake-up connects it) are shown on reconnect.
+        scope.launch {
+            realtime.state.collect {
+                if (it == ConnState.Connected) runCatching {
+                    reminders.refresh()
+                    if (reminders.available.value) reminders.syncLater(navPrefs.saved.value)
+                }
+            }
         }
         scope.launch { messages.orgDeleted.collect { runCatching { orgs.forget(it) }; runCatching { navPrefs.forget(it) } } }
         scope.launch {

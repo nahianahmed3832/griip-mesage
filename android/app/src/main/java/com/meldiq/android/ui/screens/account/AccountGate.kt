@@ -124,7 +124,7 @@ private fun FinishMoveSignIn(vm: AccountFlowViewModel, state: AccountFormState, 
         AccountStep.Reset -> ResetPasswordScreen(vm, state, onBack = { vm.goTo(AccountStep.Forgot) })
         else -> LogInEmailScreen(
             vm, state, showServer = false, onBack = { onLater?.invoke() }, onServer = {}, onOtherAccount = null,
-            allowLegacyEntry = false, onStartOver = onStartOver, canGoBack = onLater != null,
+            allowLegacyEntry = false, onStartOver = onStartOver, canGoBack = onLater != null, allowRecovery = false,
         )
     }
 }

@@ -18,7 +18,11 @@ import kotlinx.coroutines.launch
 
 /** The steps of Orbit 2.0 sign-up and sign-in. [back] is where Back goes (null: back to the welcome screen). */
 enum class AccountStep {
-    SignUp, LogIn, Verify, Forgot, Reset, DeviceSetup, RestoreKey, Link, StartFresh, LegacyCredentials, LegacyDetails;
+    SignUp, LogIn, Verify, Forgot, Reset, DeviceSetup, RestoreKey, Link, StartFresh, LegacyCredentials, LegacyDetails,
+    /** Lost the account's email: its address, a recovery code and the new address. */
+    Recover,
+    /** The code sent to the new address, and a new password. */
+    RecoverConfirm;
 
     val back: AccountStep?
         get() = when (this) {
@@ -30,6 +34,8 @@ enum class AccountStep {
             RestoreKey, Link, StartFresh -> DeviceSetup
             LegacyCredentials -> LogIn
             LegacyDetails -> LegacyCredentials
+            Recover -> LogIn
+            RecoverConfirm -> Recover
         }
 
     /** Steps the account's phase decides; the person can't wander off them with Back. */
@@ -37,7 +43,7 @@ enum class AccountStep {
 }
 
 /** A confirmation shown above a form. */
-enum class AccountNotice { CodeResent, ResetCodeSent, PasswordChanged }
+enum class AccountNotice { CodeResent, ResetCodeSent, PasswordChanged, AccountRecovered }
 
 data class AccountFormState(
     val step: AccountStep = AccountStep.LogIn,
@@ -49,6 +55,9 @@ data class AccountFormState(
     val newPassword: String = "",
     val legacyUsername: String = "",
     val recoveryKey: String = "",
+    /** Account recovery: one of the account's recovery codes, and the address to move it to. */
+    val recoveryCode: String = "",
+    val newEmail: String = "",
     val submitting: Boolean = false,
     val error: AuthError? = null,
     val notice: AccountNotice? = null,
@@ -70,6 +79,10 @@ data class AccountFormState(
     val canStartFresh get() = !submitting && password.isNotEmpty()
     val canLegacyVerify get() = !submitting && legacyUsername.length >= MIN_USERNAME && recoveryKey.length >= MIN_RECOVERY_KEY
     val canLegacyComplete get() = canSignUp
+    val newEmailValid: Boolean get() = AccountRules.isEmail(newEmail) && AccountRules.normalizeEmail(newEmail) != AccountRules.normalizeEmail(email)
+    val recoverPasswordIssue: AccountRules.PasswordIssue? get() = if (newPassword.isEmpty()) null else AccountRules.passwordIssue(newPassword, newEmail)
+    val canRecover get() = !submitting && emailValid && com.meldiq.android.data.account.RecoveryRules.isCode(recoveryCode) && newEmailValid
+    val canRecoverConfirm get() = !submitting && AccountRules.isVerifyCode(code) && newPassword.isNotEmpty() && recoverPasswordIssue == null
 
     companion object {
         const val MIN_USERNAME = 3
@@ -89,12 +102,15 @@ class AccountFlowViewModel(
     private val migration: LegacyMigration,
     private val serverUrl: () -> String,
     start: AccountStep = AccountStep.LogIn,
+    private val recovery: com.meldiq.android.data.account.RecoveryCodesApi? = null,
 ) : ViewModel() {
     private val _form = MutableStateFlow(AccountFormState(step = start, email = accounts.record?.email.orEmpty()))
     val form: StateFlow<AccountFormState> = _form.asStateFlow()
 
     private var pendingPassword: String? = null
     private var legacyTicket: LegacyTicket? = null
+    /** The recovery in progress (from step one); kept in memory only. */
+    private var recoveryTicket: String? = null
 
     init {
         viewModelScope.launch { accounts.phase.collect(::follow) }
@@ -211,6 +227,35 @@ class AccountFlowViewModel(
         run {
             accounts.resetPassword(serverUrl(), s.email, s.code, s.newPassword)
             _form.update { it.copy(step = AccountStep.LogIn, code = "", newPassword = "", password = "", notice = AccountNotice.PasswordChanged) }
+        }
+    }
+
+    /** Recovery step one: the code is used up here and a code goes to the new address. */
+    fun recover() {
+        val s = _form.value
+        val api = recovery ?: return
+        if (!s.canRecover) return
+        run {
+            val res = api.start(serverUrl(), AccountRules.normalizeEmail(s.email), s.recoveryCode, AccountRules.normalizeEmail(s.newEmail))
+            recoveryTicket = res.ticket
+            _form.update { it.copy(step = AccountStep.RecoverConfirm, recoveryCode = "", code = "", newPassword = "") }
+        }
+    }
+
+    /** Recovery step two: the account moves to the new address with the new password; then sign in with them. */
+    fun recoverConfirm() {
+        val s = _form.value
+        val api = recovery ?: return
+        val ticket = recoveryTicket ?: return goTo(AccountStep.Recover)
+        if (!s.canRecoverConfirm) return
+        run {
+            val res = api.complete(serverUrl(), ticket, s.code, s.newPassword)
+            recoveryTicket = null
+            // This phone's own account: its profile now belongs to the new address (phone test: sign-in was refused).
+            accounts.addressRecovered(s.email, res.email)
+            _form.update {
+                it.copy(step = AccountStep.LogIn, email = res.email, newEmail = "", code = "", newPassword = "", password = "", notice = AccountNotice.AccountRecovered)
+            }
         }
     }
 

@@ -65,7 +65,7 @@ class MeldiqPalettesTest {
 
     @Test
     fun everyPresetIsReadableInLightAndDarkMode() {
-        assertEquals(listOf("aurora", "sunset", "meadow"), MeldiqPalettes.ALL.map { it.id })
+        assertEquals(listOf("graphite", "aurora", "sunset", "meadow"), MeldiqPalettes.ALL.map { it.id })
         MeldiqPalettes.ALL.forEach { p ->
             assertReadable("${p.label} light", p.light)
             assertReadable("${p.label} dark", p.dark)
@@ -74,12 +74,26 @@ class MeldiqPalettesTest {
     }
 
     @Test
-    fun auroraIsTheDefaultAndUnknownIdsFallBackToIt() {
-        assertEquals("aurora", MeldiqPalettes.DEFAULT)
+    fun graphiteIsTheDefaultAndUnknownIdsFallBackToIt() {
+        assertEquals("graphite", MeldiqPalettes.DEFAULT)
         assertEquals(MeldiqPalettes.ALL.first(), MeldiqPalettes.of(null))
         assertEquals(MeldiqPalettes.ALL.first(), MeldiqPalettes.of("orbit")) // an older accent id
-        assertEquals(LightColors, MeldiqPalettes.colors("aurora", dark = false))
-        assertEquals(DarkColors, MeldiqPalettes.colors("aurora", dark = true))
+        assertEquals(LightColors, MeldiqPalettes.colors("graphite", dark = false))
+        assertEquals(DarkColors, MeldiqPalettes.colors("graphite", dark = true))
+    }
+
+    @Test
+    fun graphiteDarkIsCharcoalWithSeparatedSurfacesAndAFlatHeader() {
+        val d = MeldiqPalettes.of("graphite").dark
+        // Charcoal, not pure black; bars, cards and inputs each a step apart.
+        assertNotEquals(Color.Black, d.background)
+        assertTrue(luminance(d.background) < luminance(d.surface))
+        assertTrue(luminance(d.surface) < luminance(d.surfaceVariant))
+        assertTrue("cards stand apart from the page", contrast(d.surface, d.background) >= 1.1)
+        // No decorative gradients: one header colour and one accent colour.
+        assertEquals(d.heroStart, d.heroEnd)
+        assertEquals(d.accentStart, d.accentEnd)
+        assertEquals(d.actionStart, d.actionEnd)
     }
 
     @Test

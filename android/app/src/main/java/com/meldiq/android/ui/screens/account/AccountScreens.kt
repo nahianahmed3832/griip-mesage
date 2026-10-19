@@ -116,6 +116,7 @@ private fun noticeText(n: AccountNotice): String = when (n) {
     AccountNotice.CodeResent -> stringResource(R.string.acct_code_resent)
     AccountNotice.ResetCodeSent -> stringResource(R.string.acct_reset_sent)
     AccountNotice.PasswordChanged -> stringResource(R.string.acct_password_changed)
+    AccountNotice.AccountRecovered -> stringResource(R.string.recover_done)
 }
 
 /** Name, email and password; an invitation code only when the server asks for one. */
@@ -169,6 +170,8 @@ internal fun LogInEmailScreen(
     allowLegacyEntry: Boolean = true,
     onStartOver: (() -> Unit)? = null,
     canGoBack: Boolean = true,
+    /** "Lost access to your email?": not during a legacy move (that account has no recovery codes yet). */
+    allowRecovery: Boolean = true,
 ) {
     val focus = LocalFocusManager.current
     AuthScaffold(
@@ -189,6 +192,7 @@ internal fun LogInEmailScreen(
         PasswordField(state.password, { v -> vm.edit { it.copy(password = v) } }, stringResource(R.string.acct_password), !state.submitting, onDone = { if (state.canLogIn) vm.logIn() })
         Spacer(Modifier.height(Space.sm))
         AuthSwitchLink(stringResource(R.string.acct_forgot_q), stringResource(R.string.acct_forgot_action), { vm.goTo(AccountStep.Forgot) })
+        if (allowRecovery) AuthSwitchLink(stringResource(R.string.recover_q), stringResource(R.string.recover_action), { vm.goTo(AccountStep.Recover) })
         FormProblems(state)
         if (allowLegacyEntry) {
             Spacer(Modifier.height(Space.xl))
