@@ -154,8 +154,29 @@ cards and Later — a follow-up session in `/Volumes/code_files/orbit_web`.
 
 ## 13. GitHub and production
 
-Not done: they come after the phone test and the owner's go-ahead (deploy needs the API 0.6.0 rollout with migration
-016 and a backup first).
+**GitHub** ✅ (owner's go-ahead after the phone test): five commits under the owner's name on
+`worktree-orbit-integrations`, fast-forwarded to **`internal-beta`** (`f92e59a..7e74ef9`, no force): `dac7bfc` server,
+`b4607bb` Android, `a62e239` deploy settings, `57d4b7f` docs, `7e74ef9` image tag; GitHub attributes them to
+`nahianahmed3832`. CI on `57d4b7f`: **success** (Server: typecheck, tests, build; Android: unit tests, lint, debug and release builds).
+
+**Production** ✅ API **0.5.0 → 0.6.0** on 2026-10-19 at 10:37 UTC (the owner confirmed the 0.5.0 deploy 15 minutes
+earlier was finished):
+
+| Step | Result |
+|---|---|
+| Backup | `backups/pre-0.6.0-20261019T103347Z` on the VPS: verified snapshot (integrity ok, schema 15, 31 users) + attachments archive (71 MB), `.env` and `compose.yaml` copies; image tagged `0.5.0-rollback` |
+| Build | `griip-internal-messaging-api:0.6.0` built on the VPS from the pushed sources |
+| Rehearsal | migration 016 applied to a copy of the snapshot in a network-less throwaway container: schema 16, integrity ok, same counts; copy deleted |
+| Switch | `up -d --no-deps --no-build api` only; LiveKit and ntfy not restarted; `validate-env.sh` 0 errors (2 pre-existing warnings: open registration, APP_ENV unset) |
+| Checks | healthy at once, 0 restarts, clean logs; `/healthz` 0.6.0; features `custom-roles`, `integrations`, `saved-items`; live schema 16, still 31 users; production test bot signed in and the relay accepted its encrypted message; `web.meldiq.app` loads and reaches 0.6.0 |
+| Not changed | mail stays SES (SMTP needs the Hostinger mailbox), no integration credentials (connectors show "needs configuration"), no MongoDB, no DNS, no AWS, LiveKit/ntfy untouched |
+
+Rollback: `image: griip-internal-messaging-api:0.5.0-rollback` in `compose.yaml`, then
+`docker compose -p griip-internal-messaging -f compose.yaml up -d --no-deps --no-build api` (no data restore needed:
+migration 016 is additive). Full restore: `scripts/restore.sh` with the pre-0.6.0 archive.
+
+The Android app is **not** released to Play: `com.meldiq.android` needs a new Play Console app and a signed release
+build pointed at the production API; the test APK talks to the local test server.
 
 ## 14. Outstanding
 

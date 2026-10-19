@@ -7,7 +7,7 @@
 | VPS | Hostinger VM 1245833, `srv1245833.hstgr.cloud`, **72.60.107.88** (Ubuntu 24.04, 2 vCPU, 8 GB) |
 | Compose project | **`griip-internal-messaging`** |
 | Directory | **`/opt/griip-internal-messaging`** (root, 0750; `.env` 0600) |
-| Services | `api` (`griip-internal-messaging-api:0.2.0`, built on the VPS), `livekit` (`livekit/livekit-server:v1.13.10`) |
+| Services | `api` (`griip-internal-messaging-api:0.6.0` since 2026-10-19 10:37 UTC, built on the VPS; `0.5.0-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
 | Volume / network | `griip-internal-messaging_api-data`, `griip-internal-messaging_default` |
 | Public URLs | `https://msg.griipbuddy.cloud` (API + WebSocket), `wss://rtc.griipbuddy.cloud` (LiveKit signalling) |
 | TLS | host nginx (`/etc/nginx/sites-available/griip-message.conf`) with certbot certificate `griip-message`, which renews automatically |
@@ -76,6 +76,25 @@ docker compose -p griip-internal-messaging -f compose.yaml restart
 ```
 
 **Never** run `docker system prune`, `docker volume prune` or any other global cleanup on this shared server.
+
+## API-only upgrade (how 0.6.0 went out, 2026-10-19)
+
+The usual way to ship a new API version without touching LiveKit or ntfy:
+
+1. `bash scripts/backup.sh backups/pre-<version>-<UTC time>` on the VPS, plus copies of `.env` and `compose.yaml` into
+   the same folder, and `docker image tag griip-internal-messaging-api:<old> griip-internal-messaging-api:<old>-rollback`.
+   (Run commands that use `docker compose exec` with stdin closed: piped into `bash -s`, they swallow the rest of the script.)
+2. rsync `server/` (without `node_modules`, `dist`, `data`, `test`), `deploy/scripts/` and `.env.example`; then
+   `docker build -t griip-internal-messaging-api:<new> server`.
+3. Rehearse the migrations on a copy of the snapshot in a throwaway container (`--network none`, `DATA_DIR` pointing at
+   the copy, `node dist/admin.js stats`, then `verify-backup`).
+4. Install `compose.yaml` (its `image:` names the new tag), `validate-env.sh`, `docker compose … config -q`, then
+   `docker compose -p griip-internal-messaging -f compose.yaml up -d --no-deps --no-build api`.
+5. `verify.sh`, `/healthz`, server-info features, logs, and a bot round-trip (`tools/griip-bot`, a production test identity).
+
+Rollback: set `image:` back to the `-rollback` tag and run the same `up -d --no-deps --no-build api`. Migrations are
+additive, so the older code starts on the newer database (it ignores tables it doesn't know). A full data restore uses
+`scripts/restore.sh` with the pre-upgrade archive.
 
 ## Redeploying from a workstation
 
