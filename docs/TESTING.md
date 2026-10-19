@@ -421,6 +421,13 @@ Backend tests:
 cd server && npm test
 ```
 
+The same suite with the accounts and preferences domains in MongoDB (docs/MONGODB.md). Every run starts a throwaway
+local MongoDB replica set on 127.0.0.1 (test/support/mongoGlobal.ts); nothing shared or remote is ever used:
+
+```bash
+cd server && ORBIT_TEST_MONGO_DOMAINS=accounts,preferences npm test
+```
+
 Production smoke test:
 
 ```bash

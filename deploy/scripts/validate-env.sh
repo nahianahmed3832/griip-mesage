@@ -99,6 +99,23 @@ else
   ok "federation off (standalone server)"
 fi
 
+# MongoDB (docs/MONGODB.md). The server checks the URI and refuses split domains at start; this catches the obvious.
+if [ -n "${MONGODB_URI:-}" ]; then
+  case "$MONGODB_URI" in
+    mongodb+srv://*) ok "MongoDB with TLS (mongodb+srv)" ;;
+    mongodb://127.0.0.1*|mongodb://localhost*) ok "MongoDB on this machine" ;;
+    mongodb://*) case "$MONGODB_URI" in *tls=true*|*ssl=true*) ok "MongoDB with TLS" ;; *) err "MONGODB_URI must use TLS for a remote database (mongodb+srv:// or tls=true)" ;; esac ;;
+    *) err "MONGODB_URI must start with mongodb:// or mongodb+srv://" ;;
+  esac
+  for d in $(echo "${MONGODB_DOMAINS:-}" | tr ',' ' '); do
+    case "$d" in accounts|preferences) ok "MongoDB holds: $d (migrated first with admin mongo-migrate)" ;; *) err "MONGODB_DOMAINS: unknown domain $d" ;; esac
+  done
+elif [ -n "${MONGODB_DOMAINS:-}" ]; then
+  err "MONGODB_DOMAINS needs MONGODB_URI"
+else
+  ok "MongoDB not used (every table in SQLite)"
+fi
+
 # Orbit 2.0 accounts (docs/ORBIT_2_ARCHITECTURE §9). The server itself refuses the worst combinations at start.
 case "${APP_ENV:-development}" in
   production|staging) ok "APP_ENV = ${APP_ENV}" ;;

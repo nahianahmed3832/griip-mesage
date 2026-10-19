@@ -40,8 +40,14 @@ jobs:
         run: npm run typecheck
       # Includes the shared griip-envelope-v1 vectors (test/interop_vectors.test.ts), which the Android job checks too.
       # The real-S3 suite skips itself: CI has no AWS credentials and no ORBIT_LIVE_S3_BUCKET.
+      # A throwaway local MongoDB replica set comes up for the run (test/support/mongoGlobal.ts; the mongod binary is
+      # fetched by mongodb-memory-server). No shared or production database, no credentials.
       - name: Unit and integration tests
         run: npm test
+      - name: The same tests with accounts and preferences in MongoDB (docs/MONGODB.md)
+        run: npm test
+        env:
+          ORBIT_TEST_MONGO_DOMAINS: accounts,preferences
       - name: Build
         run: npm run build
 

@@ -68,6 +68,10 @@ account per server as separate on-device profiles (`ANDROID_SERVER_SETUP.md`).
 - `src/app.ts` builds Fastify (rate limit, websocket, content parsers, error handler) and registers the route modules in `src/routes/`.
 - `src/authz.ts` holds all authorisation logic (§5). `src/hub.ts` tracks online sockets and pushes queue items. `src/jobs.ts` runs retention cleanup and call reconciliation every 60 s.
 - SQLite in WAL mode with foreign keys on; migrations are in `server/migrations/` (§6), applied at start. A single process means writes are serialised. Multi-row operations use transactions.
+- MongoDB (2026-10-19, `server/src/mongo/`, `MONGODB.md`): with `MONGODB_URI` and `MONGODB_DOMAINS`, the accounts and
+  personal-preferences domains live in MongoDB instead (same rows as documents, validators and indexes derived from the
+  SQLite schema). Every other domain stays in SQLite until it is moved the same way; the server refuses to start in a
+  state that would split a domain between the two.
 - Public, unauthenticated: `GET /healthz` and `GET /v1/server-info` (instance name, version, client API range, registration mode, calling,
   limits). Operator CLI `src/admin.ts`, including `backup` (online SQLite snapshot, `src/backup.ts`) and `verify-backup`.
 - Realtime frames:

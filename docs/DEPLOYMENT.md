@@ -120,6 +120,13 @@ docker compose -p griip-internal-messaging -f compose.yaml exec api node dist/se
 It creates the GriipBuddy org with the Bangladesh and International branches, the departments, teams and channels from the spec, and prints invite codes.
 It refuses to run with `NODE_ENV=production` unless you pass `--force`, and it never creates sample users or messages.
 
+## MongoDB (2026-10-19, not in production)
+
+The server can keep the accounts and preferences domains in MongoDB (`docs/MONGODB.md`): the settings are in
+`deploy/.env.example` (`MONGODB_*`), checked by `validate-env.sh`. Moving a domain is a maintenance-window step with
+backups first (`MONGODB.md` §6–§7: stop the API, `node dist/admin.js mongo-migrate <domain> --yes`, add the domain to
+`MONGODB_DOMAINS`, start, smoke-test); rollback is `mongo-rollback`. Production has no MongoDB deployment yet.
+
 ## Rollback / removal (reversible)
 
 Stop the project and keep its data:

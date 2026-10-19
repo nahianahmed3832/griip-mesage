@@ -1,0 +1,146 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Orbit off-site backups (docs/ORBIT_MONGODB_CUTOVER_PLAN_2026-10-19.md). A private, versioned, object-locked S3 bucket
+  for the server's encrypted database backups, and a write-only IAM user the VPS uses. Archives are encrypted on the
+  VPS with the owner's age public key before upload, so neither the VPS nor this bucket can read them. The access key is
+  created separately and written straight to a root-only file on the VPS, never into this stack's outputs.
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: griipbuddy-orbit-db-backups-sg
+    Description: Globally unique bucket name. Must start with griipbuddy-orbit- (what the orbit-admin user may create).
+    AllowedPattern: "^griipbuddy-orbit-[a-z0-9-]{1,45}[a-z0-9]$"
+  ObjectPrefix:
+    Type: String
+    Default: orbit-db/
+    Description: Prefix of every backup object.
+    AllowedPattern: "^[a-z0-9-]+/$"
+  ServerIp:
+    Type: String
+    Default: 72.60.107.88/32
+    Description: The API server's public IPv4 address; uploads are accepted from it only.
+  LockDays:
+    Type: Number
+    Default: 14
+    MinValue: 1
+    Description: Days each backup can't be deleted or overwritten (object lock, governance mode), even by its writer.
+  RetentionDays:
+    Type: Number
+    Default: 35
+    MinValue: 2
+    Description: Days a backup is kept before it expires (must be more than LockDays).
+  PermissionsBoundaryArn:
+    Type: String
+    Default: ""
+    Description: The orbit-runtime-boundary policy from orbit-ops-admin.yaml (required when that user creates the stack).
+
+Conditions:
+  HasBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
+
+Resources:
+  BackupBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref BucketName
+      ObjectLockEnabled: true
+      ObjectLockConfiguration:
+        ObjectLockEnabled: Enabled
+        Rule:
+          DefaultRetention:
+            Mode: GOVERNANCE
+            Days: !Ref LockDays
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-backups
+            Status: Enabled
+            Prefix: !Ref ObjectPrefix
+            ExpirationInDays: !Ref RetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+          - Id: abort-incomplete-multipart-uploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      Tags:
+        - Key: app
+          Value: orbit
+        - Key: env
+          Value: prod
+        - Key: purpose
+          Value: backups
+
+  BackupBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BackupBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyPlainHttp
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt BackupBucket.Arn
+              - !Sub "${BackupBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  WriterUser:
+    Type: AWS::IAM::User
+    Properties:
+      # orbit-api-*: the names the orbit-admin user may create, always with the runtime boundary.
+      UserName: orbit-api-backup-writer-prod
+      PermissionsBoundary: !If [HasBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      Tags:
+        - Key: app
+          Value: orbit
+        - Key: env
+          Value: prod
+
+  WriterPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: orbit-backup-write-only
+      Users:
+        - !Ref WriterUser
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # New objects only, from the server only: no read, list or delete, so a compromised server can't read or
+          # remove earlier backups (object lock protects them from overwrites as well).
+          - Sid: PutBackupsFromServer
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:AbortMultipartUpload
+            Resource: !Sub "${BackupBucket.Arn}/${ObjectPrefix}*"
+            Condition:
+              IpAddress:
+                aws:SourceIp: !Ref ServerIp
+
+Outputs:
+  BucketName:
+    Value: !Ref BackupBucket
+  WriterUserName:
+    Value: !Ref WriterUser
+  ObjectPrefix:
+    Value: !Ref ObjectPrefix
