@@ -25,6 +25,8 @@ export interface SessionRow {
   access_expires_at: number;
   refresh_hash: string;
   previous_refresh_hash: string | null;
+  /** The current pair, sealed with the refresh token it replaced (migration 021, src/accounts/sessions.ts). */
+  previous_refresh_answer: string | null;
   refresh_expires_at: number;
   expires_at: number;
   created_at: number;
@@ -68,7 +70,14 @@ export type AccountPatch = Partial<
 
 export type SessionRotation = Pick<
   SessionRow,
-  "access_hash" | "access_expires_at" | "refresh_hash" | "previous_refresh_hash" | "refresh_expires_at" | "refreshed_at" | "last_used_at"
+  | "access_hash"
+  | "access_expires_at"
+  | "refresh_hash"
+  | "previous_refresh_hash"
+  | "previous_refresh_answer"
+  | "refresh_expires_at"
+  | "refreshed_at"
+  | "last_used_at"
 >;
 
 /** Taking an invite's use for a new account (SQLite rows): returns `accounts.admitted_via`, or throws when unusable. */
@@ -231,10 +240,10 @@ export class SqliteAccountStore implements AccountStore {
   async insertSession(r: SessionRow): Promise<void> {
     this.db
       .prepare(
-        `INSERT INTO account_sessions (id, account_id, device_id, label, access_hash, access_expires_at, refresh_hash, previous_refresh_hash, refresh_expires_at, expires_at, created_at, refreshed_at, last_used_at, revoked_at, revoke_reason)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO account_sessions (id, account_id, device_id, label, access_hash, access_expires_at, refresh_hash, previous_refresh_hash, previous_refresh_answer, refresh_expires_at, expires_at, created_at, refreshed_at, last_used_at, revoked_at, revoke_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(r.id, r.account_id, r.device_id, r.label, r.access_hash, r.access_expires_at, r.refresh_hash, r.previous_refresh_hash, r.refresh_expires_at, r.expires_at, r.created_at, r.refreshed_at, r.last_used_at, r.revoked_at, r.revoke_reason);
+      .run(r.id, r.account_id, r.device_id, r.label, r.access_hash, r.access_expires_at, r.refresh_hash, r.previous_refresh_hash, r.previous_refresh_answer, r.refresh_expires_at, r.expires_at, r.created_at, r.refreshed_at, r.last_used_at, r.revoked_at, r.revoke_reason);
   }
 
   async sessionById(id: string): Promise<ActiveSession | undefined> {
@@ -249,9 +258,9 @@ export class SqliteAccountStore implements AccountStore {
     return (
       this.db
         .prepare(
-          "UPDATE account_sessions SET access_hash = ?, access_expires_at = ?, refresh_hash = ?, previous_refresh_hash = ?, refresh_expires_at = ?, refreshed_at = ?, last_used_at = ? WHERE id = ? AND refresh_hash = ?",
+          "UPDATE account_sessions SET access_hash = ?, access_expires_at = ?, refresh_hash = ?, previous_refresh_hash = ?, previous_refresh_answer = ?, refresh_expires_at = ?, refreshed_at = ?, last_used_at = ? WHERE id = ? AND refresh_hash = ?",
         )
-        .run(r.access_hash, r.access_expires_at, r.refresh_hash, r.previous_refresh_hash, r.refresh_expires_at, r.refreshed_at, r.last_used_at, id, expectedRefreshHash)
+        .run(r.access_hash, r.access_expires_at, r.refresh_hash, r.previous_refresh_hash, r.previous_refresh_answer, r.refresh_expires_at, r.refreshed_at, r.last_used_at, id, expectedRefreshHash)
         .changes === 1
     );
   }

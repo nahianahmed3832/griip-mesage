@@ -62,10 +62,21 @@ Design and contracts: `ORBIT_2_ARCHITECTURE_2026-10-18.md`; decisions: `ORBIT_2_
   (`PASSWORD_SCRYPT_LOG_N`). Passwords are never logged; request bodies aren't logged at all.
 - **Sessions:** a 15-minute access token and a refresh token (60 days idle, 180 days at most), 32 random bytes each,
   stored as SHA-256. A refresh token names its session (`<session id>.<secret>`), so every refresh token the session
-  ever had is recognised: the current one rotates; the one just replaced is accepted once more for 30 seconds (an answer
-  lost on a mobile network), which ends the pair handed out in between; any other one revokes the whole session (a
-  copied token, however many times the copy was renewed). Password reset revokes every session; a password change
-  revokes all others; removing a device revokes its sessions. The WebSocket re-checks the session on every frame.
+  ever had is recognised: the current one rotates; the one just replaced gets the same answer again for 30 seconds (an
+  answer lost on a mobile network, or several requests racing), so whichever answer the app keeps is the current pair;
+  any other one, and the one just replaced after those 30 seconds, revokes the whole session (a copied token, however
+  many times the copy was renewed). For that repeat answer the server keeps the last pair it issued, AES-256-GCM sealed
+  with a key derived (HKDF) from the refresh token it replaced: a copy of the database alone opens nothing, and the next
+  rotation overwrites it (migration 021). Password reset revokes every session; a password change revokes all others;
+  removing a device revokes its sessions. The WebSocket re-checks the session on every frame.
+- **Clients and racing refreshes (checked 2026-10-19).** Android serialises refreshes: one `AccountRepository` per
+  process holds a `Mutex`, and a caller that waited, or comes within 10 seconds of a refresh, uses the new tokens
+  instead of refreshing again (the app has a single process). The web app refreshes one at a time per tab (one
+  in-flight promise in `AccountSession` and `SetupCredentials`), and only the tab holding the device lock
+  (`navigator.locks`) runs an account session. Two tabs can still overlap when "Use here" takes over while the old tab's
+  refresh is in flight and the stored access token is within a minute of expiring, both sending the stored refresh
+  token; until migration 021 that could end the session, now both get the same pair. On either client, an answer lost for longer than 30 seconds (the app killed mid-refresh, a long timeout) still
+  ends the session on the next refresh: the token it kept has become a copy.
 - **Enumeration:** sign-up, resend and forgot always answer 202; sign-in answers the same for an unknown email and a
   wrong password after a dummy hash; sign-in throttling is counted per email address whether or not it has an account;
   wrong codes give the same answer whether the address exists, has a code, or has used up its tries.

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createRegistrationInvite } from "../src/invites.js";
 import { AccountClient, email, MemoryMailer, PASSWORD } from "./support/accounts.js";
 import { accountRows } from "./support/accountRows.js";
@@ -31,18 +31,62 @@ describe.each([
     expect(h.ctx.accounts.store.backend).toBe(domains ? "mongodb" : "sqlite");
   });
 
-  it("two refreshes racing with one token: both get working tokens, and the session survives", async () => {
-    const c = await signUp("racer");
+  /**
+   * Two refreshes with one token where both read the session before either rotates it: the store's first two rotations
+   * are held until both requests are waiting, then [rotatesFirst] (0: the request sent first) goes ahead and the other
+   * loses the conditional rotation. Answers in the order the requests were sent.
+   */
+  const raceRefreshes = async (c: AccountClient, refreshToken: string, rotatesFirst: 0 | 1) => {
+    const store = h.ctx.accounts.store;
+    const rotate = store.rotateSession.bind(store);
+    const held: { release: () => void; done: Promise<boolean> }[] = [];
+    const spy = vi.spyOn(store, "rotateSession").mockImplementation((...args) => {
+      if (held.length === 2) return rotate(...args);
+      let release = () => {};
+      const done = new Promise<void>((go) => (release = go)).then(() => rotate(...args));
+      held.push({ release, done });
+      return done;
+    });
+    try {
+      const send = () => c.req("POST", "/v2/auth/refresh", { refreshToken });
+      const first = send();
+      await vi.waitFor(() => expect(held).toHaveLength(1));
+      const second = send();
+      await vi.waitFor(() => expect(held).toHaveLength(2));
+      held[rotatesFirst].release();
+      expect(await held[rotatesFirst].done).toBe(true);
+      held[1 - rotatesFirst].release();
+      return await Promise.all([first, second]);
+    } finally {
+      spy.mockRestore();
+    }
+  };
+
+  it.each([
+    ["the request sent first", 0],
+    ["the request sent second", 1],
+  ] as const)("two refreshes racing with one token get the same answer when %s rotates first", async (_who, rotatesFirst) => {
+    const c = await signUp(`racer${rotatesFirst}`);
     const s = await c.signIn();
-    const [a, b] = await Promise.all(
-      [1, 2].map(() => c.req("POST", "/v2/auth/refresh", { refreshToken: s.refreshToken }).then((r) => r, (e) => e)),
-    );
-    const ok = [a, b].filter((r) => r.accessToken);
-    expect(ok.length).toBeGreaterThanOrEqual(1);
-    // The session is still usable with the newest pair, and wasn't treated as stolen.
-    const latest = ok[ok.length - 1];
-    c.token = latest.accessToken;
-    c.refreshToken = latest.refreshToken;
+    const [a, b] = await raceRefreshes(c, s.refreshToken, rotatesFirst);
+    // The loser is given the pair the winner got, so whichever answer the app keeps is the session's current pair.
+    expect(b.refreshToken).toBe(a.refreshToken);
+    expect(b.accessToken).toBe(a.accessToken);
+    c.token = a.accessToken;
+    expect((await c.req("GET", "/v2/account")).account.email).toBe(c.email);
+    // Its next refresh is an ordinary one, not refresh-token reuse: the session survives.
+    c.refreshToken = a.refreshToken;
+    await c.refresh();
+    expect((await c.req("GET", "/v2/account")).account.email).toBe(c.email);
+    expect((await accountRows(h).session(s.session.id)).revoked_at).toBeNull();
+  });
+
+  it("three refreshes with one token all get the same answer", async () => {
+    const c = await signUp("racer3");
+    const s = await c.signIn();
+    const answers = await Promise.all([1, 2, 3].map(() => c.req("POST", "/v2/auth/refresh", { refreshToken: s.refreshToken })));
+    expect(new Set(answers.map((r) => r.refreshToken)).size).toBe(1);
+    c.refreshToken = answers[0].refreshToken;
     await c.refresh();
     expect((await c.req("GET", "/v2/account")).account.email).toBe(c.email);
   });

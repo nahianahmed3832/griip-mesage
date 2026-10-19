@@ -5,7 +5,7 @@ import { describeTables, indexesFor, type TableSpec, validatorFor } from "./cata
 import { type MongoConfig, type MongoDomain, redactUri } from "./config.js";
 
 /** Bumped whenever the collections' validators or indexes change; recorded in orbit_meta. */
-export const MONGO_SCHEMA_VERSION = 2;
+export const MONGO_SCHEMA_VERSION = 3;
 export const META_COLLECTION = "orbit_meta";
 
 export interface Logger {

@@ -77,7 +77,7 @@ verified (`admin mongo-dryrun`), so the data model is proven even where the code
 ## 4. Concurrency and consistency
 
 - **Single-document conditional writes for every check-and-write**: identity claim (`user_id: null` → id), refresh
-  rotation (only if the refresh hash is still the one read), code use (delete only if the hash still matches), session
+  rotation (only if the refresh hash is still the one read; the loser retries and gets the winner's sealed answer), code use (delete only if the hash still matches), session
   revocation, preferences (`rev` compare-and-set). Two concurrent requests can't both win, on either store.
 - **Transactions** only where several account documents change together (legacy link). `MeldiqMongo.transaction` carries
   the session through `AsyncLocalStorage`. Accounts in MongoDB require a replica set or Atlas (checked at start).

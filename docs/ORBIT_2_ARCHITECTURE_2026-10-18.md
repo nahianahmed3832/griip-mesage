@@ -172,7 +172,7 @@ Migration `014_accounts.sql` adds four tables; nothing existing changes.
 | Table | Purpose |
 |---|---|
 | `accounts` | email (unique), name, password hash, verified time, `user_id` (unique link to the encryption identity, cascade on delete), legacy link time, selected workspace, how it was admitted (invite or legacy), disabled time |
-| `account_sessions` | session id, account, bound device, label, access and refresh token hashes (plus the just-replaced refresh hash and its time), expiry times, revocation |
+| `account_sessions` | session id, account, bound device, label, access and refresh token hashes (plus the just-replaced refresh hash, its time, and the pair that replaced it sealed with it, so a retry or a racing refresh gets the same answer), expiry times, revocation |
 | `account_codes` | one email or reset code per account and purpose, hashed, with attempts and expiry |
 | `legacy_tickets` | single-use migration tickets (hashed), the legacy user, expiry, use |
 

@@ -156,15 +156,44 @@ describe("Orbit 2.0 sign-in", () => {
     await expectStatus(c.req("GET", "/v2/account"), 401);
     c.token = second.accessToken;
     await c.req("GET", "/v2/account");
-    // The answer to that refresh was lost: within seconds the old refresh token works once more, and the lost pair ends.
-    const recovered = await c.req("POST", "/v2/auth/refresh", { refreshToken: first.refreshToken });
-    await expectStatus(c.req("GET", "/v2/account"), 401);
-    c.token = recovered.accessToken;
+    // The answer to that refresh was lost: within seconds the old refresh token gets the same answer again, as often as
+    // it's sent, and that pair keeps working.
+    for (let i = 0; i < 2; i++) {
+      const recovered = await c.req("POST", "/v2/auth/refresh", { refreshToken: first.refreshToken });
+      expect(recovered.refreshToken).toBe(second.refreshToken);
+      expect(recovered.accessToken).toBe(second.accessToken);
+    }
     await c.req("GET", "/v2/account");
-    // A token of the session other than the current one (here the lost one) means a copy: the whole session ends.
-    expect((await expectStatus(c.req("POST", "/v2/auth/refresh", { refreshToken: second.refreshToken }), 401)).error.code).toBe("session_revoked");
+    // The server keeps that answer sealed: its row holds neither token.
+    const row = await accountRows(h).session(first.session.id);
+    for (const token of [second.accessToken, second.refreshToken.split(".")[1]]) expect(JSON.stringify(row)).not.toContain(token);
+    // Once the pair has been renewed, the first token is two swaps old: a copy, so the whole session ends.
+    const third = await c.refresh();
+    expect((await expectStatus(c.req("POST", "/v2/auth/refresh", { refreshToken: first.refreshToken }), 401)).error.code).toBe("session_revoked");
     await expectStatus(c.req("GET", "/v2/account"), 401);
-    expect((await expectStatus(c.req("POST", "/v2/auth/refresh", { refreshToken: recovered.refreshToken }), 401)).error.code).toBe("session_revoked");
+    expect((await expectStatus(c.req("POST", "/v2/auth/refresh", { refreshToken: third.refreshToken }), 401)).error.code).toBe("session_revoked");
+  });
+
+  it("treats the token just replaced as a copy once the race window has passed", async () => {
+    const c = await new AccountClient(h.baseUrl, email("window")).signUp(mailer);
+    const first = await c.signIn();
+    await c.refresh();
+    const rows = accountRows(h);
+    await rows.setSession(first.session.id, { refreshed_at: (await rows.session(first.session.id)).refreshed_at - 31_000 });
+    expect((await expectStatus(c.req("POST", "/v2/auth/refresh", { refreshToken: first.refreshToken }), 401)).error.code).toBe("session_revoked");
+    await expectStatus(c.req("GET", "/v2/account"), 401);
+  });
+
+  it("gives a token just replaced by an older server, which kept no answer, a new pair", async () => {
+    const c = await new AccountClient(h.baseUrl, email("upgrade")).signUp(mailer);
+    const first = await c.signIn();
+    await c.refresh();
+    await accountRows(h).setSession(first.session.id, { previous_refresh_answer: null });
+    const again = await c.req("POST", "/v2/auth/refresh", { refreshToken: first.refreshToken });
+    c.token = again.accessToken;
+    await c.req("GET", "/v2/account");
+    // That answer is kept: the same token sent again gets it.
+    expect((await c.req("POST", "/v2/auth/refresh", { refreshToken: first.refreshToken })).refreshToken).toBe(again.refreshToken);
   });
 
   it("catches a stolen refresh token however many times the thief renewed it", async () => {
