@@ -85,7 +85,31 @@ Possibly a touch on the phone.
 
 ## 5. GitHub and production
 
-Pending: after the phone test and the owner's go-ahead.
+**GitHub** (owner's go-ahead after the phone test): four commits under the owner's name, no AI attribution, pushed as a
+fast-forward to **`internal-beta`** (`3bd40e6..c34a950`, full refspec, no force): `ef7ffa1` server, `7631ea3` Android,
+`1372d1d` deploy settings and test bot, `c34a950` docs; then the image tag and this section.
+
+**Production**: API **0.6.0 → 0.7.0** on 2026-10-19 at 13:38 UTC (api service only):
+
+| Step | Result |
+|---|---|
+| Backup | `backups/pre-0.7.0-20261019T133555Z` on the VPS: verified snapshot (integrity ok, schema 16, 32 users) + attachments archive (71 MB), `.env` and `compose.yaml` copies; image tagged `0.6.0-rollback`; previous sources kept as `server.pre-0.7.0` |
+| Build | `griip-internal-messaging-api:0.7.0` built on the VPS from the pushed sources |
+| Rehearsal | migrations 017–020 applied to a copy of the snapshot in a network-less throwaway container: schema 20, integrity ok, same counts (32 users, 17 conversations, 91 attachments); copy deleted |
+| Switch | `up -d --no-deps --no-build api` only; healthy 7 s later; LiveKit and ntfy not restarted; `validate-env.sh` 0 errors (2 pre-existing warnings: open registration, APP_ENV development) |
+| Checks | `/healthz` 0.7.0 on msg.griipbuddy.cloud and through web.meldiq.app; features `recovery-codes`, `reminders`, `voice-rooms` (no `push-fcm`: not configured); live schema 20 with the new tables, same counts; no warnings or errors in the log; browser WebSocket sign-in still waits ~10.8 s before 4401 on both hosts (the web patches are in this release); two production test bots exchanged an end-to-end encrypted message, echo and reaction through the relay |
+| Not changed | mail stays SES (sandbox: recovery and verification codes reach only verified addresses until SES production access), no FCM, no integration credentials, no MongoDB, no DNS, no AWS, LiveKit/ntfy untouched |
+
+Rollback: `image: griip-internal-messaging-api:0.6.0-rollback` in `compose.yaml`, then
+`docker compose -p griip-internal-messaging -f compose.yaml up -d --no-deps --no-build api` (no data restore needed:
+migrations 017–020 only add tables and columns; 0.6.0 ignores them). Full restore: `scripts/restore.sh` with the
+pre-0.7.0 archive.
+
+The receiving test bot also got 18 old queued items from earlier test devices it can't verify ("unknown or uncertified
+sender device"); they predate this release (the oldest queued items were 83 hours old) and are not a regression.
+
+The Android app is **not** released to Play: `com.meldiq.android` needs a Play Console app and a signed release build
+pointed at the production API; the test APK talks to the local test server.
 
 ## 6. Owner actions and open items
 
