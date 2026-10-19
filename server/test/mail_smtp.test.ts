@@ -42,7 +42,16 @@ describe("SMTP sending", () => {
     const sent: unknown[] = [];
     const mailer = new SmtpMailer({ sendMail: async (m) => { sent.push(m); return {}; } }, "Meldiq <no-reply@example.com>");
     await mailer.send({ to: "ann@example.org", ...mailTexts.verifyEmail("123456") });
-    expect(sent).toEqual([{ from: "Meldiq <no-reply@example.com>", to: "ann@example.org", subject: "123456 is your Meldiq verification code", text: expect.stringContaining("123456") }]);
+    expect(sent).toEqual([
+      {
+        from: "Meldiq <no-reply@example.com>",
+        to: "ann@example.org",
+        subject: "123456 is your Meldiq verification code",
+        text: expect.stringContaining("123456"),
+        html: expect.stringContaining("123456"),
+        attachments: [expect.objectContaining({ cid: "logo@meldiq.app", contentType: "image/png", contentDisposition: "inline" })],
+      },
+    ]);
     const failing = new SmtpMailer({ sendMail: async () => { throw new Error("535 authentication failed"); } }, "x@example.com");
     await expect(failing.send({ to: "a@b.c", subject: "s", text: "t" })).rejects.toThrow(/535/);
   });

@@ -19,7 +19,24 @@ newer with the certificate checked, 15-second timeouts, nodemailer's logging off
 (Hostinger → SES, Resend, Postmark…) is a change of environment variables only; authentication code never calls a
 provider directly. Tests: `server/test/mail_smtp.test.ts` (configuration guards, TLS settings, sending, error pass-through).
 
-## Hostinger Mail for `no-reply@meldiq.app` — status 2026-10-19
+## Email design (`server/src/accounts/mailTemplate.ts`)
+
+Every account email has an HTML version and a plain-text twin, built from the same parts: the Meldiq logo and name,
+a card with a heading, short paragraphs and, for codes, the code in large monospaced type with its expiry, then a
+"never ask you for a code" line and an automated-message footer. Graphite light colours, Graphite dark where the client
+honours `prefers-color-scheme`.
+
+- **Logo:** a 128×128 PNG embedded in the message (`cid:logo@meldiq.app`, rendered from `brand/meldiq-logo.webp` by
+  `server/scripts/render-mail-logo.py` into `mailLogo.ts`). Nothing is loaded from the web, so it shows without "load
+  images" and can't track the reader.
+- **No links**, nothing a user typed; every value is HTML-escaped (`test/mail_template.test.ts`).
+- **Copying the code:** email can't run scripts, so there is no real copy button. The code is one tap to select
+  (`user-select: all`), and Gmail adds its own Copy button when it recognises a verification code.
+- **Logo next to the sender in the inbox** (the avatar) is a different thing: BIMI. It needs DMARC at `quarantine` or
+  `reject` and, for Gmail and Apple Mail, a paid Verified Mark Certificate (trademark-backed). Not set up.
+- SES sends the designed version as a raw MIME message (its simple form has no inline images); SMTP sends it as is.
+
+## Hostinger Mail for `no-reply@meldiq.app` — live in production since 2026-10-19
 
 The owner chose the sender **`Meldiq <no-reply@meldiq.app>`** (the brief's `meldeq.app` isn't a domain the account owns;
 `meldiq.app` is, bought 2026-10-19).
@@ -27,13 +44,12 @@ The owner chose the sender **`Meldiq <no-reply@meldiq.app>`** (the brief's `meld
 | Step | Status |
 |---|---|
 | Domain `meldiq.app` in the Hostinger account, Hostinger DNS | done (bought 2026-10-19; `web.meldiq.app` already points at the VPS) |
-| Email plan | a **Starter Business Email** order (1 mailbox seat, IMAP/POP3, 1,000 outgoing messages per day per mailbox) came with the domain and is **"pending setup", attached to no domain** |
-| Attach the plan to `meldiq.app` | **owner action in hPanel** (Emails › set up the pending plan › choose `meldiq.app`): the Hostinger API offers no operation for it. hPanel also adds the MX, SPF and DKIM records when the domain uses Hostinger DNS |
-| Create mailbox `no-reply@meldiq.app` | after the step above: `mail_mailboxes_create-mailbox` (API) with a generated password, stored only in the server's `.env` |
-| SMTP settings | read from hPanel for the mailbox once it exists (Hostinger's documentation gives `smtp.hostinger.com`, port 465 with SSL/TLS; confirm there, don't assume) |
-| SPF / DKIM / DMARC | check the records hPanel created (`dns_records_list`); add `_dmarc` TXT `v=DMARC1; p=none; rua=mailto:…` first, tighten to `quarantine` after a week of clean reports — **needs the owner's go-ahead (DNS change)** |
-| Delivery test | send a verification code to a team address from a staging/local server with `MAIL_TRANSPORT=smtp`; check headers for DKIM=pass, SPF=pass |
-| Production | production keeps SES until the owner switches; switching is `MAIL_TRANSPORT=smtp` + the SMTP variables in the server `.env`, then restart the API service only |
+| Email plan | **Starter Business Email** (1 mailbox seat, 1,000 outgoing messages per day), attached to `meldiq.app` by the owner in hPanel; status active |
+| Mailbox `no-reply@meldiq.app` | created by the owner in hPanel (2026-10-19 14:04 UTC); IMAP/POP3/SMTP enabled. The password is only in the server `.env` (`SMTP_PASS`) |
+| SMTP settings | `smtp.hostinger.com`, port 465, TLS from the start (`SMTP_SECURE=true`); sign-in checked |
+| SPF / DKIM / DMARC | created by hPanel, checked with `dns_records_list`: MX `mx1`/`mx2.hostinger.com`, SPF `v=spf1 include:_spf.mail.hostinger.com ~all`, DKIM CNAMEs `hostingermail-a/b/c._domainkey`, DMARC `v=DMARC1; p=none` (no reporting address yet; tighten to `quarantine` later, owner's go-ahead) |
+| Delivery test | from the Mac through `SmtpMailer`: DKIM pass (`hostingermail-a`), SPF pass, DMARC pass. From the production container to the same mailbox: delivered, but Hostinger's internal route (`fr-int-smtpout30`) carried no DKIM signature, so a check from an outside inbox is still owed |
+| Production | **switched 2026-10-19 14:10 UTC**: `MAIL_TRANSPORT=smtp`, `MAIL_FROM="Meldiq <no-reply@meldiq.app>"` (was `Orbit <no-reply@griipbuddy.cloud>` over SES), API service restarted alone, healthy, 0.7.0. `.env` backup `backups/pre-smtp-20261019T141003Z/env.backup`; the SES variables stay in place, unused. Rollback: restore that file, then `docker compose -p griip-internal-messaging -f compose.yaml up -d --no-deps --no-build api` |
 
 Hostinger's limits (1,000 messages/day, 100 recipients per message) are fine for early testing; a transactional
 provider (SES out of the sandbox, Resend) is the path for public launch.

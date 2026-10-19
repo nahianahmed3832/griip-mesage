@@ -3,12 +3,35 @@ import fs from "node:fs";
 import path from "node:path";
 import { SendEmailCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import nodemailer from "nodemailer";
+import MailComposer from "nodemailer/lib/mail-composer";
 import type { MailConfig } from "./config.js";
+import { type InlineImage, type MailContent, renderMail } from "./mailTemplate.js";
 
 export interface MailMessage {
   to: string;
   subject: string;
   text: string;
+  /** The designed version (mailTemplate.ts); clients that can't show HTML show [text]. */
+  html?: string;
+  /** Images the HTML refers to by cid: (the logo). */
+  inline?: InlineImage[];
+}
+
+/** One message in nodemailer's shape: text and HTML alternatives, inline images as related parts. */
+export interface MimeMessage {
+  from: string;
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+  attachments?: { cid: string; filename: string; contentType: string; content: Buffer; contentDisposition: "inline" }[];
+}
+
+function mimeMessage(from: string, m: MailMessage): MimeMessage {
+  const base = { from, to: m.to, subject: m.subject, text: m.text };
+  if (!m.html) return base;
+  const attachments = (m.inline ?? []).map((i) => ({ ...i, contentDisposition: "inline" as const }));
+  return { ...base, html: m.html, ...(attachments.length ? { attachments } : {}) };
 }
 
 /** Sends account emails (verification and reset codes). Implementations never log a message's body: it holds codes. */
@@ -41,6 +64,8 @@ class FileMailer implements Mailer {
     const name = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}.eml`;
     const body = `From: ${this.from}\nTo: ${m.to}\nSubject: ${m.subject}\n\n${m.text}\n`;
     await fs.promises.writeFile(path.join(this.dir, name), body, { mode: 0o600 });
+    // The designed version next to it, for a look in a browser (the logo shows as a broken image there).
+    if (m.html) await fs.promises.writeFile(path.join(this.dir, name.replace(/\.eml$/, ".html")), m.html, { mode: 0o600 });
   }
 }
 
@@ -58,6 +83,12 @@ export class SesMailer implements Mailer {
   ) {}
 
   async send(m: MailMessage): Promise<void> {
+    if (m.html) {
+      // SES's simple form has no inline images, so the designed version goes as a complete MIME message.
+      const raw = await new MailComposer(mimeMessage(this.from, m)).compile().build();
+      await this.client.send(new SendEmailCommand({ FromEmailAddress: this.from, Destination: { ToAddresses: [m.to] }, Content: { Raw: { Data: raw } } }));
+      return;
+    }
     await this.client.send(
       new SendEmailCommand({
         FromEmailAddress: this.from,
@@ -70,7 +101,7 @@ export class SesMailer implements Mailer {
 
 /** The part of a nodemailer transport this mailer uses (tests pass a fake). */
 export interface SmtpSender {
-  sendMail(message: { from: string; to: string; subject: string; text: string }): Promise<unknown>;
+  sendMail(message: MimeMessage): Promise<unknown>;
 }
 
 /**
@@ -87,7 +118,7 @@ export class SmtpMailer implements Mailer {
   ) {}
 
   async send(m: MailMessage): Promise<void> {
-    await this.transport.sendMail({ from: this.from, to: m.to, subject: m.subject, text: m.text });
+    await this.transport.sendMail(mimeMessage(this.from, m));
   }
 }
 
@@ -123,37 +154,75 @@ export function createMailer(config: MailConfig): Mailer {
   }
 }
 
+/** Subject plus the designed and plain versions of one account email. */
+function compose(subject: string, content: MailContent): Omit<MailMessage, "to"> {
+  return { subject, ...renderMail(subject, content) };
+}
+
+const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
+
 /**
- * The texts of account emails. Plain text, no links: the person types the code into the app. Nothing anyone typed (a
- * name) goes into them, so the sign-up form can't be used to send someone else's words from Meldiq's address.
+ * The texts of account emails, laid out by mailTemplate.ts. No links: the person types the code into the app. Nothing
+ * anyone typed (a name) goes into them, so the sign-up form can't be used to send someone else's words from Meldiq's
+ * address.
  */
 export const mailTexts = {
-  verifyEmail: (code: string): Omit<MailMessage, "to"> => ({
-    subject: `${code} is your Meldiq verification code`,
-    text: `Hello,\n\nYour Meldiq verification code is ${code}. It expires in 15 minutes.\n\nIf you didn't create a Meldiq account, you can ignore this email.`,
-  }),
-  resetPassword: (code: string): Omit<MailMessage, "to"> => ({
-    subject: "Reset your Meldiq password",
-    text: `Hello,\n\nYour Meldiq password reset code is ${code}. It expires in 15 minutes.\n\nIf you didn't ask to reset your password, ignore this email: your password stays the same.`,
-  }),
-  recoveryEmail: (code: string): Omit<MailMessage, "to"> => ({
-    subject: `${code} confirms your new Meldiq email address`,
-    text: `Hello,\n\nSomeone is recovering a Meldiq account with a recovery code and wants to use this address from now on. To confirm, enter ${code}. It expires in 30 minutes.\n\nIf this wasn't you, ignore this email: nothing changes without this code.`,
-  }),
-  recoveryCodesCreated: (): Omit<MailMessage, "to"> => ({
-    subject: "New recovery codes for your Meldiq account",
-    text: "Hello,\n\nNew recovery codes were just created for your Meldiq account, and any older ones stopped working. Keep them somewhere safe and offline: each one can get you back in once if you lose access to this email address.\n\nIf this wasn't you, sign in, change your password and create new codes.",
-  }),
-  recoveryAddressChanged: (maskedNewEmail: string): Omit<MailMessage, "to"> => ({
-    subject: "Your Meldiq account email was changed",
-    text: `Hello,\n\nA recovery code was used to move your Meldiq account to ${maskedNewEmail}, and its password was changed. Every signed-in app was signed out.\n\nIf this wasn't you, contact your workspace administrator right away.`,
-  }),
-  recoveryFinished: (remaining: number): Omit<MailMessage, "to"> => ({
-    subject: "Your Meldiq account is recovered",
-    text: `Hello,\n\nYour Meldiq account now uses this email address. Sign in with it and your new password. You have ${remaining} recovery code${remaining === 1 ? "" : "s"} left; create a new set from Settings › Account once you're signed in.\n\nYour encrypted messages need your encryption recovery key or another signed-in phone; your email and password can't replace it.`,
-  }),
-  alreadyRegistered: (): Omit<MailMessage, "to"> => ({
-    subject: "Someone tried to create a Meldiq account with your email",
-    text: "Hello,\n\nSomeone tried to create a new Meldiq account with this email address, which already has an account. If it was you, sign in instead, or reset your password from the sign-in screen.\n\nIf it wasn't you, you don't need to do anything.",
-  }),
+  verifyEmail: (code: string): Omit<MailMessage, "to"> =>
+    compose(`${code} is your Meldiq verification code`, {
+      preview: "Enter this code in Meldiq to verify your email. It expires in 15 minutes.",
+      heading: "Verify your email",
+      paragraphs: ["Enter this code in the Meldiq app to finish setting up your account."],
+      code: { value: code, note: "This code expires in 15 minutes." },
+      footnote: "If you didn't create a Meldiq account, you can ignore this email.",
+    }),
+  resetPassword: (code: string): Omit<MailMessage, "to"> =>
+    compose("Reset your Meldiq password", {
+      preview: "Your password reset code. It expires in 15 minutes.",
+      heading: "Reset your password",
+      paragraphs: ["Enter this code in the Meldiq app, then choose a new password."],
+      code: { value: code, note: "This code expires in 15 minutes." },
+      footnote: "If you didn't ask to reset your password, ignore this email: your password stays the same.",
+    }),
+  recoveryEmail: (code: string): Omit<MailMessage, "to"> =>
+    compose(`${code} confirms your new Meldiq email address`, {
+      preview: "Confirm this address to finish recovering a Meldiq account.",
+      heading: "Confirm your new email address",
+      paragraphs: ["Someone is recovering a Meldiq account with a recovery code and wants to use this address from now on. To confirm, enter this code in the app."],
+      code: { value: code, note: "This code expires in 30 minutes." },
+      footnote: "If this wasn't you, ignore this email: nothing changes without this code.",
+    }),
+  recoveryCodesCreated: (): Omit<MailMessage, "to"> =>
+    compose("New recovery codes for your Meldiq account", {
+      preview: "New recovery codes were created, and older ones stopped working.",
+      heading: "New recovery codes created",
+      paragraphs: [
+        "New recovery codes were just created for your Meldiq account, and any older ones stopped working.",
+        "Keep them somewhere safe and offline: each one can get you back in once if you lose access to this email address.",
+      ],
+      footnote: "If this wasn't you, sign in, change your password and create new codes.",
+    }),
+  recoveryAddressChanged: (maskedNewEmail: string): Omit<MailMessage, "to"> =>
+    compose("Your Meldiq account email was changed", {
+      preview: "A recovery code was used to move your account to another address.",
+      heading: "Your account email was changed",
+      paragraphs: [`A recovery code was used to move your Meldiq account to **${maskedNewEmail}**, and its password was changed. Every signed-in app was signed out.`],
+      footnote: "If this wasn't you, contact your workspace administrator right away.",
+    }),
+  recoveryFinished: (remaining: number): Omit<MailMessage, "to"> =>
+    compose("Your Meldiq account is recovered", {
+      preview: "Your account now uses this email address.",
+      heading: "Your account is recovered",
+      paragraphs: [
+        "Your Meldiq account now uses this email address. Sign in with it and your new password.",
+        `You have **${plural(remaining, "recovery code")}** left; create a new set from Settings › Account once you're signed in.`,
+      ],
+      footnote: "Your encrypted messages need your encryption recovery key or another signed-in phone; your email and password can't replace it.",
+    }),
+  alreadyRegistered: (): Omit<MailMessage, "to"> =>
+    compose("Someone tried to create a Meldiq account with your email", {
+      preview: "This address already has a Meldiq account.",
+      heading: "This email already has an account",
+      paragraphs: ["Someone tried to create a new Meldiq account with this email address, which already has an account. If it was you, sign in instead, or reset your password from the sign-in screen."],
+      footnote: "If it wasn't you, you don't need to do anything.",
+    }),
 };
