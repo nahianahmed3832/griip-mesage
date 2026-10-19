@@ -12,6 +12,8 @@ import type { LiveKitService } from "./livekit.js";
 import type { MeldiqMongo } from "./mongo/client.js";
 import type { PreferenceStore } from "./preferences/store.js";
 import type { PushService } from "./push/service.js";
+import type { FcmService } from "./push/fcm.js";
+import type { ReminderService } from "./reminders/service.js";
 import type { BlobStore } from "./storage/index.js";
 import { ApiError, badRequest, now, sha256Hex, unauthorized } from "./util.js";
 
@@ -27,6 +29,8 @@ export interface AppContext {
   federation?: Federation;
   /** Present when PUSH_UNIFIEDPUSH_HOSTS is configured (docs/BACKGROUND_DELIVERY.md). */
   push?: PushService;
+  /** Present when FCM_PROJECT_ID and FCM_SERVICE_ACCOUNT_FILE are configured (docs/PUSH_FCM.md). */
+  fcm?: FcmService;
   /** Orbit 2.0 email-and-password accounts (src/accounts). Set by buildApp right after the context is made. */
   accounts: Accounts;
   /** Personal navigation preferences (src/preferences): SQLite, or MongoDB when MONGODB_DOMAINS includes "preferences". */
@@ -37,6 +41,8 @@ export interface AppContext {
   entitlements: Entitlements;
   /** Apps, connected accounts and their events (src/integrations, docs/INTEGRATIONS.md). */
   integrations: Integrations;
+  /** Reminders kept and fired by the server (src/reminders, docs/REMINDERS.md). */
+  reminders: ReminderService;
   log: FastifyBaseLogger;
   audit: (e: { actorId?: string | null; orgId?: string | null; action: string; target?: string | null; detail?: string | null }) => void;
 }

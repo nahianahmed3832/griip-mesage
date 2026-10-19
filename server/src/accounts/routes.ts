@@ -12,6 +12,9 @@ import {
   legacyVerifyBody,
   loginBody,
   preferencesBody,
+  recoveryCompleteBody,
+  recoveryPasswordBody,
+  recoveryStartBody,
   refreshBody,
   registerBody,
   resetIdentityBody,
@@ -34,7 +37,7 @@ function session(req: FastifyRequest): ActiveSession {
 
 /** The v2 account API (docs/ORBIT_2_ARCHITECTURE §6). */
 export default async function accountRoutes(app: FastifyInstance, ctx: AppContext, accounts: Accounts) {
-  const { service, identity, legacy, workspaces, store } = accounts;
+  const { service, identity, legacy, workspaces, store, recovery } = accounts;
   // Unauthenticated routes that hash passwords or send email: tighter than the global limit, per network.
   const strict = { config: { rateLimit: { max: ctx.config.accounts.authRateLimitPerMinute, timeWindow: "1 minute" } } };
   const requireAccount = async (req: FastifyRequest) => {
@@ -86,6 +89,30 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
   app.post("/v2/auth/password/reset", strict, async (req) => {
     const body = parse(resetPasswordBody, req.body);
     await service.resetPassword(body.email, body.code, body.newPassword);
+    return { ok: true };
+  });
+
+  // ───────────── Recovery after losing the account's email (docs/ACCOUNT_RECOVERY.md) ─────────────
+  app.post("/v2/auth/recover/start", strict, async (req, reply) => {
+    const body = parse(recoveryStartBody, req.body);
+    return recovery.start(body.email, body.code, body.newEmail, req.ip, reply);
+  });
+
+  app.post("/v2/auth/recover/complete", strict, async (req) => {
+    const body = parse(recoveryCompleteBody, req.body);
+    return recovery.complete(body.ticket, body.code, body.newPassword);
+  });
+
+  app.get("/v2/account/recovery-codes", authed, async (req) => recovery.status(session(req).account_id));
+
+  app.post("/v2/account/recovery-codes", authedStrict, async (req, reply) => {
+    const { password } = parse(recoveryPasswordBody, req.body);
+    return recovery.generate(session(req), password, req.ip, reply);
+  });
+
+  app.post("/v2/account/recovery-codes/revoke", authedStrict, async (req, reply) => {
+    const { password } = parse(recoveryPasswordBody, req.body);
+    await recovery.revoke(session(req), password, req.ip, reply);
     return { ok: true };
   });
 

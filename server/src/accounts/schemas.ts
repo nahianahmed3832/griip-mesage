@@ -35,6 +35,12 @@ export const changePasswordBody = z.object({ currentPassword: zPassword, newPass
 export const updateAccountBody = z.object({ name: zName });
 export const preferencesBody = z.object({ selectedWorkspaceId: z.string().min(3).max(64) });
 
+/** Recovery codes (docs/ACCOUNT_RECOVERY.md): making or revoking a set needs the password again. */
+export const recoveryPasswordBody = z.object({ password: zPassword });
+export const zRecoveryCode = z.string().trim().min(8).max(40);
+export const recoveryStartBody = z.object({ email: zEmail, code: zRecoveryCode, newEmail: zEmail });
+export const recoveryCompleteBody = z.object({ ticket: z.string().min(20).max(200), code: zVerifyCode, newPassword: zPassword });
+
 export const enrollDeviceBody = z.object({
   identityKey: zKey.optional(),
   username: z.string().trim().max(40).optional(),

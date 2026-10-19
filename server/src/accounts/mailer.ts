@@ -136,6 +136,22 @@ export const mailTexts = {
     subject: "Reset your Meldiq password",
     text: `Hello,\n\nYour Meldiq password reset code is ${code}. It expires in 15 minutes.\n\nIf you didn't ask to reset your password, ignore this email: your password stays the same.`,
   }),
+  recoveryEmail: (code: string): Omit<MailMessage, "to"> => ({
+    subject: `${code} confirms your new Meldiq email address`,
+    text: `Hello,\n\nSomeone is recovering a Meldiq account with a recovery code and wants to use this address from now on. To confirm, enter ${code}. It expires in 30 minutes.\n\nIf this wasn't you, ignore this email: nothing changes without this code.`,
+  }),
+  recoveryCodesCreated: (): Omit<MailMessage, "to"> => ({
+    subject: "New recovery codes for your Meldiq account",
+    text: "Hello,\n\nNew recovery codes were just created for your Meldiq account, and any older ones stopped working. Keep them somewhere safe and offline: each one can get you back in once if you lose access to this email address.\n\nIf this wasn't you, sign in, change your password and create new codes.",
+  }),
+  recoveryAddressChanged: (maskedNewEmail: string): Omit<MailMessage, "to"> => ({
+    subject: "Your Meldiq account email was changed",
+    text: `Hello,\n\nA recovery code was used to move your Meldiq account to ${maskedNewEmail}, and its password was changed. Every signed-in app was signed out.\n\nIf this wasn't you, contact your workspace administrator right away.`,
+  }),
+  recoveryFinished: (remaining: number): Omit<MailMessage, "to"> => ({
+    subject: "Your Meldiq account is recovered",
+    text: `Hello,\n\nYour Meldiq account now uses this email address. Sign in with it and your new password. You have ${remaining} recovery code${remaining === 1 ? "" : "s"} left; create a new set from Settings › Account once you're signed in.\n\nYour encrypted messages need your encryption recovery key or another signed-in phone; your email and password can't replace it.`,
+  }),
   alreadyRegistered: (): Omit<MailMessage, "to"> => ({
     subject: "Someone tried to create a Meldiq account with your email",
     text: "Hello,\n\nSomeone tried to create a new Meldiq account with this email address, which already has an account. If it was you, sign in instead, or reset your password from the sign-in screen.\n\nIf it wasn't you, you don't need to do anything.",

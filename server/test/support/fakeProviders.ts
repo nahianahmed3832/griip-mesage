@@ -90,6 +90,10 @@ export function providerEnv(): Record<string, string> {
     FIGMA_OAUTH_CLIENT_SECRET: "test-figma-secret",
     GITLAB_OAUTH_CLIENT_ID: "test-gitlab-client",
     GITLAB_OAUTH_CLIENT_SECRET: "test-gitlab-secret",
+    ASANA_OAUTH_CLIENT_ID: "test-asana-client",
+    ASANA_OAUTH_CLIENT_SECRET: "test-asana-secret",
+    ZOOM_OAUTH_CLIENT_ID: "test-zoom-client",
+    ZOOM_OAUTH_CLIENT_SECRET: "test-zoom-secret",
   };
 }
 

@@ -36,6 +36,8 @@ export interface CleanupResult {
   auditPruned: number;
   /** Expired sign-in flows, webhook delivery ids, channel notifications from apps and old finished jobs. */
   integrations: number;
+  /** Old reminder occurrence records and reminders finished more than 30 days ago. */
+  reminders: number;
 }
 
 /**
@@ -78,6 +80,14 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
       ctx.log.error({ err: e }, "account retention failed");
       return 0;
     }),
+    reminders: (() => {
+      try {
+        return ctx.reminders.purge();
+      } catch (e) {
+        ctx.log.error({ err: e }, "reminder retention failed");
+        return 0;
+      }
+    })(),
     callsTimedOut: 0,
     callEvictions: 0,
     callStaleParticipants: 0,

@@ -1,4 +1,4 @@
-import { AccessToken, RoomServiceClient, WebhookReceiver, type WebhookEvent } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient, TrackType, WebhookReceiver, type WebhookEvent } from "livekit-server-sdk";
 import type { Config } from "./config.js";
 
 /**
@@ -65,6 +65,20 @@ export class LiveKitService {
     try {
       await withTimeout(this.rooms.removeParticipant(room, identity));
       return "removed";
+    } catch (e) {
+      return isNotFound(e) ? "absent" : "error";
+    }
+  }
+
+  /**
+   * Mutes every microphone track [identity] publishes (a voice-room moderator's "mute"). The media server stops
+   * forwarding it; only the person can unmute themselves. "absent" when they aren't in the room.
+   */
+  async muteAudio(room: string, identity: string): Promise<"muted" | "absent" | "error"> {
+    try {
+      const p = await withTimeout(this.rooms.getParticipant(room, identity));
+      for (const t of p.tracks) if (t.type === TrackType.AUDIO && !t.muted) await withTimeout(this.rooms.mutePublishedTrack(room, identity, t.sid, true));
+      return "muted";
     } catch (e) {
       return isNotFound(e) ? "absent" : "error";
     }

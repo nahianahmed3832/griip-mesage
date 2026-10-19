@@ -26,6 +26,8 @@ export interface ConversationRow {
   created_at: number;
   updated_at: number;
   archived_at: number | null;
+  /** 1: a voice room (migration 019, docs/VOICE_ROOMS.md). */
+  voice?: number;
 }
 
 export interface TeamRow {

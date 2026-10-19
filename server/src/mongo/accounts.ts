@@ -144,6 +144,16 @@ export class MongoAccountStore implements AccountStore {
     await this.accounts.updateOne({ _id: id, email_verified_at: null }, { $set: { email, updated_at: at } }, this.o);
   }
 
+  async changeVerifiedEmail(id: string, email: string, at: number): Promise<boolean> {
+    try {
+      const res = await this.accounts.updateOne({ _id: id }, { $set: { email, email_verified_at: at, updated_at: at } }, this.o);
+      return res.matchedCount === 1;
+    } catch (e) {
+      if (isDuplicateKey(e)) return false;
+      throw e;
+    }
+  }
+
   async deleteUnverifiedAccount(id: string): Promise<boolean> {
     const res = await this.accounts.deleteOne({ _id: id, email_verified_at: null, user_id: null }, this.o);
     if (res.deletedCount !== 1) return false;

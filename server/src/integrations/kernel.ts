@@ -30,6 +30,8 @@ import { googleCalendar, googleDrive } from "./providers/google.js";
 import { jiraConnector } from "./providers/atlassian.js";
 import { figmaConnector } from "./providers/figma.js";
 import { gitlabConnector } from "./providers/gitlab.js";
+import { asanaConnector } from "./providers/asana.js";
+import { zoomConnector } from "./providers/zoom.js";
 import { linearConnector } from "./providers/linear.js";
 import { microsoftOneDrive, microsoftOutlookCalendar, microsoftSharePoint } from "./providers/microsoft.js";
 import { notionConnector } from "./providers/notion.js";
@@ -92,6 +94,8 @@ export class Kernel {
       linearConnector(cdeps),
       figmaConnector(cdeps),
       gitlabConnector(cdeps),
+      asanaConnector(cdeps),
+      zoomConnector(cdeps),
       incomingConnector(cdeps),
       ...(cfg.sandbox ? [sandboxConnector(cdeps, sandbox)] : []),
     ];

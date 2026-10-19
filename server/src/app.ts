@@ -32,13 +32,16 @@ import { Integrations } from "./integrations/index.js";
 import { Entitlements } from "./entitlements.js";
 import integrationRoutes from "./integrations/routes.js";
 import preferenceRoutes from "./preferences/routes.js";
+import reminderRoutes from "./reminders/routes.js";
+import { ReminderService } from "./reminders/service.js";
+import { FcmService } from "./push/fcm.js";
 import { SqlitePreferenceStore } from "./preferences/store.js";
 import pushRoutes from "./routes/push.js";
 import userRoutes from "./routes/users.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
-export const VERSION = "0.6.0";
+export const VERSION = "0.7.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
@@ -132,15 +135,31 @@ export async function buildApp(
   });
   ctx.integrations.start();
   app.addHook("onClose", async () => ctx.integrations.stop());
+  ctx.reminders = new ReminderService(ctx);
+  ctx.reminders.start(config.reminderTickMs);
+  app.addHook("onClose", async () => ctx.reminders.stop());
 
+  if (config.fcm && !config.push) ctx.hub.onQueuedOffline = (deviceId) => ctx.fcm?.queued(deviceId);
   if (config.trustProxy === true) {
     app.log.warn("TRUST_PROXY=true believes X-Forwarded-For entries clients send themselves, so per-address limits can be dodged. Set the proxy's addresses instead, e.g. TRUST_PROXY=loopback,uniquelocal (docs/ABUSE_CONTROLS.md)");
   }
   if (config.federation) ctx.federation = new Federation(ctx, config.federation);
+  if (config.fcm) {
+    // Firebase wake-ups (docs/PUSH_FCM.md) beside UnifiedPush; the hub's hooks call both (set before UnifiedPush's).
+    const fcm = new FcmService(db, ctx.hub, config.fcm, app.log);
+    ctx.fcm = fcm;
+    app.addHook("preClose", (done) => {
+      fcm.stop();
+      done();
+    });
+  }
   if (config.push) {
     const push = new PushService(ctx, config.push, opts.push);
     ctx.push = push;
-    ctx.hub.onQueuedOffline = (deviceId) => push.queued(deviceId);
+    ctx.hub.onQueuedOffline = (deviceId) => {
+      push.queued(deviceId);
+      ctx.fcm?.queued(deviceId);
+    };
     ctx.hub.onDeviceOffline = (deviceId, openedAt) => push.disconnected(deviceId, openedAt);
     // Added before the WebSocket plugin's own preClose, which closes every socket: shutting down wakes nobody.
     app.addHook("preClose", (done) => {
@@ -252,7 +271,7 @@ export async function buildApp(
     push: config.push ? { unifiedPushHosts: config.push.unifiedPushHosts } : null,
   }));
 
-  for (const r of [authRoutes, userRoutes, orgRoutes, roleRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, preferenceRoutes, wsRoutes]) {
+  for (const r of [authRoutes, userRoutes, orgRoutes, roleRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, preferenceRoutes, reminderRoutes, wsRoutes]) {
     await app.register(async (scope) => r(scope, ctx));
   }
   await app.register(async (scope) => integrationRoutes(scope, ctx, ctx.integrations));
@@ -286,11 +305,18 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     // 2026-10-19: custom workspace roles (docs/WORKSPACE_ROLES.md) and the app directory (docs/INTEGRATIONS.md).
     "custom-roles",
     "integrations",
+    // Round 6: recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md).
+    "recovery-codes",
+    // Round 6: reminders kept and fired by the server (docs/REMINDERS.md).
+    "reminders",
+    // Round 6: voice rooms (docs/VOICE_ROOMS.md).
+    "voice-rooms",
   ];
   if (config.accounts.legacy.migration) f.push("legacy-migration");
   if (directUploads) f.push("direct-upload");
   if (config.history.enabled) f.push("history");
   if (config.attachmentKeepDays > 0) f.push("attachment-keep");
   if (config.push) f.push("push-unifiedpush");
+  if (config.fcm) f.push("push-fcm");
   return f;
 }

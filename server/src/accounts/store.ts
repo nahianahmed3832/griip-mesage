@@ -104,6 +104,11 @@ export interface AccountStore {
   updateAccount(id: string, patch: AccountPatch, at: number): Promise<void>;
   /** Changes the address of an account whose address isn't verified yet (a legacy link redone). */
   updateEmail(id: string, email: string, at: number): Promise<void>;
+  /**
+   * Moves an account to a new address its owner just proved (recovery): the address counts as verified from [at].
+   * False when another account took the address in the meantime.
+   */
+  changeVerifiedEmail(id: string, email: string, at: number): Promise<boolean>;
   /** Removes an account nobody verified and no identity is linked to; false when it doesn't qualify. */
   deleteUnverifiedAccount(id: string): Promise<boolean>;
   /**
@@ -208,6 +213,15 @@ export class SqliteAccountStore implements AccountStore {
 
   async updateEmail(id: string, email: string, at: number): Promise<void> {
     this.db.prepare("UPDATE accounts SET email = ?, updated_at = ? WHERE id = ? AND email_verified_at IS NULL").run(email, at, id);
+  }
+
+  async changeVerifiedEmail(id: string, email: string, at: number): Promise<boolean> {
+    try {
+      return this.db.prepare("UPDATE accounts SET email = ?, email_verified_at = ?, updated_at = ? WHERE id = ?").run(email, at, at, id).changes === 1;
+    } catch (e) {
+      if ((e as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") return false;
+      throw e;
+    }
   }
 
   async deleteUnverifiedAccount(id: string): Promise<boolean> {

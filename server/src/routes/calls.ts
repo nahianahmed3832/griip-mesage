@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { type AppContext, me, parse, requireAuth } from "../context.js";
-import { ApiError, conflict, forbidden, newId, notFound, now } from "../util.js";
+import { ApiError, badRequest, conflict, forbidden, newId, notFound, now } from "../util.js";
 
 export interface CallRow {
   id: string;
@@ -19,6 +19,8 @@ export interface CallRow {
   alerted_at: number | null;
   /** Set on a mirror of a call hosted by another server (federation); null when this server hosts it. */
   host_server_id: string | null;
+  /** 1: the call of a voice room (docs/VOICE_ROOMS.md): nobody rings; it lasts while anyone is in it. */
+  room?: number;
 }
 
 /**
@@ -75,6 +77,20 @@ export function callView(ctx: AppContext, c: CallRow) {
     endedAt: c.ended_at,
     endReason: c.end_reason,
     participants: participants.map((p) => ({ userId: p.user_id, deviceId: p.device_id, joinedAt: p.joined_at })),
+    // Voice rooms (round 6): the call is the room's, and people may raise a hand to speak.
+    voiceRoom: !!c.room,
+    hands: c.room
+      ? (
+          ctx.db
+            .prepare(
+              // Only people still in the call: a hand goes down when they leave.
+              `SELECT h.user_id FROM call_hands h WHERE h.call_id = ? AND EXISTS (
+                 SELECT 1 FROM call_participants p WHERE p.call_id = h.call_id AND p.user_id = h.user_id AND p.left_at IS NULL)
+               ORDER BY h.raised_at`,
+            )
+            .all(c.id) as { user_id: string }[]
+        ).map((h) => h.user_id)
+      : [],
     // Ended calls only (older apps ignore it): who connected, for the call history line in the conversation.
     ...(c.state === "ENDED" ? { attended: callAttendance(ctx, c) } : {}),
   };
@@ -348,7 +364,10 @@ export function notifyCallUser(ctx: AppContext, c: CallRow, userId: string, even
   }
   ctx.hub.sendToUser(userId, { t: "call", event, call: callView(ctx, c), ...extra });
   // A ring also wakes their devices that have no open socket (payload-free; the app finds the ringing call itself).
-  if (event === "ring") ctx.push?.ring(userId);
+  if (event === "ring") {
+    ctx.push?.ring(userId);
+    ctx.fcm?.wakeUser(userId);
+  }
 }
 
 export default async function callRoutes(app: FastifyInstance, ctx: AppContext) {
@@ -393,6 +412,24 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
     }
     const id = newId("call");
     const room = `griip-${crypto.randomBytes(12).toString("hex")}`;
+    if (conv.voice) {
+      // A voice room: no ringing; the call is active at once and lasts while anyone is in it (docs/VOICE_ROOMS.md).
+      const t = now();
+      db.prepare("INSERT INTO calls (id, conversation_id, room_name, created_by, video, state, created_at, answered_at, room) VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, 1)").run(
+        id,
+        conv.id,
+        room,
+        userId,
+        body.video ? 1 : 0,
+        t,
+        t,
+      );
+      const c = load(id)!;
+      ctx.log.info({ callId: id, room: true }, "voice room opened");
+      if (conv.org_id) ctx.audit({ actorId: userId, orgId: conv.org_id, action: "voice_room.open", target: conv.id });
+      broadcast(c, "started");
+      return { call: callView(ctx, c), media: await actions.issue(c, userId, deviceId), joinedExisting: false };
+    }
     db.prepare("INSERT INTO calls (id, conversation_id, room_name, created_by, video, state, created_at) VALUES (?, ?, ?, ?, ?, 'RINGING', ?)").run(
       id,
       conv.id,
@@ -452,6 +489,60 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
     const c = memberCall(id, userId);
     if (c.host_server_id) return forwarded(c, "join", userId, deviceId);
     return actions.join(c, userId, deviceId);
+  });
+
+  // ───────────── Voice rooms (docs/VOICE_ROOMS.md) ─────────────
+
+  /** Raise or lower your hand in a voice room's call (everyone in the conversation sees the queue). */
+  app.post("/v1/calls/:id/hand", auth, async (req) => {
+    const { userId } = me(req);
+    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { raised } = parse(z.object({ raised: z.boolean() }), req.body);
+    const c = memberCall(id, userId);
+    if (!c.room) throw badRequest("Hands are for voice rooms");
+    if (c.state === "ENDED") throw new ApiError(410, "call_ended", "This call has ended");
+    if (raised) db.prepare("INSERT OR IGNORE INTO call_hands (call_id, user_id, raised_at) VALUES (?, ?, ?)").run(c.id, userId, now());
+    else db.prepare("DELETE FROM call_hands WHERE call_id = ? AND user_id = ?").run(c.id, userId);
+    const cur = load(c.id)!;
+    broadcast(cur, "updated");
+    return { call: callView(ctx, cur) };
+  });
+
+  /**
+   * A voice room's moderators (the conversation's managers): mute someone's microphone, lower their hand, or remove
+   * them from the call (they can join again unless they're removed from the room itself).
+   */
+  app.post("/v1/calls/:id/moderate", auth, async (req) => {
+    const { userId } = me(req);
+    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const body = parse(z.object({ userId: z.string().max(64), action: z.enum(["mute", "lower_hand", "remove"]) }), req.body);
+    const c = memberCall(id, userId);
+    const conv = authz.conversation(c.conversation_id)!;
+    if (!c.room) throw badRequest("Moderation is for voice rooms");
+    if (!authz.canManageConversation(conv, userId)) throw forbidden("Only this room's managers can do that");
+    if (c.state === "ENDED") throw new ApiError(410, "call_ended", "This call has ended");
+    const devices = (db.prepare("SELECT device_id FROM call_participants WHERE call_id = ? AND user_id = ? AND left_at IS NULL").all(c.id, body.userId) as { device_id: string }[]).map((r) => r.device_id);
+    if (body.action === "lower_hand") db.prepare("DELETE FROM call_hands WHERE call_id = ? AND user_id = ?").run(c.id, body.userId);
+    if (body.action !== "lower_hand" && devices.length === 0) throw notFound("They aren't in this call");
+    for (const d of devices) {
+      const identity = `${body.userId}.${d}`;
+      if (body.action === "mute") {
+        const r = ctx.livekit ? await ctx.livekit.muteAudio(c.room_name, identity) : "error";
+        if (r === "error") throw new ApiError(503, "media_unavailable", "The media server couldn't be reached. Try again.");
+      } else if (body.action === "remove") {
+        await ctx.livekit?.removeParticipant(c.room_name, identity);
+        db.prepare("UPDATE call_participants SET left_at = ? WHERE call_id = ? AND device_id = ? AND left_at IS NULL").run(now(), c.id, d);
+        ctx.hub.sendToDevice(d, { t: "call", event: "ended", call: { ...callView(ctx, c), endReason: "removed" } });
+      }
+    }
+    if (body.action === "remove") db.prepare("DELETE FROM call_hands WHERE call_id = ? AND user_id = ?").run(c.id, body.userId);
+    ctx.hub.sendToUser(body.userId, { t: "call", event: "moderated", action: body.action, call: callView(ctx, load(c.id)!) });
+    if (conv.org_id) ctx.audit({ actorId: userId, orgId: conv.org_id, action: `voice_room.${body.action}`, target: body.userId, detail: c.id });
+    const cur = load(c.id)!;
+    const remaining = (db.prepare("SELECT COUNT(*) n FROM call_participants WHERE call_id = ? AND left_at IS NULL").get(c.id) as { n: number }).n;
+    if (remaining === 0) await endCall(cur, "empty");
+    else broadcast(cur, "updated");
+    return { call: callView(ctx, load(c.id)!) };
   });
 
   app.post("/v1/calls/:id/connected", auth, async (req) => {

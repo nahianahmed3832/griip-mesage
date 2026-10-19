@@ -28,6 +28,11 @@ export function conversationView(ctx: AppContext, c: ConversationRow, userId: st
   const call = db.prepare("SELECT id, video, state, created_at FROM calls WHERE conversation_id = ? AND state != 'ENDED' ORDER BY created_at DESC LIMIT 1").get(c.id) as
     | { id: string; video: number; state: string; created_at: number }
     | undefined;
+  // Who is in a voice room right now (shown on the room before joining), at most 12 people.
+  const inRoom =
+    c.voice && call
+      ? (db.prepare("SELECT DISTINCT user_id FROM call_participants WHERE call_id = ? AND left_at IS NULL LIMIT 12").all(call.id) as { user_id: string }[]).map((r) => r.user_id)
+      : undefined;
   let scopeName: string | null = null;
   if (c.scope === "BRANCH" && c.scope_id) scopeName = (db.prepare("SELECT name FROM branches WHERE id = ?").get(c.scope_id) as any)?.name ?? null;
   if (c.scope === "TEAM" && c.scope_id) scopeName = (db.prepare("SELECT name FROM teams WHERE id = ?").get(c.scope_id) as any)?.name ?? null;
@@ -55,7 +60,8 @@ export function conversationView(ctx: AppContext, c: ConversationRow, userId: st
     canManageAccess: authz.canManageChannelAccess(c, userId),
     // Whether the app should offer @everyone here (the hourly limit is checked when sending).
     canMentionAll: mentionAllPermission(ctx, c, userId) === null,
-    activeCall: call ? { id: call.id, video: !!call.video, state: call.state, startedAt: call.created_at } : null,
+    activeCall: call ? { id: call.id, video: !!call.video, state: call.state, startedAt: call.created_at, ...(inRoom ? { participantIds: inRoom } : {}) } : null,
+    voice: !!c.voice,
     federation: federationInfo(ctx, c.id),
   };
 }

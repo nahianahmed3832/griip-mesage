@@ -57,6 +57,9 @@ export interface IntegrationsConfig {
   linear: LinearConfig | null;
   figma: OAuthClientConfig | null;
   gitlab: GitLabConfig | null;
+  /** Round 6 (2026-10-19). */
+  asana: OAuthClientConfig | null;
+  zoom: OAuthClientConfig | null;
   /** Environment names still missing per provider, for "needs configuration" (names only, never values). */
   missing: Readonly<Record<ProviderId, string[]>>;
   /** Sign-ins one person may start per minute. */
@@ -96,7 +99,7 @@ export function integrationsConfig(env: NodeJS.ProcessEnv, appEnv: string, int: 
     if (u.search || u.hash) throw new Error("INTEGRATIONS_PUBLIC_URL must not contain a query or fragment");
     if (production && u.protocol !== "https:") throw new Error("INTEGRATIONS_PUBLIC_URL must use https in production");
   }
-  const missing: Record<ProviderId, string[]> = { google: [], microsoft: [], github: [], atlassian: [], notion: [], linear: [], figma: [], gitlab: [], sandbox: [], none: [] };
+  const missing: Record<ProviderId, string[]> = { google: [], microsoft: [], github: [], atlassian: [], notion: [], linear: [], figma: [], gitlab: [], asana: [], zoom: [], sandbox: [], none: [] };
   const need = (provider: ProviderId, names: string[]): Record<string, string> | null => {
     const values: Record<string, string> = {};
     for (const n of names) {
@@ -114,6 +117,8 @@ export function integrationsConfig(env: NodeJS.ProcessEnv, appEnv: string, int: 
   const li = need("linear", ["LINEAR_OAUTH_CLIENT_ID", "LINEAR_OAUTH_CLIENT_SECRET"]);
   const fi = need("figma", ["FIGMA_OAUTH_CLIENT_ID", "FIGMA_OAUTH_CLIENT_SECRET"]);
   const gl = need("gitlab", ["GITLAB_OAUTH_CLIENT_ID", "GITLAB_OAUTH_CLIENT_SECRET"]);
+  const as = need("asana", ["ASANA_OAUTH_CLIENT_ID", "ASANA_OAUTH_CLIENT_SECRET"]);
+  const zo = need("zoom", ["ZOOM_OAUTH_CLIENT_ID", "ZOOM_OAUTH_CLIENT_SECRET"]);
   const gitlabBase = (env.GITLAB_BASE_URL ?? "https://gitlab.com").trim().replace(/\/+$/, "");
   {
     let u: URL;
@@ -167,6 +172,8 @@ export function integrationsConfig(env: NodeJS.ProcessEnv, appEnv: string, int: 
         : null,
     figma: fi && ready("figma") ? { clientId: fi.FIGMA_OAUTH_CLIENT_ID, clientSecret: fi.FIGMA_OAUTH_CLIENT_SECRET } : null,
     gitlab: gl && ready("gitlab") ? { clientId: gl.GITLAB_OAUTH_CLIENT_ID, clientSecret: gl.GITLAB_OAUTH_CLIENT_SECRET, baseUrl: gitlabBase } : null,
+    asana: as && ready("asana") ? { clientId: as.ASANA_OAUTH_CLIENT_ID, clientSecret: as.ASANA_OAUTH_CLIENT_SECRET } : null,
+    zoom: zo && ready("zoom") ? { clientId: zo.ZOOM_OAUTH_CLIENT_ID, clientSecret: zo.ZOOM_OAUTH_CLIENT_SECRET } : null,
     missing,
     connectPerMinute: Math.min(Math.max(int("INTEGRATIONS_CONNECTS_PER_MINUTE", 10), 1), 1000),
     stateTtlMs: Math.min(Math.max(int("INTEGRATIONS_STATE_TTL_SECONDS", 600), 60), 1800) * 1000,

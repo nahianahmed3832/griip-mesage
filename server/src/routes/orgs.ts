@@ -951,10 +951,13 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
         kind: z.enum(["PUBLIC", "PRIVATE", "ANNOUNCEMENT"]).default("PUBLIC"),
         autoJoin: z.boolean().optional(),
         memberIds: z.array(z.string().max(64)).max(200).default([]),
+        /** A voice room (docs/VOICE_ROOMS.md): a channel whose call anyone in it can join, without ringing. */
+        voice: z.boolean().default(false),
       }),
       req.body,
     );
     authz.requireOrgMember(orgId, actor);
+    if (body.voice && body.kind === "ANNOUNCEMENT") throw badRequest("A voice room can be public or private, not an announcement channel");
     let scopeId: string | null = null;
     if (body.scope === "ORG") {
       if (!authz.can(orgId, actor, "channels.create")) throw forbidden("Only org admins can create organization-wide channels");
@@ -976,9 +979,9 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const autoJoin = body.kind === "ANNOUNCEMENT" ? true : body.kind === "PRIVATE" ? false : body.autoJoin ?? body.scope !== "ORG";
     db.transaction(() => {
       db.prepare(
-        `INSERT INTO conversations (id, type, org_id, scope, scope_id, kind, name, topic, auto_join, created_by, created_at, updated_at)
-         VALUES (?, 'CHANNEL', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(id, orgId, body.scope, scopeId, body.kind, body.name, body.topic ?? null, autoJoin ? 1 : 0, actor, t, t);
+        `INSERT INTO conversations (id, type, org_id, scope, scope_id, kind, name, topic, auto_join, created_by, created_at, updated_at, voice)
+         VALUES (?, 'CHANNEL', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(id, orgId, body.scope, scopeId, body.kind, body.name, body.topic ?? null, autoJoin ? 1 : 0, actor, t, t, body.voice ? 1 : 0);
       db.prepare("INSERT INTO conversation_members (conversation_id, user_id, role, joined_at) VALUES (?, ?, 'ADMIN', ?)").run(id, actor, t);
       const conv = authz.conversation(id)!;
       const addIds = new Set(body.memberIds);
@@ -997,7 +1000,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
         }
       }
     })();
-    ctx.audit({ actorId: actor, orgId, action: "channel.create", target: id, detail: `${body.kind} ${body.name}` });
+    ctx.audit({ actorId: actor, orgId, action: body.voice ? "voice_room.create" : "channel.create", target: id, detail: `${body.kind} ${body.name}` });
     notifyConversation(ctx, id);
     return { channel: conversationView(ctx, authz.conversation(id)!, actor) };
   });

@@ -6,6 +6,9 @@ import { createMailer, type Mailer } from "./mailer.js";
 import { AccountService } from "./service.js";
 import { MongoAccountStore, sqliteIdentityRows } from "../mongo/accounts.js";
 import { type AccountStore, SqliteAccountStore } from "./store.js";
+import { RecoveryService } from "./recovery.js";
+import { type RecoveryStore, SqliteRecoveryStore } from "./recoveryStore.js";
+import { MongoRecoveryStore } from "../mongo/recovery.js";
 import { WorkspaceService } from "./workspaces.js";
 
 /**
@@ -19,8 +22,9 @@ export class Accounts {
   readonly identity: IdentityService;
   readonly legacy: LegacyMigrationService;
   readonly workspaces: WorkspaceService;
+  readonly recovery: RecoveryService;
 
-  constructor(ctx: AppContext, opts: { mailer?: Mailer; store?: AccountStore } = {}) {
+  constructor(ctx: AppContext, opts: { mailer?: Mailer; store?: AccountStore; recoveryStore?: RecoveryStore } = {}) {
     // MONGODB_DOMAINS includes "accounts": the account rows live in MongoDB (docs/MONGODB.md).
     this.store =
       opts.store ?? (ctx.mongo?.owns("accounts") ? new MongoAccountStore(ctx.mongo, sqliteIdentityRows(ctx.db)) : new SqliteAccountStore(ctx.db));
@@ -29,6 +33,8 @@ export class Accounts {
     this.identity = new IdentityService(ctx, this.service);
     this.legacy = new LegacyMigrationService(ctx, this.service);
     this.workspaces = new WorkspaceService(ctx, this.store);
+    const recoveryStore = opts.recoveryStore ?? (ctx.mongo?.owns("accounts") ? new MongoRecoveryStore(ctx.mongo) : new SqliteRecoveryStore(ctx.db));
+    this.recovery = new RecoveryService(ctx, this.service, recoveryStore);
   }
 
   /**
@@ -49,7 +55,7 @@ export class Accounts {
     return this.service.sessions.stillValid(sessionId, deviceId, now());
   }
 
-  purgeExpired(): Promise<number> {
-    return this.store.purgeExpired(now());
+  async purgeExpired(): Promise<number> {
+    return (await this.store.purgeExpired(now())) + (await this.recovery.purgeExpired());
   }
 }

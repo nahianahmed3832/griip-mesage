@@ -4,6 +4,7 @@ import { type AccountsConfig, accountsConfig } from "./accounts/config.js";
 import { type IntegrationsConfig, integrationsConfig } from "./integrations/config.js";
 import { type EntitlementConfig, entitlementConfig } from "./entitlements.js";
 import type { S3Config } from "./storage/s3.js";
+import { type FcmConfig, fcmConfig } from "./push/fcm.js";
 
 const SEVEN_DAYS_S = 7 * 24 * 3600;
 const MiB = 1024 * 1024;
@@ -44,6 +45,8 @@ export interface Config {
   profilePhotoDir: string;
   /** Delivery queue TTL in seconds. Hard-capped at 7 days. */
   queueTtlSeconds: number;
+  /** How often due reminders are fired (docs/REMINDERS.md); 0 turns the loop off (tests fire them by hand). */
+  reminderTickMs: number;
   attachmentTtlSeconds: number;
   attachmentMaxBytes: number;
   /**
@@ -135,6 +138,8 @@ export interface Config {
   federation: FederationConfig | null;
   /** Payload-free push wake-ups (docs/BACKGROUND_DELIVERY.md). Null (off) unless PUSH_UNIFIEDPUSH_HOSTS is set. */
   push: PushConfig | null;
+  /** Firebase Cloud Messaging wake-ups (docs/PUSH_FCM.md). Null (off) unless FCM_PROJECT_ID and FCM_SERVICE_ACCOUNT_FILE are set. */
+  fcm: FcmConfig | null;
   logLevel: string;
   rateLimitPerMinute: number;
 }
@@ -338,6 +343,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     callPeerGraceMs: int("CALL_PEER_GRACE_MS", 30_000),
     callMaxParticipants: Math.max(int("CALL_MAX_PARTICIPANTS", 12), 2),
     queueTtlSeconds: Math.max(queueTtl, 1),
+    reminderTickMs: Math.min(Math.max(int("REMINDER_TICK_MS", 15_000), 0), 300_000),
     attachmentTtlSeconds: Math.min(int("ATTACHMENT_TTL_SECONDS", SEVEN_DAYS_S), SEVEN_DAYS_S),
     // 1 GiB per file since Orbit 2.0 (files over 25 MB use the chunked format; docs/ATTACHMENTS.md). Uploads to S3 go
     // straight from the app; uploads through the server need the reverse proxy to allow bodies this large.
@@ -396,6 +402,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     instanceName: (env.INSTANCE_NAME ?? "").trim().slice(0, 80) || null,
     federation: federationConfig(env, dataDir, int),
     push: pushConfig(env, int),
+    fcm: fcmConfig(env),
     logLevel: env.LOG_LEVEL ?? "info",
     rateLimitPerMinute: int("RATE_LIMIT_PER_MINUTE", 600),
   };

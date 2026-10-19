@@ -37,6 +37,8 @@ interface Deferred {
 
 /** Removes a device's endpoint (unregistered, revoked, signed out). */
 export function removePushEndpoint(db: DB, deviceId: string): boolean {
+  // A signed-out device isn't woken through Firebase either (docs/PUSH_FCM.md).
+  db.prepare("DELETE FROM fcm_tokens WHERE device_id = ?").run(deviceId);
   return db.prepare("DELETE FROM push_endpoints WHERE device_id = ?").run(deviceId).changes > 0;
 }
 
@@ -120,6 +122,14 @@ export class PushService {
         .all(userId) as { device_id: string }[];
       for (const r of rows) this.request(r.device_id, true);
     });
+  }
+
+  /**
+   * A reminder of [userId]'s went off: wake each of their devices with no open socket, as promptly as a ring (the
+   * wake-up carries nothing; the app fetches its reminders and shows the one that fired from its own sealed copy).
+   */
+  remind(userId: string): void {
+    this.ring(userId);
   }
 
   /** Stops sending (server shutdown). Deferred wake-ups are cancelled; requests in flight finish on their own. */

@@ -40,6 +40,9 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   account_sessions: "accounts",
   account_codes: "accounts",
   legacy_tickets: "accounts",
+  // Recovery codes (round 6, docs/ACCOUNT_RECOVERY.md).
+  account_recovery_codes: "accounts",
+  account_recovery_tickets: "accounts",
   nav_preferences: "preferences",
   // Apps and connected accounts (2026-10-19, docs/INTEGRATIONS.md): async stores, so they can live in MongoDB.
   integration_installs: "integrations",
@@ -56,6 +59,10 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   devices: "identity",
   user_blocks: "identity",
   push_endpoints: "identity",
+  fcm_tokens: "identity",
+  // Reminders belong to the encryption identity, like saved items (round 6, docs/REMINDERS.md).
+  reminders: "identity",
+  reminder_occurrences: "identity",
   registration_invites: "identity",
   orgs: "workspace",
   org_members: "workspace",
@@ -77,6 +84,7 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   submitted_messages: "relay",
   calls: "relay",
   call_participants: "relay",
+  call_hands: "relay",
   attachments: "files",
   attachment_uploads: "files",
   abandoned_uploads: "files",

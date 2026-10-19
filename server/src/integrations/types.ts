@@ -16,7 +16,7 @@ export const CATEGORIES = [
 ] as const;
 export type Category = (typeof CATEGORIES)[number];
 
-export type ProviderId = "google" | "microsoft" | "github" | "atlassian" | "notion" | "linear" | "figma" | "gitlab" | "sandbox" | "none";
+export type ProviderId = "google" | "microsoft" | "github" | "atlassian" | "notion" | "linear" | "figma" | "gitlab" | "asana" | "zoom" | "sandbox" | "none";
 
 /** Whose account a capability uses: the member's own, or the workspace's shared connection. */
 export type AccountType = "member" | "workspace";

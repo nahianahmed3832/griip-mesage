@@ -401,6 +401,62 @@ export const CONNECTORS: readonly ConnectorDef[] = [
     reviewNote: null,
     docsUrl: "https://example.invalid/meldiq-sandbox",
   },
+  {
+    id: "asana",
+    provider: "asana",
+    name: "Asana",
+    publisher: "Asana",
+    category: "projects",
+    icon: "tasks",
+    summary: "Preview Asana task links with your own access.",
+    description:
+      "Connect your Asana account and task links show the task's name, project, assignee and whether it's done or when it's due, using your own Asana access. Project updates in channels are planned.",
+    featured: false,
+    availability: "available",
+    version: 1,
+    capabilities: [
+      cap({ key: "links.unfurl", label: "Preview task links", description: "Show a task's name, project, assignee and state, using your own access.", kind: "read", accountType: "member", scopes: ["users:read", "tasks:read", "projects:read"], default: true }),
+    ],
+    dataAccess: [
+      "Meldiq reads a task's name, project, assignee, due date and completion only when a link is previewed, and shows them only to you.",
+      "Task descriptions, comments and attachments are never requested. Your Asana token is stored encrypted on Meldiq's server.",
+    ],
+    setup: [
+      "Create an app in the Asana developer console with redirect URL <INTEGRATIONS_PUBLIC_URL>/v1/integrations/oauth/callback and only the scopes users:read, tasks:read and projects:read.",
+      "Set ASANA_OAUTH_CLIENT_ID and ASANA_OAUTH_CLIENT_SECRET.",
+    ],
+    sensitivity: "standard",
+    reviewNote: null,
+    docsUrl: "https://developers.asana.com/docs/oauth",
+  },
+  {
+    id: "zoom",
+    provider: "zoom",
+    name: "Zoom",
+    publisher: "Zoom",
+    category: "calendar",
+    icon: "video",
+    summary: "Preview Zoom meeting links you can see.",
+    description:
+      "Connect your Zoom account and Zoom meeting links show the meeting's topic, start time and length, using your own Zoom access. Passcodes are never read into Meldiq. Meldiq's own calls and voice rooms don't need Zoom.",
+    featured: false,
+    availability: "available",
+    version: 1,
+    capabilities: [
+      cap({ key: "links.unfurl", label: "Preview meeting links", description: "Show a meeting's topic, time and length, using your own access.", kind: "read", accountType: "member", scopes: ["user:read:user", "meeting:read:meeting"], default: true }),
+    ],
+    dataAccess: [
+      "Meldiq reads a meeting's topic, start time, length and time zone only when a link is previewed, and shows them only to you.",
+      "Passcodes, join links from the API, recordings and participants are never stored or shown. Your Zoom token is stored encrypted on Meldiq's server.",
+    ],
+    setup: [
+      "Create a General app (user-managed) in the Zoom App Marketplace with OAuth redirect URL <INTEGRATIONS_PUBLIC_URL>/v1/integrations/oauth/callback and only the granular scopes user:read:user and meeting:read:meeting (confirm in Zoom's API reference for Get a meeting).",
+      "Set ZOOM_OAUTH_CLIENT_ID and ZOOM_OAUTH_CLIENT_SECRET.",
+    ],
+    sensitivity: "standard",
+    reviewNote: "Zoom reviews apps before they can be published beyond the developer's own account.",
+    docsUrl: "https://developers.zoom.us/docs/integrations/oauth/",
+  },
   // ───────────── Catalog-only: planned, with no capabilities claimed ─────────────
   ...comingSoon([
     ["gmail", "google", "Gmail", "Google", "communication", "mail", "Share an email's subject and link into a conversation, with narrowly scoped, read-only access you approve.", "high", "Gmail read scopes are restricted: Google verification and a security assessment are required before launch."],
@@ -416,7 +472,6 @@ export const CONNECTORS: readonly ConnectorDef[] = [
     ["circleci", "none", "CircleCI", "CircleCI", "engineering", "code", "Pipeline results in channels. Today: CircleCI webhooks can post to a Meldiq incoming webhook.", "standard", null],
     ["confluence", "atlassian", "Confluence", "Atlassian", "docs", "notes", "Find and link Confluence pages you can access.", "standard", null],
     ["trello", "none", "Trello", "Atlassian", "projects", "tasks", "Card links and board updates.", "standard", null],
-    ["asana", "none", "Asana", "Asana", "projects", "tasks", "Task links and project updates.", "standard", null],
     ["monday", "none", "monday.com", "monday.com", "projects", "tasks", "Item links and board updates.", "standard", null],
     ["clickup", "none", "ClickUp", "ClickUp", "projects", "tasks", "Task links and status updates.", "standard", null],
     ["coda", "none", "Coda", "Coda", "docs", "notes", "Doc links and previews.", "standard", null],
@@ -425,7 +480,6 @@ export const CONNECTORS: readonly ConnectorDef[] = [
     ["miro", "none", "Miro", "Miro", "docs", "docs", "Board links and previews.", "standard", null],
     ["dropbox", "none", "Dropbox", "Dropbox", "files", "cloud_files", "File links from your Dropbox.", "standard", null],
     ["box", "none", "Box", "Box", "files", "cloud_files", "File links from your Box.", "standard", null],
-    ["zoom", "none", "Zoom", "Zoom", "calendar", "video", "Meeting links.", "standard", null],
     ["salesforce", "none", "Salesforce", "Salesforce", "crm", "people", "Record links and updates.", "standard", null],
     ["hubspot", "none", "HubSpot", "HubSpot", "crm", "people", "Contact and deal links.", "standard", null],
     ["zendesk", "none", "Zendesk", "Zendesk", "crm", "support", "Ticket links and updates.", "standard", null],
