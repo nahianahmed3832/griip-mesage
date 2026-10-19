@@ -1,5 +1,42 @@
 # Meldiq — Design System
 
+> **2026-10-19 round 6: Graphite is the default (current).** The owner found the pastel look uncomfortable for long
+> working days and asked for a professional dark theme by default, inspired by the way dark collaboration apps layer
+> charcoal surfaces (Meldiq's own design: nothing copied). New installs start in **dark mode with Graphite**; existing
+> installs move once (`designVersion` 2: "follow the system" becomes dark, an explicit Light or Dark choice is kept, the
+> preset becomes Graphite). Aurora, Sunset and Meadow remain as choices. The header is flat (no gradient), and there is
+> one restrained accent, the logo ribbon's indigo.
+>
+> | Token | Graphite dark (default) | Graphite light |
+> |---|---|---|
+> | background (canvas) | `#1E1F24` | `#F4F5F7` |
+> | surface (bars, cards, header, composer row) | `#26282E` | `#FFFFFF` |
+> | surfaceVariant (inputs, chips, pressed rows) | `#2F3138` | `#EBECEF` |
+> | border / outline | `#383B43` / `#7A7F8C` | `#DCDEE3` / `#7A7F8C` |
+> | text 1 / 2 / 3 | `#ECEDF0` `#B6BAC3` `#989DA8` | `#17181C` `#4A4D57` `#5D616C` |
+> | primary (links, focus) / soft | `#A5ADFF` / `#2E3150` | `#4B4FC9` / `#E8E9FB` |
+> | action / on action | `#5A5FD8` / white | `#4B4FC9` / white |
+> | accent (single colour) / on accent | `#8B93FF` / `#14163A` | `#4B4FC9` / white |
+> | header / search field on it | `#26282E` / `#1E1F24` (inset) | `#FFFFFF` / `#EBECEF` |
+> | badge / on badge | `#F06A6F` / `#2A0A0C` | `#C42B32` / white |
+> | your bubble / text / time | `#33365A` `#EEEFFD` `#BCC0E6` | `#E6E7FA` `#17181C` `#4A4D70` |
+> | nav indicator | `#383B52` | `#E3E4F7` |
+>
+> Every pair is in `MeldiqPalettesTest` (primary text ≥ 7:1 on the page; all text ≥ 4.5:1 on page, cards, inputs and
+> header; badges ≥ 4.5:1 for their digits and ≥ 3:1 against their row; outlines ≥ 3:1), plus a Graphite test for the
+> layering (canvas darker than cards darker than inputs, not pure black, flat header, single accent).
+>
+> **Conversations.** The permanent "End-to-end encrypted" chip is gone. A small padlock in the header (warning colour
+> when a member's key changed) opens a Security panel listing only what applies: messages and files end-to-end
+> encrypted; calls end-to-end encrypted or only in transit (the call setting); verified or not; members on other
+> servers; channel app updates not end-to-end encrypted; what the server can see (`data/model/ConversationSecurity.kt`).
+> The composer grows line by line up to six lines (then scrolls inside), with an animated height (still when animations
+> are off), tighter corners once it wraps, and a 1 dp border so it reads against the composer bar.
+>
+> **First run.** Five short introduction pages before Welcome (talk, reminders, voice, apps, People & HR marked
+> "Coming soon"), with Skip, page dots that don't rely on colour, and no permission requests; shown once and replayable
+> from Settings › Introduction.
+
 > **2026-10-19, the Meldiq design system (current).** Built from the owner's two references: the three-theme workspace
 > mock-up (lavender/blue/pink, peach/magenta, mint/green) and the official logo (`brand/meldiq-logo.webp`: a cyan → blue →
 > violet ribbon "M" with a chat tail on navy). It replaces Ivory/Cocoa below; every screen follows the person's theme
