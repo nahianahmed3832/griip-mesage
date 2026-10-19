@@ -21,13 +21,13 @@
     <string name="acct_have_account">আগে থেকেই অ্যাকাউন্ট আছে?</string>
     <string name="acct_working">অপেক্ষা করুন…</string>
     <string name="acct_login_title">সাইন ইন</string>
-    <string name="acct_login_subtitle">আপনার Orbit ইমেইল ও পাসওয়ার্ড দিয়ে।</string>
+    <string name="acct_login_subtitle">আপনার Meldiq ইমেইল ও পাসওয়ার্ড দিয়ে।</string>
     <string name="acct_login_submit">সাইন ইন</string>
-    <string name="acct_new_here">Orbit-এ নতুন?</string>
+    <string name="acct_new_here">Meldiq-এ নতুন?</string>
     <string name="acct_forgot_q">পাসওয়ার্ড ভুলে গেছেন?</string>
     <string name="acct_forgot_action">রিসেট করুন</string>
-    <string name="acct_legacy_entry">আগের Orbit অ্যাকাউন্ট সরিয়ে আনুন</string>
-    <string name="acct_legacy_entry_sub">ইমেইল সাইন-ইনের আগে Orbit ব্যবহার করতেন? একবার ইউজারনেম ও রিকভারি কী দিয়ে সরিয়ে আনুন।</string>
+    <string name="acct_legacy_entry">আগের অ্যাকাউন্ট সরিয়ে আনুন</string>
+    <string name="acct_legacy_entry_sub">ইমেইল সাইন-ইনের আগে Orbit বা Griip Message ব্যবহার করতেন? একবার ইউজারনেম ও রিকভারি কী দিয়ে সরিয়ে আনুন।</string>
     <string name="acct_other_q">অন্য অ্যাকাউন্ট ব্যবহার করতে চান?</string>
     <string name="acct_other_action">আগে এই ফোন মুছে ফেলুন</string>
     <string name="acct_erase_title">এই ফোন মুছে ফেলবেন?</string>
@@ -61,7 +61,7 @@
     <string name="acct_setup_link">অন্য ফোন থেকে অনুমোদন দিন</string>
     <string name="acct_setup_link_sub">আগে থেকে সাইন-ইন করা একটি ফোন এটি অনুমোদন করবে</string>
     <string name="acct_setup_key">আমার রিকভারি কী ব্যবহার করুন</string>
-    <string name="acct_setup_key_sub">Orbit-এ যোগ দেওয়ার সময় যে কী সংরক্ষণ করেছিলেন</string>
+    <string name="acct_setup_key_sub">অ্যাকাউন্ট তৈরির সময় যে কী সংরক্ষণ করেছিলেন</string>
     <string name="acct_setup_fresh">নতুন করে শুরু করুন</string>
     <string name="acct_setup_fresh_sub">কী বা অন্য ফোন নেই: নতুন কী, পুরোনো এনক্রিপ্টেড ইতিহাস হারাবে</string>
     <string name="acct_restore_title">আপনার রিকভারি কী দিন</string>
@@ -76,7 +76,7 @@
     <string name="acct_key_warning">এটি অফলাইনে রাখুন (কাগজে বা পাসওয়ার্ড ম্যানেজারে)। যার কাছে এটি থাকবে সে আপনার এনক্রিপ্টেড ইতিহাস পড়তে পারবে।</string>
     <string name="acct_key_saved">আমি সংরক্ষণ করেছি</string>
     <string name="acct_start_title">কীভাবে শুরু করতে চান?</string>
-    <string name="acct_start_subtitle">যেকোনো সময় ওয়ার্কস্পেস বদলাতে পারবেন, আর কোনো প্রতিষ্ঠান ছাড়াই ব্যক্তিগতভাবে Orbit ব্যবহার করতে পারবেন।</string>
+    <string name="acct_start_subtitle">যেকোনো সময় ওয়ার্কস্পেস বদলাতে পারবেন, আর কোনো প্রতিষ্ঠান ছাড়াই ব্যক্তিগতভাবে Meldiq ব্যবহার করতে পারবেন।</string>
     <string name="acct_start_personal">শুধু আমি</string>
     <string name="acct_start_personal_sub">ব্যক্তিগত ওয়ার্কস্পেসে সরাসরি বার্তা, গ্রুপ ও পরিচিতি</string>
     <string name="acct_start_create">একটি প্রতিষ্ঠান তৈরি করুন</string>
@@ -86,7 +86,7 @@
     <string name="acct_start_org_name">প্রতিষ্ঠানের নাম</string>
     <string name="acct_start_org_help">এরপর শাখা, দল ও চ্যানেল যোগ করতে পারবেন</string>
     <string name="acct_start_create_submit">প্রতিষ্ঠান তৈরি করুন</string>
-    <string name="acct_legacy_title">Orbit-এ নতুন সাইন-ইন</string>
+    <string name="acct_legacy_title">Meldiq-এ নতুন সাইন-ইন</string>
     <string name="acct_legacy_subtitle">অ্যাকাউন্ট এখন ইমেইল ও পাসওয়ার্ড ব্যবহার করে। একবার সরিয়ে আনুন; আপনার চ্যাট, গ্রুপ ও ওয়ার্কস্পেস সঙ্গে আসবে।</string>
     <string name="acct_legacy_explain">রিকভারি কী প্রমাণ করে অ্যাকাউন্টটি আপনার। এটি এই ফোনেই যাচাই হয়, কখনো পাঠানো বা সংরক্ষণ করা হয় না। সাইন-ইন করা ফোনে সেটিংস › গোপনীয়তা ও নিরাপত্তা › রিকভারি কী ও সেফটি নম্বর-এ এটি পাবেন।</string>
     <string name="acct_legacy_verify">চালিয়ে যান</string>

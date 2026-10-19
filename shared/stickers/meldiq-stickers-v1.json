@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "about": "Meldiq sticker catalogue (docs/STICKERS.md). Original designs: each sticker is drawn by the app from this spec (an emoji glyph from the device's own emoji font, a Meldiq caption, a shape and a motion). No artwork is bundled, so there is nothing third-party to license. Shared by the Android and web apps; a message carries only {pack, id} plus a readable fallback text.",
+  "tones": ["indigo", "violet", "rose", "amber", "green", "teal", "sky", "slate"],
+  "motions": ["stamp", "rise", "bounce", "pulse", "wiggle", "pop", "float", "sway", "shake", "spin", "confetti", "burst"],
+  "packs": [
+    {
+      "id": "work",
+      "name": "Work",
+      "stickers": [
+        { "id": "lgtm", "emoji": "👍", "caption": "LGTM", "tone": "green", "motion": "stamp", "keywords": ["approve", "looks good", "ok", "yes"] },
+        { "id": "shipped", "emoji": "🚀", "caption": "Shipped!", "tone": "indigo", "motion": "rise", "keywords": ["launch", "release", "deploy"] },
+        { "id": "on-it", "emoji": "🫡", "caption": "On it", "tone": "sky", "motion": "bounce", "keywords": ["will do", "sure", "ack"] },
+        { "id": "thanks", "emoji": "🙏", "caption": "Thank you", "tone": "violet", "motion": "pulse", "keywords": ["thanks", "grateful", "ty"] },
+        { "id": "approved", "emoji": "✅", "caption": "Approved", "tone": "green", "motion": "stamp", "keywords": ["accepted", "signed off"] },
+        { "id": "need-eyes", "emoji": "👀", "caption": "Need eyes", "tone": "amber", "motion": "wiggle", "keywords": ["review", "look", "please check"] },
+        { "id": "done", "emoji": "🎯", "caption": "Done", "tone": "rose", "motion": "pop", "keywords": ["finished", "complete", "nailed"] },
+        { "id": "brb", "emoji": "☕", "caption": "BRB", "tone": "amber", "motion": "float", "keywords": ["coffee", "break", "back soon"] },
+        { "id": "meeting", "emoji": "📅", "caption": "In a meeting", "tone": "slate", "motion": "sway", "keywords": ["busy", "call", "calendar"] },
+        { "id": "focus", "emoji": "🎧", "caption": "Focus mode", "tone": "teal", "motion": "pulse", "keywords": ["deep work", "busy", "headphones"] },
+        { "id": "idea", "emoji": "💡", "caption": "Idea!", "tone": "amber", "motion": "burst", "keywords": ["thought", "suggestion", "lightbulb"] },
+        { "id": "blocked", "emoji": "🚧", "caption": "Blocked", "tone": "rose", "motion": "shake", "keywords": ["stuck", "waiting", "help"] }
+      ]
+    },
+    {
+      "id": "celebrate",
+      "name": "Celebrate",
+      "stickers": [
+        { "id": "party", "emoji": "🎉", "caption": "Party!", "tone": "violet", "motion": "confetti", "keywords": ["celebrate", "yay", "hooray"] },
+        { "id": "congrats", "emoji": "🥳", "caption": "Congrats!", "tone": "rose", "motion": "confetti", "keywords": ["congratulations", "well done"] },
+        { "id": "bravo", "emoji": "👏", "caption": "Bravo", "tone": "amber", "motion": "bounce", "keywords": ["clap", "applause", "great job"] },
+        { "id": "on-fire", "emoji": "🔥", "caption": "On fire", "tone": "rose", "motion": "pulse", "keywords": ["hot", "amazing", "streak"] },
+        { "id": "winner", "emoji": "🏆", "caption": "Winner", "tone": "amber", "motion": "burst", "keywords": ["trophy", "champion", "first"] },
+        { "id": "star", "emoji": "🌟", "caption": "Star", "tone": "indigo", "motion": "spin", "keywords": ["shine", "excellent", "favourite"] },
+        { "id": "birthday", "emoji": "🎂", "caption": "Happy birthday", "tone": "violet", "motion": "bounce", "keywords": ["cake", "bday", "anniversary"] },
+        { "id": "hundred", "emoji": "💯", "caption": "100%", "tone": "rose", "motion": "stamp", "keywords": ["perfect", "totally", "agree"] }
+      ]
+    },
+    {
+      "id": "feels",
+      "name": "Feelings",
+      "stickers": [
+        { "id": "love", "emoji": "❤️", "caption": "Love it", "tone": "rose", "motion": "pulse", "keywords": ["heart", "like", "great"] },
+        { "id": "haha", "emoji": "😂", "caption": "Haha", "tone": "amber", "motion": "shake", "keywords": ["lol", "funny", "laugh"] },
+        { "id": "wow", "emoji": "😮", "caption": "Wow", "tone": "sky", "motion": "pop", "keywords": ["surprised", "amazing", "omg"] },
+        { "id": "oops", "emoji": "🤦", "caption": "Oops", "tone": "slate", "motion": "sway", "keywords": ["facepalm", "mistake", "sorry"] },
+        { "id": "mind-blown", "emoji": "🤯", "caption": "Mind blown", "tone": "violet", "motion": "burst", "keywords": ["shocked", "incredible"] },
+        { "id": "hmm", "emoji": "🤔", "caption": "Hmm…", "tone": "teal", "motion": "wiggle", "keywords": ["thinking", "not sure", "consider"] },
+        { "id": "hugs", "emoji": "🤗", "caption": "Hugs", "tone": "green", "motion": "pulse", "keywords": ["hug", "support", "care"] },
+        { "id": "zzz", "emoji": "😴", "caption": "Zzz", "tone": "indigo", "motion": "float", "keywords": ["sleep", "tired", "night"] }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+package com.meldiq.android.data.model
+
+import kotlinx.serialization.Serializable
+
+/** End-to-end encrypted payload (the plaintext inside griip-envelope-v1). */
+@Serializable
+data class Payload(
+    val type: String,                       // text | edit | delete | reaction | pin | vote | poll_close | read | call_invite | call_key_request
+    val text: String? = null,
+    val replyTo: String? = null,
+    val threadRoot: String? = null,
+    val mentions: List<String>? = null,
+    /** @everyone (docs/MENTIONS.md). Omitted unless true, so other messages keep their exact wire format. */
+    val mentionAll: Boolean? = null,
+    val attachments: List<AttachmentRef>? = null,
+    val target: String? = null,
+    val emoji: String? = null,
+    val add: Boolean? = null,
+    val pinned: Boolean? = null,
+    val upTo: Long? = null,                 // read receipt: server timestamp cutoff
+    val callId: String? = null,
+    val video: Boolean? = null,
+    val e2eeKey: String? = null,
+    // Rich messages (2026-10-17, docs/RICH_MESSAGES.md). Always sent with a readable [text] fallback, so older apps show
+    // the text; all omitted when absent, so other messages keep their exact wire format.
+    val contact: ContactCard? = null,
+    val location: SharedLocation? = null,
+    /** An animated emoji: the emoji itself; [text] holds the same emoji. */
+    val animoji: String? = null,
+    /** Forwarded from another conversation (its sender isn't named). */
+    val forwarded: Boolean? = null,
+    /** A link preview made on the sender's phone (recipients never fetch the page). */
+    val link: LinkPreview? = null,
+    // Polls and stickers (2026-10-19, docs/RICH_MESSAGES.md). Sent with a readable [text] fallback like the rest.
+    val poll: Poll? = null,
+    /** A "vote" control: the chosen option ids of the poll in [target] (empty takes the vote back). */
+    val choices: List<String>? = null,
+    val sticker: StickerRef? = null,
+)
+
+/**
+ * A poll (2026-10-19). Votes travel as end-to-end encrypted "vote" controls, like reactions: the server never sees
+ * the question, the options or who voted for what. [multi] allows several choices.
+ */
+@Serializable
+data class Poll(val question: String, val options: List<PollOption>, val multi: Boolean = false)
+
+@Serializable
+data class PollOption(val id: String, val text: String)
+
+/** A Meldiq sticker: its pack and id in the shared catalogue (shared/stickers, docs/STICKERS.md). */
+@Serializable
+data class StickerRef(val pack: String, val id: String)
+
+/** Title and description of a link in the message, fetched by the sender's phone when they turned previews on. */
+@Serializable
+data class LinkPreview(val url: String, val title: String? = null, val description: String? = null, val siteName: String? = null)
+
+/** A shared contact: only the fields the sender chose. Phone numbers as written in their address book. */
+@Serializable
+data class ContactCard(val name: String, val phones: List<String> = emptyList(), val emails: List<String> = emptyList())
+
+/** A one-time location (never live): coordinates, accuracy in metres when known, and an optional place name. */
+@Serializable
+data class SharedLocation(val lat: Double, val lon: Double, val accuracyM: Float? = null, val label: String? = null)
+
+/** What a message carries besides text and files (stored locally as JSON in `messages.richJson`). */
+@Serializable
+data class RichContent(
+    val contact: ContactCard? = null,
+    val location: SharedLocation? = null,
+    val animoji: String? = null,
+    val link: LinkPreview? = null,
+    val poll: Poll? = null,
+    /** A poll's votes as they arrived: voter's user id → chosen option ids. */
+    val votes: Map<String, List<String>>? = null,
+    /** The poll's creator closed it: no more votes. */
+    val pollClosed: Boolean? = null,
+    val sticker: StickerRef? = null,
+) {
+    /** Replaces the text (a card, a poll, a sticker or an animated emoji) rather than accompanying it (a link preview). */
+    val structured: Boolean get() = contact != null || location != null || animoji != null || poll != null || sticker != null
+}
+
+@Serializable
+data class AttachmentRef(
+    val id: String,
+    val name: String,
+    val mime: String,
+    val size: Long,
+    val key: String,
+    val nonce: String,
+    val sha256: String,
+    // Voice messages (2026-10-16). Optional and omitted when absent, so other attachments keep their exact wire
+    // format; older clients ignore these and show the clip as an ordinary audio file.
+    val voice: Boolean? = null,
+    val durationMs: Long? = null,
+    /**
+     * Large files (over 25 MB, 2026-10-17): encrypted in chunks of this many plaintext bytes (ChunkedAttachmentCrypto).
+     * Absent: the original single-message format. Older apps can't open chunked files and say so.
+     */
+    val chunk: Int? = null,
+)
+
+@Serializable
+data class MemberSummary(
+    val id: String,
+    val username: String,
+    val displayName: String,
+    val avatarColor: Int = 0,
+    val role: String? = null,
+    val online: Boolean? = null,
+    /** Home server id of someone on another server (federation); null for people on this server. */
+    val homeServer: String? = null,
+    /** Profile photo revision when its owner shows it to everyone (server ≥ 2026-10-17). */
+    val photoRev: Long? = null,
+)
+
+@Serializable
+data class CallInfo(
+    val callId: String,
+    val video: Boolean,
+    /** [CallHistory] outcome; null on entries written before call history (shown as a plain call). */
+    val outcome: String? = null,
+    /** Connected time in seconds, only when the server recorded both ends of it (never estimated). */
+    val durationSec: Long? = null,
+    /** Who started the call (user id). */
+    val startedBy: String? = null,
+    /** How many people connected, for group calls (null: not known). */
+    val joined: Int? = null,
+    val group: Boolean = false,
+)
+
+object MessageStatus {
+    const val SENDING = "SENDING"
+    const val SENT = "SENT"
+    const val DELIVERED = "DELIVERED"
+    const val READ = "READ"
+    const val FAILED = "FAILED"
+    const val RECEIVED = "RECEIVED"
+
+    /** Not sent yet: a member's security key changed and the user hasn't reviewed it (T1.2). */
+    const val HELD = "HELD"
+}

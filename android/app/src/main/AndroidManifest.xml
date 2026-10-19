@@ -50,16 +50,27 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|keyboardHidden"
             android:supportsPictureInPicture="true"
             android:resizeableActivity="true"
-            android:theme="@style/Theme.Orbit.Starting">
+            android:theme="@style/Theme.Meldiq.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Invite links: meldiq://invite/CODE, and griip://invite/CODE from Orbit and Griip Message invitations (a
+                 code only; a phone with Orbit too may ask which app opens it). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="meldiq" android:host="invite" />
                 <data android:scheme="griip" android:host="invite" />
+            </intent-filter>
+            <!-- The browser comes back here after an app sign-in (docs/INTEGRATIONS.md): a flow id and a one-time finish
+                 code, never a token. Meldiq's own scheme only, so another app (Orbit) can't be the one it reaches. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="meldiq" android:host="integrations" />
             </intent-filter>
         </activity>
 
@@ -82,7 +93,7 @@
         <!-- Push wake-ups from a UnifiedPush distributor such as ntfy (docs/BACKGROUND_DELIVERY.md). Not exported: the
              connector library's own receiver takes the distributor's broadcasts and binds to it within the app. -->
         <service
-            android:name=".service.OrbitPushService"
+            android:name=".service.MeldiqPushService"
             android:exported="false">
             <intent-filter>
                 <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />

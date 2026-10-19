@@ -1,0 +1,115 @@
+package com.meldiq.android.ui.screens.profile
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.meldiq.android.R
+import com.meldiq.android.data.repo.MessageLayout
+import com.meldiq.android.data.repo.Settings
+import com.meldiq.android.ui.components.SegmentedPills
+import com.meldiq.android.ui.components.pressable
+import com.meldiq.android.ui.theme.Griip
+import com.meldiq.android.ui.theme.MeldiqPalettes
+import com.meldiq.android.ui.theme.Shapes
+import com.meldiq.android.ui.theme.Space
+import com.meldiq.android.ui.theme.ThemeMode
+import com.meldiq.android.ui.theme.headerBrush
+
+/** Theme (system, light, dark), the colour preset and the message layout: Settings › Chats › Appearance. */
+@Composable
+fun AppearanceSettings(s: Settings, update: ((Settings) -> Settings) -> Unit) {
+    val c = Griip.colors
+    Column(Modifier.fillMaxWidth().padding(horizontal = Space.gutter)) {
+        Label(stringResource(R.string.appearance_theme))
+        val modes = listOf(ThemeMode.SYSTEM, ThemeMode.LIGHT, ThemeMode.DARK)
+        SegmentedPills(
+            listOf(stringResource(R.string.appearance_theme_system), stringResource(R.string.appearance_theme_light), stringResource(R.string.appearance_theme_dark)),
+            modes.indexOf(s.theme).coerceAtLeast(0), { i -> update { it.copy(theme = modes[i]) } },
+        )
+        Label(stringResource(R.string.appearance_palette), Modifier.padding(top = 18.dp))
+        Text(stringResource(R.string.appearance_palette_sub), style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(bottom = 8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MeldiqPalettes.ALL.forEach { preset ->
+                PaletteCard(preset, selected = s.palette == preset.id, dark = c.isDark, Modifier.weight(1f)) { update { it.copy(palette = preset.id) } }
+            }
+        }
+        Label(stringResource(R.string.appearance_layout), Modifier.padding(top = 18.dp))
+        val layouts = listOf(MessageLayout.STREAM, MessageLayout.BUBBLES)
+        SegmentedPills(
+            listOf(stringResource(R.string.appearance_layout_stream), stringResource(R.string.appearance_layout_bubbles)),
+            layouts.indexOf(s.messageLayout).coerceAtLeast(0), { i -> update { it.copy(messageLayout = layouts[i]) } },
+        )
+        Text(
+            stringResource(if (s.messageLayout == MessageLayout.STREAM) R.string.appearance_layout_stream_sub else R.string.appearance_layout_bubbles_sub),
+            style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+}
+
+@Composable
+private fun Label(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = Griip.colors.textPrimary, modifier = modifier.padding(bottom = 8.dp))
+}
+
+/** A preset drawn in its own colours (in the current light or dark mode): the header gradient, an action dot and its name. */
+@Composable
+private fun PaletteCard(preset: MeldiqPalettes.Preset, selected: Boolean, dark: Boolean, modifier: Modifier, onPick: () -> Unit) {
+    val p = if (dark) preset.dark else preset.light
+    val c = Griip.colors
+    val name = stringResource(
+        when (preset.id) {
+            "sunset" -> R.string.palette_sunset
+            "meadow" -> R.string.palette_meadow
+            else -> R.string.palette_aurora
+        },
+    )
+    val selectedText = stringResource(R.string.palette_selected)
+    Column(
+        modifier.clip(Shapes.card).background(p.surface)
+            .border(if (selected) 2.dp else 1.dp, if (selected) c.primary else c.border, Shapes.card)
+            .pressable(onPick, role = Role.RadioButton)
+            .semantics {
+                this.selected = selected
+                contentDescription = if (selected) "$name, $selectedText" else name
+            },
+    ) {
+        Box(Modifier.fillMaxWidth().height(44.dp).background(p.headerBrush()), contentAlignment = Alignment.CenterEnd) {
+            if (selected) Box(Modifier.padding(end = 8.dp).size(22.dp).clip(CircleShape).background(p.actionStart), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Check, null, tint = p.onAction, modifier = Modifier.size(14.dp))
+            }
+        }
+        Row(Modifier.padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(12.dp).clip(CircleShape).background(p.actionStart))
+            Spacer(Modifier.width(6.dp))
+            Text(
+                name, style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = p.textPrimary, maxLines = 1,
+                softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Visible,
+            )
+        }
+    }
+}

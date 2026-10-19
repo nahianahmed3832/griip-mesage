@@ -7,11 +7,11 @@
         <item name="android:windowLightStatusBar">true</item>
     </style>
 
-    <!-- Launch screen (AndroidX SplashScreen: the Android 12+ system splash, and the same look on 8–11). The Orbit symbol
-         on near-black green, shown only until the first frame; then the app theme above. -->
-    <style name="Theme.Orbit.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/orbit_night</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/orbit_mark</item>
+    <!-- Launch screen (AndroidX SplashScreen: the Android 12+ system splash, and the same look on 8–11). The official
+         logo on its own navy ground, shown only until the first frame (no added delay); then the app theme above. -->
+    <style name="Theme.Meldiq.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/brand_ground</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_mark</item>
         <item name="postSplashScreenTheme">@style/Theme.Griip</item>
     </style>
 </resources>

@@ -21,13 +21,13 @@
     <string name="acct_have_account">Already have an account?</string>
     <string name="acct_working">Please wait…</string>
     <string name="acct_login_title">Sign in</string>
-    <string name="acct_login_subtitle">With your Orbit email and password.</string>
+    <string name="acct_login_subtitle">With your Meldiq email and password.</string>
     <string name="acct_login_submit">Sign in</string>
-    <string name="acct_new_here">New to Orbit?</string>
+    <string name="acct_new_here">New to Meldiq?</string>
     <string name="acct_forgot_q">Forgot your password?</string>
     <string name="acct_forgot_action">Reset it</string>
-    <string name="acct_legacy_entry">Move an existing Orbit account</string>
-    <string name="acct_legacy_entry_sub">Had Orbit before email sign-in? Use your username and recovery key once.</string>
+    <string name="acct_legacy_entry">Move an existing account</string>
+    <string name="acct_legacy_entry_sub">Used Orbit or Griip Message before email sign-in? Use your username and recovery key once.</string>
     <string name="acct_other_q">Want to use a different account?</string>
     <string name="acct_other_action">Erase this phone first</string>
     <string name="acct_erase_title">Erase this phone?</string>
@@ -61,7 +61,7 @@
     <string name="acct_setup_link">Approve from another phone</string>
     <string name="acct_setup_link_sub">A phone already signed in approves this one</string>
     <string name="acct_setup_key">Use my recovery key</string>
-    <string name="acct_setup_key_sub">The key you saved when you joined Orbit</string>
+    <string name="acct_setup_key_sub">The key you saved when you created your account</string>
     <string name="acct_setup_fresh">Start fresh</string>
     <string name="acct_setup_fresh_sub">No key and no other phone: new keys, old encrypted history lost</string>
     <string name="acct_restore_title">Enter your recovery key</string>
@@ -76,7 +76,7 @@
     <string name="acct_key_warning">Keep it offline (on paper or in a password manager). Anyone with it can read your encrypted history.</string>
     <string name="acct_key_saved">I\'ve saved it</string>
     <string name="acct_start_title">How do you want to start?</string>
-    <string name="acct_start_subtitle">You can switch workspaces any time, and use Orbit personally without an organization.</string>
+    <string name="acct_start_subtitle">You can switch workspaces any time, and use Meldiq personally without an organization.</string>
     <string name="acct_start_personal">Just me</string>
     <string name="acct_start_personal_sub">Direct messages, groups and contacts in your personal workspace</string>
     <string name="acct_start_create">Create an organization</string>
@@ -86,7 +86,7 @@
     <string name="acct_start_org_name">Organization name</string>
     <string name="acct_start_org_help">You can add branches, teams and channels next</string>
     <string name="acct_start_create_submit">Create organization</string>
-    <string name="acct_legacy_title">Orbit has a new sign-in</string>
+    <string name="acct_legacy_title">Meldiq has a new sign-in</string>
     <string name="acct_legacy_subtitle">Accounts now use email and a password. Move yours once; your chats, groups and workspaces come with it.</string>
     <string name="acct_legacy_explain">Your recovery key proves the account is yours. It\'s checked on this phone and never sent or stored. On a signed-in phone it\'s under Settings › Privacy &amp; Security › Recovery key &amp; safety numbers.</string>
     <string name="acct_legacy_verify">Continue</string>

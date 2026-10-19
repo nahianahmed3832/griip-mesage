@@ -21,13 +21,13 @@
     <string name="acct_have_account">已有账户？</string>
     <string name="acct_working">请稍候…</string>
     <string name="acct_login_title">登录</string>
-    <string name="acct_login_subtitle">使用你的 Orbit 邮箱和密码。</string>
+    <string name="acct_login_subtitle">使用你的 Meldiq 邮箱和密码。</string>
     <string name="acct_login_submit">登录</string>
-    <string name="acct_new_here">第一次使用 Orbit？</string>
+    <string name="acct_new_here">第一次使用 Meldiq？</string>
     <string name="acct_forgot_q">忘记密码？</string>
     <string name="acct_forgot_action">重置</string>
-    <string name="acct_legacy_entry">迁移已有的 Orbit 账户</string>
-    <string name="acct_legacy_entry_sub">在邮箱登录推出前就用过 Orbit？用用户名和恢复密钥迁移一次即可。</string>
+    <string name="acct_legacy_entry">迁移已有账户</string>
+    <string name="acct_legacy_entry_sub">在邮箱登录推出前用过 Orbit 或 Griip Message？用用户名和恢复密钥迁移一次即可。</string>
     <string name="acct_other_q">想使用其他账户？</string>
     <string name="acct_other_action">先清除本机数据</string>
     <string name="acct_erase_title">清除本机数据？</string>
@@ -61,7 +61,7 @@
     <string name="acct_setup_link">从另一台手机批准</string>
     <string name="acct_setup_link_sub">由一台已登录的手机批准这台手机</string>
     <string name="acct_setup_key">使用恢复密钥</string>
-    <string name="acct_setup_key_sub">你加入 Orbit 时保存的密钥</string>
+    <string name="acct_setup_key_sub">你创建账户时保存的密钥</string>
     <string name="acct_setup_fresh">重新开始</string>
     <string name="acct_setup_fresh_sub">没有密钥也没有其他手机：生成新密钥，旧的加密历史将丢失</string>
     <string name="acct_restore_title">输入恢复密钥</string>
@@ -76,7 +76,7 @@
     <string name="acct_key_warning">请离线保存（写在纸上或存入密码管理器）。任何拿到它的人都能读取你的加密历史。</string>
     <string name="acct_key_saved">我已保存</string>
     <string name="acct_start_title">你想如何开始？</string>
-    <string name="acct_start_subtitle">你可以随时切换工作区，也可以不加入组织、个人使用 Orbit。</string>
+    <string name="acct_start_subtitle">你可以随时切换工作区，也可以不加入组织、个人使用 Meldiq。</string>
     <string name="acct_start_personal">个人使用</string>
     <string name="acct_start_personal_sub">在个人工作区中使用私信、群组和联系人</string>
     <string name="acct_start_create">创建组织</string>
@@ -86,7 +86,7 @@
     <string name="acct_start_org_name">组织名称</string>
     <string name="acct_start_org_help">接下来可以添加分部、团队和频道</string>
     <string name="acct_start_create_submit">创建组织</string>
-    <string name="acct_legacy_title">Orbit 登录方式已更新</string>
+    <string name="acct_legacy_title">Meldiq 登录方式已更新</string>
     <string name="acct_legacy_subtitle">账户现在使用邮箱和密码。只需迁移一次，你的聊天、群组和工作区都会随之保留。</string>
     <string name="acct_legacy_explain">恢复密钥用于证明账户属于你。它只在本机核对，绝不会发送或存储。在已登录的手机上，可在 设置 › 隐私与安全 › 恢复密钥与安全码 中找到它。</string>
     <string name="acct_legacy_verify">继续</string>

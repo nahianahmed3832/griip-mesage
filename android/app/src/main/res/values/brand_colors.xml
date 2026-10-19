@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sampled from brand/meldiq-logo.webp by android/scripts/render_brand.py: the logo's navy ground. -->
+    <color name="brand_ground">#FF071231</color>
+</resources>

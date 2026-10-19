@@ -1,0 +1,136 @@
+package com.meldiq.android.ui.theme
+
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+
+/**
+ * The Meldiq palettes (2026-10-19, from the owner's three-theme reference and the logo; docs/DESIGN_SYSTEM.md):
+ *
+ * - **Aurora** (default): lavender → sky header, indigo actions and a violet accent, like the logo's ribbon. Dark mode
+ *   sits on the logo's own navy.
+ * - **Sunset**: peach → pink header with magenta actions.
+ * - **Meadow**: mint header with green actions.
+ *
+ * A preset changes the whole palette (header, actions, badges, tinted neutrals), never single screens. Contrast is
+ * unit-tested for every preset in both modes (`MeldiqPalettesTest`): text 4.5:1 or better on every surface it sits on,
+ * outlines 3:1.
+ */
+object MeldiqPalettes {
+    const val DEFAULT = "aurora"
+
+    data class Preset(val id: String, val label: String, val light: GriipColors, val dark: GriipColors)
+
+    /** The colours one preset contributes in one mode; the rest is shared ([shared]). */
+    private data class Tones(
+        val background: Long, val surface: Long, val surfaceVariant: Long, val border: Long, val outline: Long,
+        val textPrimary: Long, val textSecondary: Long, val textTertiary: Long,
+        val primary: Long, val primaryBright: Long, val primaryDeep: Long, val primarySoft: Long, val onPrimary: Long,
+        val action: Long, val onAction: Long, val accentStart: Long, val accentEnd: Long, val onAccent: Long,
+        val headerStart: Long, val headerMid: Long, val headerEnd: Long, val badge: Long, val onBadge: Long,
+        val bubbleOutgoing: Long, val onBubbleOutgoing: Long, val bubbleOutgoingMeta: Long, val navIndicator: Long,
+    )
+
+    private fun shared(t: Tones, dark: Boolean): GriipColors {
+        val c = { v: Long -> Color(v) }
+        return GriipColors(
+            isDark = dark,
+            primary = c(t.primary), primaryBright = c(t.primaryBright), primaryDeep = c(t.primaryDeep),
+            primarySoft = c(t.primarySoft), onPrimary = c(t.onPrimary),
+            lavender = if (dark) Color(0xFFB9B4F0) else Color(0xFF5B50B5),
+            lavenderSoft = if (dark) Color(0xFF282752) else Color(0xFFEDEBFA),
+            peach = if (dark) Color(0xFFF5B58A) else Color(0xFFA04F1C),
+            peachSoft = if (dark) Color(0xFF3A2B22) else Color(0xFFF9ECE1),
+            danger = if (dark) Color(0xFFFF8A80) else Color(0xFFC42B2B),
+            dangerSoft = if (dark) Color(0xFF3E1F1D) else Color(0xFFFBE6E4),
+            warning = if (dark) Color(0xFFF2C26B) else Color(0xFF8A5A00),
+            warningSoft = if (dark) Color(0xFF3A2F1A) else Color(0xFFFBF0DA),
+            success = if (dark) Color(0xFF6EDAA4) else Color(0xFF13784A),
+            successSoft = if (dark) Color(0xFF16352A) else Color(0xFFE0F2E8),
+            canvasTop = c(t.background), canvasMid = c(t.background), canvasBottom = c(t.background),
+            glass = c(t.surface), glassStrong = c(t.surfaceVariant), glassBorder = c(t.border),
+            hairline = if (dark) Color.White.copy(alpha = 0.08f) else Color(t.textPrimary).copy(alpha = 0.08f),
+            textPrimary = c(t.textPrimary), textSecondary = c(t.textSecondary), textTertiary = c(t.textTertiary),
+            shadow = if (dark) Color.Black.copy(alpha = 0.32f) else Color(0xFF1A1C3A).copy(alpha = 0.07f),
+            scrim = Color.Black.copy(alpha = if (dark) 0.6f else 0.42f),
+            bubbleIncoming = c(t.surface),
+            callStage = Color(0xFF070B1F),
+            actionStart = c(t.action), actionEnd = c(t.action),
+            heroStart = c(t.headerStart), heroMid = c(t.headerMid), heroEnd = c(t.headerEnd),
+            background = c(t.background), surface = c(t.surface), surfaceVariant = c(t.surfaceVariant), border = c(t.border),
+            onAction = c(t.onAction),
+            bubbleOutgoing = c(t.bubbleOutgoing), onBubbleOutgoing = c(t.onBubbleOutgoing), bubbleOutgoingMeta = c(t.bubbleOutgoingMeta),
+            readReceipt = if (dark) Color(0xFF7CC0FF) else Color(0xFF2563D9),
+            navIndicator = c(t.navIndicator),
+            outline = c(t.outline),
+            accentStart = c(t.accentStart), accentEnd = c(t.accentEnd), onAccent = c(t.onAccent),
+            headerField = Color.White.copy(alpha = if (dark) 0.10f else 0.70f),
+            badge = c(t.badge), onBadge = c(t.onBadge),
+        )
+    }
+
+    private val auroraLight = Tones(
+        background = 0xFFF4F5FB, surface = 0xFFFFFFFF, surfaceVariant = 0xFFECEEF8, border = 0xFFDDE0EE, outline = 0xFF7C82A8,
+        textPrimary = 0xFF121433, textSecondary = 0xFF444868, textTertiary = 0xFF5A5E80,
+        primary = 0xFF4441D0, primaryBright = 0xFF5B58E6, primaryDeep = 0xFF2E2B9E, primarySoft = 0xFFE9E8FD, onPrimary = 0xFFFFFFFF,
+        action = 0xFF4441D0, onAction = 0xFFFFFFFF, accentStart = 0xFF4441D0, accentEnd = 0xFF7B35D9, onAccent = 0xFFFFFFFF,
+        headerStart = 0xFFF1E4FA, headerMid = 0xFFE4E5FB, headerEnd = 0xFFD8E7FC, badge = 0xFFD1245A, onBadge = 0xFFFFFFFF,
+        bubbleOutgoing = 0xFFE7E6FC, onBubbleOutgoing = 0xFF15163A, bubbleOutgoingMeta = 0xFF4F5180, navIndicator = 0xFFE3E2FB,
+    )
+    private val auroraDark = Tones(
+        background = 0xFF0A0E27, surface = 0xFF121736, surfaceVariant = 0xFF1B2145, border = 0xFF272E57, outline = 0xFF6F77A6,
+        textPrimary = 0xFFECEEFB, textSecondary = 0xFFB4B9DA, textTertiary = 0xFF959BC2,
+        primary = 0xFFA3A5FF, primaryBright = 0xFFB9BAFF, primaryDeep = 0xFFC9CAFF, primarySoft = 0xFF25295C, onPrimary = 0xFF10123A,
+        action = 0xFF5552E0, onAction = 0xFFFFFFFF, accentStart = 0xFF3CD6EE, accentEnd = 0xFFB49BFA, onAccent = 0xFF0A0E27,
+        headerStart = 0xFF1E1C4E, headerMid = 0xFF172352, headerEnd = 0xFF112A55, badge = 0xFFFF7AA2, onBadge = 0xFF2B0715,
+        bubbleOutgoing = 0xFF2A2D6A, onBubbleOutgoing = 0xFFEEEFFD, bubbleOutgoingMeta = 0xFFB9BBE8, navIndicator = 0xFF272B63,
+    )
+    private val sunsetLight = Tones(
+        background = 0xFFFBF5F3, surface = 0xFFFFFFFF, surfaceVariant = 0xFFF6ECE9, border = 0xFFEBDDD8, outline = 0xFF9A8780,
+        textPrimary = 0xFF24131A, textSecondary = 0xFF5B4450, textTertiary = 0xFF6E5662,
+        primary = 0xFFA12460, primaryBright = 0xFFBC3474, primaryDeep = 0xFF7A1747, primarySoft = 0xFFFBE4EE, onPrimary = 0xFFFFFFFF,
+        action = 0xFFA12460, onAction = 0xFFFFFFFF, accentStart = 0xFFB83A1E, accentEnd = 0xFFA12460, onAccent = 0xFFFFFFFF,
+        headerStart = 0xFFFFE8D6, headerMid = 0xFFFDE2E0, headerEnd = 0xFFFBDCEA, badge = 0xFFB4281E, onBadge = 0xFFFFFFFF,
+        bubbleOutgoing = 0xFFFBE3EC, onBubbleOutgoing = 0xFF2A1018, bubbleOutgoingMeta = 0xFF7A4A5C, navIndicator = 0xFFF8DCE8,
+    )
+    private val sunsetDark = Tones(
+        background = 0xFF170E12, surface = 0xFF22151B, surfaceVariant = 0xFF2E1E25, border = 0xFF3D2A32, outline = 0xFF8A7079,
+        textPrimary = 0xFFFBEFF2, textSecondary = 0xFFD3BCC4, textTertiary = 0xFFB49DA6,
+        primary = 0xFFFF9DC5, primaryBright = 0xFFFFB3D2, primaryDeep = 0xFFFFC6DD, primarySoft = 0xFF47202F, onPrimary = 0xFF3A0A1E,
+        action = 0xFFB23A70, onAction = 0xFFFFFFFF, accentStart = 0xFFFFAE7A, accentEnd = 0xFFFF8DB8, onAccent = 0xFF2A0E14,
+        headerStart = 0xFF3A1D20, headerMid = 0xFF3A1B28, headerEnd = 0xFF3A1830, badge = 0xFFFF8A7A, onBadge = 0xFF2D0905,
+        bubbleOutgoing = 0xFF4A2333, onBubbleOutgoing = 0xFFFCEFF3, bubbleOutgoingMeta = 0xFFE0B9C7, navIndicator = 0xFF4A2333,
+    )
+    private val meadowLight = Tones(
+        background = 0xFFF3F8F4, surface = 0xFFFFFFFF, surfaceVariant = 0xFFE8F1EA, border = 0xFFD7E4DA, outline = 0xFF7E9284,
+        textPrimary = 0xFF0F1E15, textSecondary = 0xFF3E5246, textTertiary = 0xFF536759,
+        primary = 0xFF0E7340, primaryBright = 0xFF16894F, primaryDeep = 0xFF0A5730, primarySoft = 0xFFDDF3E4, onPrimary = 0xFFFFFFFF,
+        action = 0xFF0E7340, onAction = 0xFFFFFFFF, accentStart = 0xFF0E7340, accentEnd = 0xFF0B6B5E, onAccent = 0xFFFFFFFF,
+        headerStart = 0xFFE3F7E2, headerMid = 0xFFD7F3DD, headerEnd = 0xFFCBEFD8, badge = 0xFF0E6B3A, onBadge = 0xFFFFFFFF,
+        bubbleOutgoing = 0xFFDCF1E2, onBubbleOutgoing = 0xFF0E1F14, bubbleOutgoingMeta = 0xFF3F6B4E, navIndicator = 0xFFD5EEDC,
+    )
+    private val meadowDark = Tones(
+        background = 0xFF08130D, surface = 0xFF0F1D15, surfaceVariant = 0xFF18291F, border = 0xFF22372A, outline = 0xFF6C8A76,
+        textPrimary = 0xFFE9F4EC, textSecondary = 0xFFAFC6B6, textTertiary = 0xFF91AA99,
+        primary = 0xFF6EDB9E, primaryBright = 0xFF8AE5B2, primaryDeep = 0xFFA5EEC4, primarySoft = 0xFF173B27, onPrimary = 0xFF052414,
+        action = 0xFF17804A, onAction = 0xFFFFFFFF, accentStart = 0xFF6EDB9E, accentEnd = 0xFF5ED6C8, onAccent = 0xFF062014,
+        headerStart = 0xFF10301E, headerMid = 0xFF0F2D22, headerEnd = 0xFF0E2A26, badge = 0xFF6EDB9E, onBadge = 0xFF052414,
+        bubbleOutgoing = 0xFF164A2E, onBubbleOutgoing = 0xFFEAF7EF, bubbleOutgoingMeta = 0xFFA9D3B8, navIndicator = 0xFF1A4029,
+    )
+
+    val ALL: List<Preset> = listOf(
+        Preset("aurora", "Aurora", shared(auroraLight, false), shared(auroraDark, true)),
+        Preset("sunset", "Sunset", shared(sunsetLight, false), shared(sunsetDark, true)),
+        Preset("meadow", "Meadow", shared(meadowLight, false), shared(meadowDark, true)),
+    )
+
+    /** The preset with this id; anything else (older accent ids, a missing setting) is the default. */
+    fun of(id: String?): Preset = ALL.firstOrNull { it.id == id } ?: ALL.first()
+
+    fun colors(id: String?, dark: Boolean): GriipColors = of(id).let { if (dark) it.dark else it.light }
+}
+
+/** Left-to-right accent gradient of a palette (highlights and accent text). */
+fun GriipColors.accentBrush(): Brush = Brush.horizontalGradient(listOf(accentStart, accentEnd))
+
+/** The header gradient (workspace name, search and filters sit on it). */
+fun GriipColors.headerBrush(): Brush = Brush.horizontalGradient(listOf(heroStart, heroMid, heroEnd))

@@ -5,7 +5,16 @@ sys.path.insert(0, os.path.dirname(__file__))
 from strings import S
 from strings_account import S as ACCOUNT
 from strings_workspace import S as WORKSPACE
+from strings_apps import S as APPS
+from strings_meldiq import S as MELDIQ
 res = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "src", "main", "res")
+# Every key must be unique across the tables (Android merges them into one namespace).
+_seen = {}
+for _name, _table in [("strings", S), ("strings_account", ACCOUNT), ("strings_workspace", WORKSPACE), ("strings_apps", APPS), ("strings_meldiq", MELDIQ)]:
+    for _k in _table:
+        if _k in _seen:
+            raise SystemExit(f"duplicate string key {_k!r} in {_name} and {_seen[_k]}")
+        _seen[_k] = _name
 def esc(v):
     v = v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     v = re.sub(r'(?<!\\)"', r'\\"', v)
@@ -22,7 +31,7 @@ for lang, folder, idx in [("en", "values", 0), ("zh", "values-zh-rCN", 1), ("bn"
     os.makedirs(f"{res}/{folder}", exist_ok=True)
     out = ['<?xml version="1.0" encoding="utf-8"?>', '<!-- Interface strings (docs/LANGUAGES.md). Generated from one table so every language has every key. -->', '<resources>']
     if lang == "en":
-        out += ['    <string name="app_name" translatable="false">Orbit</string>', '    <string name="brand_attribution" translatable="false">Orbit by GriipBuddy</string>']
+        out += ['    <string name="app_name" translatable="false">Meldiq</string>', '    <string name="brand_attribution" translatable="false">Meldiq by GriipBuddy</string>']
     out.append(f'    <string name="brand_tagline">{esc(brand[lang][0])}</string>')
     for k, v in S.items():
         out.append(f'    <string name="{k}">{esc(v[idx])}</string>')
@@ -43,3 +52,17 @@ for lang, folder, idx in [("en", "values", 0), ("zh", "values-zh-rCN", 1), ("bn"
     ws.append('</resources>')
     open(f"{res}/{folder}/strings_workspace.xml", "w").write("\n".join(ws) + "\n")
     print(folder, "workspace", len(WORKSPACE))
+    # Custom roles, apps and administration strings (2026-10-19): strings_apps.py.
+    ap = ['<?xml version="1.0" encoding="utf-8"?>', '<!-- Roles, apps and administration strings (docs/LANGUAGES.md). Generated from strings_apps.py. -->', '<resources>']
+    for k, v in APPS.items():
+        ap.append(f'    <string name="{k}">{esc(v[idx])}</string>')
+    ap.append('</resources>')
+    open(f"{res}/{folder}/strings_apps.xml", "w").write("\n".join(ap) + "\n")
+    print(folder, "apps", len(APPS))
+    # Meldiq design, messaging and media strings (2026-10-19 round 5): strings_meldiq.py.
+    md = ['<?xml version="1.0" encoding="utf-8"?>', '<!-- Meldiq design, messaging and media strings (docs/LANGUAGES.md). Generated from strings_meldiq.py. -->', '<resources>']
+    for k, v in MELDIQ.items():
+        md.append(f'    <string name="{k}">{esc(v[idx])}</string>')
+    md.append('</resources>')
+    open(f"{res}/{folder}/strings_meldiq.xml", "w").write("\n".join(md) + "\n")
+    print(folder, "meldiq", len(MELDIQ))

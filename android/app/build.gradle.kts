@@ -8,13 +8,36 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-// Default relay: the GriipBuddy internal-beta deployment. For local development against a server on
-// this machine, add griip.serverUrl=http://10.0.2.2:8080 to android/local.properties (emulator host).
+// The app's default server address, per environment (docs/ENVIRONMENTS.md). People can still pick another server.
+//   meldiq.environment            development (debug builds' default) | staging | production (release builds' default)
+//   meldiq.apiBaseUrl.<environment>  the address for that environment: gradle -P… or android/local.properties
+// Production stays on the current live relay until the Meldiq API hostname exists and its rollout is approved; staging
+// has no default (set it); development is this computer, reached from a phone through `adb reverse tcp:8080 tcp:8080`.
+// griip.serverUrl (older local.properties) still sets the development address.
 val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
-val defaultServer: String = localProps.getProperty("griip.serverUrl") ?: "https://msg.griipbuddy.cloud"
+fun setting(name: String): String? =
+    ((project.findProperty(name) as String?) ?: localProps.getProperty(name))?.trim()?.takeIf { it.isNotEmpty() }
+
+val environments = setOf("development", "staging", "production")
+val endpointDefaults = mapOf(
+    "production" to "https://msg.griipbuddy.cloud", // the live relay today, not the Meldiq hostname (not bought yet)
+    "development" to "http://localhost:8080",
+)
+fun apiBaseUrl(environment: String): String {
+    val url = setting("meldiq.apiBaseUrl.$environment")
+        ?: (if (environment == "development") setting("griip.serverUrl") else null)
+        ?: endpointDefaults[environment]
+        ?: throw GradleException("Set meldiq.apiBaseUrl.$environment (gradle -P or android/local.properties) to build for $environment")
+    if (environment != "development" && !url.startsWith("https://")) throw GradleException("meldiq.apiBaseUrl.$environment must use https://")
+    return url.trimEnd('/')
+}
+val debugEnvironment = setting("meldiq.environment") ?: "development"
+// A release build is never "development": it talks to a TLS server only.
+val releaseEnvironment = setting("meldiq.environment")?.takeIf { it != "development" } ?: "production"
+require(debugEnvironment in environments && releaseEnvironment in environments) { "meldiq.environment must be one of $environments" }
 
 android {
     // The app has its own language setting (docs/LANGUAGES.md): every language must be in every install, so the Play
@@ -22,23 +45,24 @@ android {
     bundle {
         language { enableSplit = false }
     }
-    namespace = "com.griipbuddy.orbit"
+    namespace = "com.meldiq.android"
     compileSdk = 36
 
     defaultConfig {
-        // Orbit (2026-10-16 rebrand). A new application id installs as a separate app beside Griip Message
-        // (com.griipbuddy.message); nothing migrates between them. The code's namespace is com.griipbuddy.orbit.
-        // Capital O on purpose: it must equal the Play Console app's package name exactly (package names are
-        // case-sensitive and permanent on Play). Builds before 2026-10-17 used com.griipbuddy.orbit.
-        applicationId = "com.griipbuddy.Orbit"
+        // Meldiq (2026-10-19 rebrand; the owner chose com.meldiq.android to match meldiq.app). A new application id:
+        // Android installs it as a separate app beside Orbit (com.griipbuddy.Orbit, its Play listing;
+        // com.griipbuddy.orbit before 2026-10-17), Griip Message (com.griipbuddy.message) and the first Meldiq test
+        // builds (com.griipbuddy.meldiq, 2026-10-19, never published). App data never moves between them: accounts come back by signing in, by linking
+        // the device, or with the recovery key (docs/MELDIQ_REBRAND_2026-10-19.md). Play needs a new app with exactly
+        // this (case-sensitive, permanent) package name; the Orbit listing can't be updated to it.
+        applicationId = "com.meldiq.android"
         minSdk = 26
         targetSdk = 36
         versionCode = 8
         versionName = "0.2.1-beta"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Not the default "<applicationId>.test": that is the side-by-side debug build's id ("Orbit Test").
-        testApplicationId = "com.griipbuddy.orbit.androidtest"
-        buildConfigField("String", "DEFAULT_SERVER_URL", "\"$defaultServer\"")
+        // Not the default "<applicationId>.test": that is the side-by-side debug build's id ("Meldiq Test").
+        testApplicationId = "com.meldiq.android.androidtest"
         manifestPlaceholders["appLabel"] = "@string/app_name"
         vectorDrawables.useSupportLibrary = true
         // Ship only ABIs modern phones/emulators use (drops legacy mips/armeabi/x86 from dependencies).
@@ -48,14 +72,18 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
-            // -Porbit.sideBySide=true: a debug build that installs beside the Play app (com.griipbuddy.Orbit.test,
-            // "Orbit Test") instead of clashing with its signature. Off by default, so testing APKs are unchanged.
-            if (project.findProperty("orbit.sideBySide") == "true") {
+            buildConfigField("String", "DEFAULT_SERVER_URL", "\"${apiBaseUrl(debugEnvironment)}\"")
+            buildConfigField("String", "MELDIQ_ENVIRONMENT", "\"$debugEnvironment\"")
+            // -Pmeldiq.sideBySide=true: a debug build that installs beside a Meldiq release (com.meldiq.android.test,
+            // "Meldiq Test") instead of clashing with its signature. Off by default.
+            if (project.findProperty("meldiq.sideBySide") == "true") {
                 applicationIdSuffix = ".test"
-                manifestPlaceholders["appLabel"] = "Orbit Test"
+                manifestPlaceholders["appLabel"] = "Meldiq Test"
             }
         }
         release {
+            buildConfigField("String", "DEFAULT_SERVER_URL", "\"${apiBaseUrl(releaseEnvironment)}\"")
+            buildConfigField("String", "MELDIQ_ENVIRONMENT", "\"$releaseEnvironment\"")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -65,6 +93,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    // The sticker catalogue is shared with the web app (shared/stickers, docs/STICKERS.md): packaged as an asset.
+    sourceSets["main"].assets.srcDir("../../shared")
     buildFeatures {
         compose = true
         buildConfig = true

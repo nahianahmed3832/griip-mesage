@@ -14,5 +14,5 @@ dependencyResolutionManagement {
         maven("https://jitpack.io") { content { includeGroup("com.github.davidliu") } }
     }
 }
-rootProject.name = "GriipMessage"
+rootProject.name = "Meldiq"
 include(":app")

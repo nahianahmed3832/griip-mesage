@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- The Orbit symbol (no background) and its deep-green tile: the same artwork as the launcher icon's two layers. -->
-    <drawable name="orbit_mark">@drawable/ic_launcher_foreground</drawable>
-    <drawable name="orbit_tile">@drawable/ic_launcher_background</drawable>
-</resources>
