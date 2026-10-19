@@ -58,8 +58,8 @@ android {
         applicationId = "com.meldiq.android"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.2.1-beta"
+        versionCode = 10
+        versionName = "0.2.3-beta"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Not the default "<applicationId>.test": that is the side-by-side debug build's id ("Meldiq Test").
         testApplicationId = "com.meldiq.android.androidtest"
