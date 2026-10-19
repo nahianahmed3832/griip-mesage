@@ -1,23 +1,62 @@
-# Griip Message — Design System
+# Meldiq — Design System
+
+> **2026-10-19, the Meldiq design system (current).** Built from the owner's two references: the three-theme workspace
+> mock-up (lavender/blue/pink, peach/magenta, mint/green) and the official logo (`brand/meldiq-logo.webp`: a cyan → blue →
+> violet ribbon "M" with a chat tail on navy). It replaces Ivory/Cocoa below; every screen follows the person's theme
+> (System, Light, Dark) and colour preset (Settings › Chats › Appearance). Code: `ui/theme/MeldiqPalettes.kt` (presets),
+> `ui/theme/Color.kt` (token names), `ui/theme/Tokens.kt` (space, shapes, motion, `rememberReducedMotion`).
+>
+> **Presets.** One preset changes the whole palette (header gradient, actions, badges, tinted neutrals), never single
+> screens. Contrast for every text/surface pair, badge, button, outline and banner is unit-tested in both modes
+> (`MeldiqPalettesTest`: text ≥ 4.5:1, primary text ≥ 7:1 on the page, outlines and badges ≥ 3:1).
+>
+> | Token | Aurora light (default) | Aurora dark | Sunset light | Sunset dark | Meadow light | Meadow dark |
+> |---|---|---|---|---|---|---|
+> | background | `#F4F5FB` | `#0A0E27` (logo navy) | `#FBF5F3` | `#170E12` | `#F3F8F4` | `#08130D` |
+> | surface | `#FFFFFF` | `#121736` | `#FFFFFF` | `#22151B` | `#FFFFFF` | `#0F1D15` |
+> | surfaceVariant | `#ECEEF8` | `#1B2145` | `#F6ECE9` | `#2E1E25` | `#E8F1EA` | `#18291F` |
+> | border / outline | `#DDE0EE` / `#7C82A8` | `#272E57` / `#6F77A6` | `#EBDDD8` / `#9A8780` | `#3D2A32` / `#8A7079` | `#D7E4DA` / `#7E9284` | `#22372A` / `#6C8A76` |
+> | text 1 / 2 / 3 | `#121433` `#444868` `#5A5E80` | `#ECEEFB` `#B4B9DA` `#959BC2` | `#24131A` `#5B4450` `#6E5662` | `#FBEFF2` `#D3BCC4` `#B49DA6` | `#0F1E15` `#3E5246` `#536759` | `#E9F4EC` `#AFC6B6` `#91AA99` |
+> | primary (links, focus) | `#4441D0` | `#A3A5FF` | `#A12460` | `#FF9DC5` | `#0E7340` | `#6EDB9E` |
+> | action / on action | `#4441D0` / white | `#5552E0` / white | `#A12460` / white | `#B23A70` / white | `#0E7340` / white | `#17804A` / white |
+> | accent start → end | `#4441D0` → `#7B35D9` | `#3CD6EE` → `#B49BFA` | `#B83A1E` → `#A12460` | `#FFAE7A` → `#FF8DB8` | `#0E7340` → `#0B6B5E` | `#6EDB9E` → `#5ED6C8` |
+> | header gradient (left → right) | `#F1E4FA` `#E4E5FB` `#D8E7FC` | `#1E1C4E` `#172352` `#112A55` | `#FFE8D6` `#FDE2E0` `#FBDCEA` | `#3A1D20` `#3A1B28` `#3A1830` | `#E3F7E2` `#D7F3DD` `#CBEFD8` | `#10301E` `#0F2D22` `#0E2A26` |
+> | header field | white 70% | white 10% | white 70% | white 10% | white 70% | white 10% |
+> | badge / on badge | `#D1245A` / white | `#FF7AA2` / `#2B0715` | `#B4281E` / white | `#FF8A7A` / `#2D0905` | `#0E6B3A` / white | `#6EDB9E` / `#052414` |
+> | your bubble / text / time | `#E7E6FC` `#15163A` `#4F5180` | `#2A2D6A` `#EEEFFD` `#B9BBE8` | `#FBE3EC` `#2A1018` `#7A4A5C` | `#4A2333` `#FCEFF3` `#E0B9C7` | `#DCF1E2` `#0E1F14` `#3F6B4E` | `#164A2E` `#EAF7EF` `#A9D3B8` |
+> | nav indicator | `#E3E2FB` | `#272B63` | `#F8DCE8` | `#4A2333` | `#D5EEDC` | `#1A4029` |
+>
+> Shared semantic colours: danger `#C42B2B` / `#FF8A80`, warning `#8A5A00` / `#F2C26B`, success `#13784A` / `#6EDAA4`
+> (light / dark), with soft banner fills. The call screen is always the preset's dark palette.
+>
+> **Brand.** The logo is the only source for icons (`android/scripts/render_brand.py`, nothing redrawn): adaptive launcher
+> icon (logo on its navy ground `#071231`, mark inside the safe zone), themed monochrome icon and notification icon (the
+> ribbon only), the launch screen (logo on navy, shown only until the first frame) and the in-app tile (`MeldiqLogo`).
+> The welcome hero is the logo over a soft accent glow, settling in once (still when animations are off).
+>
+> **Home** follows the reference: header gradient with the workspace mark and name, a translucent search field and
+> filter, then the content on a sheet with a rounded top; quick cards (Threads, Later, Drafts & sent, Calls) scroll
+> sideways; unread counts are solid badges; the New button is the action colour; the tab bar is a full-width surface
+> bar with a soft indicator pill. A **Get started** checklist (profile photo, workspace, a teammate, notifications, apps —
+> optional) is checked off from real state and can be hidden.
+>
+> **Conversations** default to the **Stream** layout: each run of messages starts with the sender's avatar, name and time;
+> the rest of the run lines up under it; your own messages sit on the same side (your name in the accent) with their
+> delivery state at the row's end. Reactions are bordered chips with counts; threads are a "n replies · View thread"
+> chip. Bubbles stay available (Settings › Chats › Message layout). Under the header, chips show the encryption, pinned
+> messages, files and what you saved here; search finds messages on this phone and jumps to them.
+>
+> **Motion** stays short (160–220 ms state changes, 420 ms one-off entrances), never loops while idle, and is still when
+> the system's animations are off (`rememberReducedMotion`). Text never fades for decoration.
+
+> **2026-10-18 (UI-001), the first Meldiq direction (superseded 2026-10-19):** two palettes, **Ivory** for sign-in and
+> **Cocoa** (dark, peach/pink) for every signed-in screen whatever the theme. Both were removed on 2026-10-19 in favour of
+> the presets above and the person's own theme choice.
 
 > **2026-10-16 redesign:** the glass, gradient and teal/lavender/peach language below was replaced by a flat emerald-on-neutral
 > system (tokens in `ui/theme/Color.kt`, components in `ui/components`). See `UI_REDESIGN.md` for the current system. The rest
 > of this file is the original rationale, kept for history.
 >
-> **2026-10-18 (UI-001), the Orbit direction:** two new palettes in `ui/theme/OrbitPalettes.kt`, both complete `GriipColors`
-> sets so every component draws in them:
-> - **Ivory** (`IvoryColors`): warm ivory `#F7F2ED`, dark type `#1C1716`, charcoal buttons `#221B1A`, 3:1 input outlines.
->   Welcome, sign-up and sign-in always use it (light and dark mode alike), with dark status-bar icons.
-> - **Cocoa** (`CocoaColors`): background `#171313`, raised surface `#292120`, text `#FFF8F3` / `#B8AAA5`, a peach `#F6A585`
->   → pink `#EE8AA6` accent. Since UI-002 it is the palette of every signed-in screen (tabs, settings, workspace, calls, the chat screen's colours), whatever the app theme; the chat and profile layouts follow in UI-003.
->
-> New tokens: `outline`, `accentStart`, `accentEnd`, `onAccent` (every palette), `Griip.type.hero` (32/38 ExtraBold),
-> `Space.screen` (24 dp), `Shapes.field` (16 dp) and `Shapes.panel` (24 dp). `ProvideGriipPalette(colors) { }` draws a
-> subtree in one palette; `accentBrush()` gives the accent gradient. Components: `PillButton` fills with the palette's
-> action gradient and grows with font size; `GriipTextField` gains a focus outline, a `shape`, a `textStyle` and sets its
-> error in semantics; `ChoiceCard` (icon, title, explanation, chevron). Contrast is unit-tested in `OrbitPalettesTest`;
-> the ivory auth screens were reviewed on one phone (HONOR, Android 16, dark mode); Cocoa hasn't been seen on a device.
-> Details: `ORBIT_UI001_DESIGN_SYSTEM_AUTH_2026-10-18.md`.
 
 ## 1. Reference analysed
 

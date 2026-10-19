@@ -412,7 +412,7 @@ adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debu
 ```
 
 ```bash
-adb -s emulator-5554 shell am instrument -w -e class com.griipbuddy.orbit.ConversationOpenTest com.griipbuddy.orbit.androidtest/androidx.test.runner.AndroidJUnitRunner
+adb -s emulator-5554 shell am instrument -w -e class com.meldiq.android.ConversationOpenTest com.meldiq.android.androidtest/androidx.test.runner.AndroidJUnitRunner
 ```
 
 Backend tests:
@@ -425,7 +425,7 @@ The same suite with the accounts and preferences domains in MongoDB (docs/MONGOD
 local MongoDB replica set on 127.0.0.1 (test/support/mongoGlobal.ts); nothing shared or remote is ever used:
 
 ```bash
-cd server && ORBIT_TEST_MONGO_DOMAINS=accounts,preferences npm test
+cd server && MELDIQ_TEST_MONGO_DOMAINS=accounts,preferences,integrations npm test
 ```
 
 Production smoke test:

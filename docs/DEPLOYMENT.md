@@ -148,8 +148,9 @@ Then:
 
 ## Android app configuration
 
-- The debug APK defaults to `https://msg.griipbuddy.cloud`. To build against a local server, add
-  `griip.serverUrl=http://10.0.2.2:8080` (emulator) or your LAN URL to `android/local.properties`.
+- Release builds default to production (`https://msg.griipbuddy.cloud` until the Meldiq hostname is approved); debug
+  builds to development (`http://localhost:8080`, through `adb reverse`). Set `meldiq.apiBaseUrl.<environment>` in
+  `android/local.properties` for another address (docs/ENVIRONMENTS.md).
 - Users can change the server before creating an identity: Welcome screen → server icon.
 
 ## Resource observations (2026-10-16)

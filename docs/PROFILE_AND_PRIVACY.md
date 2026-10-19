@@ -12,7 +12,7 @@ Added 2026-10-17. Settings › Edit profile, and Settings › Privacy & Security
 | Bio | server (`status_text`) | everyone | up to 140 characters |
 | Profile photo | server, as a JPEG | everyone | re-encoded on the phone (square, 512 px, no camera metadata). **Not end-to-end encrypted**: the server stores and serves it to its audience |
 | Birthday | server | **nobody** | `YYYY-MM-DD`, or day and month only |
-| Phone number | server | **nobody** | E.164, not verified by Orbit |
+| Phone number | server | **nobody** | E.164, not verified by Meldiq |
 | Online / last seen | (live) | contacts | as before, now a setting |
 | Find me by phone | — | **nobody** | exact number only, never a list; same answer whether no one has the number or its owner doesn't allow it |
 | Find me by username | — | everyone | "contacts" also hides you from other servers' lookups |
@@ -30,8 +30,8 @@ members regardless).
 ## What isn't hidden
 
 Messages and calls are end-to-end encrypted. To deliver them, servers still see your username, display name, who you
-talk to and when, and message sizes; servers on the Orbit network see the username, display name and address of people
-who talk across servers. Contacts are never uploaded: Orbit doesn't read the phone's address book (sharing a contact
+talk to and when, and message sizes; servers on the Meldiq network see the username, display name and address of people
+who talk across servers. Contacts are never uploaded: Meldiq doesn't read the phone's address book (sharing a contact
 uses Android's picker for one entry).
 
 ## Server

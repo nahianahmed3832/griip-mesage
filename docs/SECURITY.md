@@ -245,13 +245,13 @@ Design and deployment: `BACKGROUND_DELIVERY.md`.
     and decrypted as always.
   - A forged wake-up (from anyone who learned an endpoint) can therefore only make the app check for messages.
   - On the phone, the connector library's exported receiver accepts distributor events only with this registration's random
-    token, and hands them to Orbit's service, which isn't exported.
+    token, and hands them to Meldiq's service, which isn't exported.
 - **What each party learns.**
-  - Orbit's server stores each opted-in device's endpoint (a random ntfy topic URL) and records when the push server accepted a
+  - Meldiq's server stores each opted-in device's endpoint (a random ntfy topic URL) and records when the push server accepted a
     wake-up (`push_endpoints`).
   - The push server, our own ntfy, sees the topic, the API's address, the phone's address while it's subscribed, and the times of
     wake-ups. It doesn't see who wrote, in which conversation, or how much.
-  - Wake-up timing does reveal when a device had something waiting. Orbit's server already knows that.
+  - Wake-up timing does reveal when a device had something waiting. Meldiq's server already knows that.
 - **No SSRF.**
   - Endpoints are accepted only as `https://` on a host (and port) listed in `PUSH_UNIFIEDPUSH_HOSTS`, without credentials or
     fragment. They're checked again before every request, so removing a host from the list stops (and drops) its endpoints.

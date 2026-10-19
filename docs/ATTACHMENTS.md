@@ -27,7 +27,7 @@ limit from `/v1/server-info` (older servers: 25 MB), re-read every 10 minutes so
 3. **Queue** (`MessageRepository.sendBatch`). The message appears at once with all its files. In the background (it
    carries on when you leave the chat) each file is prepared, encrypted on the phone and uploaded, at most two at a
    time (the server's per-person limit), with progress on the bubble. The message itself is sent when every file is
-   uploaded. One message carries all the files; older Orbit versions show them one under the other.
+   uploaded. One message carries all the files; older Meldiq versions show them one under the other.
 4. **Failure, retry and cancel.** A failure marks the message failed with the reason. Tap to retry: files already
    uploaded aren't uploaded again. Long-press › Cancel upload stops a message that hasn't been sent yet and removes it from
    the phone. If the app was closed before a file was prepared, the original is no longer reachable and the message says
@@ -81,7 +81,7 @@ Files over 25 MB use a chunked format (`ChunkedAttachmentCrypto`, `ChunkedAttach
 AES-256-GCM with its own nonce (the file nonce with the chunk index) and associated data binding its index and whether
 it's the last chunk, so chunks can't be reordered, dropped or cut off, and neither phone ever holds the whole file in
 memory. The attachment reference says `chunk` (absent for the original format). Smaller files keep the original format,
-so older Orbit versions still open them; older versions can't open chunked files (they couldn't receive files that large
+so older Meldiq versions still open them; older versions can't open chunked files (they couldn't receive files that large
 anyway). The server needs `ATTACHMENT_MAX_BYTES` (default 500 MB since 2026-10-17; `deploy/.env.example`) and a reverse
 proxy that accepts bodies that large (nginx `client_max_body_size`); production is still at 25 MB until that's changed.
 

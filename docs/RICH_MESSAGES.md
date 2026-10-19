@@ -1,12 +1,12 @@
 # Contacts, locations, animated emoji and forwarding
 
 Added 2026-10-17. All of these travel inside the end-to-end encrypted message (`Payload`), with a readable text
-fallback, so older Orbit versions show the text. Received content is bounded and checked (`RichRules`, `RichRulesTest`).
+fallback, so older Meldiq versions show the text. Received content is bounded and checked (`RichRules`, `RichRulesTest`).
 
 ## Contact cards
-Attach › Contact opens Android's contact picker for one phone entry; Orbit needs no contacts permission and never reads
+Attach › Contact opens Android's contact picker for one phone entry; Meldiq needs no contacts permission and never reads
 the address book. The preview lets you edit the name and untick numbers. The card offers Add to contacts, Copy, and Find
-on Orbit (exact phone lookup, only if that person allows it).
+on Meldiq (exact phone lookup, only if that person allows it).
 
 ## Locations
 Attach › Location asks for location permission at that moment, takes one fix from the phone's own providers (no
@@ -27,3 +27,21 @@ Message menu › Forward → choose a chat → confirm. Text, cards, locations a
 conversation's files can only be fetched by its members. Voice messages stay voice messages.
 
 Storage: Room v6 `messages.richJson` and `messages.forwarded`.
+
+## Polls (2026-10-19)
+Attach › Poll: a question, two to ten options, and whether several answers are allowed. The poll travels inside the
+end-to-end encrypted message (`poll: {question, options:[{id,text}], multi}`) with a readable fallback (`📊 question` and
+the numbered options) for older apps. Votes are encrypted **controls**, like reactions: `{"type":"vote","target":<poll
+message id>,"choices":[<option ids>]}`; an empty list takes the vote back. Each phone counts the votes it received
+(`PollRules`): a voter's latest vote replaces their earlier one, only real option ids count, and a single-choice poll
+keeps one choice. The poll's creator can close it (`{"type":"poll_close","target":…}`, accepted only from the poll's own
+sender); a closed poll takes no more votes. The server never sees the question, the options or who voted for what. A
+vote that arrives before its poll waits for it (pending controls). Stored in `messages.richJson` (`votes`,
+`pollClosed`), so it's part of the encrypted server history like the rest of the message. Unit-tested in
+`RichContentRulesTest`.
+
+## Stickers (2026-10-19)
+See docs/STICKERS.md.
+
+## Music and video links (2026-10-19)
+See docs/MEDIA.md.

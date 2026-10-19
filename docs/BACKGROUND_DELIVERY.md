@@ -1,7 +1,7 @@
 # Background delivery
 
 **Goal:** messages and incoming calls should reach a phone whose app is in the background, suspended or killed, without
-weakening Orbit's privacy model.
+weakening Meldiq's privacy model.
 
 **Rule for every option:** a push carries **no message content, no sender or conversation identifiers, no private keys and no call keys.**
 It only wakes the app, which then fetches its encrypted queue over its own authenticated connection.
@@ -25,7 +25,7 @@ phone: distributor app (ntfy) ──holds one push connection──▶ ntfy serv
                 │  ▲                                              ▲
   1. endpoint   │  │ 3. "wake" (empty)                            │ 2. empty POST, only when this
   (per profile) ▼  │                                              │    device has no open socket
-phone: Orbit ──PUT /v1/devices/current/push──▶ Orbit API ─────────┘
+phone: Meldiq ──PUT /v1/devices/current/push──▶ Meldiq API ─────────┘
         │
         └─ 4. opens its own authenticated WebSocket, fetches the encrypted queue, notifies as usual
 ```
@@ -160,7 +160,7 @@ The exact production steps, their checks and rollback are in `PUSH_SERVER.md`. I
    - `scripts/validate-env.sh` then reports the push host, and `/v1/server-info` lists `push-unifiedpush`.
 5. **Phones:**
    - install ntfy (Play, F-Droid, or the APK from ntfy's GitHub releases on phones without Play);
-   - in ntfy, *Settings → Default server → `https://ntfy.griipbuddy.cloud`* **before** turning wake-ups on in Orbit;
+   - in ntfy, *Settings → Default server → `https://ntfy.griipbuddy.cloud`* **before** turning wake-ups on in Meldiq;
    - let ntfy run unrestricted in the background (MagicOS: *Settings → Battery → App launch → ntfy → Manage manually*, all on).
 
 **Rollback:** empty `PUSH_UNIFIEDPUSH_HOSTS` and recreate `api`. Apps then show "Your server doesn't offer wake-ups" and keep
@@ -177,7 +177,7 @@ The exact production steps, their checks and rollback are in `PUSH_SERVER.md`. I
 **Needs a physical phone and the production push server.** Run on the HONOR phone (MagicOS, no Google Play services) and,
 ideally, one Pixel or Samsung. Not done yet:
 
-1. **Registration:** ntfy set to our server, Orbit's switch on. The status shows "On, through ntfy.griipbuddy.cloud", and
+1. **Registration:** ntfy set to our server, Meldiq's switch on. The status shows "On, through ntfy.griipbuddy.cloud", and
    `admin.js stats` shows `pushEndpoints` 1.
 2. **App in the background, "Stay connected" off:** a message from Griip Bot is notified within about 5 s.
 3. **App swiped from recents:** the message still arrives.
@@ -186,17 +186,17 @@ ideally, one Pixel or Samsung. Not done yet:
    adb shell dumpsys deviceidle force-idle
    ```
    Then send a message and record the delivery delay. The expedited job must get network access.
-5. **MagicOS battery management:** leave the phone idle for an hour with Orbit not whitelisted (ntfy whitelisted), then send.
+5. **MagicOS battery management:** leave the phone idle for an hour with Meldiq not whitelisted (ntfy whitelisted), then send.
 6. **Incoming call while killed or locked:** a full-screen call notification appears. Android 14+ needs the full-screen-intent permission.
 7. **Reboot without opening the app:** a message sent while the phone was off is notified after boot.
-8. **Force-stop:** Android delivers no broadcasts to a force-stopped app, so nothing arrives until Orbit is opened. Expected; state it in the report.
-9. **Distributor uninstalled:** Orbit's status changes to "No distributor app", and the server stops waking the device.
+8. **Force-stop:** Android delivers no broadcasts to a force-stopped app, so nothing arrives until Meldiq is opened. Expected; state it in the report.
+9. **Distributor uninstalled:** Meldiq's status changes to "No distributor app", and the server stops waking the device.
 10. **Battery:** with only B on, compare a day's battery use against A.
 11. **Profiles:** with wake-ups on, switch to another server profile and back. Each registers again without asking for the
     distributor (the connector forgets it with its last registration; `UnifiedPushDelivery` keeps the choice), and only the
     active profile is woken.
 
-Before the push server exists, steps 1–8 can run against a local Orbit server started with `PUSH_UNIFIEDPUSH_HOSTS=ntfy.sh`
+Before the push server exists, steps 1–8 can run against a local Meldiq server started with `PUSH_UNIFIEDPUSH_HOSTS=ntfy.sh`
 (the public ntfy) and test accounts only, with ntfy on the phone left on its default server. ntfy.sh then sees the test
 wake-ups' timing; nothing else changes. The server refuses push hosts on private addresses by design, so a ntfy on the LAN can't stand in.
 
@@ -205,7 +205,7 @@ wake-ups' timing; nothing else changes. The server refuses push hosts on private
 - Telegram wakes its app with FCM (and Huawei HMS on Huawei builds). It registers the token with its servers (`PushListenerController`)
   and offers an optional keep-alive foreground service.
 - Its pushes go through Google or Huawei and carry server-encrypted notification data.
-- **Orbit copies only the structure:** a wake-up channel with a persistent-connection fallback. The payload stays empty.
+- **Meldiq copies only the structure:** a wake-up channel with a persistent-connection fallback. The payload stays empty.
 
 ## Options (evaluation of 2026-10-16)
 
@@ -223,7 +223,7 @@ wake-ups' timing; nothing else changes. The server refuses push hosts on private
 **Recommendation (unchanged):**
 
 1. Keep A as the default, with the boot and update restart.
-   - Document per-OEM battery whitelisting for testers (MagicOS: *Settings → Battery → App launch → Orbit → Manage manually*).
+   - Document per-OEM battery whitelisting for testers (MagicOS: *Settings → Battery → App launch → Meldiq → Manage manually*).
    - Don't promise killed-app delivery until B passes the phone checks above.
 2. B, after the owner approves the deployment.
    - It's the only option that keeps metadata on our own infrastructure and also works on phones without Google services.

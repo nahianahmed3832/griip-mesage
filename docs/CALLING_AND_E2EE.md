@@ -121,7 +121,7 @@ and says so. Tests: `CallVerificationTest` (includes the RFC 5869 HKDF vector).
 ## Reconnecting (2026-10-17)
 
 - This phone's connection drops: LiveKit's own reconnect runs first ("Reconnecting…"). If it gives up for a connection
-  reason (not a hang-up, removal or duplicate join), Orbit gets new media credentials and rejoins the same call with the
+  reason (not a hang-up, removal or duplicate join), Meldiq gets new media credentials and rejoins the same call with the
   same key, with backoff, for up to 45 s (`CallRecovery`). The call ends ("the connection was lost") only after that.
 - The other person's connection drops (1:1): the call shows "…'s connection dropped. Waiting for them to reconnect…" for
   30 s instead of ending. The server waits too (`CALL_PEER_GRACE_MS`, default 30 s; `server/test/call_reconnect.test.ts`)
@@ -129,7 +129,7 @@ and says so. Tests: `CallVerificationTest` (includes the RFC 5869 HKDF vector).
 
 ## Minimised calls (2026-10-17, revised in UI-003 2026-10-18)
 
-Leaving Orbit during a connected **video** call shrinks it into picture-in-picture (Android 8+; automatic with gesture
+Leaving Meldiq during a connected **video** call shrinks it into picture-in-picture (Android 8+; automatic with gesture
 navigation on Android 12+): the other person's video or shared screen, with the window's own Mute and Hang up buttons.
 Tapping it returns to the full call screen. Since UI-003, voice calls don't go into picture-in-picture (they carry on in
 the background with the ongoing-call notification, like a phone call), and neither does a call while this phone shares
@@ -146,7 +146,7 @@ Mute, Hang up (Leave in groups) and, while sharing, Stop sharing.
 
 - **Single owner.** LiveKit's `AudioSwitchHandler` (twilio audioswitch, LiveKit's fork) owns the phone's call audio:
   `MODE_IN_COMMUNICATION`, audio focus, and on Android 12+ `setCommunicationDevice` (`CommDeviceAudioSwitch`; older
-  versions toggle speakerphone and Bluetooth SCO). Nothing else in Orbit changes the audio mode or the route. Voice-note
+  versions toggle speakerphone and Bluetooth SCO). Nothing else in Meldiq changes the audio mode or the route. Voice-note
   playback only asks for transient audio focus.
 - **Defaults** (`CallAudioPolicy.preferred`): a Bluetooth or wired headset first; then the speaker for video and group
   calls and the earpiece for 1:1 voice calls. Set as LiveKit's preferred device list before connecting (LiveKit's own
@@ -161,15 +161,15 @@ Mute, Hang up (Leave in groups) and, while sharing, Stop sharing.
 - **Loudness diagnostics, no gain changes.** Connection details and the output list show the call volume ("2 of 7
   (low)"), the loudest remote stream's level in dBFS with packet loss, jitter and concealment, and your microphone's
   level as sent. "No sound is arriving right now" appears when someone's microphone is on but no audio bytes arrive.
-  Orbit doesn't add gain, override the phone's volume limits or touch WebRTC's AEC/AGC/NS beyond the existing echo
+  Meldiq doesn't add gain, override the phone's volume limits or touch WebRTC's AEC/AGC/NS beyond the existing echo
   canceller setting.
 
 ## Screen sharing (UI-003)
 
 Start asks first (what everyone will see), then Android's own consent. The capture runs in LiveKit's mediaProjection
-service with Orbit's notification ("Sharing your screen" with Stop sharing). Stop in the call screen, the notification or
+service with Meldiq's notification ("Sharing your screen" with Stop sharing). Stop in the call screen, the notification or
 Android's own controls ends only the share; End/Leave is a separate button. When Android or the person stops the capture
-outside Orbit, LiveKit unpublishes it, Orbit says "Screen sharing stopped" and never restarts it. Mute, the output,
+outside Meldiq, LiveKit unpublishes it, Meldiq says "Screen sharing stopped" and never restarts it. Mute, the output,
 duration and the other controls stay on screen while sharing; a shared screen is laid out clear of them.
 
 ## Call sessions on the server (UI-003)

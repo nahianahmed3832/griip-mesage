@@ -1,7 +1,7 @@
 # Workspaces
 
 Workspaces (organizations: branches, departments, teams, channels, invitations) are reached from **Contacts ›
-Workspace and channels**. They are not a main tab: Orbit's main tabs are Chats, Calls, Contacts and Settings. Everything
+Workspace and channels**. They are not a main tab: Meldiq's main tabs are Chats, Calls, Contacts and Settings. Everything
 a workspace already supported is unchanged.
 
 ## Deleting a workspace (2026-10-17)

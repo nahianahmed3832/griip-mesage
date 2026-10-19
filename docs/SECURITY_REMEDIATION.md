@@ -21,7 +21,7 @@ Order of priority:
 ## 1. The active AWS root access key
 
 **Now.** Profile `griipbuddy` on the owner's Mac is the root user's long-lived access key. Root MFA is on for console
-sign-in. Orbit doesn't need root: the `orbit-ops-admin` stack and profile `orbit-admin` cover Orbit's stacks.
+sign-in. Meldiq doesn't need root: the `orbit-ops-admin` stack and profile `orbit-admin` cover Meldiq's stacks.
 
 **Risk.** A root key can't be limited by any policy. Whoever has it controls the whole account: billing, every bucket,
 other projects' resources.
@@ -50,13 +50,13 @@ profile names an IAM user or role, never `:root`.
 
 **Now.** The API reads an access key for `orbit-api-prod-ap-southeast-1` from `/opt/griip-internal-messaging/.env`
 (root-only, mode 600). Its limits:
-- objects under Orbit's prefixes only;
+- objects under Meldiq's prefixes only;
 - delete and list only from the VPS's address;
 - capped by the permissions boundary `orbit-runtime-boundary`.
 
 It doesn't expire.
 
-**Risk.** Anyone who reads `.env`, through a VPS compromise or a stray backup of it, can read and upload Orbit's
+**Risk.** Anyone who reads `.env`, through a VPS compromise or a stray backup of it, can read and upload Meldiq's
 encrypted files until the key is rotated. File contents stay end-to-end encrypted; names, sizes and access patterns
 don't.
 
@@ -116,7 +116,7 @@ accounts from earlier checks are still in production.
       refused.
 2. **Lower the quotas for the beta**, for example 200 MB a day and 1 GiB stored per person, with
    `ATTACHMENT_USER_DAILY_BYTES`, `ATTACHMENT_USER_STORED_BYTES` and `ATTACHMENT_TOTAL_BYTES`. Restart `api`.
-3. **Add an Orbit-only cost alarm.** Tag-scope a second budget to `app=orbit`. That needs the tag activated as a
+3. **Add a Meldiq-only cost alarm.** Tag-scope a second budget to `app=orbit`. That needs the tag activated as a
    cost-allocation tag, so the alarm doesn't fire for other projects.
 4. **Review accounts.** Review new accounts weekly while registration is open. Disable leftover test accounts the
    owner no longer needs (list: production report §8).

@@ -19,7 +19,8 @@ Source: `android/app/build.gradle.kts`, `src/main` and `src/debug`.
 | Server addresses typed in the app (`ServerAddress.parse`, `allowCleartext = BuildConfig.DEBUG`) | `http://` accepted anywhere, with a warning banner | `http://` refused except for the same three hosts: "This app version connects to servers over HTTPS only" |
 | Server choice at sign-up (`showServerSetup`) | always shown | only in developer mode, or when the address isn't the default |
 | Diagnostic logging (`CallDiag`, decode and history-sync failures) | on | off (`BuildConfig.DEBUG` checks) |
-| Application id | `com.griipbuddy.Orbit`; `com.griipbuddy.Orbit.test` ("Orbit Test") with `-Porbit.sideBySide=true` | `com.griipbuddy.Orbit` |
+| Application id | `com.meldiq.android`; `com.meldiq.android.test` ("Meldiq Test") with `-Pmeldiq.sideBySide=true` | `com.meldiq.android` (Orbit's was `com.griipbuddy.Orbit`: a separate app) |
+| Default server (`BuildConfig.DEFAULT_SERVER_URL`, `MELDIQ_ENVIRONMENT`) | the `development` environment unless `meldiq.environment` says otherwise | `production` (or `staging`), https only |
 | Signing | the machine's Android debug key | **none in Gradle**: the build is unsigned until the owner signs it |
 | Extra libraries | Compose UI tooling and test manifest | not included |
 
@@ -29,8 +30,11 @@ Backups are off in both variants:
 
 ## How the app picks its server
 
-1. **Build time.** `DEFAULT_SERVER_URL` is `griip.serverUrl` from `android/local.properties` when present. Otherwise
-   it's `https://msg.griipbuddy.cloud`. Both variants use the same rule.
+1. **Build time** (docs/ENVIRONMENTS.md). `DEFAULT_SERVER_URL` is the address of the build's environment:
+   `meldiq.apiBaseUrl.<environment>` from `-P` or `android/local.properties`, else the default (`development`:
+   `http://localhost:8080`; `production`: `https://msg.griipbuddy.cloud` until the Meldiq hostname is approved;
+   `staging`: none, it must be set). Debug builds are `development` unless `meldiq.environment` names another; release
+   builds are `production` or `staging`, and Gradle refuses an address that isn't `https://` for them.
 2. **Run time.** Each account profile uses the first of these that exists (`GriipApp.kt`):
    - its signed-in session's server;
    - its saved server setting;
@@ -52,7 +56,7 @@ Gaps:
 | # | Gap | Risk | Recommended fix (not done in this task) |
 |---|---|---|---|
 | R1 | The release config allows HTTP to `10.0.2.2`, `localhost` and `127.0.0.1`. On a phone, `10.0.2.2` is an ordinary private address on many office networks | Low: someone must type that address | Drop the exception from `src/main`. Debug builds already allow everything. Update `ServerProfilesTest` with it |
-| R2 | Nothing stops a release build with an `http://` default. A `griip.serverUrl=http://…` line in `local.properties` would ship in the release | Medium: easy to miss on a developer machine | A Gradle check that fails release tasks unless `DEFAULT_SERVER_URL` starts with `https://`. Until then, use checklist step 3 |
+| R2 | ~~Nothing stops a release build with an `http://` default~~ **Fixed 2026-10-19:** release builds are `production` or `staging`, and `apiBaseUrl` in `build.gradle.kts` fails the build unless their address starts with `https://`. (`griip.serverUrl` now only sets the development address.) | — | Checklist step 3 still confirms the value |
 | R3 | Test APKs handed out so far are **debug** builds: debuggable, HTTP to any host, signed with a developer machine's debug key | High for a staff rollout (audit S3) | Stop sending debug APKs to employees. Use Play internal testing |
 | R4 | The R8 release build has run only on the emulator, never on a phone | Medium: a missing keep rule would crash at runtime | Install the Play internal-testing build on a physical phone and run the smoke test (step 8) before inviting anyone |
 
@@ -102,10 +106,10 @@ If releases are ever built in CI:
    deployed.
 2. **Bump the version.** Raise `versionCode` (Play refuses a code it has seen) and set `versionName` in
    `android/app/build.gradle.kts`. Commit it.
-3. **Check the default server.** `android/local.properties` must have no `griip.serverUrl` line, or an `https://` one.
-   After building, confirm the value:
+3. **Check the default server.** `meldiq.apiBaseUrl.production` (if set in `android/local.properties`) must be the
+   approved production address. After building, confirm the value:
    ```bash
-   grep DEFAULT_SERVER_URL android/app/build/generated/source/buildConfig/release/com/griipbuddy/orbit/BuildConfig.java
+   grep -E "DEFAULT_SERVER_URL|MELDIQ_ENVIRONMENT" android/app/build/generated/source/buildConfig/release/com/griipbuddy/meldiq/BuildConfig.java
    ```
 4. **Build and sign.** Use Android Studio › **Build › Generate Signed App Bundle**: choose `release` and the upload key.
 5. **Check the bundle's signer.** Run this on the bundle (Android Studio writes it to `android/app/release/`):

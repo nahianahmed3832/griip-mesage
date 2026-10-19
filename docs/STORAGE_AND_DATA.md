@@ -66,7 +66,7 @@ The app sends the ciphertext straight to S3; the server never relays it.
 
    Above `S3_MULTIPART_THRESHOLD` (64 MiB), it starts a multipart upload with SHA-256 part checksums instead. The app
    asks for part URLs (`POST …/parts`), each bound to its part's exact size and hash.
-3. **Upload.** The app sends the bytes to S3 with exactly those headers and no Orbit credentials.
+3. **Upload.** The app sends the bytes to S3 with exactly those headers and no Meldiq credentials.
    - **Interrupted part:** only that part is sent again.
    - **After a restart:** the app asks which parts S3 already has (`GET …/parts`) and skips them.
    - **Expired URL:** the app gets a new one (`POST …/url`).
@@ -80,7 +80,7 @@ The app sends the ciphertext straight to S3; the server never relays it.
    - The bucket's lifecycle rule aborts multipart parts older than a day as a backstop.
    - `admin.js storage-orphans` lists stored objects no record refers to (a dry run; `--delete` queues them).
 6. **Downloads.** After the membership check, the server answers 302 to a presigned GET valid 5 minutes
-   (`S3_PRESIGNED_DOWNLOADS`, on by default with S3). The app's HTTP client follows it, drops the Orbit token on the way
+   (`S3_PRESIGNED_DOWNLOADS`, on by default with S3). The app's HTTP client follows it, drops the Meldiq token on the way
    to the other host, and keeps its Range header. Outsiders get the same 404 as for a file that doesn't exist, and no
    link.
 
@@ -104,7 +104,7 @@ between attempts.
 Errors carry only S3's status and error code. Presigned URLs appear only in the answers to the uploading or downloading
 member and are never logged.
 
-**Encryption at rest.** `S3_SSE=AES256` (default; S3-managed keys) or `aws:kms` with `S3_KMS_KEY_ID`, on top of Orbit's
+**Encryption at rest.** `S3_SSE=AES256` (default; S3-managed keys) or `aws:kms` with `S3_KMS_KEY_ID`, on top of Meldiq's
 end-to-end encryption.
 
 **Diagnostics.** `admin.js storage-check` reports the backend, bucket, region and whether the store answers, never

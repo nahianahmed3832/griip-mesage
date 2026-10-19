@@ -8,7 +8,7 @@ previous behaviour; the app checks the flags).
 
 References studied for interaction patterns only (no branding, code or colours copied): Slack (Home/DMs/Activity,
 sections, channel details), Discord (role hierarchy, channel-level access, delegated admin), Linear (search, team pages)
-and Notion (team wiki). The signed-in UI stays in Orbit's Cocoa design system (`DESIGN_SYSTEM.md`).
+and Notion (team wiki). The signed-in UI stays in Meldiq's Cocoa design system (`DESIGN_SYSTEM.md`).
 
 ## 1. Workspace settings
 
@@ -58,6 +58,13 @@ Each person arranges Home for themselves, on every device (`/v1/me/preferences/:
 - **Custom sections**: named groups (up to 30) the person moves conversations into (long-press › Move to section);
   renamed or deleted from the section's Edit; deleting puts its conversations back in their usual groups.
 - **Collapsed groups** and **notification levels** (mute) follow the person to every device.
+- **Saved for later** (2026-10-19, server feature `saved-items`): message menu › Save for later, with an optional
+  reminder (in 1 or 3 hours, tomorrow at 9:00, next Monday at 9:00). Home › Later lists them (In progress / Done) and
+  its card counts overdue reminders. Stored in the personal document as `saved: [{conversationId, messageId, savedAt,
+  remindAt, done}]`: ids and times only, never content (the message is read from the phone's own copy). Up to 500. A
+  client that doesn't know the field leaves it out of its write and the server keeps the stored list
+  (`preferences/routes.ts`), so the web app and older phones can't empty it. Reminders are scheduled on each of the
+  person's phones (WorkManager) and shown once; done or removed items cancel them everywhere.
 
 One document per person and workspace ("personal" for DMs and groups, an organisation id for its channels), with a
 revision: a write names the revision it was based on, and a stale write gets the current copy back (409). The phone

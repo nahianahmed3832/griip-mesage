@@ -48,7 +48,7 @@ listen address changed):
 - publishing to, or reading, any other topic answers 403;
 - `ntfy access` lists only `everyone: read-write up*` and "no access to any (other) topics";
 - `?up=1` to an `up` topic nobody subscribes to answers 507;
-- with a subscriber, the empty POST Orbit sends (`TTL`, `Urgency: high`, `User-Agent: orbit-push/1`) answers 200, and the
+- with a subscriber, the empty POST Meldiq sends (`TTL`, `Urgency: high`, `User-Agent: meldiq-push/1`) answers 200, and the
   subscriber gets `"message":"triggered"` at once;
 - a wake-up sent while the subscriber is away is delivered when it reconnects with `since=`;
 - the wake-up is counted against the subscriber's address (taken from `X-Forwarded-For`), not the publisher's.
@@ -449,12 +449,12 @@ The apps then show "Your server doesn't offer wake-ups" and keep "Stay connected
 
 1. Install ntfy on the phone (Play, F-Droid, or the APK from ntfy's GitHub releases on phones without Play).
 2. In ntfy, set *Settings → Default server* to `https://ntfy.griipbuddy.cloud`. Do this **before** turning wake-ups on
-   in Orbit. Let ntfy run unrestricted in the background (MagicOS: *Settings → Battery → App launch → ntfy → Manage
+   in Meldiq. Let ntfy run unrestricted in the background (MagicOS: *Settings → Battery → App launch → ntfy → Manage
    manually*, all on).
-3. In an Orbit build with this code: *Settings → Wake-ups through UnifiedPush* on. The status must read "On, through
+3. In a Meldiq build with this code: *Settings → Wake-ups through UnifiedPush* on. The status must read "On, through
    ntfy.griipbuddy.cloud".
 4. On the VPS, `admin.js stats` must show `pushEndpoints` 1 or more, and `pushEndpointsFailing` 0.
-5. Turn *Stay connected* off, put Orbit in the background, and send the phone a message from the test bot. It's
+5. Turn *Stay connected* off, put Meldiq in the background, and send the phone a message from the test bot. It's
    notified within about 5 s. Then run the rest of `BACKGROUND_DELIVERY.md` § Verification.
 6. Failed wake-ups show in the API log as a device id and a reason code (for example `http_507`):
 
@@ -475,7 +475,7 @@ Phones fall back to "Stay connected". Each phone's ntfy app can be pointed back 
 
 ## Limits worth knowing
 
-- **ntfy holds a wake-up for 12 h** for a phone that's offline. Orbit's queue keeps the message itself for 7 days, and
+- **ntfy holds a wake-up for 12 h** for a phone that's offline. Meldiq's queue keeps the message itself for 7 days, and
   the app fetches it whenever it connects.
 - **Rate-limit defaults apply per visitor address:**
   - 30 subscriptions;
@@ -484,7 +484,7 @@ Phones fall back to "Stay connected". Each phone's ntfy app can be pointed back 
   Each phone holds one subscription to this server, so more than about 30 phones behind one office NAT would need
   `visitor-subscription-limit` raised in `ntfy/server.yml`, then `up -d --no-deps ntfy`.
 - **After an ntfy restart,** wake-ups answer 507 until each phone's ntfy app resubscribes, which takes seconds to
-  minutes. Orbit's next message or ring sends another.
+  minutes. Meldiq's next message or ring sends another.
 - **Updating ntfy:** change the tag and digest in `compose.yaml` (`docker buildx imagetools inspect
   binwiederhier/ntfy:<tag>` shows the digest) and read the release notes for database schema changes. v2.31.1 upgraded
   the cache schema to 17, so an older ntfy would need the step in its notes.

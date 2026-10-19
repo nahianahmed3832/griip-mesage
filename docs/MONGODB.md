@@ -1,13 +1,13 @@
-# MongoDB in Orbit (2026-10-19)
+# MongoDB in Meldiq (2026-10-19)
 
-How Orbit moves its server-side data to MongoDB: what lives there today, what stays in SQLite for now and why, how a
+How Meldiq moves its server-side data to MongoDB: what lives there today, what stays in SQLite for now and why, how a
 domain is migrated, verified and rolled back, and what production still needs. Code: `server/src/mongo/`. Status as of
 this document: **implemented and tested against a local, throwaway MongoDB only. Nothing in production uses MongoDB.**
 
 ## 1. Target architecture
 
 ```
-Android app ──HTTPS──▶ Orbit API (Fastify, Hostinger VPS) ──TLS──▶ MongoDB (Atlas or self-run replica set, owner's choice)
+Android app ──HTTPS──▶ Meldiq API (Fastify, Hostinger VPS) ──TLS──▶ MongoDB (Atlas or self-run replica set, owner's choice)
    │                        │                                   accounts, account_sessions, account_codes,
    │                        ├── SQLite (WAL, on the VPS)        legacy_tickets, nav_preferences (today)
    │                        │     every other domain (for now)
@@ -34,8 +34,9 @@ state that could split a domain between the stores (`src/mongo/index.ts`):
 |---|---|---|---|
 | accounts | accounts, account_sessions, account_codes, legacy_tickets | SQLite (prod) | **Yes** (`MongoAccountStore`) |
 | preferences | nav_preferences (new 2026-10-19) | SQLite (prod default) | **Yes** (`MongoPreferenceStore`) |
+| integrations | integration_installs, integration_accounts, integration_credentials, integration_oauth_states, integration_subscriptions, integration_deliveries, integration_jobs, integration_channel_events, integration_policies, integration_hooks (new 2026-10-19, docs/INTEGRATIONS.md) | SQLite (default) | **Yes** (async row store, `src/store/rows.ts`) |
 | identity | users, devices, user_blocks, push_endpoints, registration_invites | SQLite | Copy and verify only |
-| workspace | orgs, org_members, branches, branch_members, departments, teams, team_members, invitations, org_deletions, audit_log | SQLite | Copy and verify only |
+| workspace | orgs, org_members, branches, branch_members, departments, teams, team_members, invitations, org_deletions, audit_log, org_roles, org_role_members | SQLite | Copy and verify only |
 | conversations | conversations, conversation_members, mention_all_events | SQLite | Copy and verify only |
 | relay | delivery_queue, submitted_messages, calls, call_participants | SQLite | Copy and verify only |
 | files | attachments, attachment_uploads, abandoned_uploads, pending_blob_deletes | SQLite | Copy and verify only |
@@ -46,13 +47,14 @@ state that could split a domain between the stores (`src/mongo/index.ts`):
 sealed identity bundle for a new device), `sessions` (v1 token hashes, 7 days; v1 apps sign in again by signature on
 their own), `federation_nonces` (replay protection), and SQLite's own `sqlite_sequence` / `schema_migrations`.
 
-### Why only two domains are authoritative in MongoDB tonight
+### Why only three domains are authoritative in MongoDB
 
 The rest of the server reads and writes SQLite synchronously from about 500 statements spread through the routes, and
 authorisation (`authz.ts`) is synchronous on the message hot path. Moving a domain means turning that code async and
 replacing SQLite's single-process atomicity with explicit conditional updates and transactions, then proving it with
-the full test suite on both stores. That was done for accounts (which already sat behind a store interface) and the new
-preferences, and **not** rushed for the rest: a half-moved message path would risk delivery, encryption and calls for
+the full test suite on both stores. That was done for accounts (which already sat behind a store interface), the new
+preferences and the new integrations domain (written async from the start, every check-and-write a single conditional
+update; its suites run on both stores), and **not** rushed for the rest: a half-moved message path would risk delivery, encryption and calls for
 real employees. Each remaining domain follows the same recipe (§6). Every table can already be copied to MongoDB and
 verified (`admin mongo-dryrun`), so the data model is proven even where the code isn't moved yet.
 
@@ -70,14 +72,14 @@ verified (`admin mongo-dryrun`), so the data model is proven even where the code
 - Retention: the existing retention job (`jobs.ts`) deletes expired rows in both stores (no TTL indexes: timestamps are
   epoch milliseconds, and the job keeps the one-day grace for ended sessions that a TTL index can't express).
 - Schema version: `orbit_meta._id = "schema"` (`MONGO_SCHEMA_VERSION`). Collections and indexes are created or updated
-  idempotently at start (`OrbitMongo.ensureSchema`).
+  idempotently at start (`MeldiqMongo.ensureSchema`).
 
 ## 4. Concurrency and consistency
 
 - **Single-document conditional writes for every check-and-write**: identity claim (`user_id: null` → id), refresh
   rotation (only if the refresh hash is still the one read), code use (delete only if the hash still matches), session
   revocation, preferences (`rev` compare-and-set). Two concurrent requests can't both win, on either store.
-- **Transactions** only where several account documents change together (legacy link). `OrbitMongo.transaction` carries
+- **Transactions** only where several account documents change together (legacy link). `MeldiqMongo.transaction` carries
   the session through `AsyncLocalStorage`. Accounts in MongoDB require a replica set or Atlas (checked at start).
 - **Steps that also write SQLite** (identity rows, invitation uses) are single store methods (`createAccount`,
   `linkIdentity`, `bindDeviceWith`). SQLite runs them in one transaction with the account rows; MongoDB runs them as a
@@ -93,7 +95,7 @@ verified (`admin mongo-dryrun`), so the data model is proven even where the code
 |---|---|---|
 | `MONGODB_URI` | unset | Connection string. Unset: everything stays in SQLite exactly as before. Never logged (redacted). |
 | `MONGODB_DB` | `orbit` | Database name |
-| `MONGODB_DOMAINS` | empty | Comma list of domains whose home is MongoDB: `accounts`, `preferences` |
+| `MONGODB_DOMAINS` | empty | Comma list of domains whose home is MongoDB: `accounts`, `preferences`, `integrations` |
 | `MONGODB_MAX_POOL` | `20` | Connection pool size (1–200) |
 | `MONGODB_TIMEOUT_MS` | `5000` | Server selection and connect timeout; socket timeout is 6× this |
 
@@ -101,7 +103,7 @@ verified (`admin mongo-dryrun`), so the data model is proven even where the code
   refuses to start.
 - Writes use `w: majority`, reads `readConcern: majority`, with retryable reads and writes.
 - `/healthz` reports `mongodb: true|false|null`; false answers 503.
-- **Least privilege** (production): a database user with `readWrite` on the Orbit database only (no admin roles), the
+- **Least privilege** (production): a database user with `readWrite` on the Meldiq database only (no admin roles), the
   network access list limited to the VPS address (72.60.107.88), TLS, and the password only in the VPS `.env`.
 
 ## 6. Moving a domain (expand, migrate, switch, contract)
@@ -125,7 +127,7 @@ after this step, or it would serve SQLite's stale copy.
 
 **Next domains, in order**: identity → workspace → conversations → files → history → relay → federation. Each needs
 its SQL moved behind an async store, `authz.ts` made async where it reads the domain, the full suite run on both stores
-(`ORBIT_TEST_MONGO_DOMAINS`), and a migration rehearsal. Rough size: workspace + conversations ≈ 200 statements (the
+(`MELDIQ_TEST_MONGO_DOMAINS`), and a migration rehearsal. Rough size: workspace + conversations ≈ 200 statements (the
 largest step, with authorisation); relay is the hot path and goes last, after load testing.
 
 ## 7. Backups and recovery
@@ -142,7 +144,7 @@ Before any production migration (owner's brief, Part 11.4):
 
 ## 8. Verification and smoke tests
 
-- Automated: `npx vitest run` (SQLite) and `ORBIT_TEST_MONGO_DOMAINS=accounts,preferences npx vitest run` (the same
+- Automated: `npx vitest run` (SQLite) and `MELDIQ_TEST_MONGO_DOMAINS=accounts,preferences npx vitest run` (the same
   378 tests with accounts and preferences in MongoDB). `test/mongo_migration.test.ts` covers the catalog, validators,
   unique indexes, copying synthetic data (people, an organisation, channels, queued ciphertext, binary history,
   preferences, an Orbit 2.0 account), re-runs, resuming after an interruption, prune, tampering detection, rollback
@@ -180,7 +182,7 @@ request (one round trip per authentication, plus one per WebSocket frame).
 ## 10. Blockers for production (owner)
 
 1. **A MongoDB deployment and credentials**: none exist. Choose Atlas (AWS ap-southeast-1, M10+ for backups) or a
-   self-run replica set; create a `readWrite` user for the Orbit database; allow only the VPS address; give the URI to
+   self-run replica set; create a `readWrite` user for the Meldiq database; allow only the VPS address; give the URI to
    put in the VPS `.env` (piped, never shown).
 2. **Encrypted off-VPS backups** of the SQLite database before the migration (§7).
 3. **A deploy of the new server version** (it builds from the working tree, which isn't committed).

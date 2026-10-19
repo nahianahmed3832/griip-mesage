@@ -1,10 +1,12 @@
-# Orbit (formerly Griip Message)
+# Meldiq (formerly Orbit and Griip Message)
 
-**Orbit by GriipBuddy** · *Private by design. Connected by everyone.*
+**Meldiq by GriipBuddy** · *Private by design. Connected by everyone.*
 
-A native Android messaging and collaboration app for GriipBuddy teams, as an internal beta. The app was renamed from
-Griip Message on 2026-10-16; servers, protocols (`griip-envelope-v1`, `griip-fed/1`), the `griip://invite/` link and the
-Docker deployment keep their names.
+A native Android messaging and collaboration app for GriipBuddy teams, as an internal beta. Renamed from Griip Message
+to Orbit on 2026-10-16 and from Orbit to Meldiq on 2026-10-19 ([rebrand notes](docs/MELDIQ_REBRAND_2026-10-19.md)).
+Protocols (`griip-envelope-v1`, `griip-fed/1`) and their cryptographic labels, the S3 bucket and key prefix, the AWS
+stacks and the Docker project keep their names until a planned migration
+([infrastructure plan](docs/MELDIQ_INFRASTRUCTURE_PLAN_2026-10-19.md)).
 - **Messaging:** end-to-end encrypted direct messages, groups and team channels.
 - **Workspaces:** organisations, branches, departments and teams with role-based access.
 - **Calls:** voice and video calls and Android screen sharing over a self-hosted LiveKit SFU.
@@ -14,15 +16,15 @@ Docker deployment keep their names.
 
 | | |
 |---|---|
-| Android application ID | `com.griipbuddy.Orbit` (Orbit; capital O, as registered on Google Play). Earlier builds were `com.griipbuddy.message` (Griip Message) and, on 2026-10-16 only, `com.griipbuddy.orbit`: separate apps; nothing moves between them, so an Orbit install signs in or registers afresh |
-| APK | `artifacts/GriipMessage-Federation-v1-testing.apk` (Orbit, debug-signed); older Griip Message builds stay in `artifacts/`. Default server `https://msg.griipbuddy.cloud` |
-| Relay / API | `https://msg.griipbuddy.cloud` |
+| Android application ID | `com.meldiq.android` (Meldiq, owner's choice 2026-10-19, matching meldiq.app). Earlier: `com.griipbuddy.meldiq` (first Meldiq test builds, never published), `com.griipbuddy.Orbit` (Orbit, its Google Play listing), `com.griipbuddy.orbit` (2026-10-16 only) and `com.griipbuddy.message` (Griip Message). Each is a separate app: app data never moves between them; accounts come back by signing in, linking the device or the recovery key |
+| APK | Test builds in `artifacts/` (debug-signed, not committed), e.g. `artifacts/meldiq-test-2026-10-19.apk` |
+| Relay / API | `https://msg.griipbuddy.cloud` today; the Meldiq API hostname follows once its domain is bought and approved ([environments](docs/ENVIRONMENTS.md)) |
 | Calls (LiveKit) | `wss://rtc.griipbuddy.cloud`, media on 7881/tcp and 7882/udp |
-| Compose project | `griip-internal-messaging` in `/opt/griip-internal-messaging` on 72.60.107.88 |
+| Compose project | `griip-internal-messaging` in `/opt/griip-internal-messaging` on 72.60.107.88 (name kept on purpose, see `deploy/compose.yaml`) |
 
 ## Install & try
 
-1. Install the APK. You can use `adb install -r artifacts/GriipMessage-debug.apk`, or copy it to the phone and open it.
+1. Install the APK. You can use `adb install artifacts/meldiq-test-2026-10-19.apk`, or copy it to the phone and open it.
 2. Tap **Get started**, pick a display name and a username. Your keys are created on the phone.
 3. Join a workspace with an invite code, or create one. Owners and admins create invites from **Workspace → Manage → Invitations**.
 4. Save your recovery key from **Profile → Security & recovery**.
@@ -36,8 +38,10 @@ Android needs JDK 17+; Android Studio's bundled JBR works.
 cd android && ./gradlew :app:assembleDebug
 ```
 
-The APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. To point a build at a local server, put
-`griip.serverUrl=http://10.0.2.2:8080` in `android/local.properties`.
+The APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. Debug builds default to the development
+server (`http://localhost:8080`, reached from a phone through `adb reverse tcp:8080 tcp:8080`); release builds to
+production. Choose another address per environment with `meldiq.apiBaseUrl.<environment>` in `android/local.properties`
+or `-P` ([environments](docs/ENVIRONMENTS.md)).
 
 The server needs Node 22+. Install, test, then build:
 
@@ -100,6 +104,8 @@ cd tools/griip-bot && npm run bot -- call <yourUsername> video 120
 - [Continuous integration](docs/CI.md): the checks that run on every push to `internal-beta` and every pull request
 - [Release builds and signing](docs/RELEASE_BUILDS.md) and [operational security remediation](docs/SECURITY_REMEDIATION.md)
 - [Abuse controls](docs/ABUSE_CONTROLS.md): registration, sign-in, upload, storage and realtime limits, and how to recover from false positives
+- Meldiq rebrand (2026-10-19): [what changed and what kept its name](docs/MELDIQ_REBRAND_2026-10-19.md),
+  [environments and endpoints](docs/ENVIRONMENTS.md), [infrastructure plan for the new domain](docs/MELDIQ_INFRASTRUCTURE_PLAN_2026-10-19.md)
 - Orbit 2.0 (email-and-password accounts, workspaces, legacy migration, 1 GB files): [audit](docs/ORBIT_2_MOBILE_AUDIT_2026-10-18.md),
   [architecture and API contracts](docs/ORBIT_2_ARCHITECTURE_2026-10-18.md), [implementation report](docs/ORBIT_2_IMPLEMENTATION_REPORT_2026-10-18.md)
 - [Known issues](docs/KNOWN_ISSUES.md) and [Progress](docs/PROGRESS.md)

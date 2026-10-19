@@ -7,7 +7,7 @@ on the phone; profile and privacy on the server).
 |---|---|
 | Profile card | Edit profile: photo, names, username, bio, birthday, phone (docs/PROFILE_AND_PRIVACY.md) |
 | Accounts | Accounts on this phone: switch, add, sign out of one, remove one |
-| Chats | Wallpaper (5, drawn by the app), message text size (90–130 %), animated emoji, link opening and previews, automatic photo download (never / Wi-Fi / always). No theme or accent choice since UI-002: every signed-in screen uses Orbit's Cocoa palette (the saved choices are kept, unused) |
+| Chats | Wallpaper (5, drawn by the app), message text size (90–130 %), animated emoji, link opening and previews, automatic photo download (never / Wi-Fi / always). No theme or accent choice since UI-002: every signed-in screen uses Meldiq's Cocoa palette (the saved choices are kept, unused) |
 | Privacy & Security | Recovery key and safety numbers, devices and sessions, who sees each profile field, who can find you, read receipts, typing, blocked people |
 | Notifications & Sounds | Messages, groups, message text in notifications, sound, vibration, call ringtone, background connection, wake-ups through UnifiedPush (off by default; docs/BACKGROUND_DELIVERY.md), Android's own settings (docs/NOTIFICATIONS.md) |
 | Calls | End-to-end encrypted call media, the phone's echo canceller |
@@ -19,14 +19,14 @@ on the phone; profile and privacy on the server).
 Built on the per-account containers that already existed (`ProfileStorage`): each account has its own identity keys,
 device credentials, Keystore key, encrypted database, files and settings namespace. Switching closes one container and
 opens the other; nothing is moved, merged or shared, and the identity keys of one account are never used by another.
-"Add account" starts a new, signed-out account on the Orbit network (sign in with a recovery key, link a device, or
+"Add account" starts a new, signed-out account on the Meldiq network (sign in with a recovery key, link a device, or
 register). "Sign out of this account" removes only that account's keys, messages and files from the phone (the account
 itself isn't deleted); other accounts stay signed in. Only the active account is connected, so the others' messages and
 calls arrive when you switch to them.
 
 ## Server setup is hidden
-Ordinary users join the Orbit network without choosing a server. The server choice (onboarding, Settings › Servers)
-shows only in debug/test builds, with developer options on (seven taps on About in Settings, or on the Orbit logo on
+Ordinary users join the Meldiq network without choosing a server. The server choice (onboarding, Settings › Servers)
+shows only in debug/test builds, with developer options on (seven taps on About in Settings, or on the Meldiq logo on
 the welcome screen), or when the phone already uses another server. Nothing was removed: federation, self-hosting,
 registration and discovery work as before.
 

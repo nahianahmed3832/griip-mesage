@@ -9,7 +9,7 @@ design, costs and test-stack results.
 
 - `orbit-storage-prod`: bucket `griipbuddy-orbit-media-sg` and runtime user `orbit-api-prod-ap-southeast-1`, created
   by `orbit-ops-admin`;
-- `orbit-ops-admin`: an operations user limited to Orbit, so Orbit needs no root credentials. The root user created
+- `orbit-ops-admin`: an operations user limited to Meldiq, so Meldiq needs no root credentials. The root user created
   it once;
 - `orbit-storage-test`: bucket `griipbuddy-orbit-media-sg-test` and user `orbit-api-test-ap-southeast-1`, kept for
   automated tests;
@@ -70,7 +70,7 @@ it expires, quotas, messages, accounts) stays in SQLite on Hostinger. S3 isn't a
 
 - **`AttachmentUploader`.** It uses direct uploads when the server offers them, with checksummed parts, per-part retry,
   resume from what S3 has, link renewal and cancellation on failure. Otherwise it uses the original upload.
-- **No Orbit token reaches S3**, and presigned URLs are never logged.
+- **No Meldiq token reaches S3**, and presigned URLs are never logged.
 
 ### Infrastructure
 
@@ -121,7 +121,7 @@ internet traffic too. Uploads into S3 are free. Versioning adds at most 30 days 
 
 **Budget alarm.** `orbit-monthly-10usd`, created 2026-10-17 (budgets are free for the first two). It emails the
 account owner when actual spend reaches 80% of $10 a month, or the forecast reaches 100%. It covers the **whole
-account**, not only Orbit, so the other buckets count towards it as well.
+account**, not only Meldiq, so the other buckets count towards it as well.
 
 ## 5. Permissions and authentication for Hostinger
 
@@ -159,7 +159,7 @@ and pipe it over SSH straight into the VPS `.env`. It's never printed, never in 
 |---|---|
 | Server tests (vitest) | **208/208** (29 files). New `direct_uploads` 11, `storage_s3` 16 (incl. the disk store and no-overwrite) |
 | Server typecheck / build / `npm audit` (production deps) | pass / pass / 0 vulnerabilities |
-| Android unit tests | **268/268** (56 classes), incl. `AttachmentUploaderTest` 7 new (exact bytes and signed headers reach the store, no Orbit token sent to it, expired-link renewal, checksummed parts with a dropped connection retried, resume from stored parts, cancel on failure, fallback on older servers) |
+| Android unit tests | **268/268** (56 classes), incl. `AttachmentUploaderTest` 7 new (exact bytes and signed headers reach the store, no Meldiq token sent to it, expired-link renewal, checksummed parts with a dropped connection retried, resume from stored parts, cancel on failure, fallback on older servers) |
 | Android lint / builds | 0 errors (79 warnings, unchanged) / `assembleDebug` and `assembleRelease` (R8) pass |
 | CloudFormation template | valid (`validate-template`; needs `CAPABILITY_NAMED_IAM`) |
 | Real S3 (`test/s3_live.test.ts`, test bucket, least-privilege test user) | **9/9** |

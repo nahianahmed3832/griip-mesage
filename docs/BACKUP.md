@@ -19,7 +19,7 @@ Restore decrypts and checks the whole file before changing anything. Tests: `Bac
 - **Back up now**: any file you choose with Android's file picker (phone storage, SD card, Google Drive…).
 - **Automatic backup**: choose a file once (Google Drive works through its file-picker provider), daily or weekly
   (WorkManager, battery not low). The backup password's derived key is kept on the phone sealed by the Android Keystore,
-  so backups can run unattended; it is never uploaded. Orbit won't overwrite a backup at that location that is newer than
+  so backups can run unattended; it is never uploaded. Meldiq won't overwrite a backup at that location that is newer than
   the last one it wrote. The last success time or failure shows in Data & Storage.
 - A native Google Drive integration (Drive API, app folder) would need an OAuth client registered for the app's signing
   certificate in a Google Cloud project; that isn't configured, and no credentials are in the app.
