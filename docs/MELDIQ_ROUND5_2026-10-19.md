@@ -171,6 +171,15 @@ earlier was finished):
 | Checks | healthy at once, 0 restarts, clean logs; `/healthz` 0.6.0; features `custom-roles`, `integrations`, `saved-items`; live schema 16, still 31 users; production test bot signed in and the relay accepted its encrypted message; `web.meldiq.app` loads and reaches 0.6.0 |
 | Not changed | mail stays SES (SMTP needs the Hostinger mailbox), no integration credentials (connectors show "needs configuration"), no MongoDB, no DNS, no AWS, LiveKit/ntfy untouched |
 
+**Regression and fix (11:01 UTC):** the 0.6.0 build left out two web patches the 0.5.0 deploy had carried outside the
+repository (browser WebSocket sign-in by first frame, and the optional `WEB_ORIGINS` allowlist), so Meldiq Web couldn't
+connect. Reported by the Orbit Web session; both patches (`orbit_web/server-patches/0001`, `0002`) were applied as
+commits `7dd93de` and `cb346e5` (now in the repository, so later deploys keep them), server tests 538 passed in SQLite
+and MongoDB mode, pushed to internal-beta, backup `backups/pre-0.6.0-webpatch-20261019T110115Z` (schema 16, integrity
+ok), api rebuilt and restarted alone. Checked: an unauthenticated socket on `web.meldiq.app` and `msg.griipbuddy.cloud`
+now waits ~11 s for the auth frame before 4401 (was ~1 s); header sign-in (the production test bot) still works. The
+unpatched image is tagged `0.6.0-nopatch`.
+
 Rollback: `image: griip-internal-messaging-api:0.5.0-rollback` in `compose.yaml`, then
 `docker compose -p griip-internal-messaging -f compose.yaml up -d --no-deps --no-build api` (no data restore needed:
 migration 016 is additive). Full restore: `scripts/restore.sh` with the pre-0.6.0 archive.
