@@ -3,6 +3,8 @@
 FROM node:22.22.3-alpine3.24 AS build
 WORKDIR /app
 RUN apk add --no-cache python3 make g++
+# The test-only MongoDB binary (mongodb-memory-server, a dev dependency pruned below) is never needed in the image.
+ENV MONGOMS_DISABLE_POSTINSTALL=1
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json ./

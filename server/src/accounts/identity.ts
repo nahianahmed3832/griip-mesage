@@ -90,12 +90,18 @@ export class IdentityService {
     private readonly accounts: AccountService,
   ) {}
 
-  enroll(s: ActiveSession, body: z.infer<typeof enrollDeviceBody>): EnrollResponse {
-    const a = this.accounts.store.accountById(s.account_id)!;
+  async enroll(s: ActiveSession, body: z.infer<typeof enrollDeviceBody>): Promise<EnrollResponse> {
+    let a = (await this.accounts.store.accountById(s.account_id))!;
+    // A link interrupted half-way (MongoDB accounts: the account was claimed, the identity's rows never written) is
+    // undone, so the person can set up encryption again instead of being stuck.
+    if (a.user_id && !this.ctx.db.prepare("SELECT 1 FROM users WHERE id = ?").get(a.user_id)) {
+      await this.accounts.store.releaseIdentity(a.id, a.user_id, now());
+      a = (await this.accounts.store.accountById(s.account_id))!;
+    }
     return a.user_id ? this.addDevice(s, a, a.user_id, body) : this.createIdentity(s, a, body);
   }
 
-  private createIdentity(s: ActiveSession, a: AccountRow, body: z.infer<typeof enrollDeviceBody>): EnrollResponse {
+  private async createIdentity(s: ActiveSession, a: AccountRow, body: z.infer<typeof enrollDeviceBody>): Promise<EnrollResponse> {
     if (!body.identityKey) throw new ApiError(400, "identity_required", "This account has no encryption keys yet: send the new identity key");
     requireKeys(body.device, body.identityKey);
     const username = freeUsername(this.ctx, body.username, a.name);
@@ -104,23 +110,23 @@ export class IdentityService {
     const abuse = this.ctx.config.abuse;
     const limitedUntil = this.ctx.config.registrationMode === "open" && abuse.newAccountDays > 0 ? t + abuse.newAccountDays * DAY_MS : null;
     const userId = newId("u");
-    let deviceId: string;
+    const identityKey = body.identityKey;
+    let deviceId: string | null;
     try {
-      deviceId = this.ctx.db.transaction(() => {
-        // Another request for this account got here first (a retry or a double tap): use what it made.
-        if (this.accounts.store.accountById(a.id)?.user_id) throw new ApiError(409, "identity_exists", "This account already has encryption keys. Try again.");
+      // The identity's rows and the account's link to them: both or neither (AccountStore.linkIdentity).
+      deviceId = await this.accounts.store.linkIdentity(a.id, userId, s.id, t, () => {
         this.ctx.db
           .prepare("INSERT INTO users (id, username, display_name, identity_key, avatar_color, created_at, updated_at, limited_until) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-          .run(userId, username, a.name, body.identityKey, crypto.randomInt(0, AVATAR_COLORS), t, t, limitedUntil);
+          .run(userId, username, a.name, identityKey, crypto.randomInt(0, AVATAR_COLORS), t, t, limitedUntil);
         const id = insertDevice(this.ctx, userId, body.device, t);
-        this.accounts.store.updateAccount(a.id, { user_id: userId }, t);
-        this.accounts.store.bindSessionDevice(s.id, id);
         this.joinAdmittingOrg(a, userId, t);
         return id;
-      })();
+      });
     } catch (e) {
       throw uniqueConflict(e);
     }
+    // Another request for this account got here first (a retry or a double tap): use what it made.
+    if (deviceId === null) throw new ApiError(409, "identity_exists", "This account already has encryption keys. Try again.");
     // "account" in the detail: the sign-up was already counted when the account was made (abuse.openRegistrationsToday).
     this.ctx.audit({ actorId: userId, action: "user.register", target: userId, detail: "account" });
     return { userId, deviceId, username, result: "identity" };
@@ -141,7 +147,7 @@ export class IdentityService {
     this.ctx.audit({ actorId: userId, orgId: joined.orgId, action: "invite.accept", target: joined.inviteId, detail: joined.role });
   }
 
-  private addDevice(s: ActiveSession, a: AccountRow, userId: string, body: z.infer<typeof enrollDeviceBody>): EnrollResponse {
+  private async addDevice(s: ActiveSession, a: AccountRow, userId: string, body: z.infer<typeof enrollDeviceBody>): Promise<EnrollResponse> {
     const user = this.ctx.db.prepare("SELECT username, identity_key FROM users WHERE id = ?").get(userId) as { username: string; identity_key: string };
     if (body.identityKey && body.identityKey !== user.identity_key) {
       throw new ApiError(409, "identity_mismatch", "This account already has encryption keys. Restore them with your recovery key or from another device, or start fresh.");
@@ -155,7 +161,7 @@ export class IdentityService {
     }
     requireProof(this.ctx, "add-device", body.device, body.nonce, body.signature);
     if (known) {
-      this.accounts.store.bindSessionDevice(s.id, known.id);
+      await this.accounts.store.bindSessionDevice(s.id, known.id);
       return { userId, deviceId: known.id, username: user.username, result: "existing" };
     }
     const max = this.ctx.config.abuse.maxDevicesPerUser;
@@ -164,11 +170,7 @@ export class IdentityService {
       throw new ApiError(409, "too_many_devices", "This account has as many devices as it can have. Remove one you no longer use (Settings › Devices).");
     }
     const t = now();
-    const deviceId = this.ctx.db.transaction(() => {
-      const id = insertDevice(this.ctx, userId, body.device, t);
-      this.accounts.store.bindSessionDevice(s.id, id);
-      return id;
-    })();
+    const deviceId = await this.accounts.store.bindDeviceWith(s.id, () => insertDevice(this.ctx, userId, body.device, t));
     this.ctx.audit({ actorId: userId, action: "device.add", target: deviceId, detail: `account:${a.id}` });
     notifyKeyChange(this.ctx, userId);
     return { userId, deviceId, username: user.username, result: "device" };
@@ -180,7 +182,7 @@ export class IdentityService {
    * more) is deleted. Contacts see a new security code. Needs the password again.
    */
   async resetIdentity(s: ActiveSession, body: z.infer<typeof resetIdentityBody>, ip: string, reply: { header: (k: string, v: string) => unknown }): Promise<EnrollResponse> {
-    const a = this.accounts.store.accountById(s.account_id)!;
+    const a = (await this.accounts.store.accountById(s.account_id))!;
     await this.accounts.checkPassword(a, body.password, ip, reply);
     if (!a.user_id) return this.createIdentity(s, a, { ...body, username: undefined });
     const userId = a.user_id;
@@ -190,20 +192,20 @@ export class IdentityService {
     const others = (this.ctx.db.prepare("SELECT id FROM devices WHERE user_id = ? AND revoked_at IS NULL").all(userId) as { id: string }[]).map((r) => r.id);
     let deviceId: string;
     try {
-      deviceId = this.ctx.db.transaction(() => {
+      // The session is bound to the new device with the same step, so it isn't ended with the old devices if it was on
+      // one of them.
+      deviceId = await this.accounts.store.bindDeviceWith(s.id, () => {
         this.ctx.db.prepare("UPDATE users SET identity_key = ?, updated_at = ? WHERE id = ?").run(body.identityKey, t, userId);
         const id = insertDevice(this.ctx, userId, body.device, t);
-        // Bound before the old devices go, so this session isn't ended with them if it was on one of them.
-        this.accounts.store.bindSessionDevice(s.id, id);
         for (const d of others) revokeDeviceRows(this.ctx, d, t);
         this.ctx.db.prepare("DELETE FROM history_items WHERE user_id = ?").run(userId);
         this.ctx.db.prepare("DELETE FROM history_accounts WHERE user_id = ?").run(userId);
         return id;
-      })();
+      });
     } catch (e) {
       throw uniqueConflict(e);
     }
-    this.accounts.revokeSessions(a.id, "identity_reset", s.id);
+    await this.accounts.revokeSessions(a.id, "identity_reset", s.id);
     for (const d of others) this.ctx.hub.disconnectDevice(d, "encryption reset");
     this.ctx.audit({ actorId: userId, action: "identity.reset", target: userId, detail: `devices:${others.length}` });
     notifyKeyChange(this.ctx, userId);

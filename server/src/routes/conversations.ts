@@ -51,6 +51,8 @@ export function conversationView(ctx: AppContext, c: ConversationRow, userId: st
     myRole,
     canPost: authz.canPost(c, userId),
     canManage: authz.canManageConversation(c, userId),
+    // Whether this person may switch the channel between public, private and announcement (scope managers only).
+    canManageAccess: authz.canManageChannelAccess(c, userId),
     // Whether the app should offer @everyone here (the hourly limit is checked when sending).
     canMentionAll: mentionAllPermission(ctx, c, userId) === null,
     activeCall: call ? { id: call.id, video: !!call.video, state: call.state, startedAt: call.created_at } : null,
@@ -179,16 +181,50 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
     const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
     const c = authz.requireMember(id, userId);
     if (!authz.canManageConversation(c, userId)) throw forbidden();
-    const body = parse(z.object({ name: z.string().trim().min(1).max(60).optional(), topic: zText.nullable().optional(), archived: z.boolean().optional() }), req.body);
+    const body = parse(
+      z.object({
+        name: z.string().trim().min(1).max(60).optional(),
+        topic: zText.nullable().optional(),
+        archived: z.boolean().optional(),
+        kind: z.enum(["PUBLIC", "PRIVATE", "ANNOUNCEMENT"]).optional(),
+      }),
+      req.body,
+    );
     if (body.archived !== undefined && c.type !== "CHANNEL") throw badRequest("Only channels can be archived");
-    db.prepare("UPDATE conversations SET name = ?, topic = ?, archived_at = ?, updated_at = ? WHERE id = ?").run(
+    const kindChange = body.kind !== undefined && body.kind !== c.kind;
+    if (body.kind !== undefined && c.type !== "CHANNEL") throw badRequest("Only channels have an access mode");
+    if (kindChange) {
+      // Access mode (docs/WORKSPACE_ADMINISTRATION.md): only the scope's managers, never a channel admin by role alone.
+      if (!authz.canManageChannelAccess(c, userId)) throw forbidden("Only this channel's workspace, branch or team managers can change who can see and post in it");
+      if (c.archived_at && body.archived !== false) throw conflict("This channel is archived. Restore it before changing its access.");
+    }
+    // Private channels never auto-join; announcement channels always do; a channel made public again auto-joins its
+    // branch or team (not the whole organization), as a new channel would. Nobody is added or removed by the change.
+    const autoJoin = !kindChange
+      ? c.auto_join
+      : body.kind === "PRIVATE"
+        ? 0
+        : body.kind === "ANNOUNCEMENT"
+          ? 1
+          : c.kind === "PRIVATE"
+            ? c.scope !== "ORG" ? 1 : 0
+            : c.auto_join;
+    db.prepare("UPDATE conversations SET name = ?, topic = ?, archived_at = ?, kind = ?, auto_join = ?, updated_at = ? WHERE id = ?").run(
       body.name ?? c.name,
       body.topic === undefined ? c.topic : body.topic,
       body.archived === undefined ? c.archived_at : body.archived ? now() : null,
+      kindChange ? body.kind : c.kind,
+      autoJoin,
       now(),
       id,
     );
-    if (c.org_id) ctx.audit({ actorId: userId, orgId: c.org_id, action: body.archived ? "channel.archive" : "channel.update", target: id });
+    if (c.org_id) {
+      if (kindChange) ctx.audit({ actorId: userId, orgId: c.org_id, action: "channel.access", target: id, detail: `${c.kind}→${body.kind}` });
+      if (body.archived !== undefined && body.archived !== !!c.archived_at) {
+        ctx.audit({ actorId: userId, orgId: c.org_id, action: body.archived ? "channel.archive" : "channel.restore", target: id });
+      }
+      if (body.name !== undefined || body.topic !== undefined) ctx.audit({ actorId: userId, orgId: c.org_id, action: "channel.update", target: id });
+    }
     notifyConversation(ctx, id);
     return { conversation: conversationView(ctx, authz.conversation(id)!, userId) };
   });

@@ -25,6 +25,9 @@
  *   storage-check                  which file store is configured and whether it answers (no secrets printed)
  *   storage-orphans [--delete]     stored files no record refers to, older than a day (dry run; --delete queues them
  *                                  for the retention job)
+ *   table-counts                   rows in every table, as JSON (no content; backup manifests and migration checks)
+ *   mongo-status | mongo-migrate | mongo-verify | mongo-rollback | mongo-dryrun
+ *                                  MongoDB domains and migration (src/mongo/admin.ts, docs/MONGODB.md)
  */
 import { Accounts } from "./accounts/index.js";
 import { Authz } from "./authz.js";
@@ -40,6 +43,8 @@ import { runCleanup } from "./jobs.js";
 import { deleteEmptyOrg, findDuplicateOrgs, keepReason, orgFootprint } from "./orgRepair.js";
 import { humanCode, newId, now, sha256Hex } from "./util.js";
 import { createBlobStore } from "./storage/index.js";
+import { MONGO_COMMANDS, runMongoCommand } from "./mongo/admin.js";
+import { openMongo } from "./mongo/index.js";
 
 const [cmd, ...rest] = process.argv.slice(2);
 // verify-backup only reads the snapshot: it must not open (or migrate) the live database.
@@ -54,6 +59,16 @@ if (cmd === "verify-backup") {
 }
 const cfg = loadConfig();
 const db = openDatabase(cfg.databasePath);
+if (MONGO_COMMANDS.includes(cmd)) {
+  try {
+    process.exitCode = await runMongoCommand(cmd, rest, cfg, db);
+  } catch (e) {
+    console.error((e as Error).message);
+    process.exitCode = 1;
+  }
+  db.close();
+  process.exit();
+}
 const one = (sql: string, ...p: unknown[]) => (db.prepare(sql).get(...p) as { n: number }).n;
 
 switch (cmd) {
@@ -162,11 +177,22 @@ switch (cmd) {
     );
     break;
   }
+  case "table-counts": {
+    const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as { name: string }[]).map((r) => r.name);
+    console.log(JSON.stringify(Object.fromEntries(tables.map((t) => [t, one(`SELECT COUNT(*) n FROM "${t}"`)])), null, 2));
+    break;
+  }
   case "cleanup": {
     const ctx = { db, config: cfg, authz: new Authz(db), hub: new Hub(db), livekit: null, blobs: createBlobStore(cfg), log: console as any, audit: () => {} } as unknown as AppContext;
+    // Domains kept in MongoDB are cleaned there (docs/MONGODB.md).
+    if (cfg.mongo) ctx.mongo = await openMongo(cfg.mongo, db);
     ctx.accounts = new Accounts(ctx);
-    const r = await runCleanup(ctx);
-    console.table(r);
+    try {
+      const r = await runCleanup(ctx);
+      console.table(r);
+    } finally {
+      await ctx.mongo?.close();
+    }
     break;
   }
   case "backup": {
@@ -285,10 +311,14 @@ switch (cmd) {
     for await (const o of blobs.listIds("attachments")) {
       if (o.modifiedAt < cutoff && !attachment.get(o.id, o.id)) orphans.push({ kind: "attachments", id: o.id, size: o.size });
     }
-    const photo = db.prepare("SELECT 1 FROM users WHERE id = ? AND photo_rev IS NOT NULL AND (? = id || '-' || photo_rev OR ? = id)");
+    // People's photos ("<userId>-<rev>", or "<userId>" before 2026-10-17) and organisations' ("<orgId>-<rev>", 2026-10-19).
+    const photo = db.prepare(
+      `SELECT 1 FROM users WHERE id = ? AND photo_rev IS NOT NULL AND (? = id || '-' || photo_rev OR ? = id)
+       UNION SELECT 1 FROM orgs WHERE id = ? AND photo_rev IS NOT NULL AND ? = id || '-' || photo_rev`,
+    );
     for await (const o of blobs.listIds("profile-photos")) {
-      const user = o.id.replace(/-\d+$/, "");
-      if (o.modifiedAt < cutoff && !photo.get(user, o.id, o.id)) orphans.push({ kind: "profile-photos", id: o.id, size: o.size });
+      const owner = o.id.replace(/-\d+$/, "");
+      if (o.modifiedAt < cutoff && !photo.get(owner, o.id, o.id, owner, o.id)) orphans.push({ kind: "profile-photos", id: o.id, size: o.size });
     }
     const bytes = orphans.reduce((a, o) => a + o.size, 0);
     console.log(`${orphans.length} orphaned file(s), ${bytes} bytes, older than a day (${blobs.backend})`);

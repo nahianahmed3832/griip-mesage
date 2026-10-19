@@ -1,17 +1,13 @@
-import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
-import type { Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { deleteBlobNow } from "./attachments.js";
+import { photoBlobId, readJpegBody, storePhoto } from "../photos.js";
 import { type AppContext, me, parse, requireAuth, zName } from "../context.js";
 import { keyFingerprint } from "../crypto.js";
 import {
   AUDIENCES,
   allows,
   canSeeLastSeen,
-  isJpeg,
   PHONE,
   PRIVACY_FIELDS,
   type ProfileRow,
@@ -23,8 +19,6 @@ import {
 import { ApiError, badRequest, conflict, notFound, now } from "../util.js";
 import { userSummary, zUsername } from "./auth.js";
 
-/** Largest profile photo accepted (the app sends a 512 px JPEG of about 60 KB). */
-const MAX_PHOTO_BYTES = 512 * 1024;
 /** A username can change at most once an hour, so links and mentions don't churn. */
 const USERNAME_CHANGE_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -64,7 +58,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
 
   // Photos are stored per revision ("<userId>-<rev>"), so a replaced photo is never served under the new revision.
   // Photos saved before 2026-10-17 are under "<userId>" alone and are still found.
-  const photoId = (userId: string, rev: number) => `${userId.replace(/[^A-Za-z0-9_-]/g, "")}-${rev}`;
+  const photoId = photoBlobId;
   const meView = (u: any) => ({
     ...profileView(u, { self: true, contact: true, blockedByTarget: false }),
     identityKey: u.identity_key,
@@ -166,33 +160,10 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
   // end-to-end encrypted, and the server can see it (docs/PROFILE_AND_PRIVACY.md).
   app.put("/v1/users/me/photo", auth, async (req) => {
     const { userId } = me(req);
-    const body = req.body as Readable | undefined;
-    if (!body || typeof (body as Readable).pipe !== "function") throw badRequest("Expected application/octet-stream body");
-    const declared = Number(req.headers["content-length"] ?? Number.NaN);
-    if (declared > MAX_PHOTO_BYTES) throw new ApiError(413, "too_large", "Profile photos can be up to 512 KB");
-    const chunks: Buffer[] = [];
-    let size = 0;
-    for await (const c of body) {
-      size += (c as Buffer).length;
-      if (size > MAX_PHOTO_BYTES) {
-        body.destroy();
-        throw new ApiError(413, "too_large", "Profile photos can be up to 512 KB");
-      }
-      chunks.push(c as Buffer);
-    }
-    const buf = Buffer.concat(chunks);
-    if (!isJpeg(buf)) throw badRequest("Profile photos must be JPEG");
+    const buf = await readJpegBody(req, "Profile photos");
     const previous = (ctx.db.prepare("SELECT photo_rev FROM users WHERE id = ?").get(userId) as { photo_rev: number | null } | undefined)?.photo_rev ?? null;
     const rev = Math.max(now(), (previous ?? 0) + 1);
-    const tmp = path.join(ctx.blobs.spoolDir, `photo-${photoId(userId, rev)}.part`);
-    await fs.promises.writeFile(tmp, buf, { mode: 0o600 });
-    try {
-      await ctx.blobs.putFile("profile-photos", photoId(userId, rev), tmp, buf.length, crypto.createHash("sha256").update(buf).digest("hex"));
-    } catch (e) {
-      await fs.promises.rm(tmp, { force: true });
-      ctx.log.error({ err: e }, "profile photo store write failed");
-      throw new ApiError(503, "storage_unavailable", "The server couldn't store the photo. Try again in a moment.");
-    }
+    await storePhoto(ctx, photoId(userId, rev), buf);
     ctx.db.prepare("UPDATE users SET photo_rev = ?, updated_at = ? WHERE id = ?").run(rev, rev, userId);
     if (previous) {
       await deleteBlobNow(ctx, "profile-photos", photoId(userId, previous));

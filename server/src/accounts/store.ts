@@ -71,47 +71,76 @@ export type SessionRotation = Pick<
   "access_hash" | "access_expires_at" | "refresh_hash" | "previous_refresh_hash" | "refresh_expires_at" | "refreshed_at" | "last_used_at"
 >;
 
+/** Taking an invite's use for a new account (SQLite rows): returns `accounts.admitted_via`, or throws when unusable. */
+export interface Admission {
+  take: () => string;
+  /** Gives the use back (the account wasn't made after all). */
+  undo: () => void;
+}
+
 /**
- * Where the account module keeps its rows (migration 014). Everything account-related goes through here, so the module
- * can move to MongoDB (docs/ORBIT_2_ARCHITECTURE §8) by adding an implementation, without touching the routes. SQLite
- * calls are synchronous; a MongoDB store would make these methods async.
+ * Where the account module keeps its rows (migration 014): SQLite, or MongoDB when MONGODB_DOMAINS includes "accounts"
+ * (src/mongo/accounts.ts, docs/MONGODB.md). Async so both look the same to the service.
+ *
+ * Steps that also write the encryption identity's SQLite rows (users, devices, invitations) are single methods here
+ * ([createAccount], [linkIdentity], [bindDeviceWith]): SQLite runs them in one transaction with the account rows;
+ * MongoDB runs the SQLite part in its own transaction and undoes it, or its own part, when the other fails.
  */
 export interface AccountStore {
-  transaction<T>(fn: () => T): T;
+  readonly backend: "sqlite" | "mongodb";
+  /**
+   * Runs [fn] atomically over this store's rows. [fn] may only call this store's methods: no other tables, and nothing
+   * else asynchronous (the SQLite store relies on that to keep one transaction open across its awaits).
+   */
+  transaction<T>(fn: () => Promise<T>): Promise<T>;
 
-  accountByEmail(email: string): AccountRow | undefined;
-  accountById(id: string): AccountRow | undefined;
-  accountByUserId(userId: string): AccountRow | undefined;
+  accountByEmail(email: string): Promise<AccountRow | undefined>;
+  accountById(id: string): Promise<AccountRow | undefined>;
+  accountByUserId(userId: string): Promise<AccountRow | undefined>;
   /** False when the email is taken. */
-  insertAccount(row: AccountRow): boolean;
-  updateAccount(id: string, patch: AccountPatch, at: number): void;
+  insertAccount(row: AccountRow): Promise<boolean>;
+  /** Inserts [row] after taking [admission]'s invite use, both or neither; null when the email is taken (use given back). */
+  createAccount(row: AccountRow, admission: Admission | null): Promise<AccountRow | null>;
+  updateAccount(id: string, patch: AccountPatch, at: number): Promise<void>;
   /** Changes the address of an account whose address isn't verified yet (a legacy link redone). */
-  updateEmail(id: string, email: string, at: number): void;
+  updateEmail(id: string, email: string, at: number): Promise<void>;
   /** Removes an account nobody verified and no identity is linked to; false when it doesn't qualify. */
-  deleteUnverifiedAccount(id: string): boolean;
+  deleteUnverifiedAccount(id: string): Promise<boolean>;
+  /**
+   * Links a new encryption identity: [createRows] makes its SQLite rows (user, first device, org membership) and returns
+   * the device id; the account gets [userId] and the session that device. Null when the account already has an
+   * identity (nothing is made).
+   */
+  linkIdentity(accountId: string, userId: string, sessionId: string, at: number, createRows: () => string): Promise<string | null>;
+  /** Clears a link to an identity whose rows don't exist (a link interrupted half-way). False when it doesn't qualify. */
+  releaseIdentity(accountId: string, userId: string, at: number): Promise<boolean>;
+  /** [deviceRows] makes or changes SQLite device rows and returns the device the session is then bound to. */
+  bindDeviceWith(sessionId: string, deviceRows: () => string): Promise<string>;
 
-  insertSession(row: SessionRow): void;
-  sessionById(id: string): ActiveSession | undefined;
-  sessionByAccessHash(hash: string): ActiveSession | undefined;
-  rotateSession(id: string, rotation: SessionRotation): void;
-  bindSessionDevice(id: string, deviceId: string): void;
-  touchSession(id: string, at: number): void;
-  revokeSession(id: string, reason: string, at: number): boolean;
-  revokeAccountSessions(accountId: string, reason: string, at: number, exceptSessionId?: string): string[];
-  revokeDeviceSessions(deviceId: string, reason: string, at: number): void;
-  activeSessions(accountId: string, at: number): SessionRow[];
+  insertSession(row: SessionRow): Promise<void>;
+  sessionById(id: string): Promise<ActiveSession | undefined>;
+  sessionByAccessHash(hash: string): Promise<ActiveSession | undefined>;
+  /** Rotates only if the session's refresh hash is still [expectedRefreshHash]; false when another refresh won. */
+  rotateSession(id: string, rotation: SessionRotation, expectedRefreshHash: string): Promise<boolean>;
+  bindSessionDevice(id: string, deviceId: string): Promise<void>;
+  touchSession(id: string, at: number): Promise<void>;
+  revokeSession(id: string, reason: string, at: number): Promise<boolean>;
+  revokeAccountSessions(accountId: string, reason: string, at: number, exceptSessionId?: string): Promise<string[]>;
+  revokeDeviceSessions(deviceId: string, reason: string, at: number): Promise<void>;
+  activeSessions(accountId: string, at: number): Promise<SessionRow[]>;
 
-  putCode(row: CodeRow): void;
-  code(accountId: string, purpose: CodePurpose): CodeRow | undefined;
-  countCodeAttempt(accountId: string, purpose: CodePurpose): void;
-  deleteCode(accountId: string, purpose: CodePurpose): void;
+  putCode(row: CodeRow): Promise<void>;
+  code(accountId: string, purpose: CodePurpose): Promise<CodeRow | undefined>;
+  countCodeAttempt(accountId: string, purpose: CodePurpose): Promise<void>;
+  /** False when the code was already used (two requests with the same code: only one wins). */
+  deleteCode(accountId: string, purpose: CodePurpose, codeHash: string): Promise<boolean>;
 
-  insertTicket(row: TicketRow): void;
-  ticket(hash: string): TicketRow | undefined;
-  useTicket(hash: string, accountId: string, at: number): void;
+  insertTicket(row: TicketRow): Promise<void>;
+  ticket(hash: string): Promise<TicketRow | undefined>;
+  useTicket(hash: string, accountId: string, at: number): Promise<void>;
 
   /** Expired sessions, codes and tickets (the retention job). Returns how many rows went. */
-  purgeExpired(at: number): number;
+  purgeExpired(at: number): Promise<number>;
 }
 
 const ACTIVE_SESSION = `SELECT s.*, a.user_id, a.disabled_at AS account_disabled_at, u.disabled_at AS user_disabled_at, d.revoked_at AS device_revoked_at
@@ -130,50 +159,62 @@ const PATCHABLE = new Set<keyof AccountPatch>([
 ]);
 
 export class SqliteAccountStore implements AccountStore {
+  readonly backend = "sqlite" as const;
+  private inTransaction = false;
   constructor(private readonly db: DB) {}
 
-  transaction<T>(fn: () => T): T {
-    return this.db.transaction(fn)();
+  /**
+   * One SQLite transaction across [fn]'s awaits. Safe because every method of this store finishes synchronously: [fn]
+   * runs to its end in one turn of the event loop, so no other request's statements can land inside the transaction.
+   */
+  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.inTransaction) return fn();
+    this.db.exec("BEGIN IMMEDIATE");
+    this.inTransaction = true;
+    try {
+      const result = await fn();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (e) {
+      if (this.db.inTransaction) this.db.exec("ROLLBACK");
+      throw e;
+    } finally {
+      this.inTransaction = false;
+    }
   }
 
-  accountByEmail(email: string): AccountRow | undefined {
+  async accountByEmail(email: string): Promise<AccountRow | undefined> {
     return this.db.prepare("SELECT * FROM accounts WHERE email = ?").get(email) as AccountRow | undefined;
   }
 
-  accountById(id: string): AccountRow | undefined {
+  async accountById(id: string): Promise<AccountRow | undefined> {
     return this.db.prepare("SELECT * FROM accounts WHERE id = ?").get(id) as AccountRow | undefined;
   }
 
-  accountByUserId(userId: string): AccountRow | undefined {
+  async accountByUserId(userId: string): Promise<AccountRow | undefined> {
     return this.db.prepare("SELECT * FROM accounts WHERE user_id = ?").get(userId) as AccountRow | undefined;
   }
 
-  insertAccount(r: AccountRow): boolean {
-    const res = this.db
-      .prepare(
-        `INSERT INTO accounts (id, email, name, password_hash, password_changed_at, email_verified_at, user_id, legacy_linked_at, selected_workspace_id, admitted_via, created_at, updated_at, disabled_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
-      )
-      .run(r.id, r.email, r.name, r.password_hash, r.password_changed_at, r.email_verified_at, r.user_id, r.legacy_linked_at, r.selected_workspace_id, r.admitted_via, r.created_at, r.updated_at, r.disabled_at);
-    return res.changes === 1;
+  async insertAccount(r: AccountRow): Promise<boolean> {
+    return this.insertSync(r);
   }
 
-  updateAccount(id: string, patch: AccountPatch, at: number): void {
+  async updateAccount(id: string, patch: AccountPatch, at: number): Promise<void> {
     const keys = (Object.keys(patch) as (keyof AccountPatch)[]).filter((k) => PATCHABLE.has(k));
     if (keys.length === 0) return;
     const sets = keys.map((k) => `${k} = ?`).join(", ");
     this.db.prepare(`UPDATE accounts SET ${sets}, updated_at = ? WHERE id = ?`).run(...keys.map((k) => patch[k] ?? null), at, id);
   }
 
-  updateEmail(id: string, email: string, at: number): void {
+  async updateEmail(id: string, email: string, at: number): Promise<void> {
     this.db.prepare("UPDATE accounts SET email = ?, updated_at = ? WHERE id = ? AND email_verified_at IS NULL").run(email, at, id);
   }
 
-  deleteUnverifiedAccount(id: string): boolean {
+  async deleteUnverifiedAccount(id: string): Promise<boolean> {
     return this.db.prepare("DELETE FROM accounts WHERE id = ? AND email_verified_at IS NULL AND user_id IS NULL").run(id).changes === 1;
   }
 
-  insertSession(r: SessionRow): void {
+  async insertSession(r: SessionRow): Promise<void> {
     this.db
       .prepare(
         `INSERT INTO account_sessions (id, account_id, device_id, label, access_hash, access_expires_at, refresh_hash, previous_refresh_hash, refresh_expires_at, expires_at, created_at, refreshed_at, last_used_at, revoked_at, revoke_reason)
@@ -182,52 +223,55 @@ export class SqliteAccountStore implements AccountStore {
       .run(r.id, r.account_id, r.device_id, r.label, r.access_hash, r.access_expires_at, r.refresh_hash, r.previous_refresh_hash, r.refresh_expires_at, r.expires_at, r.created_at, r.refreshed_at, r.last_used_at, r.revoked_at, r.revoke_reason);
   }
 
-  sessionById(id: string): ActiveSession | undefined {
+  async sessionById(id: string): Promise<ActiveSession | undefined> {
     return this.db.prepare(`${ACTIVE_SESSION} WHERE s.id = ?`).get(id) as ActiveSession | undefined;
   }
 
-  sessionByAccessHash(hash: string): ActiveSession | undefined {
+  async sessionByAccessHash(hash: string): Promise<ActiveSession | undefined> {
     return this.db.prepare(`${ACTIVE_SESSION} WHERE s.access_hash = ?`).get(hash) as ActiveSession | undefined;
   }
 
-  rotateSession(id: string, r: SessionRotation): void {
-    this.db
-      .prepare(
-        "UPDATE account_sessions SET access_hash = ?, access_expires_at = ?, refresh_hash = ?, previous_refresh_hash = ?, refresh_expires_at = ?, refreshed_at = ?, last_used_at = ? WHERE id = ?",
-      )
-      .run(r.access_hash, r.access_expires_at, r.refresh_hash, r.previous_refresh_hash, r.refresh_expires_at, r.refreshed_at, r.last_used_at, id);
+  async rotateSession(id: string, r: SessionRotation, expectedRefreshHash: string): Promise<boolean> {
+    return (
+      this.db
+        .prepare(
+          "UPDATE account_sessions SET access_hash = ?, access_expires_at = ?, refresh_hash = ?, previous_refresh_hash = ?, refresh_expires_at = ?, refreshed_at = ?, last_used_at = ? WHERE id = ? AND refresh_hash = ?",
+        )
+        .run(r.access_hash, r.access_expires_at, r.refresh_hash, r.previous_refresh_hash, r.refresh_expires_at, r.refreshed_at, r.last_used_at, id, expectedRefreshHash)
+        .changes === 1
+    );
   }
 
-  bindSessionDevice(id: string, deviceId: string): void {
+  async bindSessionDevice(id: string, deviceId: string): Promise<void> {
     this.db.prepare("UPDATE account_sessions SET device_id = ? WHERE id = ?").run(deviceId, id);
   }
 
-  touchSession(id: string, at: number): void {
+  async touchSession(id: string, at: number): Promise<void> {
     this.db.prepare("UPDATE account_sessions SET last_used_at = ? WHERE id = ? AND last_used_at < ?").run(at, id, at - 60_000);
   }
 
-  revokeSession(id: string, reason: string, at: number): boolean {
+  async revokeSession(id: string, reason: string, at: number): Promise<boolean> {
     return this.db.prepare("UPDATE account_sessions SET revoked_at = ?, revoke_reason = ? WHERE id = ? AND revoked_at IS NULL").run(at, reason, id).changes === 1;
   }
 
-  revokeAccountSessions(accountId: string, reason: string, at: number, exceptSessionId?: string): string[] {
+  async revokeAccountSessions(accountId: string, reason: string, at: number, exceptSessionId?: string): Promise<string[]> {
     const rows = this.db
       .prepare("UPDATE account_sessions SET revoked_at = ?, revoke_reason = ? WHERE account_id = ? AND revoked_at IS NULL AND id IS NOT ? RETURNING device_id")
       .all(at, reason, accountId, exceptSessionId ?? null) as { device_id: string | null }[];
     return rows.flatMap((r) => (r.device_id ? [r.device_id] : []));
   }
 
-  revokeDeviceSessions(deviceId: string, reason: string, at: number): void {
+  async revokeDeviceSessions(deviceId: string, reason: string, at: number): Promise<void> {
     this.db.prepare("UPDATE account_sessions SET revoked_at = ?, revoke_reason = ? WHERE device_id = ? AND revoked_at IS NULL").run(at, reason, deviceId);
   }
 
-  activeSessions(accountId: string, at: number): SessionRow[] {
+  async activeSessions(accountId: string, at: number): Promise<SessionRow[]> {
     return this.db
       .prepare("SELECT * FROM account_sessions WHERE account_id = ? AND revoked_at IS NULL AND expires_at > ? AND refresh_expires_at > ? ORDER BY last_used_at DESC")
       .all(accountId, at, at) as SessionRow[];
   }
 
-  putCode(r: CodeRow): void {
+  async putCode(r: CodeRow): Promise<void> {
     this.db
       .prepare(
         `INSERT INTO account_codes (account_id, purpose, code_hash, attempts, created_at, expires_at) VALUES (?, ?, ?, 0, ?, ?)
@@ -236,34 +280,34 @@ export class SqliteAccountStore implements AccountStore {
       .run(r.account_id, r.purpose, r.code_hash, r.created_at, r.expires_at);
   }
 
-  code(accountId: string, purpose: CodePurpose): CodeRow | undefined {
+  async code(accountId: string, purpose: CodePurpose): Promise<CodeRow | undefined> {
     return this.db.prepare("SELECT * FROM account_codes WHERE account_id = ? AND purpose = ?").get(accountId, purpose) as CodeRow | undefined;
   }
 
-  countCodeAttempt(accountId: string, purpose: CodePurpose): void {
+  async countCodeAttempt(accountId: string, purpose: CodePurpose): Promise<void> {
     this.db.prepare("UPDATE account_codes SET attempts = attempts + 1 WHERE account_id = ? AND purpose = ?").run(accountId, purpose);
   }
 
-  deleteCode(accountId: string, purpose: CodePurpose): void {
-    this.db.prepare("DELETE FROM account_codes WHERE account_id = ? AND purpose = ?").run(accountId, purpose);
+  async deleteCode(accountId: string, purpose: CodePurpose, codeHash: string): Promise<boolean> {
+    return this.db.prepare("DELETE FROM account_codes WHERE account_id = ? AND purpose = ? AND code_hash = ?").run(accountId, purpose, codeHash).changes === 1;
   }
 
-  insertTicket(r: TicketRow): void {
+  async insertTicket(r: TicketRow): Promise<void> {
     this.db
       .prepare("INSERT INTO legacy_tickets (ticket_hash, user_id, created_at, expires_at, used_at, account_id) VALUES (?, ?, ?, ?, ?, ?)")
       .run(r.ticket_hash, r.user_id, r.created_at, r.expires_at, r.used_at, r.account_id);
   }
 
-  ticket(hash: string): TicketRow | undefined {
+  async ticket(hash: string): Promise<TicketRow | undefined> {
     return this.db.prepare("SELECT * FROM legacy_tickets WHERE ticket_hash = ?").get(hash) as TicketRow | undefined;
   }
 
-  useTicket(hash: string, accountId: string, at: number): void {
+  async useTicket(hash: string, accountId: string, at: number): Promise<void> {
     this.db.prepare("UPDATE legacy_tickets SET used_at = ?, account_id = ? WHERE ticket_hash = ?").run(at, accountId, hash);
   }
 
-  purgeExpired(at: number): number {
-    return this.transaction(() => {
+  async purgeExpired(at: number): Promise<number> {
+    return this.db.transaction(() => {
       // Revoked or expired sessions are kept a day so a late refresh still gets "session ended" instead of a generic 401.
       const grace = at - 86_400_000;
       const sessions = this.db
@@ -272,6 +316,57 @@ export class SqliteAccountStore implements AccountStore {
       const codes = this.db.prepare("DELETE FROM account_codes WHERE expires_at <= ?").run(at).changes;
       const tickets = this.db.prepare("DELETE FROM legacy_tickets WHERE expires_at <= ?").run(grace).changes;
       return sessions + codes + tickets;
-    });
+    })();
+  }
+
+  async createAccount(row: AccountRow, admission: Admission | null): Promise<AccountRow | null> {
+    try {
+      return this.db.transaction(() => {
+        const r = { ...row, admitted_via: admission ? admission.take() : row.admitted_via };
+        if (!this.insertSync(r)) throw new EmailTaken();
+        return r;
+      })();
+    } catch (e) {
+      // The transaction rolled the invite use back with it.
+      if (e instanceof EmailTaken) return null;
+      throw e;
+    }
+  }
+
+  async linkIdentity(accountId: string, userId: string, sessionId: string, at: number, createRows: () => string): Promise<string | null> {
+    // One synchronous transaction: the check and the writes can't interleave with another request.
+    return this.db.transaction(() => {
+      const current = this.db.prepare("SELECT user_id FROM accounts WHERE id = ?").get(accountId) as { user_id: string | null } | undefined;
+      if (!current || current.user_id) return null;
+      const deviceId = createRows();
+      this.db.prepare("UPDATE accounts SET user_id = ?, updated_at = ? WHERE id = ?").run(userId, at, accountId);
+      this.db.prepare("UPDATE account_sessions SET device_id = ? WHERE id = ?").run(deviceId, sessionId);
+      return deviceId;
+    })();
+  }
+
+  async releaseIdentity(accountId: string, userId: string, at: number): Promise<boolean> {
+    return this.db.prepare("UPDATE accounts SET user_id = NULL, updated_at = ? WHERE id = ? AND user_id = ?").run(at, accountId, userId).changes === 1;
+  }
+
+  async bindDeviceWith(sessionId: string, deviceRows: () => string): Promise<string> {
+    return this.db.transaction(() => {
+      const deviceId = deviceRows();
+      this.db.prepare("UPDATE account_sessions SET device_id = ? WHERE id = ?").run(deviceId, sessionId);
+      return deviceId;
+    })();
+  }
+
+  private insertSync(r: AccountRow): boolean {
+    const res = this.db
+      .prepare(
+        `INSERT INTO accounts (id, email, name, password_hash, password_changed_at, email_verified_at, user_id, legacy_linked_at, selected_workspace_id, admitted_via, created_at, updated_at, disabled_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+      )
+      .run(r.id, r.email, r.name, r.password_hash, r.password_changed_at, r.email_verified_at, r.user_id, r.legacy_linked_at, r.selected_workspace_id, r.admitted_via, r.created_at, r.updated_at, r.disabled_at);
+    return res.changes === 1;
   }
 }
+
+/** Thrown inside [SqliteAccountStore.createAccount]'s transaction when the email is taken: rolls the invite use back. */
+class EmailTaken extends Error {}

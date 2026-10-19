@@ -4,6 +4,7 @@ import { IdentityService } from "./identity.js";
 import { LegacyMigrationService } from "./legacy.js";
 import { createMailer, type Mailer } from "./mailer.js";
 import { AccountService } from "./service.js";
+import { MongoAccountStore, sqliteIdentityRows } from "../mongo/accounts.js";
 import { type AccountStore, SqliteAccountStore } from "./store.js";
 import { WorkspaceService } from "./workspaces.js";
 
@@ -20,7 +21,9 @@ export class Accounts {
   readonly workspaces: WorkspaceService;
 
   constructor(ctx: AppContext, opts: { mailer?: Mailer; store?: AccountStore } = {}) {
-    this.store = opts.store ?? new SqliteAccountStore(ctx.db);
+    // MONGODB_DOMAINS includes "accounts": the account rows live in MongoDB (docs/MONGODB.md).
+    this.store =
+      opts.store ?? (ctx.mongo?.owns("accounts") ? new MongoAccountStore(ctx.mongo, sqliteIdentityRows(ctx.db)) : new SqliteAccountStore(ctx.db));
     this.mailer = opts.mailer ?? createMailer(ctx.config.accounts.mail);
     this.service = new AccountService(ctx, this.store, this.mailer);
     this.identity = new IdentityService(ctx, this.service);
@@ -32,8 +35,8 @@ export class Accounts {
    * The messaging identity behind a v2 access token, for the v1 routes and the WebSocket: only a session bound to a
    * device (one that has set up encryption) may use them.
    */
-  deviceAuth(token: string | undefined): AuthInfo | null {
-    const s = this.service.sessions.authenticate(token, now());
+  async deviceAuth(token: string | undefined): Promise<AuthInfo | null> {
+    const s = await this.service.sessions.authenticate(token, now());
     if (!s || !s.device_id || !s.user_id) return null;
     return { userId: s.user_id, deviceId: s.device_id, sessionId: s.id };
   }
@@ -42,11 +45,11 @@ export class Accounts {
    * Whether a v2 session still may be used from [deviceId] (an open WebSocket re-checks this, not its first access
    * token): not revoked or expired, account and device in good standing, still bound to that device.
    */
-  sessionStillValid(sessionId: string, deviceId: string): boolean {
+  sessionStillValid(sessionId: string, deviceId: string): Promise<boolean> {
     return this.service.sessions.stillValid(sessionId, deviceId, now());
   }
 
-  purgeExpired(): number {
+  purgeExpired(): Promise<number> {
     return this.store.purgeExpired(now());
   }
 }

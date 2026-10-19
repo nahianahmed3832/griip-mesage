@@ -49,7 +49,7 @@ export class LegacyMigrationService {
     if (!this.ctx.config.accounts.legacy.migration) throw closed();
   }
 
-  verify(body: z.infer<typeof legacyVerifyBody>, ip: string, reply: { header: (k: string, v: string) => unknown }): LegacyVerified {
+  async verify(body: z.infer<typeof legacyVerifyBody>, ip: string, reply: { header: (k: string, v: string) => unknown }): Promise<LegacyVerified> {
     this.requireOpen();
     const network = networkKey(ip);
     const wait = Math.max(this.failedByUsername.retryAfterMs(body.username), this.failedByNetwork.retryAfterMs(network));
@@ -69,7 +69,7 @@ export class LegacyMigrationService {
       throw verificationFailed();
     }
     if (user.disabled_at) throw new ApiError(403, "account_disabled", "This account is disabled.");
-    const linked = this.accounts.store.accountByUserId(user.id);
+    const linked = await this.accounts.store.accountByUserId(user.id);
     if (linked?.email_verified_at) {
       throw new ApiError(409, "already_migrated", `This account has already moved to email sign-in. Sign in with ${maskEmail(linked.email)}.`, {
         emailHint: maskEmail(linked.email),
@@ -77,7 +77,7 @@ export class LegacyMigrationService {
     }
     const ticket = crypto.randomBytes(32).toString("base64url");
     const t = now();
-    this.accounts.store.insertTicket({ ticket_hash: sha256Hex(ticket), user_id: user.id, created_at: t, expires_at: t + TICKET_TTL_MS, used_at: null, account_id: null });
+    await this.accounts.store.insertTicket({ ticket_hash: sha256Hex(ticket), user_id: user.id, created_at: t, expires_at: t + TICKET_TTL_MS, used_at: null, account_id: null });
     this.ctx.audit({ actorId: user.id, action: "legacy.verify", target: user.id });
     return { ticket, expiresAt: t + TICKET_TTL_MS, legacyUser: { username: user.username, displayName: user.display_name } };
   }
@@ -87,12 +87,12 @@ export class LegacyMigrationService {
     const store = this.accounts.store;
     if (!this.accounts.mailer.available) throw new ApiError(503, "email_unavailable", "This server can't send email yet, so new accounts can't be verified. Try again later.");
     const hash = sha256Hex(body.ticket);
-    const ticket = store.ticket(hash);
+    const ticket = await store.ticket(hash);
     const t = now();
     if (!ticket || ticket.expires_at <= t) throw invalidTicket();
     if (ticket.used_at) {
       // A retry of a request that already went through: same answer, and the code again if it's still unverified.
-      const done = ticket.account_id ? store.accountById(ticket.account_id) : undefined;
+      const done = ticket.account_id ? await store.accountById(ticket.account_id) : undefined;
       if (!done || done.email !== body.email) throw invalidTicket();
       if (!done.email_verified_at) await this.accounts.sendCode(done, "verify_email", null);
       return { email: done.email };
@@ -100,7 +100,7 @@ export class LegacyMigrationService {
     const weak = weakPassword(body.password, body.email);
     if (weak) throw weak;
     const passwordHash = await hashPassword(body.password, this.ctx.config.accounts.scryptLogN);
-    const account = store.transaction(() => this.link(ticket.user_id, hash, body, passwordHash, now()));
+    const account = await store.transaction(() => this.link(ticket.user_id, hash, body, passwordHash, now()));
     this.ctx.audit({ actorId: ticket.user_id, action: "account.legacy_link", target: account.id });
     // The ticket already proved who this is: only the account's own allowance applies.
     await this.accounts.sendCode(account, "verify_email", null);
@@ -108,29 +108,29 @@ export class LegacyMigrationService {
   }
 
   /** Creates or redoes the link inside one transaction; refuses an address or a legacy account someone already verified. */
-  private link(userId: string, ticketHash: string, body: z.infer<typeof legacyCompleteBody>, passwordHash: string, t: number): AccountRow {
+  private async link(userId: string, ticketHash: string, body: z.infer<typeof legacyCompleteBody>, passwordHash: string, t: number): Promise<AccountRow> {
     const store = this.accounts.store;
-    const linked = store.accountByUserId(userId);
+    const linked = await store.accountByUserId(userId);
     if (linked?.email_verified_at) {
       throw new ApiError(409, "already_migrated", `This account has already moved to email sign-in. Sign in with ${maskEmail(linked.email)}.`, {
         emailHint: maskEmail(linked.email),
       });
     }
-    const byEmail = store.accountByEmail(body.email);
+    const byEmail = await store.accountByEmail(body.email);
     if (byEmail && byEmail.id !== linked?.id && (byEmail.email_verified_at || byEmail.user_id)) {
       throw new ApiError(409, "email_taken", "That email already has an Orbit account. Use another address, or sign in with it.");
     }
     // An unverified, unlinked sign-up with this address (nobody proved it) gives way to the proven legacy account.
-    if (byEmail && byEmail.id !== linked?.id) store.deleteUnverifiedAccount(byEmail.id);
+    if (byEmail && byEmail.id !== linked?.id) await store.deleteUnverifiedAccount(byEmail.id);
     let id: string;
     if (linked) {
       // The earlier link was never verified (perhaps a mistyped address): it takes the new details.
-      store.updateAccount(linked.id, { name: body.name, password_hash: passwordHash, password_changed_at: t, legacy_linked_at: t }, t);
-      store.updateEmail(linked.id, body.email, t);
+      await store.updateAccount(linked.id, { name: body.name, password_hash: passwordHash, password_changed_at: t, legacy_linked_at: t }, t);
+      await store.updateEmail(linked.id, body.email, t);
       id = linked.id;
     } else {
       id = newId("acc");
-      const ok = store.insertAccount({
+      const ok = await store.insertAccount({
         id,
         email: body.email,
         name: body.name,
@@ -147,7 +147,7 @@ export class LegacyMigrationService {
       });
       if (!ok) throw new ApiError(409, "email_taken", "That email already has an Orbit account. Use another address, or sign in with it.");
     }
-    store.useTicket(ticketHash, id, t);
-    return store.accountById(id)!;
+    await store.useTicket(ticketHash, id, t);
+    return (await store.accountById(id))!;
   }
 }

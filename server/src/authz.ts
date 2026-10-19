@@ -150,6 +150,35 @@ export class Authz {
   }
 
   /**
+   * May this user change who can see, join and post in a channel (its access mode: public, private or announcement)?
+   * Only the people who manage the channel's scope: org owners and admins, the branch's managers for a branch channel,
+   * and the team's leads and managers for a team channel. A channel admin by role alone may not, so nobody can turn a
+   * private channel public just because they were made its admin (docs/WORKSPACE_ADMINISTRATION.md).
+   */
+  canManageChannelAccess(conv: ConversationRow, userId: string): boolean {
+    if (conv.type !== "CHANNEL" || !conv.org_id) return false;
+    if (this.isOrgAdmin(conv.org_id, userId)) return true;
+    if (conv.scope === "BRANCH" && conv.scope_id) {
+      const b = this.branch(conv.scope_id);
+      return !!b && this.branchRole(b.id, userId) === "MANAGER";
+    }
+    if (conv.scope === "TEAM" && conv.scope_id) {
+      const t = this.team(conv.scope_id);
+      return !!t && this.canManageTeam(t, userId);
+    }
+    return false;
+  }
+
+  /**
+   * May this user archive or restore a team? Org owners and admins, and the managers of the team's branch. A team lead
+   * runs their team but can't archive it, as only org admins archive branches.
+   */
+  canArchiveTeam(team: TeamRow, userId: string): boolean {
+    if (this.isOrgAdmin(team.org_id, userId)) return true;
+    return !!team.branch_id && this.branchRole(team.branch_id, userId) === "MANAGER";
+  }
+
+  /**
    * Scope eligibility for a channel: may this user be a member at all?
    * Guests are never eligible by scope; they can only be added explicitly by a manager.
    */

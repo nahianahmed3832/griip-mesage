@@ -12,6 +12,8 @@ export interface WorkspaceView {
   name: string;
   role: OrgRole;
   slug: string | null;
+  /** The organisation's avatar revision (GET /v1/orgs/:id/photo); null for the personal workspace or no avatar. */
+  photoRev: number | null;
 }
 
 /**
@@ -26,23 +28,23 @@ export class WorkspaceService {
   ) {}
 
   list(a: AccountRow): { workspaces: WorkspaceView[]; selectedWorkspaceId: string } {
-    const personal: WorkspaceView = { id: PERSONAL_WORKSPACE_ID, kind: "personal", name: "Personal", role: "OWNER", slug: null };
+    const personal: WorkspaceView = { id: PERSONAL_WORKSPACE_ID, kind: "personal", name: "Personal", role: "OWNER", slug: null, photoRev: null };
     const orgs = a.user_id
       ? (this.ctx.db
-          .prepare("SELECT o.id, o.name, o.slug, m.role FROM orgs o JOIN org_members m ON m.org_id = o.id WHERE m.user_id = ? ORDER BY o.name COLLATE NOCASE")
-          .all(a.user_id) as { id: string; name: string; slug: string; role: OrgRole }[])
+          .prepare("SELECT o.id, o.name, o.slug, o.photo_rev, m.role FROM orgs o JOIN org_members m ON m.org_id = o.id WHERE m.user_id = ? ORDER BY o.name COLLATE NOCASE")
+          .all(a.user_id) as { id: string; name: string; slug: string; photo_rev: number | null; role: OrgRole }[])
       : [];
-    const workspaces = [personal, ...orgs.map((o): WorkspaceView => ({ id: o.id, kind: "organization", name: o.name, role: o.role, slug: o.slug }))];
+    const workspaces = [personal, ...orgs.map((o): WorkspaceView => ({ id: o.id, kind: "organization", name: o.name, role: o.role, slug: o.slug, photoRev: o.photo_rev }))];
     // A remembered organisation the person has left (or that was deleted) falls back to the personal workspace.
     const selected = workspaces.some((w) => w.id === a.selected_workspace_id) ? a.selected_workspace_id! : PERSONAL_WORKSPACE_ID;
     return { workspaces, selectedWorkspaceId: selected };
   }
 
-  select(a: AccountRow, workspaceId: string): string {
+  async select(a: AccountRow, workspaceId: string): Promise<string> {
     const member = workspaceId === PERSONAL_WORKSPACE_ID || (!!a.user_id && !!this.ctx.authz.orgRole(workspaceId, a.user_id));
     // Same answer for an organisation that doesn't exist and one the person isn't in.
     if (!member) throw new ApiError(404, "workspace_not_found", "Workspace not found");
-    this.store.updateAccount(a.id, { selected_workspace_id: workspaceId }, now());
+    await this.store.updateAccount(a.id, { selected_workspace_id: workspaceId }, now());
     return workspaceId;
   }
 }

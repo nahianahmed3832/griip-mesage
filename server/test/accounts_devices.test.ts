@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AccountClient, email, MemoryMailer, PASSWORD } from "./support/accounts.js";
 import { newEd25519, newX25519 } from "./support/griipClient.js";
+import { accountRows } from "./support/accountRows.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 
 let h: Harness;
@@ -123,7 +124,7 @@ describe("a v2 account messaging a v1 account", () => {
     await c.connect();
     const closed = new Promise<number>((resolve) => c.ws!.once("close", (code) => resolve(code)));
     // Changed underneath (as the operator CLI does), with no disconnect from the server.
-    h.ctx.db.prepare("UPDATE accounts SET disabled_at = ? WHERE id = ?").run(Date.now(), c.accountId);
+    await accountRows(h).setAccount(c.accountId, { disabled_at: Date.now() });
     c.ws!.send(JSON.stringify({ t: "ping" }));
     expect(await closed).toBe(4401);
   });
@@ -134,7 +135,7 @@ describe("workspaces", () => {
     const c = await new AccountClient(h.baseUrl, email("bare")).signUp(mailer);
     await c.signIn();
     const r = await c.req("GET", "/v2/workspaces");
-    expect(r).toEqual({ workspaces: [{ id: "personal", kind: "personal", name: "Personal", role: "OWNER", slug: null }], selectedWorkspaceId: "personal" });
+    expect(r).toEqual({ workspaces: [{ id: "personal", kind: "personal", name: "Personal", role: "OWNER", slug: null, photoRev: null }], selectedWorkspaceId: "personal" });
   });
 
   it("creates and joins organisations, switches between them and remembers the choice for every device", async () => {

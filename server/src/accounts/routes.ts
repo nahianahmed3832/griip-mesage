@@ -38,13 +38,13 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
   // Unauthenticated routes that hash passwords or send email: tighter than the global limit, per network.
   const strict = { config: { rateLimit: { max: ctx.config.accounts.authRateLimitPerMinute, timeWindow: "1 minute" } } };
   const requireAccount = async (req: FastifyRequest) => {
-    const s = service.sessions.authenticate(bearer(req), now());
+    const s = await service.sessions.authenticate(bearer(req), now());
     if (!s) throw unauthorized();
     req.accountSession = s;
   };
   const authed = { preHandler: requireAccount };
   const authedStrict = { preHandler: requireAccount, ...strict };
-  const accountOf = (req: FastifyRequest) => store.accountById(session(req).account_id)!;
+  const accountOf = async (req: FastifyRequest) => (await store.accountById(session(req).account_id))!;
 
   // ───────────── Sign-up, email codes, sign-in ─────────────
   app.post("/v2/auth/register", strict, async (req, reply) => {
@@ -72,7 +72,7 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
 
   app.post("/v2/auth/logout", authed, async (req) => {
     const s = session(req);
-    service.logout(s);
+    await service.logout(s);
     // A signed-out device isn't woken any more; signing in again, the app registers its endpoint again.
     if (s.device_id) removePushEndpoint(ctx.db, s.device_id);
     return { ok: true };
@@ -92,19 +92,17 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
   // ───────────── The signed-in account ─────────────
   app.get("/v2/account", authed, async (req) => {
     const s = session(req);
-    return { account: service.view(accountOf(req)), session: { id: s.id, deviceId: s.device_id, createdAt: s.created_at } };
+    return { account: service.view(await accountOf(req)), session: { id: s.id, deviceId: s.device_id, createdAt: s.created_at } };
   });
 
   app.patch("/v2/account", authed, async (req) => {
     const { name } = parse(updateAccountBody, req.body);
-    const a = accountOf(req);
+    const a = await accountOf(req);
     const t = now();
-    store.transaction(() => {
-      store.updateAccount(a.id, { name }, t);
-      // The encryption identity shows the same name to contacts.
-      if (a.user_id) ctx.db.prepare("UPDATE users SET display_name = ?, updated_at = ? WHERE id = ?").run(name, t, a.user_id);
-    });
-    return { account: service.view(store.accountById(a.id)!) };
+    await store.updateAccount(a.id, { name }, t);
+    // The encryption identity shows the same name to contacts (the same edit again repairs a half-done one).
+    if (a.user_id) ctx.db.prepare("UPDATE users SET display_name = ?, updated_at = ? WHERE id = ?").run(name, t, a.user_id);
+    return { account: service.view((await store.accountById(a.id))!) };
   });
 
   app.post("/v2/account/password", authedStrict, async (req, reply) => {
@@ -116,7 +114,7 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
   app.get("/v2/account/sessions", authed, async (req) => {
     const s = session(req);
     return {
-      sessions: store.activeSessions(s.account_id, now()).map((r) => ({
+      sessions: (await store.activeSessions(s.account_id, now())).map((r) => ({
         id: r.id,
         label: r.label,
         deviceId: r.device_id,
@@ -130,17 +128,17 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
   app.delete("/v2/account/sessions/:id", authed, async (req) => {
     const s = session(req);
     const { id } = parse(z.object({ id: z.string().min(3).max(64) }), req.params);
-    const target = store.sessionById(id);
+    const target = await store.sessionById(id);
     // Someone else's session answers like one that doesn't exist.
     if (!target || target.account_id !== s.account_id || target.revoked_at) throw notFound("Session not found");
-    service.logout(target);
+    await service.logout(target);
     ctx.audit({ actorId: target.user_id, action: "account.session_revoke", target: id, detail: id === s.id ? "self" : null });
     return { ok: true };
   });
 
   app.put("/v2/account/preferences", authed, async (req) => {
     const { selectedWorkspaceId } = parse(preferencesBody, req.body);
-    return { selectedWorkspaceId: workspaces.select(accountOf(req), selectedWorkspaceId) };
+    return { selectedWorkspaceId: await workspaces.select(await accountOf(req), selectedWorkspaceId) };
   });
 
   // ───────────── Encryption setup on this device ─────────────
@@ -149,7 +147,7 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
   app.post("/v2/account/identity/reset", authedStrict, async (req, reply) => identity.resetIdentity(session(req), parse(resetIdentityBody, req.body), req.ip, reply));
 
   // ───────────── Workspaces ─────────────
-  app.get("/v2/workspaces", authed, async (req) => workspaces.list(accountOf(req)));
+  app.get("/v2/workspaces", authed, async (req) => workspaces.list(await accountOf(req)));
 
   // ───────────── Legacy migration ─────────────
   app.post("/v2/migration/legacy/verify", strict, async (req, reply) => legacy.verify(parse(legacyVerifyBody, req.body), req.ip, reply));

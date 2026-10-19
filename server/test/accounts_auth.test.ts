@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AccountClient, email, MemoryMailer, PASSWORD } from "./support/accounts.js";
+import { accountRows } from "./support/accountRows.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 
 let h: Harness;
@@ -29,11 +30,10 @@ describe("Orbit 2.0 sign-up and email verification", () => {
 
   it("never stores or echoes the password, and stores it hashed with scrypt", async () => {
     const c = await new AccountClient(h.baseUrl, email("hash")).signUp(mailer);
-    const row = h.ctx.db.prepare("SELECT password_hash FROM accounts WHERE email = ?").get(c.email) as { password_hash: string };
-    expect(row.password_hash.startsWith("scrypt$")).toBe(true);
-    expect(row.password_hash).not.toContain(PASSWORD);
-    const codes = h.ctx.db.prepare("SELECT code_hash FROM account_codes").all() as { code_hash: string }[];
-    for (const r of codes) expect(r.code_hash).toMatch(/^[0-9a-f]{64}$/);
+    const hash = (await accountRows(h).passwordHash(c.email))!;
+    expect(hash.startsWith("scrypt$")).toBe(true);
+    expect(hash).not.toContain(PASSWORD);
+    for (const code of await accountRows(h).codeHashes()) expect(code).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("answers sign-up the same for a taken address and tells the owner instead", async () => {
@@ -174,7 +174,8 @@ describe("Orbit 2.0 sign-in", () => {
     thief.refreshToken = s.refreshToken;
     await thief.refresh();
     await thief.refresh();
-    h.ctx.db.prepare("UPDATE account_sessions SET refreshed_at = refreshed_at - 120000 WHERE id = ?").run(s.session.id);
+    const rows = accountRows(h);
+    await rows.setSession(s.session.id, { refreshed_at: (await rows.session(s.session.id)).refreshed_at - 120000 });
     // The victim's old token comes back: the session (and the thief's tokens) end.
     expect((await expectStatus(victim.req("POST", "/v2/auth/refresh", { refreshToken: s.refreshToken }), 401)).error.code).toBe("session_revoked");
     await expectStatus(thief.req("GET", "/v2/account"), 401);
@@ -184,11 +185,11 @@ describe("Orbit 2.0 sign-in", () => {
   it("expires sessions by idle time and absolute lifetime", async () => {
     const c = await new AccountClient(h.baseUrl, email("expire")).signUp(mailer);
     const s = await c.signIn();
-    h.ctx.db.prepare("UPDATE account_sessions SET refresh_expires_at = ? WHERE id = ?").run(Date.now() - 1, s.session.id);
+    await accountRows(h).setSession(s.session.id, { refresh_expires_at: Date.now() - 1 });
     expect((await expectStatus(c.req("POST", "/v2/auth/refresh", { refreshToken: s.refreshToken }), 401)).error.code).toBe("session_expired");
     await expectStatus(c.req("GET", "/v2/account"), 401);
     const s2 = await c.signIn();
-    h.ctx.db.prepare("UPDATE account_sessions SET access_expires_at = ? WHERE id = ?").run(Date.now() - 1, s2.session.id);
+    await accountRows(h).setSession(s2.session.id, { access_expires_at: Date.now() - 1 });
     await expectStatus(c.req("GET", "/v2/account"), 401);
     await c.refresh();
     await c.req("GET", "/v2/account");
@@ -215,7 +216,7 @@ describe("Orbit 2.0 sign-in", () => {
   it("refuses a disabled account at sign-in and refresh", async () => {
     const c = await new AccountClient(h.baseUrl, email("disabled")).signUp(mailer);
     const s = await c.signIn();
-    h.ctx.db.prepare("UPDATE accounts SET disabled_at = ? WHERE id = ?").run(Date.now(), s.account.id);
+    await accountRows(h).setAccount(s.account.id, { disabled_at: Date.now() });
     await expectStatus(c.req("GET", "/v2/account"), 401);
     expect((await expectStatus(c.req("POST", "/v2/auth/refresh", { refreshToken: s.refreshToken }), 401)).error.code).toBe("account_disabled");
     expect((await expectStatus(c.req("POST", "/v2/auth/login", { email: c.email, password: PASSWORD }), 401)).error.code).toBe("account_disabled");

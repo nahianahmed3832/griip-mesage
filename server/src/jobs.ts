@@ -43,6 +43,20 @@ export interface CleanupResult {
 export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
   const t = now();
   const { db } = ctx;
+  // First, before anything waits: accounts disabled with the admin CLI (a separate process) keep receive-only sockets
+  // open, because sessions are only re-checked on client frames. Close them here (T3.3).
+  let disabledDisconnected = 0;
+  const online = ctx.hub.connectedUserIds();
+  for (let i = 0; i < online.length; i += 500) {
+    const chunk = online.slice(i, i + 500);
+    const disabled = db
+      .prepare(`SELECT id FROM users WHERE disabled_at IS NOT NULL AND id IN (${chunk.map(() => "?").join(",")})`)
+      .all(...chunk) as { id: string }[];
+    for (const u of disabled) {
+      ctx.hub.disconnectUser(u.id, "account disabled");
+      disabledDisconnected++;
+    }
+  }
   const r: CleanupResult = {
     queue: db.prepare("DELETE FROM delivery_queue WHERE expires_at <= ?").run(t).changes,
     submitted: db.prepare("DELETE FROM submitted_messages WHERE expires_at <= ?").run(t).changes,
@@ -57,11 +71,15 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     historyTombstones: purgeHistoryTombstones(ctx, t),
     federation: ctx.federation ? Object.values(ctx.federation.cleanup(t)).reduce((a, b) => a + b, 0) : 0,
     pushEndpoints: purgeRevokedPushEndpoints(db),
-    accountRows: ctx.accounts.purgeExpired(),
+    // An unreachable account store (MongoDB) mustn't stop the rest of retention.
+    accountRows: await ctx.accounts.purgeExpired().catch((e) => {
+      ctx.log.error({ err: e }, "account retention failed");
+      return 0;
+    }),
     callsTimedOut: 0,
     callEvictions: 0,
     callStaleParticipants: 0,
-    disabledDisconnected: 0,
+    disabledDisconnected,
     callRecordsPruned: 0,
     auditPruned: 0,
   };
@@ -80,19 +98,6 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
   r.auditPruned = db.prepare("DELETE FROM audit_log WHERE at <= ?").run(t - ctx.config.auditRetentionDays * 86_400_000).changes;
   r.blobsDeleted = await processBlobDeletes(ctx);
   r.uploadsCleaned = await processAbandonedUploads(ctx);
-  // Accounts disabled with the admin CLI (a separate process) keep receive-only sockets open, because
-  // sessions are only re-checked on client frames. Close them here (T3.3).
-  const online = ctx.hub.connectedUserIds();
-  for (let i = 0; i < online.length; i += 500) {
-    const chunk = online.slice(i, i + 500);
-    const disabled = db
-      .prepare(`SELECT id FROM users WHERE disabled_at IS NOT NULL AND id IN (${chunk.map(() => "?").join(",")})`)
-      .all(...chunk) as { id: string }[];
-    for (const u of disabled) {
-      ctx.hub.disconnectUser(u.id, "account disabled");
-      r.disabledDisconnected++;
-    }
-  }
   // Call membership: anyone no longer admitted (removed from the conversation, revoked device,
   // disabled account) is removed from the room. This repairs evictions missed while LiveKit was
   // unreachable, rejoins with a token issued before removal, and `admin disable` from the CLI process.

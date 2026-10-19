@@ -1,6 +1,7 @@
 import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
+import { MongoNetworkError, MongoServerSelectionError } from "mongodb";
 import { networkKey } from "./abuse.js";
 import { Accounts } from "./accounts/index.js";
 import type { Mailer } from "./accounts/mailer.js";
@@ -9,10 +10,13 @@ import { Authz } from "./authz.js";
 import { type Config, effectiveFileMaxBytes } from "./config.js";
 import { federationClientRoutes, federationPeerRoutes } from "./federation/routes.js";
 import { Federation } from "./federation/service.js";
-import { type AppContext, authenticateToken, bearer } from "./context.js";
+import { type AppContext, authenticateRequest } from "./context.js";
 import { type DB, openDatabase } from "./db.js";
 import { Hub } from "./hub.js";
 import { LiveKitService } from "./livekit.js";
+import type { OrbitMongo } from "./mongo/client.js";
+import { openMongo } from "./mongo/index.js";
+import { MongoPreferenceStore } from "./mongo/preferences.js";
 import { type PushDeps, PushService } from "./push/service.js";
 import { createBlobStore } from "./storage/index.js";
 import attachmentRoutes from "./routes/attachments.js";
@@ -22,12 +26,14 @@ import conversationRoutes from "./routes/conversations.js";
 import historyRoutes from "./routes/history.js";
 import messageRoutes from "./routes/messages.js";
 import orgRoutes from "./routes/orgs.js";
+import preferenceRoutes from "./preferences/routes.js";
+import { SqlitePreferenceStore } from "./preferences/store.js";
 import pushRoutes from "./routes/push.js";
 import userRoutes from "./routes/users.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
-export const VERSION = "0.4.2";
+export const VERSION = "0.5.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
@@ -42,7 +48,10 @@ export interface BuiltApp {
   ctx: AppContext;
 }
 
-export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean; push?: PushDeps; mailer?: Mailer } = {}): Promise<BuiltApp> {
+export async function buildApp(
+  config: Config,
+  opts: { db?: DB; logger?: boolean; push?: PushDeps; mailer?: Mailer; mongo?: OrbitMongo } = {},
+): Promise<BuiltApp> {
   const app = Fastify({
     logger:
       opts.logger === false
@@ -78,7 +87,14 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
       );
     },
   } as AppContext;
+  // MongoDB holds the domains in MONGODB_DOMAINS; it refuses to start if that would split a domain between stores.
+  if (config.mongo) {
+    const mongo = opts.mongo ?? (await openMongo(config.mongo, db, app.log));
+    ctx.mongo = mongo;
+    if (!opts.mongo) app.addHook("onClose", async () => mongo.close());
+  }
   ctx.accounts = new Accounts(ctx, { mailer: opts.mailer });
+  ctx.prefs = ctx.mongo?.owns("preferences") ? new MongoPreferenceStore(ctx.mongo) : new SqlitePreferenceStore(db);
 
   if (config.trustProxy === true) {
     app.log.warn("TRUST_PROXY=true believes X-Forwarded-For entries clients send themselves, so per-address limits can be dodged. Set the proxy's addresses instead, e.g. TRUST_PROXY=loopback,uniquelocal (docs/ABUSE_CONTROLS.md)");
@@ -106,8 +122,9 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
     global: true,
     max: config.rateLimitPerMinute,
     timeWindow: "1 minute",
-    keyGenerator: (req) => {
-      const auth = authenticateToken(ctx, bearer(req));
+    keyGenerator: async (req) => {
+      // Unavailable account store: limit by network for now; the route's own check answers 503.
+      const auth = await authenticateRequest(ctx, req).catch(() => null);
       // Without a session: per network, an IPv4 address or an IPv6 /64 (one phone or home holds a whole /64).
       return auth ? `d:${auth.deviceId}` : `ip:${networkKey(req.ip)}`;
     },
@@ -117,6 +134,11 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof ApiError) {
       return reply.code(err.statusCode).send({ error: { code: err.code, message: err.message, details: err.details } });
+    }
+    // MongoDB unreachable (its domains can't be served): a clear, retryable answer, details only in the log.
+    if (err instanceof MongoNetworkError || err instanceof MongoServerSelectionError) {
+      req.log.error({ err: { name: err.name, message: err.message } }, "MongoDB unavailable");
+      return reply.code(503).send({ error: { code: "unavailable", message: "The server can't reach its database right now. Try again in a moment." } });
     }
     const status = (err as { statusCode?: number }).statusCode ?? 500;
     if (status === 429) return reply.code(429).send({ error: { code: "rate_limited", message: "Too many requests, slow down" } });
@@ -128,10 +150,13 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
     return reply.code(500).send({ error: { code: "internal", message: "Something went wrong on the server" } });
   });
 
-  app.get("/healthz", async () => {
+  app.get("/healthz", async (_req, reply) => {
     db.prepare("SELECT 1").get();
+    // MongoDB, when the server uses it: unreachable means the domains it holds can't be served.
+    const mongodb = ctx.mongo ? await ctx.mongo.ping() : null;
+    if (mongodb === false) reply.code(503);
     // Public: says nothing about usage (the online-device count was removed, D28).
-    return { ok: true, version: VERSION, time: now(), livekit: !!ctx.livekit };
+    return { ok: mongodb !== false, version: VERSION, time: now(), livekit: !!ctx.livekit, mongodb };
   });
 
   // Public, non-sensitive server info for client setup screens. Additive only: clients ignore unknown fields.
@@ -171,7 +196,7 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
     push: config.push ? { unifiedPushHosts: config.push.unifiedPushHosts } : null,
   }));
 
-  for (const r of [authRoutes, userRoutes, orgRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, wsRoutes]) {
+  for (const r of [authRoutes, userRoutes, orgRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, preferenceRoutes, wsRoutes]) {
     await app.register(async (scope) => r(scope, ctx));
   }
   await app.register(async (scope) => accountRoutes(scope, ctx, ctx.accounts));
@@ -185,7 +210,7 @@ export async function buildApp(config: Config, opts: { db?: DB; logger?: boolean
 
 /** Feature names in /v1/server-info (2026-10-17 onwards). */
 export function serverFeatures(config: Config, directUploads = false): string[] {
-  const f = ["profiles", "profile-photos", "privacy", "phone-lookup", "chunked-attachments", "call-reconnect", "org-delete", "accounts-v2", "workspaces-v2", "files-1g"];
+  const f = ["profiles", "profile-photos", "privacy", "phone-lookup", "chunked-attachments", "call-reconnect", "org-delete", "accounts-v2", "workspaces-v2", "files-1g", "workspace-admin", "nav-preferences", "org-photos"];
   if (config.accounts.legacy.migration) f.push("legacy-migration");
   if (directUploads) f.push("direct-upload");
   if (config.history.enabled) f.push("history");

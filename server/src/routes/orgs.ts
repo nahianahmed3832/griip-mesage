@@ -1,14 +1,16 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { BranchRow, ConversationRow, OrgRole, TeamRow } from "../authz.js";
+import type { BranchRow, ConversationRow, TeamRow } from "../authz.js";
 import { type AppContext, me, parse, requireAuth, zName, zText } from "../context.js";
 import { memberView } from "../profile.js";
 import { ApiError, badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex } from "../util.js";
 import { INVITE_PROBLEMS, inviteAlreadySatisfied, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../invites.js";
 import { userSummary } from "./auth.js";
-import { processBlobDeletes, queueBlobDelete } from "./attachments.js";
+import { deleteBlobNow, processBlobDeletes, queueBlobDelete } from "./attachments.js";
+import { photoBlobId, readJpegBody, storePhoto } from "../photos.js";
 import { evictRemovedMember } from "./calls.js";
 import { conversationView } from "./conversations.js";
+import { orgRoleChangeRefusal, removalAllowed, titleChangeAllowed } from "../roles.js";
 
 const zOptText = zText.nullable().optional();
 
@@ -22,6 +24,16 @@ function slugify(name: string): string {
   );
 }
 
+export type InviteStatus = "active" | "revoked" | "expired" | "used_up";
+
+/** An invitation's one state at [t]: revoked, else expired, else used up, else active. */
+export function inviteStatus(r: { revoked_at: number | null; expires_at: number; uses: number; max_uses: number }, t: number): InviteStatus {
+  if (r.revoked_at) return "revoked";
+  if (r.expires_at <= t) return "expired";
+  if (r.uses >= r.max_uses) return "used_up";
+  return "active";
+}
+
 export function orgSummary(ctx: AppContext, org: any, userId: string) {
   const role = ctx.authz.orgRole(org.id, userId);
   const memberCount = (ctx.db.prepare("SELECT COUNT(*) n FROM org_members WHERE org_id = ?").get(org.id) as { n: number }).n;
@@ -33,6 +45,8 @@ export function orgSummary(ctx: AppContext, org: any, userId: string) {
     myRole: role,
     memberCount,
     createdAt: org.created_at,
+    // The organisation's avatar revision (GET /v1/orgs/:orgId/photo), null without one.
+    photoRev: org.photo_rev ?? null,
   };
 }
 
@@ -62,6 +76,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     authz.requireOrgMember(b.org_id, userId);
     return b;
   };
+  const ownerCount = (orgId: string): number =>
+    (db.prepare("SELECT COUNT(*) n FROM org_members WHERE org_id = ? AND role = 'OWNER'").get(orgId) as { n: number }).n;
   const loadTeam = (id: string, userId: string): TeamRow => {
     const t = authz.team(id);
     if (!t) throw notFound("Team not found");
@@ -162,6 +178,10 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
         canCreateChannels: isAdmin || branches.some((b) => b.canManage) || teams.some((t) => t.canManage),
         canViewDirectory: role !== "GUEST",
         isOwner: role === "OWNER",
+        // Everyone may leave except the last owner, who must make someone else an owner first.
+        canLeave: role !== "OWNER" || ownerCount(orgId) > 1,
+        // Owners and admins see archived branches and teams (GET /v1/orgs/:id/archived); branch managers see their teams.
+        canRestore: isAdmin || branches.some((b) => b.canManage),
       },
     };
   });
@@ -181,6 +201,52 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     ctx.audit({ actorId: userId, orgId, action: "org.update" });
     notifyOrg(ctx, orgId);
     return { org: orgSummary(ctx, db.prepare("SELECT * FROM orgs WHERE id = ?").get(orgId), userId) };
+  });
+
+  // ───────────── Organization avatar (2026-10-19, docs/WORKSPACE_ADMINISTRATION.md) ─────────────
+  // A JPEG like people's photos, stored per revision. Owners and admins set it; every member can see it. It isn't
+  // end-to-end encrypted: like the organisation's name, the server can see it.
+  app.put("/v1/orgs/:orgId/photo", auth, async (req) => {
+    const { userId } = me(req);
+    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    authz.requireOrgAdmin(orgId, userId);
+    const buf = await readJpegBody(req, "Workspace photos");
+    const previous = (db.prepare("SELECT photo_rev FROM orgs WHERE id = ?").get(orgId) as { photo_rev: number | null } | undefined)?.photo_rev ?? null;
+    const rev = Math.max(now(), (previous ?? 0) + 1);
+    await storePhoto(ctx, photoBlobId(orgId, rev), buf);
+    // The organisation may have been deleted while the photo uploaded: then the new blob is removed again.
+    if (db.prepare("UPDATE orgs SET photo_rev = ?, updated_at = ? WHERE id = ?").run(rev, now(), orgId).changes === 0) {
+      await deleteBlobNow(ctx, "profile-photos", photoBlobId(orgId, rev));
+      throw notFound("Organization not found");
+    }
+    if (previous) await deleteBlobNow(ctx, "profile-photos", photoBlobId(orgId, previous));
+    ctx.audit({ actorId: userId, orgId, action: "org.photo" });
+    notifyOrg(ctx, orgId);
+    return { photoRev: rev };
+  });
+
+  app.delete("/v1/orgs/:orgId/photo", auth, async (req) => {
+    const { userId } = me(req);
+    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    authz.requireOrgAdmin(orgId, userId);
+    const previous = (db.prepare("SELECT photo_rev FROM orgs WHERE id = ?").get(orgId) as { photo_rev: number | null }).photo_rev;
+    db.prepare("UPDATE orgs SET photo_rev = NULL, updated_at = ? WHERE id = ?").run(now(), orgId);
+    if (previous) {
+      await deleteBlobNow(ctx, "profile-photos", photoBlobId(orgId, previous));
+      ctx.audit({ actorId: userId, orgId, action: "org.photo", detail: "removed" });
+      notifyOrg(ctx, orgId);
+    }
+    return { photoRev: null };
+  });
+
+  app.get("/v1/orgs/:orgId/photo", auth, async (req, reply) => {
+    const { userId } = me(req);
+    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    authz.requireOrgMember(orgId, userId);
+    const rev = (db.prepare("SELECT photo_rev FROM orgs WHERE id = ?").get(orgId) as { photo_rev: number | null }).photo_rev;
+    const stream = rev ? await ctx.blobs.get("profile-photos", photoBlobId(orgId, rev)) : null;
+    if (!stream) throw notFound("No photo");
+    return reply.header("content-type", "image/jpeg").header("cache-control", "private, max-age=3600").header("etag", `"${rev}"`).send(stream);
   });
 
   // ───────────── Deleting an organization (2026-10-17, docs/WORKSPACES.md › Deleting a workspace) ─────────────
@@ -229,6 +295,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
           db.prepare("DELETE FROM mention_all_events WHERE conversation_id = ?").run(c);
         }
         for (const f of files) queueBlobDelete(ctx, "attachments", f);
+        const photoRev = (db.prepare("SELECT photo_rev FROM orgs WHERE id = ?").get(orgId) as { photo_rev: number | null }).photo_rev;
+        if (photoRev) queueBlobDelete(ctx, "profile-photos", photoBlobId(orgId, photoRev));
         // Direct uploads still open in its channels: their objects or parts are removed by the retention job.
         for (const c of channels) {
           db.prepare(
@@ -245,6 +313,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       })
       .immediate();
     if (!result) return replay();
+    await ctx.prefs.deleteForWorkspace(orgId);
 
     ctx.audit({
       actorId: actor,
@@ -300,7 +369,14 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       now(),
       id,
     );
-    ctx.audit({ actorId: userId, orgId: b.org_id, action: "branch.update", target: id });
+    const archiveChange = body.archived !== undefined && body.archived !== !!b.archived_at;
+    ctx.audit({
+      actorId: userId,
+      orgId: b.org_id,
+      action: archiveChange ? (body.archived ? "branch.archive" : "branch.restore") : "branch.update",
+      target: id,
+      detail: body.name ?? b.name,
+    });
     notifyOrg(ctx, b.org_id);
     return { ok: true };
   });
@@ -409,6 +485,9 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       z.object({ name: zName.optional(), description: zOptText, archived: z.boolean().optional(), departmentId: z.string().max(64).nullable().optional() }),
       req.body,
     );
+    if (body.archived !== undefined && body.archived !== !!team.archived_at && !authz.canArchiveTeam(team, userId)) {
+      throw forbidden("Only org admins or this branch's managers can archive or restore a team");
+    }
     if (authz.scopeArchived(team.branch_id, null)) throw conflict("This team's branch is archived"); // D-14: unarchive the branch first
     if (body.departmentId) {
       // A department groups one branch's teams (D-15): cross-branch teams have none.
@@ -423,7 +502,14 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       now(),
       id,
     );
-    ctx.audit({ actorId: userId, orgId: team.org_id, action: "team.update", target: id });
+    const archiveChange = body.archived !== undefined && body.archived !== !!team.archived_at;
+    ctx.audit({
+      actorId: userId,
+      orgId: team.org_id,
+      action: archiveChange ? (body.archived ? "team.archive" : "team.restore") : "team.update",
+      target: id,
+      detail: body.name ?? team.name,
+    });
     notifyOrg(ctx, team.org_id);
     return { ok: true };
   });
@@ -448,6 +534,37 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       .prepare("SELECT u.*, bm.role AS branch_role FROM branch_members bm JOIN users u ON u.id = bm.user_id WHERE bm.branch_id = ? ORDER BY bm.role, u.display_name")
       .all(id) as any[];
     return { members: rows.map((u) => memberView(ctx, me(req).userId, u, { ...userSummary(u), role: u.branch_role })) };
+  });
+
+  /**
+   * Archived branches and teams the caller may restore (docs/WORKSPACE_ADMINISTRATION.md): every archived branch and
+   * team for owners and admins; a branch manager's archived teams in their branch. Others get empty lists. Archived
+   * channels are listed by GET /v1/orgs/:id/channels?includeArchived=true.
+   */
+  app.get("/v1/orgs/:orgId/archived", auth, async (req) => {
+    const { userId } = me(req);
+    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    authz.requireOrgMember(orgId, userId);
+    const isAdmin = authz.isOrgAdmin(orgId, userId);
+    const branches = isAdmin
+      ? (db.prepare("SELECT * FROM branches WHERE org_id = ? AND archived_at IS NOT NULL ORDER BY name").all(orgId) as BranchRow[])
+      : [];
+    const teams = (db.prepare("SELECT * FROM teams WHERE org_id = ? AND archived_at IS NOT NULL ORDER BY name").all(orgId) as TeamRow[]).filter((t) =>
+      authz.canArchiveTeam(t, userId),
+    );
+    return {
+      branches: branches.map((b) => ({ id: b.id, name: b.name, description: b.description, location: b.location, archivedAt: b.archived_at })),
+      teams: teams.map((t) => ({
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        branchId: t.branch_id,
+        crossBranch: t.branch_id === null,
+        archivedAt: t.archived_at,
+        // A team in an archived branch comes back with its branch (D-14).
+        branchArchived: authz.scopeArchived(t.branch_id, null),
+      })),
+    };
   });
 
   // ───────────── Membership & roles ─────────────
@@ -491,19 +608,15 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const actorRole = authz.requireOrgMember(p.orgId, actor);
     const targetRole = authz.orgRole(p.orgId, p.userId);
     if (!targetRole) throw notFound("Member not found");
+    const self = actor === p.userId;
+    // Rules in roles.ts (docs/WORKSPACE_ADMINISTRATION.md): owners manage everything but keep one owner; admins manage
+    // members and guests and may step down themselves; nobody else changes roles.
     if (body.role && body.role !== targetRole) {
-      // Owners manage everything; admins manage MEMBER/GUEST only and cannot touch other admins/owners.
-      if (actorRole === "OWNER") {
-        if (targetRole === "OWNER" && body.role !== "OWNER") {
-          const owners = (db.prepare("SELECT COUNT(*) n FROM org_members WHERE org_id = ? AND role = 'OWNER'").get(p.orgId) as { n: number }).n;
-          if (owners <= 1) throw conflict("An organization needs at least one owner");
-        }
-      } else if (actorRole === "ADMIN") {
-        const low = (r: OrgRole) => r === "MEMBER" || r === "GUEST";
-        if (!low(targetRole) || !low(body.role)) throw forbidden("Admins can only switch members between Member and Guest");
-      } else throw forbidden();
-    } else if (body.title !== undefined && !authz.isOrgAdmin(p.orgId, actor) && actor !== p.userId) {
-      throw forbidden();
+      const refusal = orgRoleChangeRefusal(actorRole, targetRole, body.role, self, ownerCount(p.orgId));
+      if (refusal) throw refusal.status === 409 ? conflict(refusal.message) : forbidden(refusal.message);
+    }
+    if (body.title !== undefined && !titleChangeAllowed(actorRole, targetRole, self)) {
+      throw forbidden("You can't change this person's title");
     }
     const removedFrom: string[] = [];
     db.transaction(() => {
@@ -532,14 +645,10 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const targetRole = authz.orgRole(p.orgId, p.userId);
     if (!targetRole) throw notFound("Member not found");
     const self = actor === p.userId;
-    if (!self) {
-      if (actorRole === "ADMIN" && (targetRole === "OWNER" || targetRole === "ADMIN")) throw forbidden("Admins cannot remove owners or admins");
-      if (actorRole !== "OWNER" && actorRole !== "ADMIN") throw forbidden();
+    if (!self && !removalAllowed(actorRole, targetRole)) {
+      throw forbidden(actorRole === "ADMIN" ? "Admins cannot remove owners or admins" : "Only owners and admins can remove people");
     }
-    if (targetRole === "OWNER") {
-      const owners = (db.prepare("SELECT COUNT(*) n FROM org_members WHERE org_id = ? AND role = 'OWNER'").get(p.orgId) as { n: number }).n;
-      if (owners <= 1) throw conflict("Transfer ownership before the last owner leaves");
-    }
+    if (targetRole === "OWNER" && ownerCount(p.orgId) <= 1) throw conflict("Transfer ownership before the last owner leaves");
     const affected: string[] = [];
     db.transaction(() => {
       db.prepare("DELETE FROM branch_members WHERE user_id = ? AND branch_id IN (SELECT id FROM branches WHERE org_id = ?)").run(p.userId, p.orgId);
@@ -547,6 +656,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       db.prepare("DELETE FROM org_members WHERE org_id = ? AND user_id = ?").run(p.orgId, p.userId);
       affected.push(...authz.revalidateChannelMemberships(p.orgId, p.userId));
     })();
+    // Their arrangement of this workspace (starred, sections) goes with them.
+    await ctx.prefs.deleteForMember(p.userId, p.orgId);
     ctx.audit({ actorId: actor, orgId: p.orgId, action: self ? "member.leave" : "member.remove", target: p.userId });
     notifyOrg(ctx, p.orgId);
     for (const c of affected) notifyConversation(ctx, c, [p.userId]);
@@ -707,7 +818,10 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
     authz.requireOrgMember(orgId, actor);
     const isAdmin = authz.isOrgAdmin(orgId, actor);
-    const rows = db.prepare("SELECT * FROM invitations WHERE org_id = ? ORDER BY created_at DESC LIMIT 100").all(orgId) as any[];
+    const rows = db
+      .prepare("SELECT i.*, u.display_name AS creator_name FROM invitations i LEFT JOIN users u ON u.id = i.created_by WHERE i.org_id = ? ORDER BY i.created_at DESC LIMIT 100")
+      .all(orgId) as any[];
+    const t = now();
     return {
       invites: rows
         .filter((r) => isAdmin || r.created_by === actor)
@@ -722,7 +836,11 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
           createdAt: r.created_at,
           expiresAt: r.expires_at,
           revokedAt: r.revoked_at,
-          active: !r.revoked_at && r.expires_at > now() && r.uses < r.max_uses,
+          active: inviteStatus(r, t) === "active",
+          // One state, in this order: revoked beats expired beats used up (docs/WORKSPACE_ADMINISTRATION.md).
+          status: inviteStatus(r, t),
+          createdBy: r.created_by,
+          createdByName: r.creator_name ?? null,
         })),
     };
   });
@@ -871,17 +989,22 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const target = r.target ?? "";
     switch (r.action) {
       case "branch.create":
+      case "branch.archive":
+      case "branch.restore":
         return true; // every branch name is listed for org members
       case "department.create": {
         const d = db.prepare("SELECT branch_id FROM departments WHERE id = ?").get(target) as { branch_id: string } | undefined;
         const b = d && authz.branch(d.branch_id);
         return !!b && authz.canAccessBranch(b, viewer);
       }
-      case "team.create": {
+      case "team.create":
+      case "team.archive":
+      case "team.restore": {
         const t = authz.team(target);
         return !!t && (authz.canAccessTeam(t, viewer) || (!!t.branch_id && !!authz.branchRole(t.branch_id, viewer)));
       }
-      case "channel.create": {
+      case "channel.create":
+      case "channel.access": {
         const c = authz.conversation(target);
         return !!c && authz.canViewChannel(c, viewer);
       }

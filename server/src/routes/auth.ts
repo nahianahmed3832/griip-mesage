@@ -419,7 +419,13 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
 export function revokeDeviceRows(ctx: AppContext, deviceId: string, t: number): void {
   ctx.db.prepare("UPDATE devices SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL").run(t, deviceId);
   ctx.db.prepare("DELETE FROM sessions WHERE device_id = ?").run(deviceId);
-  ctx.db.prepare("UPDATE account_sessions SET revoked_at = ?, revoke_reason = 'device_revoked' WHERE device_id = ? AND revoked_at IS NULL").run(t, deviceId);
+  if (ctx.accounts.store.backend === "sqlite") {
+    ctx.db.prepare("UPDATE account_sessions SET revoked_at = ?, revoke_reason = 'device_revoked' WHERE device_id = ? AND revoked_at IS NULL").run(t, deviceId);
+  } else {
+    // MongoDB accounts: marked right after (this runs inside SQLite transactions). Until then the sessions are refused
+    // anyway, because every check reads the device's revocation from SQLite.
+    void ctx.accounts.store.revokeDeviceSessions(deviceId, "device_revoked", t).catch((e) => ctx.log.error({ err: e }, "device sessions not marked revoked"));
+  }
   ctx.db.prepare("DELETE FROM delivery_queue WHERE recipient_device_id = ?").run(deviceId);
   removePushEndpoint(ctx.db, deviceId);
 }

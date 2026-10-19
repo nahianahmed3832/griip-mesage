@@ -6,6 +6,7 @@ import { loadConfig } from "../../src/config.js";
 import type { Mailer } from "../../src/accounts/mailer.js";
 import type { PushDeps } from "../../src/push/service.js";
 import { GriipClient } from "./griipClient.js";
+import { dropTestDatabase, testMongoEnv } from "./mongo.js";
 
 export interface Harness extends BuiltApp {
   baseUrl: string;
@@ -41,6 +42,8 @@ export async function startServer(env: Record<string, string> = {}, opts: { push
     // Account suites make many sign-ins from 127.0.0.1; the per-network limit itself is tested on its own.
     AUTH_RATE_LIMIT_PER_MINUTE: "10000",
     ACCOUNT_EMAILS_PER_NETWORK_PER_HOUR: "10000",
+    // ORBIT_TEST_MONGO_DOMAINS=accounts,preferences runs every suite with those domains in MongoDB (docs/MONGODB.md).
+    ...testMongoEnv(env),
     ...env,
   } as NodeJS.ProcessEnv);
   const built = await buildApp(config, { logger: false, push: opts.push, mailer: opts.mailer });
@@ -69,6 +72,7 @@ export async function startServer(env: Record<string, string> = {}, opts: { push
       const closing = built.app.close();
       built.app.server.closeAllConnections();
       await closing;
+      if (built.ctx.mongo) await dropTestDatabase(built.ctx.config.mongo!);
       built.ctx.db.close();
       fs.rmSync(dir, { recursive: true, force: true });
     },

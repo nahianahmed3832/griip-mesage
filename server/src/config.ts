@@ -1,4 +1,5 @@
 import path from "node:path";
+import { type MongoConfig, mongoConfig } from "./mongo/config.js";
 import { type AccountsConfig, accountsConfig } from "./accounts/config.js";
 import type { S3Config } from "./storage/s3.js";
 
@@ -81,6 +82,8 @@ export interface Config {
   fileMaxBytes: number;
   /** Orbit 2.0 email-and-password accounts (src/accounts). */
   accounts: AccountsConfig;
+  /** MongoDB, for the data domains listed in MONGODB_DOMAINS (docs/MONGODB.md); null: everything stays in SQLite. */
+  mongo: MongoConfig | null;
   /** "invite" (default): registering needs a registration or org invite code. "open": anyone may register. */
   registrationMode: "invite" | "open";
   sessionTtlSeconds: number;
@@ -307,6 +310,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     attachmentMaxBytes,
     fileMaxBytes,
     accounts: accountsConfig(env, dataDir, int),
+    mongo: mongoConfig(env, env.APP_ENV?.trim() || "development", int),
     // No upload quotas by default (0: no limit; owner's decision 2026-10-18, UI-003).
     attachmentUserDailyBytes: Math.max(int("ATTACHMENT_USER_DAILY_BYTES", 0), 0),
     attachmentUserStoredBytes: Math.max(int("ATTACHMENT_USER_STORED_BYTES", 0), 0),

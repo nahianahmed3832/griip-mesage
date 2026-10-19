@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AccountClient, email, MemoryMailer, PASSWORD } from "./support/accounts.js";
 import { type GriipClient, newEd25519, newX25519, sign } from "./support/griipClient.js";
+import { accountRows } from "./support/accountRows.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 
 let h: Harness;
@@ -40,8 +41,8 @@ describe("legacy account migration", () => {
     const unknown = await expectStatus(legacy.req("POST", "/v2/migration/legacy/verify", await legacyProof(legacy, "nosuchuser9")), 401);
     expect(wrongKey.error).toEqual(unknown.error);
     expect(wrongKey.error.code).toBe("legacy_verification_failed");
-    expect(h.ctx.db.prepare("SELECT COUNT(*) n FROM accounts WHERE user_id = ?").get(legacy.userId)).toEqual({ n: 0 });
-    expect(h.ctx.db.prepare("SELECT COUNT(*) n FROM legacy_tickets WHERE user_id = ?").get(legacy.userId)).toEqual({ n: 0 });
+    expect(await accountRows(h).emailsOfUser(legacy.userId)).toHaveLength(0);
+    expect(await accountRows(h).ticketCount(legacy.userId)).toBe(0);
     // A username in local storage isn't proof: a challenge signed by the device key (not the identity key) fails too.
     await expectStatus(legacy.req("POST", "/v2/migration/legacy/verify", await legacyProof(legacy, legacy.username, legacy.device)), 401);
   });
@@ -58,7 +59,7 @@ describe("legacy account migration", () => {
     expect(done).toEqual({ status: "verification_sent", email: address });
     // Retrying the same request is safe: same answer, no second account.
     expect(await legacy.req("POST", "/v2/migration/legacy/complete", { ticket: v.ticket, name: "New Name", email: address, password: PASSWORD })).toEqual(done);
-    expect(h.ctx.db.prepare("SELECT COUNT(*) n FROM accounts WHERE user_id = ?").get(legacy.userId)).toEqual({ n: 1 });
+    expect(await accountRows(h).emailsOfUser(legacy.userId)).toHaveLength(1);
     // The same ticket can't be reused for another address.
     expect((await expectStatus(legacy.req("POST", "/v2/migration/legacy/complete", { ticket: v.ticket, name: "X", email: email("other"), password: PASSWORD }), 401)).error.code).toBe("invalid_ticket");
 
@@ -104,7 +105,7 @@ describe("legacy account migration", () => {
     const legacy = await h.client("legacytypo");
     const { address: typo } = await migrate(legacy, email("tpyo"));
     const { address: right } = await migrate(legacy, email("typo"));
-    expect(h.ctx.db.prepare("SELECT email FROM accounts WHERE user_id = ?").all(legacy.userId)).toEqual([{ email: right }]);
+    expect(await accountRows(h).emailsOfUser(legacy.userId)).toEqual([right]);
     await expectStatus(legacy.req("POST", "/v2/auth/email/verify", { email: typo, code: mailer.verifyCode(typo) , password: PASSWORD }), 400);
     await legacy.req("POST", "/v2/auth/email/verify", { email: right, code: mailer.verifyCode(right) , password: PASSWORD });
   });
@@ -115,13 +116,13 @@ describe("legacy account migration", () => {
     const v = await legacy.req("POST", "/v2/migration/legacy/verify", await legacyProof(legacy));
     const r = await expectStatus(legacy.req("POST", "/v2/migration/legacy/complete", { ticket: v.ticket, name: "X", email: taken.email, password: PASSWORD }), 409);
     expect(r.error.code).toBe("email_taken");
-    expect(h.ctx.db.prepare("SELECT COUNT(*) n FROM accounts WHERE user_id = ?").get(legacy.userId)).toEqual({ n: 0 });
+    expect(await accountRows(h).emailsOfUser(legacy.userId)).toHaveLength(0);
   });
 
   it("expires tickets and rejects forged ones", async () => {
     const legacy = await h.client("legacyexpire");
     const v = await legacy.req("POST", "/v2/migration/legacy/verify", await legacyProof(legacy));
-    h.ctx.db.prepare("UPDATE legacy_tickets SET expires_at = ? WHERE user_id = ?").run(Date.now() - 1, legacy.userId);
+    await accountRows(h).expireTickets(legacy.userId, Date.now() - 1);
     await expectStatus(legacy.req("POST", "/v2/migration/legacy/complete", { ticket: v.ticket, name: "X", email: email("late"), password: PASSWORD }), 401);
     await expectStatus(legacy.req("POST", "/v2/migration/legacy/complete", { ticket: "x".repeat(43), name: "X", email: email("forged"), password: PASSWORD }), 401);
   });

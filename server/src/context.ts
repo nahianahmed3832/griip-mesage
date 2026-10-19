@@ -7,6 +7,8 @@ import type { DB } from "./db.js";
 import type { Hub } from "./hub.js";
 import type { Federation } from "./federation/service.js";
 import type { LiveKitService } from "./livekit.js";
+import type { OrbitMongo } from "./mongo/client.js";
+import type { PreferenceStore } from "./preferences/store.js";
 import type { PushService } from "./push/service.js";
 import type { BlobStore } from "./storage/index.js";
 import { ApiError, badRequest, now, sha256Hex, unauthorized } from "./util.js";
@@ -25,6 +27,10 @@ export interface AppContext {
   push?: PushService;
   /** Orbit 2.0 email-and-password accounts (src/accounts). Set by buildApp right after the context is made. */
   accounts: Accounts;
+  /** Personal navigation preferences (src/preferences): SQLite, or MongoDB when MONGODB_DOMAINS includes "preferences". */
+  prefs: PreferenceStore;
+  /** Present when MONGODB_URI is set: the domains in MONGODB_DOMAINS live there (docs/MONGODB.md). */
+  mongo?: OrbitMongo;
   log: FastifyBaseLogger;
   audit: (e: { actorId?: string | null; orgId?: string | null; action: string; target?: string | null; detail?: string | null }) => void;
 }
@@ -57,8 +63,23 @@ export function parse<T extends z.ZodTypeAny>(schema: T, data: unknown): z.infer
  * Resolve a bearer token → (user, device): a v1 session token, or an Orbit 2.0 access token whose session is bound to a
  * device. Rejects revoked devices, disabled users and ended sessions.
  */
-export function authenticateToken(ctx: AppContext, token: string | undefined): AuthInfo | null {
-  return authenticateV1Token(ctx, token) ?? ctx.accounts?.deviceAuth(token) ?? null;
+export async function authenticateToken(ctx: AppContext, token: string | undefined): Promise<AuthInfo | null> {
+  return authenticateV1Token(ctx, token) ?? (await ctx.accounts?.deviceAuth(token)) ?? null;
+}
+
+/** The authentication of a request, worked out once (the rate limiter and the route's preHandler both need it). */
+const requestAuth = new WeakMap<FastifyRequest, Promise<AuthInfo | null>>();
+export function authenticateRequest(ctx: AppContext, req: FastifyRequest): Promise<AuthInfo | null> {
+  let p = requestAuth.get(req);
+  if (!p) {
+    p = authenticateToken(ctx, bearer(req)).catch((e) => {
+      // The account store (MongoDB) can't be reached: say so, rather than a generic error or a sign-out.
+      ctx.log.error({ err: e }, "authentication store unavailable");
+      throw new ApiError(503, "unavailable", "The server can't check your session right now. Try again in a moment.");
+    });
+    requestAuth.set(req, p);
+  }
+  return p;
 }
 
 /**
@@ -66,7 +87,7 @@ export function authenticateToken(ctx: AppContext, token: string | undefined): A
  * checked by its id, so the access token being renewed every few minutes doesn't close the socket, while a revoked
  * session, device or account still does at once.
  */
-export function stillAuthenticated(ctx: AppContext, token: string | undefined, auth: AuthInfo): boolean {
+export async function stillAuthenticated(ctx: AppContext, token: string | undefined, auth: AuthInfo): Promise<boolean> {
   if (auth.sessionId) return ctx.accounts.sessionStillValid(auth.sessionId, auth.deviceId);
   return authenticateV1Token(ctx, token) !== null;
 }
@@ -94,7 +115,7 @@ export function bearer(req: FastifyRequest): string | undefined {
 
 export function requireAuth(ctx: AppContext) {
   return async (req: FastifyRequest) => {
-    const auth = authenticateToken(ctx, bearer(req));
+    const auth = await authenticateRequest(ctx, req);
     if (!auth) throw unauthorized();
     req.auth = auth;
   };

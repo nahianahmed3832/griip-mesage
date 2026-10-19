@@ -49,8 +49,6 @@ interface Admission {
   id: string;
 }
 
-/** Thrown inside the sign-up transaction when another sign-up made the account first: rolls back its invite use. */
-class SignUpRace extends Error {}
 const normalizeVerifyCode = (code: string) => code.replace(/\D/g, "");
 
 /** A session as the API returns it (docs/ORBIT_2_ARCHITECTURE §6). */
@@ -152,12 +150,19 @@ export class AccountService {
    * can't share an invite's last use. An organisation invite's use is reserved now; the person joins its organisation
    * when their encryption identity is made (identity.ts).
    */
-  private consumeAdmission(code: string): Admission {
+  private consumeAdmission(code: string): string {
     const admission = this.findAdmission(code);
     if (!admission) throw new ApiError(403, "invalid_invite", "This invitation code is invalid, expired or already used");
     const table = admission.kind === "registration-invite" ? "registration_invites" : "invitations";
     this.ctx.db.prepare(`UPDATE ${table} SET uses = uses + 1 WHERE id = ?`).run(admission.id);
-    return admission;
+    return `${admission.kind}:${admission.id}`;
+  }
+
+  /** Gives back the use [consumeAdmission] took ("<kind>:<id>") when the account couldn't be made after all. */
+  private returnAdmission(admittedVia: string): void {
+    const [kind, id] = [admittedVia.slice(0, admittedVia.indexOf(":")), admittedVia.slice(admittedVia.indexOf(":") + 1)];
+    const table = kind === "registration-invite" ? "registration_invites" : "invitations";
+    this.ctx.db.prepare(`UPDATE ${table} SET uses = uses - 1 WHERE id = ? AND uses > 0`).run(id);
   }
 
   /** Open sign-up is limited per network and per day (docs/ABUSE_CONTROLS.md › Registration), before any hashing. */
@@ -189,7 +194,7 @@ export class AccountService {
       this.registeredFrom.hour.record(network, t);
       this.registeredFrom.day.record(network, t);
     }
-    const existing = this.store.accountByEmail(body.email);
+    const existing = await this.store.accountByEmail(body.email);
     if (existing?.email_verified_at) {
       // Same answer as a new sign-up; the owner of the address is told instead.
       await this.sendNotice(existing, network);
@@ -200,8 +205,8 @@ export class AccountService {
       // details change only together with a new code, and the code checks the password (verifyEmail), so whoever set the
       // password is whoever can verify. A legacy link keeps its details until it is verified or redone.
       if (!this.canSendCode(existing, "verify_email", network)) return;
-      if (!existing.legacy_linked_at) this.store.updateAccount(existing.id, { name: body.name, password_hash: hash, password_changed_at: t }, t);
-      await this.sendCode(this.store.accountById(existing.id)!, "verify_email", network);
+      if (!existing.legacy_linked_at) await this.store.updateAccount(existing.id, { name: body.name, password_hash: hash, password_changed_at: t }, t);
+      await this.sendCode((await this.store.accountById(existing.id))!, "verify_email", network);
       return;
     }
     const account: AccountRow = {
@@ -219,19 +224,12 @@ export class AccountService {
       updated_at: t,
       disabled_at: null,
     };
-    let created: AccountRow;
-    try {
-      created = this.store.transaction(() => {
-        const used = admission && body.inviteCode ? this.consumeAdmission(body.inviteCode) : null;
-        const row = { ...account, admitted_via: used ? `${used.kind}:${used.id}` : null };
-        if (!this.store.insertAccount(row)) throw new SignUpRace();
-        return row;
-      });
-    } catch (e) {
-      // A parallel sign-up for the same address won the race (this one's invite use is rolled back): same answer.
-      if (e instanceof SignUpRace) return;
-      throw e;
-    }
+    const code = body.inviteCode;
+    let taken: string | null = null;
+    const take = admission && code ? { take: () => (taken = this.consumeAdmission(code)), undo: () => taken && this.returnAdmission(taken) } : null;
+    const created = await this.store.createAccount(account, take);
+    // A parallel sign-up for the same address won the race (this one's invite use was given back): same answer.
+    if (!created) return;
     this.ctx.audit({ action: "account.register", target: created.id, detail: created.admitted_via });
     await this.sendCode(created, "verify_email", network);
   }
@@ -254,7 +252,7 @@ export class AccountService {
     if (!this.canSendCode(a, purpose, network)) return;
     const code = purpose === "verify_email" ? crypto.randomInt(0, 10 ** VERIFY_CODE_DIGITS).toString().padStart(VERIFY_CODE_DIGITS, "0") : humanCode(RESET_CODE_LENGTH);
     const t = now();
-    this.store.putCode({ account_id: a.id, purpose, code_hash: codeHash(a.id, purpose, code), attempts: 0, created_at: t, expires_at: t + this.cfg.codeTtlMs });
+    await this.store.putCode({ account_id: a.id, purpose, code_hash: codeHash(a.id, purpose, code), attempts: 0, created_at: t, expires_at: t + this.cfg.codeTtlMs });
     this.codesSent.record(this.codeKey(a, purpose), t);
     if (network !== null) this.codeRequests.record(network, t);
     const text = purpose === "verify_email" ? mailTexts.verifyEmail(code) : mailTexts.resetPassword(formatResetCode(code));
@@ -280,18 +278,19 @@ export class AccountService {
    * many the code is dead until a new one is sent. Every failure gives the same answer, whether or not the address has an
    * account or a code, so this reveals nothing about either.
    */
-  private consumeCode(a: AccountRow | undefined, purpose: CodePurpose, code: string, alsoRequired = true): AccountRow {
+  private async consumeCode(a: AccountRow | undefined, purpose: CodePurpose, code: string, alsoRequired = true): Promise<AccountRow> {
     if (!a) throw invalidCode();
-    const row = this.store.code(a.id, purpose);
+    const row = await this.store.code(a.id, purpose);
     if (!row || row.expires_at <= now() || row.attempts >= this.cfg.codeMaxAttempts) throw invalidCode();
     const normalized = purpose === "verify_email" ? normalizeVerifyCode(code) : normalizeCode(code);
     const expected = Buffer.from(row.code_hash, "hex");
     const given = Buffer.from(codeHash(a.id, purpose, normalized), "hex");
     if (!crypto.timingSafeEqual(expected, given) || !alsoRequired) {
-      this.store.countCodeAttempt(a.id, purpose);
+      await this.store.countCodeAttempt(a.id, purpose);
       throw invalidCode();
     }
-    this.store.deleteCode(a.id, purpose);
+    // A code works once: of two requests with it, only the one that removes it goes on.
+    if (!(await this.store.deleteCode(a.id, purpose, row.code_hash))) throw invalidCode();
     return a;
   }
 
@@ -300,7 +299,7 @@ export class AccountService {
    * later sign-up for the same unverified address can't take over the account its owner is verifying.
    */
   async verifyEmail(email: string, code: string, password: string): Promise<void> {
-    const existing = this.store.accountByEmail(email);
+    const existing = await this.store.accountByEmail(email);
     // A verified address has no code: same answer as a wrong one, so this doesn't reveal which addresses are verified.
     const target = existing?.email_verified_at ? undefined : existing;
     if (!target) {
@@ -308,15 +307,15 @@ export class AccountService {
       throw invalidCode();
     }
     const passwordOk = await verifyPassword(password, target.password_hash);
-    const a = this.consumeCode(target, "verify_email", code, passwordOk);
+    const a = await this.consumeCode(target, "verify_email", code, passwordOk);
     const t = now();
-    this.store.updateAccount(a.id, { email_verified_at: t }, t);
+    await this.store.updateAccount(a.id, { email_verified_at: t }, t);
     this.ctx.audit({ actorId: a.user_id, action: "account.verify_email", target: a.id });
   }
 
   async resendVerification(email: string, ip: string): Promise<void> {
     if (!this.mailer.available) throw emailUnavailable();
-    const a = this.store.accountByEmail(email);
+    const a = await this.store.accountByEmail(email);
     if (a && !a.email_verified_at && !a.disabled_at) await this.sendCode(a, "verify_email", networkKey(ip));
   }
 
@@ -354,12 +353,12 @@ export class AccountService {
     }
     if (needsRehash(a.password_hash, this.cfg.scryptLogN)) {
       const t = now();
-      this.store.updateAccount(a.id, { password_hash: await hashPassword(password, this.cfg.scryptLogN) }, t);
+      await this.store.updateAccount(a.id, { password_hash: await hashPassword(password, this.cfg.scryptLogN) }, t);
     }
   }
 
   async login(body: z.infer<typeof loginBody>, ip: string, reply: { header: (k: string, v: string) => unknown }): Promise<SessionResponse> {
-    const a = this.store.accountByEmail(body.email);
+    const a = await this.store.accountByEmail(body.email);
     if (!a) {
       this.requireNotThrottled(body.email, ip, reply);
       await burnPasswordCheck(body.password, this.cfg.scryptLogN);
@@ -374,9 +373,9 @@ export class AccountService {
       if (user?.disabled_at) throw sessionEnded("account_disabled");
     }
     const deviceId = body.device ? this.provenDevice(a, body.device) : null;
-    const issued = this.sessions.issue(a.id, body.deviceName ?? "Orbit app", deviceId, now());
+    const issued = await this.sessions.issue(a.id, body.deviceName ?? "Orbit app", deviceId, now());
     this.ctx.audit({ actorId: a.user_id, action: "account.login", target: issued.session.id, detail: deviceId ? "device" : null });
-    return this.respond(issued, this.store.accountById(a.id)!);
+    return this.respond(issued, (await this.store.accountById(a.id))!);
   }
 
   /**
@@ -397,21 +396,21 @@ export class AccountService {
     return dev.id;
   }
 
-  refresh(refreshToken: string): SessionResponse {
-    const issued = this.sessions.refresh(refreshToken, now(), (s) => {
+  async refresh(refreshToken: string): Promise<SessionResponse> {
+    const issued = await this.sessions.refresh(refreshToken, now(), (s) => {
       if (s.device_id) this.ctx.hub.disconnectDevice(s.device_id, "session revoked");
       this.ctx.audit({ action: "account.refresh_reuse", target: s.id });
     });
-    return this.respond(issued, this.store.accountById(issued.session.account_id)!);
+    return this.respond(issued, (await this.store.accountById(issued.session.account_id))!);
   }
 
   /** Ends sessions and closes their devices' sockets. */
-  revokeSessions(accountId: string, reason: string, exceptSessionId?: string): void {
-    for (const d of this.store.revokeAccountSessions(accountId, reason, now(), exceptSessionId)) this.ctx.hub.disconnectDevice(d, "session revoked");
+  async revokeSessions(accountId: string, reason: string, exceptSessionId?: string): Promise<void> {
+    for (const d of await this.store.revokeAccountSessions(accountId, reason, now(), exceptSessionId)) this.ctx.hub.disconnectDevice(d, "session revoked");
   }
 
-  logout(s: ActiveSession): void {
-    this.store.revokeSession(s.id, "logout", now());
+  async logout(s: ActiveSession): Promise<void> {
+    await this.store.revokeSession(s.id, "logout", now());
     if (s.device_id) this.ctx.hub.disconnectDevice(s.device_id, "signed out");
   }
 
@@ -419,19 +418,19 @@ export class AccountService {
 
   async forgotPassword(email: string, ip: string): Promise<void> {
     if (!this.mailer.available) throw emailUnavailable();
-    const a = this.store.accountByEmail(email);
+    const a = await this.store.accountByEmail(email);
     if (a && !a.disabled_at) await this.sendCode(a, "reset_password", networkKey(ip));
   }
 
   async resetPassword(email: string, code: string, newPassword: string): Promise<void> {
     const weak = weakPassword(newPassword, email);
     if (weak) throw weak;
-    const a = this.consumeCode(this.store.accountByEmail(email), "reset_password", code);
+    const a = await this.consumeCode(await this.store.accountByEmail(email), "reset_password", code);
     const hash = await hashPassword(newPassword, this.cfg.scryptLogN);
     const t = now();
     // The code arrived by email, so the address is proven too.
-    this.store.updateAccount(a.id, { password_hash: hash, password_changed_at: t, email_verified_at: a.email_verified_at ?? t }, t);
-    this.revokeSessions(a.id, "password_reset");
+    await this.store.updateAccount(a.id, { password_hash: hash, password_changed_at: t, email_verified_at: a.email_verified_at ?? t }, t);
+    await this.revokeSessions(a.id, "password_reset");
     // Whoever reset the password owns the inbox: wrong guesses by others no longer keep them out.
     this.failuresByAccount.clear(a.email);
     this.failuresByNetwork.clearPrefix(`${a.email}|`);
@@ -439,13 +438,13 @@ export class AccountService {
   }
 
   async changePassword(s: ActiveSession, current: string, next: string, ip: string, reply: { header: (k: string, v: string) => unknown }): Promise<void> {
-    const a = this.store.accountById(s.account_id)!;
+    const a = (await this.store.accountById(s.account_id))!;
     await this.checkPassword(a, current, ip, reply);
     const weak = weakPassword(next, a.email);
     if (weak) throw weak;
     const t = now();
-    this.store.updateAccount(a.id, { password_hash: await hashPassword(next, this.cfg.scryptLogN), password_changed_at: t }, t);
-    this.revokeSessions(a.id, "password_changed", s.id);
+    await this.store.updateAccount(a.id, { password_hash: await hashPassword(next, this.cfg.scryptLogN), password_changed_at: t }, t);
+    await this.revokeSessions(a.id, "password_changed", s.id);
     this.ctx.audit({ actorId: a.user_id, action: "account.password_change", target: a.id });
   }
 }

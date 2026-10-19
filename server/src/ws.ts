@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { type AppContext, authenticateToken, stillAuthenticated } from "./context.js";
+import type { WebSocket } from "ws";
+import { type AppContext, type AuthInfo, authenticateToken, stillAuthenticated } from "./context.js";
 import { canSeeLastSeen, type ProfileRow } from "./profile.js";
 import { acknowledge } from "./routes/messages.js";
 import { now } from "./util.js";
@@ -38,11 +39,41 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.get("/v1/ws", { websocket: true }, (socket, req) => {
     const token = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : undefined;
-    const auth = authenticateToken(ctx, token);
-    if (!auth) {
-      socket.close(4401, "unauthorized");
-      return;
-    }
+    // Frames are handled one at a time, in order, each after the session is checked again (which may wait on the
+    // account store); frames arriving before authentication finishes wait for it.
+    let frames: Promise<void> = Promise.resolve();
+    let onFrame: ((raw: Buffer) => Promise<void>) | null = null;
+    const early: Buffer[] = [];
+    socket.on("message", (raw: Buffer) => {
+      if (!onFrame) {
+        if (early.length < 32) early.push(raw);
+        return;
+      }
+      const handle = onFrame;
+      frames = frames.then(() => handle(raw)).catch((e) => ctx.log.warn({ err: e }, "websocket frame failed"));
+    });
+    socket.on("error", () => {
+      /* close handler cleans up */
+    });
+    authenticateToken(ctx, token)
+      .then((auth) => {
+        if (!auth) {
+          socket.close(4401, "unauthorized");
+          return;
+        }
+        if (socket.readyState !== socket.OPEN) return;
+        onFrame = open(socket, auth, token);
+        const handle = onFrame;
+        for (const raw of early.splice(0)) frames = frames.then(() => handle(raw)).catch((e) => ctx.log.warn({ err: e }, "websocket frame failed"));
+      })
+      .catch((e) => {
+        ctx.log.error({ err: e }, "websocket authentication failed");
+        socket.close(1011, "try again");
+      });
+  });
+
+  /** A connection authenticated as [auth]: registered with the hub, sent its backlog; returns its frame handler. */
+  const open = (socket: WebSocket, auth: AuthInfo, token: string | undefined): ((raw: Buffer) => Promise<void>) => {
     const conn = hub.add(socket, auth.userId, auth.deviceId);
     db.prepare("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(now(), auth.deviceId);
     socket.send(JSON.stringify({ t: "hello", userId: auth.userId, deviceId: auth.deviceId, serverTime: now() }));
@@ -69,7 +100,7 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
     let budget = burst;
     let budgetAt = now();
 
-    socket.on("message", (raw: Buffer) => {
+    const onFrame = async (raw: Buffer): Promise<void> => {
       alive = true;
       const t = now();
       budget = Math.min(burst, budget + ((t - budgetAt) / 1000) * rate) - 1;
@@ -88,7 +119,7 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
       }
       // Re-check the session on every frame so revoked devices are cut off immediately. (A v2 session is checked by
       // its id: its access token is renewed every few minutes while the socket stays open.)
-      if (!stillAuthenticated(ctx, token, auth)) {
+      if (!(await stillAuthenticated(ctx, token, auth))) {
         socket.close(4401, "session expired");
         return;
       }
@@ -124,15 +155,13 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
         default:
           break;
       }
-    });
+    };
 
     socket.on("close", () => {
       clearInterval(heartbeat);
       hub.remove(conn);
       if (db.open) db.prepare("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(now(), auth.deviceId);
     });
-    socket.on("error", () => {
-      /* close handler cleans up */
-    });
-  });
+    return onFrame;
+  };
 }

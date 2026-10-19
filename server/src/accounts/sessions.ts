@@ -4,6 +4,8 @@ import type { AccountsConfig } from "./config.js";
 import type { AccountStore, ActiveSession, SessionRow } from "./store.js";
 
 const TOKEN_BYTES = 32;
+/** Refreshes that lost the race to rotate one session, retried before giving up (a few at most in practice). */
+const MAX_ROTATION_RACES = 5;
 /** A refresh token replaced this recently is a retry (a lost answer, or a race), not a stolen copy. */
 const REFRESH_RACE_MS = 30_000;
 
@@ -52,7 +54,7 @@ export class SessionService {
     private readonly config: AccountsConfig,
   ) {}
 
-  issue(accountId: string, label: string, deviceId: string | null, t: number): IssuedSession {
+  async issue(accountId: string, label: string, deviceId: string | null, t: number): Promise<IssuedSession> {
     const id = newId("s");
     const accessToken = newToken();
     const refreshToken = refreshTokenFor(id);
@@ -74,7 +76,7 @@ export class SessionService {
       revoked_at: null,
       revoke_reason: null,
     };
-    this.store.insertSession(session);
+    await this.store.insertSession(session);
     return { accessToken, accessTokenExpiresAt: session.access_expires_at, refreshToken, refreshTokenExpiresAt: session.refresh_expires_at, session };
   }
 
@@ -86,14 +88,14 @@ export class SessionService {
    *   of its requests raced), which ends the pair handed out in between;
    * - any other one means a copy is in use: the session is revoked, and [onReuse] disconnects its device and records it.
    */
-  refresh(refreshToken: string, t: number, onReuse: (s: SessionRow) => void): IssuedSession {
-    const s = this.store.sessionById(sessionIdOf(refreshToken) ?? "");
+  async refresh(refreshToken: string, t: number, onReuse: (s: SessionRow) => void, attempt = 0): Promise<IssuedSession> {
+    const s = await this.store.sessionById(sessionIdOf(refreshToken) ?? "");
     if (!s) throw sessionEnded("session_expired");
     const hash = sha256Hex(refreshToken);
     const current = hash === s.refresh_hash;
     const justReplaced = hash === s.previous_refresh_hash && t - s.refreshed_at <= REFRESH_RACE_MS;
     if (!current && !justReplaced) {
-      if (s.revoked_at === null && this.store.revokeSession(s.id, "refresh_reuse", t)) onReuse(s);
+      if (s.revoked_at === null && (await this.store.revokeSession(s.id, "refresh_reuse", t))) onReuse(s);
       throw sessionEnded("session_revoked");
     }
     const problem = sessionProblem(s, t);
@@ -110,7 +112,12 @@ export class SessionService {
       refreshed_at: current ? t : s.refreshed_at,
       last_used_at: t,
     };
-    this.store.rotateSession(s.id, rotation);
+    // Conditional on the refresh hash it read: of two refreshes racing, one rotates and the other is answered as a
+    // retry of a just-replaced token (the same as a lost answer).
+    if (!(await this.store.rotateSession(s.id, rotation, s.refresh_hash))) {
+      if (attempt >= MAX_ROTATION_RACES) throw sessionEnded("session_expired");
+      return this.refresh(refreshToken, t, onReuse, attempt + 1);
+    }
     return {
       accessToken,
       accessTokenExpiresAt: rotation.access_expires_at,
@@ -121,17 +128,17 @@ export class SessionService {
   }
 
   /** The session an access token belongs to, if the token is current and the session may be used. */
-  authenticate(accessToken: string | undefined, t: number): ActiveSession | null {
+  async authenticate(accessToken: string | undefined, t: number): Promise<ActiveSession | null> {
     if (!accessToken || accessToken.length < 20 || accessToken.length > 200) return null;
-    const s = this.store.sessionByAccessHash(sha256Hex(accessToken));
+    const s = await this.store.sessionByAccessHash(sha256Hex(accessToken));
     if (!s || s.access_expires_at <= t || sessionProblem(s, t)) return null;
-    this.store.touchSession(s.id, t);
+    await this.store.touchSession(s.id, t);
     return s;
   }
 
   /** Whether a session may still be used from [deviceId], whatever happened to its access token since (open WebSockets). */
-  stillValid(sessionId: string, deviceId: string, t: number): boolean {
-    const s = this.store.sessionById(sessionId);
+  async stillValid(sessionId: string, deviceId: string, t: number): Promise<boolean> {
+    const s = await this.store.sessionById(sessionId);
     return !!s && s.device_id === deviceId && sessionProblem(s, t) === null;
   }
 }
