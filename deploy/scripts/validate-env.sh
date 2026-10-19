@@ -159,6 +159,14 @@ else
   ok "push wake-ups off (PUSH_UNIFIEDPUSH_HOSTS empty)"
 fi
 
+# Firebase wake-ups (round 6, docs/PUSH_FCM.md): both settings or neither; the key file is checked when the API starts.
+if [ -n "${FCM_PROJECT_ID:-}${FCM_SERVICE_ACCOUNT_FILE:-}" ]; then
+  if [ -z "${FCM_PROJECT_ID:-}" ] || [ -z "${FCM_SERVICE_ACCOUNT_FILE:-}" ]; then err "FCM needs both FCM_PROJECT_ID and FCM_SERVICE_ACCOUNT_FILE"
+  else ok "Firebase wake-ups on for project ${FCM_PROJECT_ID}"; fi
+else
+  ok "Firebase wake-ups off (FCM_PROJECT_ID empty)"
+fi
+
 # compose.yaml mounts ntfy/server.yml into the ntfy service; without it Docker would mount an empty directory instead.
 NT="$DIR/ntfy/server.yml"
 if [ ! -f "$NT" ]; then

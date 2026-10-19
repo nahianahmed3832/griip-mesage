@@ -5,6 +5,10 @@
  *   npm run bot -- call   <peerUsername> [voice|video] [s]  ring the peer, exchange E2EE media
  *   npm run bot -- call   <user1,user2,…> [voice|video] [s]  start a group call with them (they `answer`)
  *   npm run bot -- answer [seconds]                          wait for the peer to call, answer
+ *   npm run bot -- room   <conversationId> [seconds]         open or join a voice room (round 6, docs/VOICE_ROOMS.md);
+ *                                                            passes the room's key on when someone asks for it.
+ *                                                            GRIIP_BOT_HAND=1 raises a hand once connected.
+ *   npm run bot -- orgs                                      list the bot's workspaces and voice rooms
  * <peerUsername> may be a full address (name:server) for someone on another federated server.
  *
  * Env: GRIIP_SERVER (default https://msg.griipbuddy.cloud). The bot's identity is stored in
@@ -425,6 +429,68 @@ async function call(peerName: string, mode: string, seconds: number) {
   await bot.disconnect();
 }
 
+/** The bot's workspaces and their voice rooms (to find a room id for `room`). */
+async function orgs() {
+  const bot = await loadBot();
+  const list = (await bot.req("GET", "/v1/conversations")).conversations as { id: string; type: string; orgId: string | null; name: string | null; voice?: boolean }[];
+  for (const c of list.filter((x) => x.type === "CHANNEL")) log(`${c.voice ? "🎧 voice room" : "# channel"} ${c.name} ${c.id} (org ${c.orgId})`);
+}
+
+/**
+ * A voice room: opens it (a new key, sent to the room's devices) or joins the open one (asks for the key). While in
+ * the room the bot answers key requests, as any connected member of a voice room may (docs/VOICE_ROOMS.md).
+ */
+async function room(conversationId: string, seconds: number) {
+  const bot = await loadBot();
+  // A public room the bot isn't in yet: join it first (already a member: refused harmlessly).
+  await bot.req("POST", `/v1/conversations/${conversationId}/join`).catch(() => {});
+  await bot.connect();
+  const res = await bot.req("POST", "/v1/calls", { conversationId, video: false });
+  if (!res.call.voiceRoom) throw new Error("That conversation isn't a voice room");
+  let key: string;
+  if (!res.joinedExisting) {
+    key = crypto.randomBytes(32).toString("base64");
+    await bot.send(conversationId, { type: "call_invite", callId: res.call.id, video: false, e2eeKey: key }, "control");
+    log(`🎧 opened voice room call ${res.call.id}; key sent via E2EE message`);
+  } else {
+    log(`🎧 joining the open voice room call ${res.call.id}; asking for its key`);
+    const asked = Date.now();
+    let keyMsg: any;
+    while (!keyMsg && Date.now() - asked < 20000) {
+      await bot.send(conversationId, { type: "call_key_request", callId: res.call.id }, "control");
+      keyMsg = await bot.waitFor(() => bot.received.find((m) => m.payload.type === "call_invite" && m.payload.callId === res.call.id), 5000).catch(() => undefined);
+    }
+    if (!keyMsg) throw new Error("No key arrived for the voice room");
+    key = keyMsg.payload.e2eeKey;
+    log(`🔑 key received from ${keyMsg.senderUserId}`);
+  }
+  // Pass the key on to anyone in the room who asks (at most every 5 s).
+  let lastAnswer = 0;
+  let seen = 0;
+  const answering = setInterval(async () => {
+    const reqs = bot.received.filter((m) => m.payload.type === "call_key_request" && m.payload.callId === res.call.id);
+    if (reqs.length > seen && Date.now() - lastAnswer > 5000) {
+      seen = reqs.length;
+      lastAnswer = Date.now();
+      await bot.send(conversationId, { type: "call_invite", callId: res.call.id, video: false, e2eeKey: key }, "control").catch(() => {});
+      log("🔑 passed the room's key on to someone who asked");
+    }
+    for (const e of bot.events.filter((x) => x.t === "call" && x.event === "moderated" && !x.__logged)) {
+      e.__logged = true;
+      log(`🛡 moderated: ${e.action}`);
+    }
+  }, 500);
+  if (process.env.GRIIP_BOT_HAND === "1") {
+    setTimeout(() => bot.req("POST", `/v1/calls/${res.call.id}/hand`, { raised: true }).then(() => log("✋ raised a hand")).catch((e) => log("hand failed", e.message)), 4000);
+  }
+  try {
+    await runMedia(bot, res.call.id, res.media, key, false, seconds, true);
+  } finally {
+    clearInterval(answering);
+  }
+  await bot.disconnect();
+}
+
 async function answer(seconds: number) {
   const bot = await loadBot();
   await bot.connect();
@@ -450,6 +516,14 @@ try {
   if (cmd === "chat") await chat(a1, Number(a2 ?? 300));
   else if (cmd === "call") await call(a1, a2 ?? "video", Number(a3 ?? 60));
   else if (cmd === "answer") await answer(Number(a1 ?? 120));
+  else if (cmd === "room") await room(a1, Number(a2 ?? 120));
+  else if (cmd === "orgs") await orgs();
+  else if (cmd === "join") {
+    // Accepts a workspace invite code (to be in a workspace's voice rooms).
+    const bot = await loadBot();
+    const r = await bot.req("POST", "/v1/invites/accept", { code: a1 });
+    log(`joined workspace ${r.org?.name ?? r.orgId ?? "(accepted)"}`);
+  }
   else console.log("usage: bot chat <user> [s] | call <user> [voice|video] [s] | answer [s]");
 } finally {
   await dispose().catch(() => {});
