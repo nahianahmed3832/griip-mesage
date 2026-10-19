@@ -7,9 +7,10 @@ import { now } from "./util.js";
 
 /**
  * Realtime gateway. Auth uses the same bearer session token as REST, sent in the
- * Authorization header of the upgrade request (never in the URL, so it can't leak into logs).
+ * Authorization header of the upgrade request (never in the URL, so it can't leak into logs). Browsers, which can't set
+ * that header, send it as their first frame instead: {t:"auth", token}.
  *
- * Client → server: {t:"ack", ids}, {t:"typing", c, on}, {t:"ping"}
+ * Client → server: {t:"auth", token} (first frame, header-less sockets only), {t:"ack", ids}, {t:"typing", c, on}, {t:"ping"}
  * Server → client: hello, queue, queue.drained, typing, presence, call, conv.updated,
  *                  org.updated, devices.changed, pong
  */
@@ -38,13 +39,26 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
   };
 
   app.get("/v1/ws", { websocket: true }, (socket, req) => {
-    const token = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : undefined;
+    const header = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : undefined;
+    // Browsers can't set headers on a WebSocket: they send {t:"auth", token} as their first frame instead (never in the
+    // URL, so the token stays out of logs). Any other first frame, or none in time, closes the socket.
+    let awaitingAuthFrame = header === undefined;
+    const authTimer = awaitingAuthFrame ? setTimeout(() => socket.close(4401, "unauthorized"), ctx.config.abuse.wsAuthTimeoutMs) : undefined;
+    socket.once("close", () => clearTimeout(authTimer));
     // Frames are handled one at a time, in order, each after the session is checked again (which may wait on the
     // account store); frames arriving before authentication finishes wait for it.
     let frames: Promise<void> = Promise.resolve();
     let onFrame: ((raw: Buffer) => Promise<void>) | null = null;
     const early: Buffer[] = [];
     socket.on("message", (raw: Buffer) => {
+      if (awaitingAuthFrame) {
+        awaitingAuthFrame = false;
+        clearTimeout(authTimer);
+        const token = authFrameToken(raw);
+        if (token === undefined) socket.close(4401, "unauthorized");
+        else start(token);
+        return;
+      }
       if (!onFrame) {
         if (early.length < 32) early.push(raw);
         return;
@@ -55,21 +69,24 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
     socket.on("error", () => {
       /* close handler cleans up */
     });
-    authenticateToken(ctx, token)
-      .then((auth) => {
-        if (!auth) {
-          socket.close(4401, "unauthorized");
-          return;
-        }
-        if (socket.readyState !== socket.OPEN) return;
-        onFrame = open(socket, auth, token);
-        const handle = onFrame;
-        for (const raw of early.splice(0)) frames = frames.then(() => handle(raw)).catch((e) => ctx.log.warn({ err: e }, "websocket frame failed"));
-      })
-      .catch((e) => {
-        ctx.log.error({ err: e }, "websocket authentication failed");
-        socket.close(1011, "try again");
-      });
+    const start = (token: string | undefined): void => {
+      authenticateToken(ctx, token)
+        .then((auth) => {
+          if (!auth) {
+            socket.close(4401, "unauthorized");
+            return;
+          }
+          if (socket.readyState !== socket.OPEN) return;
+          onFrame = open(socket, auth, token);
+          const handle = onFrame;
+          for (const raw of early.splice(0)) frames = frames.then(() => handle(raw)).catch((e) => ctx.log.warn({ err: e }, "websocket frame failed"));
+        })
+        .catch((e) => {
+          ctx.log.error({ err: e }, "websocket authentication failed");
+          socket.close(1011, "try again");
+        });
+    };
+    if (header !== undefined) start(header);
   });
 
   /** A connection authenticated as [auth]: registered with the hub, sent its backlog; returns its frame handler. */
@@ -164,4 +181,15 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
     });
     return onFrame;
   };
+}
+
+/** The token of a browser's first frame, {t:"auth", token}; undefined for anything else. */
+function authFrameToken(raw: Buffer): string | undefined {
+  if (raw.length > 1024) return undefined;
+  try {
+    const msg = JSON.parse(raw.toString("utf8")) as { t?: unknown; token?: unknown };
+    return msg?.t === "auth" && typeof msg.token === "string" ? msg.token : undefined;
+  } catch {
+    return undefined;
+  }
 }

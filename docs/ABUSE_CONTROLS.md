@@ -136,6 +136,9 @@ All of these are enforced by the server, whatever the app does:
   most: pings, acknowledgements, typing.
 - **`WS_MAX_SOCKETS_PER_DEVICE`** (4): a device opening more connections than this has its **oldest** one closed (code
   4409). Reconnects always work. The app ignores the close of a connection it has already replaced.
+- **`WS_AUTH_TIMEOUT_MS`** (10000, 100–60000): a connection opened without an `Authorization` header (a browser, which
+  can't set one) must send `{"t":"auth","token":"…"}` as its first frame within this time. Another first frame, a wrong
+  token or silence closes it with code 4401 before anything is sent (Orbit Web).
 
 ## Administrators: false positives
 

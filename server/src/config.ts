@@ -193,6 +193,8 @@ export interface AbuseConfig {
   wsFrameBurst: number;
   /** Realtime connections per device; a newer one replaces the oldest. */
   wsMaxSocketsPerDevice: number;
+  /** How long a socket opened without an Authorization header (a browser) has to send its {t:"auth"} frame. */
+  wsAuthTimeoutMs: number;
 }
 
 /** TRUST_PROXY: false | true | comma-separated proxy addresses, CIDRs or names (loopback, linklocal, uniquelocal). */
@@ -223,6 +225,7 @@ function abuseConfig(int: (n: string, d: number) => number): AbuseConfig {
     wsFramesPerSecond: Math.max(int("WS_FRAMES_PER_SECOND", 20), 1),
     wsFrameBurst: Math.max(int("WS_FRAME_BURST", 100), 1),
     wsMaxSocketsPerDevice: Math.max(int("WS_MAX_SOCKETS_PER_DEVICE", 4), 1),
+    wsAuthTimeoutMs: Math.min(Math.max(int("WS_AUTH_TIMEOUT_MS", 10_000), 100), 60_000),
   };
 }
 
