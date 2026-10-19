@@ -111,9 +111,31 @@ sender device"); they predate this release (the oldest queued items were 83 hour
 The Android app is **not** released to Play: `com.meldiq.android` needs a Play Console app and a signed release build
 pointed at the production API; the test APK talks to the local test server.
 
+### 5.1 Same day: Hostinger email and API 0.7.1
+
+**Email (14:10 UTC, owner's go-ahead):** production account email moved from SES to **Hostinger SMTP** as
+`Meldiq <no-reply@meldiq.app>` (was `Orbit <no-reply@griipbuddy.cloud>`). The owner attached the mail plan and created
+the mailbox; DNS (MX, SPF, DKIM, DMARC `p=none`) was already in place. `.env` backup
+`backups/pre-smtp-20261019T141003Z/env.backup`, API restarted alone. Details and rollback: `EMAIL.md`.
+
+**API 0.7.1 (14:33 UTC, owner's go-ahead):** internal-beta `1bba8a8..7a6de0a`: `2d063a7` racing refresh fix (migration
+021, from its own session), `b2ba9af` designed account emails with the embedded logo, `7a6de0a` version.
+
+| Step | Result |
+|---|---|
+| Checks before push | `tsc`, build, server tests **589 passed** in SQLite and in MongoDB mode, `npm audit` 0 vulnerabilities |
+| Backup | `backups/pre-0.7.1-20261019T143130Z`: integrity ok, schema 20, 32 users, `.env` + `compose.yaml` copies; image tagged `0.7.0-rollback`; sources kept as `server.pre-0.7.1` |
+| Rehearsal | migration 021 on a copy of the snapshot, network-less container: schema 21, integrity ok, same counts; copy deleted |
+| Switch | `up -d --no-deps --no-build api` only; healthy after 6 s; LiveKit and ntfy untouched; `validate-env.sh` 0 errors (the same 2 warnings) |
+| Checks | `/healthz` 0.7.1 on msg.griipbuddy.cloud, web.meldiq.app 200, `verify.sh` 0 restarts, no warnings or errors in the log; `previous_refresh_answer` column present; two production test bots exchanged an encrypted greeting and echo; a designed verification email sent from the production container arrived as multipart (text + HTML with the inline logo), DKIM-signed by `meldiq.app` |
+
+Rollback: `image: griip-internal-messaging-api:0.7.0-rollback`, same `up -d --no-deps --no-build api` (migration 021 only
+adds a column; 0.7.0 ignores it).
+
 ## 6. Owner actions and open items
 
-- Hostinger mailbox for `no-reply@meldiq.app` (SMTP) — unchanged from round 5; production mail stays SES.
+- ~~Hostinger mailbox for `no-reply@meldiq.app`~~ done, live since 14:10 UTC (§5.1). Rotate the mailbox password in
+  hPanel (it was shared in chat) and update `SMTP_PASS` in the server `.env`.
 - OAuth registrations for Asana and Zoom (and the earlier connectors).
 - A Firebase project, if FCM is wanted (`PUSH_FCM.md` › Owner steps).
 - HR plan questions (`HR_INTEGRATION_PLAN.md` §6).
