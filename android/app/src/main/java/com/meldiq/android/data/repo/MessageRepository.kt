@@ -99,6 +99,9 @@ class MessageRepository(
     private val uploader: AttachmentUploader = AttachmentUploader(api, null),
     private val notify: (Notice) -> Unit,
 ) {
+    /** Round 3: the person's notification level for a conversation (set by the container from NavPreferences). */
+    var notifyLevelOf: (ConversationEntity) -> String = { com.meldiq.android.data.model.NotifyLevel.ALL }
+
     private val json = GriipJson
     private val files = AttachmentFiles(attachmentsDir)
     private val pending = PendingControls(RoomPendingControlStore(db))
@@ -970,7 +973,8 @@ class MessageRepository(
                 } else if (unread > 0) db.conversations().bumpUnread(item.conversationId, 0, if (mention) 1 else 0)
                 if (viewing && !mine) scope.launch { markConversationRead(item.conversationId) }
                 val muted = conv?.muted == true
-                if (!mine && !viewing && MentionNotify.shouldNotify(settings.current.notifications, muted, mention, personalMention)) {
+                val level = conv?.let { notifyLevelOf(it) } ?: com.meldiq.android.data.model.NotifyLevel.ALL
+                if (!mine && !viewing && MentionNotify.shouldNotify(settings.current.notifications, level, muted, mention, personalMention)) {
                     val title = conv?.let { ConversationRepository.title(it, me) } ?: senderName
                     notify(Notice(item.conversationId, if (conv?.type == "CHANNEL") "#$title" else title, senderName, preview(pl), mention, conv?.type != "DM", canReply = conv?.canPost != false))
                 }

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round 3 strings (docs/LANGUAGES.md). Generated from strings_round3.py. -->
+<resources>
+    <string name="r3_status_set">স্ট্যাটাস দিন</string>
+    <string name="r3_status_title">স্ট্যাটাস দিন</string>
+    <string name="r3_status_hint">আপনার স্ট্যাটাস কী?</string>
+    <string name="r3_status_emoji">ইমোজি</string>
+    <string name="r3_status_clear_after">কখন মুছবে</string>
+    <string name="r3_status_never">মুছবে না</string>
+    <string name="r3_status_30m">৩০ মিনিট</string>
+    <string name="r3_status_1h">১ ঘণ্টা</string>
+    <string name="r3_status_4h">৪ ঘণ্টা</string>
+    <string name="r3_status_today">আজ</string>
+    <string name="r3_status_week">এই সপ্তাহ</string>
+    <string name="r3_status_save">স্ট্যাটাস সংরক্ষণ</string>
+    <string name="r3_status_clear">স্ট্যাটাস মুছুন</string>
+    <string name="r3_status_until">%1$s পর্যন্ত</string>
+    <string name="r3_status_suggestions">পরামর্শ</string>
+    <string name="r3_preset_meeting">মিটিংয়ে আছি</string>
+    <string name="r3_preset_commuting">যাতায়াতে আছি</string>
+    <string name="r3_preset_sick">অসুস্থ</string>
+    <string name="r3_preset_vacation">ছুটিতে</string>
+    <string name="r3_preset_remote">দূর থেকে কাজ করছি</string>
+    <string name="r3_status_needs_update">এই সার্ভার এখনো স্ট্যাটাসের শেষ সময় রাখতে পারে না; আপনি না মোছা পর্যন্ত থাকবে।</string>
+    <string name="r3_pause">নোটিফিকেশন বন্ধ রাখুন</string>
+    <string name="r3_pause_sub">বার্তা আসবে, ফোন চুপ থাকবে। কল তবুও বাজবে।</string>
+    <string name="r3_pause_2h">২ ঘণ্টা</string>
+    <string name="r3_pause_tomorrow">আগামীকাল ৯:০০ পর্যন্ত</string>
+    <string name="r3_paused_until">%1$s পর্যন্ত নোটিফিকেশন বন্ধ</string>
+    <string name="r3_resume">নোটিফিকেশন চালু করুন</string>
+    <string name="r3_peer_paused">%1$s নোটিফিকেশন বন্ধ রেখেছেন</string>
+    <string name="r3_online_count">%1$d জন অনলাইনে</string>
+    <string name="r3_mark_all_read">সব পড়া হয়েছে চিহ্নিত করুন</string>
+    <string name="r3_marked_all_read">পড়া হয়েছে চিহ্নিত</string>
+    <string name="r3_activity_all">সব</string>
+    <string name="r3_activity_mentions">উল্লেখ</string>
+    <string name="r3_activity_threads">থ্রেড</string>
+    <string name="r3_activity_calls">কল</string>
+    <string name="r3_welcome_channel">এটি #%1$s-এর একদম শুরু।</string>
+    <string name="r3_welcome_add_description">বিবরণ যোগ করুন</string>
+    <string name="r3_welcome_add_people">লোক যোগ করুন</string>
+    <string name="r3_copy_link">লিংক কপি করুন</string>
+    <string name="r3_link_copied">লিংক কপি হয়েছে</string>
+    <string name="r3_notify_level">নোটিফিকেশন</string>
+    <string name="r3_notify_all">সব নতুন বার্তা</string>
+    <string name="r3_notify_mentions">শুধু @উল্লেখ</string>
+    <string name="r3_notify_none">কিছুই না</string>
+</resources>

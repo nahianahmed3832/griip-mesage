@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round 3 strings (docs/LANGUAGES.md). Generated from strings_round3.py. -->
+<resources>
+    <string name="r3_status_set">设置状态</string>
+    <string name="r3_status_title">设置状态</string>
+    <string name="r3_status_hint">你现在的状态？</string>
+    <string name="r3_status_emoji">表情</string>
+    <string name="r3_status_clear_after">清除时间</string>
+    <string name="r3_status_never">不清除</string>
+    <string name="r3_status_30m">30 分钟</string>
+    <string name="r3_status_1h">1 小时</string>
+    <string name="r3_status_4h">4 小时</string>
+    <string name="r3_status_today">今天</string>
+    <string name="r3_status_week">本周</string>
+    <string name="r3_status_save">保存状态</string>
+    <string name="r3_status_clear">清除状态</string>
+    <string name="r3_status_until">直到 %1$s</string>
+    <string name="r3_status_suggestions">建议</string>
+    <string name="r3_preset_meeting">开会中</string>
+    <string name="r3_preset_commuting">通勤中</string>
+    <string name="r3_preset_sick">病假</string>
+    <string name="r3_preset_vacation">休假中</string>
+    <string name="r3_preset_remote">远程办公</string>
+    <string name="r3_status_needs_update">此服务器暂不支持状态结束时间，状态会保留到你清除为止。</string>
+    <string name="r3_pause">暂停通知</string>
+    <string name="r3_pause_sub">消息照常送达，手机保持安静。来电仍会响铃。</string>
+    <string name="r3_pause_2h">2 小时</string>
+    <string name="r3_pause_tomorrow">到明天 9:00</string>
+    <string name="r3_paused_until">通知已暂停，直到 %1$s</string>
+    <string name="r3_resume">恢复通知</string>
+    <string name="r3_peer_paused">%1$s 已暂停通知</string>
+    <string name="r3_online_count">%1$d 人在线</string>
+    <string name="r3_mark_all_read">全部标为已读</string>
+    <string name="r3_marked_all_read">已标为已读</string>
+    <string name="r3_activity_all">全部</string>
+    <string name="r3_activity_mentions">提及</string>
+    <string name="r3_activity_threads">话题</string>
+    <string name="r3_activity_calls">通话</string>
+    <string name="r3_welcome_channel">这是 #%1$s 的开端。</string>
+    <string name="r3_welcome_add_description">添加描述</string>
+    <string name="r3_welcome_add_people">添加成员</string>
+    <string name="r3_copy_link">复制链接</string>
+    <string name="r3_link_copied">链接已复制</string>
+    <string name="r3_notify_level">通知</string>
+    <string name="r3_notify_all">所有新消息</string>
+    <string name="r3_notify_mentions">仅 @提及</string>
+    <string name="r3_notify_none">不通知</string>
+</resources>

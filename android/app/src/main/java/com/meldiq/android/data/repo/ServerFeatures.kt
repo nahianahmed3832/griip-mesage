@@ -58,6 +58,10 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         /** Meldiq 2.0: experiments and content-free analytics counts (docs/product/EXPERIMENTS.md). */
         const val EXPERIMENTS = "experiments"
         const val ANALYTICS_EVENTS = "analytics-events"
+        /** Round 3: statuses with an end time, pausing notifications, online counts per conversation. */
+        const val STATUS_EXPIRY = "status-expiry"
+        const val NOTIFICATIONS_PAUSE = "notifications-pause"
+        const val CONVERSATION_PRESENCE = "conversation-presence"
         const val DIRECT_UPLOAD = "direct-upload"
         const val PUSH_UNIFIEDPUSH = "push-unifiedpush"
         /** Firebase Cloud Messaging wake-ups (docs/PUSH_FCM.md). */

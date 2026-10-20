@@ -93,6 +93,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Reply
 import androidx.compose.material.icons.automirrored.rounded.Send
@@ -402,6 +403,14 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         else vm.loadUntil(id) { found -> scope.launch { listState.animateScrollToItem(found) } }
     }
     val peer = conv?.let { ConversationRepository.peer(it, me) }
+    val onlineCount by vm.onlineCount.collectAsStateWithLifecycle()
+    val onlineLabel: (Int) -> String = { n -> ctx.getString(com.meldiq.android.R.string.r3_online_count, n) }
+    androidx.compose.runtime.LaunchedEffect(conversationId, conv?.type) {
+        while (conv?.type == "CHANNEL") {
+            vm.refreshOnline()
+            kotlinx.coroutines.delay(ONLINE_REFRESH_MS)
+        }
+    }
     val peerUser = peer?.let { users[it.id] }
     val isGroup = conv?.type != "DM"
     // People on another server (federation): their presence isn't shared across servers, and calls with them aren't available yet.
@@ -444,8 +453,16 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         threadRoot != null -> "Thread"
         typing.isNotEmpty() -> if (isGroup) "${typing.first()} is typing…" else "typing…"
         conv?.type == "DM" && peer != null && remoteMembers.isNotEmpty() -> "@${peer.username}"
-        conv?.type == "DM" -> if (peerUser?.online == true) "Online" else "Last seen ${TimeFmt.relative(peerUser?.lastSeenAt)}"
-        conv?.type == "CHANNEL" -> listOfNotNull(conv?.scopeName, "${conv?.memberCount ?: 0} members").joinToString(" · ")
+        conv?.type == "DM" -> listOfNotNull(
+            if (peerUser?.online == true) "Online" else "Last seen ${TimeFmt.relative(peerUser?.lastSeenAt)}",
+            // Round 3: their status as they show it to you.
+            listOfNotNull(peer?.statusEmoji, peer?.statusText).joinToString(" ").ifBlank { null },
+        ).joinToString(" · ")
+        conv?.type == "CHANNEL" -> listOfNotNull(
+            conv?.scopeName, "${conv?.memberCount ?: 0} members",
+            // Round 3 (the reference's "2 Online"): servers with conversation-presence.
+            onlineCount?.takeIf { it > 0 }?.let { onlineLabel(it) },
+        ).joinToString(" · ")
         else -> "${conv?.memberCount ?: 0} members"
     }
 
@@ -513,6 +530,14 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         }
         HorizontalDivider(thickness = 1.dp, color = c.border)
         ConnectionBanner(conn, Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) { vm.c.realtime.reconnectNow() }
+        // Round 3 (the reference's "… has paused their notifications"): only when their last-seen setting lets you know.
+        if (conv?.type == "DM" && threadRoot == null && peer?.notificationsPaused == true) {
+            StatusBanner(
+                androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.r3_peer_paused, peer.displayName),
+                BannerKind.Info, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                icon = androidx.compose.material.icons.Icons.Outlined.NotificationsOff,
+            )
+        }
         remoteServers.firstOrNull { it.state == "decommissioned" || it.state == "revoked" }?.let { s ->
             StatusBanner(
                 "${s.domain ?: "Their server"} has shut down. Messages in this conversation can't be delivered.",
@@ -558,7 +583,13 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             Modifier.weight(1f).then(com.meldiq.android.ui.theme.Wallpapers.modifier(chatSettings.wallpaper, c))
                 .observeTouches { composerAux.value = ComposerAux.onOutside(composerAux.value) },
         ) {
-            if (messages.isEmpty() && threadRoot == null) {
+            if (messages.isEmpty() && threadRoot == null && conv?.type == "CHANNEL") {
+                ChannelWelcome(
+                    conv?.name.orEmpty(), conv?.topic, conv?.canManage == true,
+                    onEdit = { nav.navigate(Routes.info(conversationId)) }, onAddPeople = { nav.navigate(Routes.info(conversationId)) },
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            } else if (messages.isEmpty() && threadRoot == null) {
                 EmptyState(
                     Icons.Rounded.Lock, "Say hello 👋",
                     if (remoteMembers.isNotEmpty()) {

@@ -46,6 +46,14 @@ object WorkspaceHomeRules {
     /** Unread DMs listed on Home before "See all". */
     const val UNREAD_DMS_SHOWN = 5
 
+    /**
+     * What "Mark all as read" on Home clears (round 3): this workspace's channels you're in with anything unread. DMs
+     * and groups keep their state; the DMs tab has its own swipe and long-press for them.
+     */
+    fun markAllReadTargets(convs: List<ConversationEntity>, orgId: String?): List<ConversationEntity> =
+        if (orgId == null) emptyList()
+        else convs.filter { it.type == "CHANNEL" && it.orgId == orgId && it.joined && !it.removed && (it.unreadCount > 0 || it.mentionCount > 0) }
+
     /** The rail on Home appears from this many workspaces (with one there is nothing to switch to). */
     const val RAIL_MIN_WORKSPACES = 2
 

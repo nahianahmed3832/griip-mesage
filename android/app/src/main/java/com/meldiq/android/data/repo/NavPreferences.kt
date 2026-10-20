@@ -112,6 +112,14 @@ class NavPreferences(
     }
 
     /** Mutes or unmutes [conv] on this phone at once and on the person's other devices through the server. */
+    /** Round 3: all messages, only mentions, or nothing (kept for every device, like mute). */
+    suspend fun setLevel(conv: ConversationEntity, level: String) {
+        db.conversations().setMuted(conv.id, level != NotifyLevel.ALL)
+        change(workspaceOf(conv), NavOp.Notify(conv.id, level))
+    }
+
+    fun levelOf(conv: ConversationEntity): String = NavPrefsRules.level(prefs.value[workspaceOf(conv)] ?: NavPrefsDto(), conv.id)
+
     suspend fun setMuted(conv: ConversationEntity, muted: Boolean) {
         db.conversations().setMuted(conv.id, muted)
         change(workspaceOf(conv), NavOp.Notify(conv.id, if (muted) NotifyLevel.MENTIONS else NotifyLevel.ALL))

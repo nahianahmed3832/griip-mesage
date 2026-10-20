@@ -39,6 +39,20 @@ class WorkspaceHomeRulesTest {
     }
 
     @Test
+    fun markAllAsReadClearsThisWorkspacesUnreadChannelsOnly() {
+        val convs = listOf(
+            conv("general", orgId = "o1", unread = 2),
+            conv("random", orgId = "o1", mentions = 1),
+            conv("quiet", orgId = "o1"),
+            conv("other", orgId = "o2", unread = 4),
+            conv("left", orgId = "o1", unread = 1, removed = true),
+            conv("ann", type = "DM", unread = 3),
+        )
+        assertEquals(listOf("general", "random"), WorkspaceHomeRules.markAllReadTargets(convs, "o1").map { it.id })
+        assertEquals(emptyList<String>(), WorkspaceHomeRules.markAllReadTargets(convs, null).map { it.id })
+    }
+
+    @Test
     fun theWorkspaceRailMarksWorkspacesWithUnreadChannelsYouHaventMuted() {
         val convs = listOf(
             conv("general", orgId = "o1", unread = 3),

@@ -10,10 +10,11 @@ from strings_meldiq import S as MELDIQ
 from strings_round6 import S as ROUND6
 from strings_round7 import S as ROUND7
 from strings_meldiq2 import S as MELDIQ2
+from strings_round3 import S as ROUND3
 res = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "src", "main", "res")
 # Every key must be unique across the tables (Android merges them into one namespace).
 _seen = {}
-for _name, _table in [("strings", S), ("strings_account", ACCOUNT), ("strings_workspace", WORKSPACE), ("strings_apps", APPS), ("strings_meldiq", MELDIQ), ("strings_round6", ROUND6), ("strings_round7", ROUND7), ("strings_meldiq2", MELDIQ2)]:
+for _name, _table in [("strings", S), ("strings_account", ACCOUNT), ("strings_workspace", WORKSPACE), ("strings_apps", APPS), ("strings_meldiq", MELDIQ), ("strings_round6", ROUND6), ("strings_round7", ROUND7), ("strings_meldiq2", MELDIQ2), ("strings_round3", ROUND3)]:
     for _k in _table:
         if _k in _seen:
             raise SystemExit(f"duplicate string key {_k!r} in {_name} and {_seen[_k]}")
@@ -90,3 +91,10 @@ for lang, folder, idx in [("en", "values", 0), ("zh", "values-zh-rCN", 1), ("bn"
     m2.append('</resources>')
     open(f"{res}/{folder}/strings_meldiq2.xml", "w").write("\n".join(m2) + "\n")
     print(folder, "meldiq2", len(MELDIQ2))
+    # Round 3 strings (2026-10-21): strings_round3.py.
+    r3 = ['<?xml version="1.0" encoding="utf-8"?>', '<!-- Round 3 strings (docs/LANGUAGES.md). Generated from strings_round3.py. -->', '<resources>']
+    for k, v in ROUND3.items():
+        r3.append(f'    <string name="{k}">{esc(v[idx])}</string>')
+    r3.append('</resources>')
+    open(f"{res}/{folder}/strings_round3.xml", "w").write("\n".join(r3) + "\n")
+    print(folder, "round3", len(ROUND3))

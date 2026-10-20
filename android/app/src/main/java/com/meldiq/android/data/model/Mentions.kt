@@ -155,4 +155,8 @@ object MentionNotify {
      */
     fun shouldNotify(notifications: Boolean, muted: Boolean, mention: Boolean, personal: Boolean): Boolean =
         notifications && (!muted || personal)
+
+    /** Round 3: the conversation's level ("Nothing" silences even a mention of you by name); otherwise as above. */
+    fun shouldNotify(notifications: Boolean, level: String, muted: Boolean, mention: Boolean, personal: Boolean): Boolean =
+        level != com.meldiq.android.data.model.NotifyLevel.NONE && shouldNotify(notifications, muted, mention, personal)
 }

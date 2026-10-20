@@ -54,7 +54,10 @@ class ConversationRepository(
 
     suspend fun upsertFromServer(d: ConversationDto): ConversationEntity {
         d.members?.forEach { users.remember(it) }
-        val members = d.members.orEmpty().map { MemberSummary(it.id, it.username, it.displayName, it.avatarColor, it.role, it.online, it.homeServer) }
+        val members = d.members.orEmpty().map { MemberSummary(
+            it.id, it.username, it.displayName, it.avatarColor, it.role, it.online, it.homeServer, it.photoRev,
+            statusText = it.statusText, statusEmoji = it.statusEmoji, notificationsPaused = it.notificationsPaused,
+        ) }
         _federation.update { m -> if (d.federation != null) m + (d.id to d.federation) else m - d.id }
         _mentionAll.update { m -> if (d.canMentionAll) m + (d.id to true) else m - d.id }
         val local = db.conversations().get(d.id)

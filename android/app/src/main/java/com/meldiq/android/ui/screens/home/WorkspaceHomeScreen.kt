@@ -29,6 +29,9 @@ import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.foundation.layout.heightIn
 import com.meldiq.android.ui.switchTab
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.NotificationsOff
+import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.MarkChatRead
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Language
@@ -158,6 +161,13 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
     val orgName = org?.name ?: stringResource(R.string.home_no_workspace)
     val unreadDms = remember(convs) { WorkspaceHomeRules.unreadDms(convs) }
     val unreadByWorkspace = remember(convs) { WorkspaceHomeRules.unreadByWorkspace(convs) }
+    // Round 3: your status and notification pause, from the server (servers with status-expiry / notifications-pause).
+    val myStatus by container.profiles.mine.collectAsStateWithLifecycle()
+    var statusFeatures by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        statusFeatures = container.features.has(com.meldiq.android.data.repo.ServerFeatures.STATUS_EXPIRY) == true
+        if (statusFeatures) container.profiles.refreshStatus()
+    }
     val mentions = remember(convs, org?.id) { WorkspaceHomeRules.mentions(convs, org?.id) }
     // Personal arrangement (starred, sections, collapsed groups): this workspace's and the personal one's, synced.
     val navPrefs by container.navPrefs.prefs.collectAsStateWithLifecycle()
@@ -265,6 +275,12 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
                             unreadOnly, { unreadOnly = it },
                             onExpandAll = { setAllCollapsed(false) },
                             onCollapseAll = { setAllCollapsed(true) },
+                            onMarkAllRead = WorkspaceHomeRules.markAllReadTargets(convs, org?.id).takeIf { it.isNotEmpty() }?.let { targets ->
+                                {
+                                    actions.markAllRead(targets)
+                                    android.widget.Toast.makeText(context, context.getString(R.string.r3_marked_all_read), android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
                         )
                     },
                 )
@@ -409,14 +425,18 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
         HomeSheet.Profile -> ProfileSheet(
             me, myName, meUser?.username?.takeIf { it.isNotBlank() } ?: container.session.session?.username, meUser,
             onDismiss = { sheet = null },
+            status = myStatus, statusAvailable = statusFeatures,
+            onStatus = { sheet = HomeSheet.Status }, onPause = { sheet = HomeSheet.Pause },
         ) { route -> sheet = null; nav.navigate(route) }
+        HomeSheet.Status -> com.meldiq.android.ui.screens.profile.StatusSheet(myStatus, onDismiss = { sheet = null })
+        HomeSheet.Pause -> com.meldiq.android.ui.screens.profile.PauseSheet(myStatus?.notificationsPausedUntil, onDismiss = { sheet = null })
         HomeSheet.Drafts -> DraftsSentSheet(drafts, recentSent, convs, me, onDismiss = { sheet = null }) { convId -> sheet = null; nav.navigate(Routes.conversation(convId)) }
         null -> Unit
     }
     actionsFor?.let { conv ->
         ChatActionsSheet(
             conv, me, onDismiss = { actionsFor = null },
-            onToggleMute = { actions.toggleMute(conv) }, onToggleRead = { actions.toggleRead(conv) },
+            onToggleRead = { actions.toggleRead(conv) },
             onToggleArchive = { archive(conv) }, onInfo = { nav.navigate(Routes.info(conv.id)) },
             starred = conv.id in starredIds, onToggleStar = { actions.toggleStar(conv) },
             onMoveToSection = { movingFor = conv },
@@ -452,11 +472,17 @@ private fun LazyListScope.starredSection(
 }
 
 /** The bottom sheets Home can show (saved across rotation). */
-private enum class HomeSheet { Workspaces, Profile, Drafts, Settings, New, NewChannel }
+private enum class HomeSheet { Workspaces, Profile, Drafts, Settings, New, NewChannel, Status, Pause }
 
 /** Filter and options: show only unread channels, and open or close every channel group at once. */
 @Composable
-private fun HomeFilterButton(unreadOnly: Boolean, onUnreadOnly: (Boolean) -> Unit, onExpandAll: () -> Unit, onCollapseAll: () -> Unit) {
+private fun HomeFilterButton(
+    unreadOnly: Boolean,
+    onUnreadOnly: (Boolean) -> Unit,
+    onExpandAll: () -> Unit,
+    onCollapseAll: () -> Unit,
+    onMarkAllRead: (() -> Unit)? = null,
+) {
     val c = Griip.colors
     var open by remember { mutableStateOf(false) }
     Box {
@@ -477,6 +503,11 @@ private fun HomeFilterButton(unreadOnly: Boolean, onUnreadOnly: (Boolean) -> Uni
                 text = { Text(stringResource(R.string.home_collapse_all), style = Griip.type.bodyMedium, color = c.textPrimary) },
                 leadingIcon = { Icon(Icons.Rounded.UnfoldLess, null, tint = c.textSecondary) },
                 onClick = { open = false; onCollapseAll() },
+            )
+            if (onMarkAllRead != null) DropdownMenuItem(
+                text = { Text(stringResource(R.string.r3_mark_all_read), style = Griip.type.bodyMedium, color = c.textPrimary) },
+                leadingIcon = { Icon(Icons.Outlined.MarkChatRead, null, tint = c.textSecondary) },
+                onClick = { open = false; onMarkAllRead() },
             )
         }
     }
@@ -627,8 +658,20 @@ private fun WorkspacesSheet(
 
 /** You: your name and handle, then the existing profile, settings and account screens. */
 @Composable
-private fun ProfileSheet(me: String?, myName: String, handle: String?, user: UserEntity?, onDismiss: () -> Unit, onOpen: (String) -> Unit) {
+private fun ProfileSheet(
+    me: String?,
+    myName: String,
+    handle: String?,
+    user: UserEntity?,
+    onDismiss: () -> Unit,
+    status: com.meldiq.android.data.api.UserDto? = null,
+    statusAvailable: Boolean = false,
+    onStatus: () -> Unit = {},
+    onPause: () -> Unit = {},
+    onOpen: (String) -> Unit,
+) {
     val c = Griip.colors
+    val now = System.currentTimeMillis()
     GlassSheet(onDismiss) {
         Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             UserAvatar(me, myName.ifBlank { "?" }, user?.avatarColor ?: 0, user?.photoRev, size = 52.dp)
@@ -637,6 +680,22 @@ private fun ProfileSheet(me: String?, myName: String, handle: String?, user: Use
                 Text(myName, style = Griip.type.title, color = c.textPrimary, maxLines = 1)
                 handle?.takeIf { it.isNotBlank() }?.let { Text("@$it", style = Griip.type.bodySmall, color = c.textSecondary, maxLines = 1) }
             }
+        }
+        // Round 3, the reference's profile popover: status and pausing notifications come first.
+        if (statusAvailable) {
+            val line = com.meldiq.android.ui.screens.profile.StatusRules.line(status, now)
+            val until = status?.statusExpiresAt?.takeIf { line != null }
+            MenuRow(
+                Icons.Outlined.EmojiEmotions, line ?: stringResource(R.string.r3_status_set),
+                subtitle = until?.let { stringResource(R.string.r3_status_until, com.meldiq.android.ui.TimeFmt.clock(it)) },
+                onClick = onStatus,
+            )
+            val pausedUntil = status?.notificationsPausedUntil?.takeIf { com.meldiq.android.ui.screens.profile.StatusRules.paused(it, now) }
+            MenuRow(
+                Icons.Outlined.NotificationsOff,
+                pausedUntil?.let { stringResource(R.string.r3_paused_until, com.meldiq.android.ui.TimeFmt.clock(it)) } ?: stringResource(R.string.r3_pause),
+                tint = c.peach, tintBg = c.peachSoft, onClick = onPause,
+            )
         }
         MenuRow(Icons.Outlined.AccountCircle, stringResource(R.string.settings_edit_profile), onClick = { onOpen(Routes.EDIT_PROFILE) })
         MenuRow(Icons.Outlined.Settings, stringResource(R.string.settings_title), onClick = { onOpen(Routes.PROFILE) })

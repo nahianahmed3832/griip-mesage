@@ -36,8 +36,22 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+/** How often an open channel asks who is online (round 3; the server allows 60 a minute). */
+internal const val ONLINE_REFRESH_MS = 60_000L
+
 class ConversationViewModel(val c: AppContainer, val conversationId: String, val threadRoot: String?) : ViewModel() {
     val me = c.session.session?.userId
+
+    /** Round 3: how many members are online (servers with conversation-presence; channels only), null when unknown. */
+    val onlineCount = MutableStateFlow<Int?>(null)
+
+    suspend fun refreshOnline() {
+        if (conversation.value?.type != "CHANNEL") return
+        if (c.features.has(com.meldiq.android.data.repo.ServerFeatures.CONVERSATION_PRESENCE) != true) return
+        runCatching { c.api.get<com.meldiq.android.data.api.ConversationPresenceRes>("/v1/conversations/$conversationId/presence") }
+            .onSuccess { onlineCount.value = it.online }
+    }
+
     val conversation = c.conversations.observe(conversationId).stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val limit = MutableStateFlow(60)
 

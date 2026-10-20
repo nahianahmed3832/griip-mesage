@@ -1,6 +1,7 @@
 package com.meldiq.android.ui.screens.chats
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.outlined.Archive
@@ -32,6 +33,16 @@ class ChatListActions(private val container: AppContainer, private val scope: Co
                 container.conversations.markRead(conv.id)
                 container.notifier.clear(conv.id)
             } else container.conversations.markUnread(conv.id)
+        }
+    }
+
+    /** Round 3 (the reference's server menu "Mark As Read"): every listed chat becomes read, on this phone only. */
+    fun markAllRead(convs: List<ConversationEntity>) {
+        scope.launch {
+            convs.forEach { conv ->
+                container.conversations.markRead(conv.id)
+                container.notifier.clear(conv.id)
+            }
         }
     }
 
@@ -68,7 +79,6 @@ fun ChatActionsSheet(
     conv: ConversationEntity,
     myUserId: String?,
     onDismiss: () -> Unit,
-    onToggleMute: () -> Unit,
     onToggleRead: () -> Unit,
     onToggleArchive: () -> Unit,
     onInfo: () -> Unit,
@@ -89,12 +99,23 @@ fun ChatActionsSheet(
             subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.sec_move_to_sub),
             onClick = { onDismiss(); onMoveToSection() }, trailing = null,
         )
-        MenuRow(
-            if (conv.muted) Icons.Outlined.NotificationsActive else Icons.Outlined.NotificationsOff,
-            if (conv.muted) "Unmute notifications" else "Mute notifications",
-            subtitle = if (conv.muted) null else "You'll still get notified when someone @mentions you",
-            onClick = { onToggleMute(); onDismiss() }, trailing = null,
-        )
+        // Round 3 (the reference's channel notification choices): all messages, only @mentions, or nothing. Kept for
+        // every device like mute was; "Only @mentions" is the old mute.
+        val container = com.meldiq.android.ui.LocalContainer.current
+        val level = container.navPrefs.levelOf(conv)
+        com.meldiq.android.ui.components.SectionHeader(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.r3_notify_level))
+        listOf(
+            com.meldiq.android.data.model.NotifyLevel.ALL to com.meldiq.android.R.string.r3_notify_all,
+            com.meldiq.android.data.model.NotifyLevel.MENTIONS to com.meldiq.android.R.string.r3_notify_mentions,
+            com.meldiq.android.data.model.NotifyLevel.NONE to com.meldiq.android.R.string.r3_notify_none,
+        ).forEach { (value, label) ->
+            MenuRow(
+                if (value == com.meldiq.android.data.model.NotifyLevel.ALL) Icons.Outlined.NotificationsActive else Icons.Outlined.NotificationsOff,
+                androidx.compose.ui.res.stringResource(label),
+                onClick = { container.scope.launch { container.navPrefs.setLevel(conv, value) }; onDismiss() },
+                trailing = if (level == value) ({ androidx.compose.material3.Icon(Icons.Rounded.Check, null, tint = com.meldiq.android.ui.theme.Griip.colors.primary) }) else null,
+            )
+        }
         if (conv.unreadCount > 0) MenuRow(
             Icons.Outlined.MarkChatRead, "Mark as read", subtitle = "Only on this device; no read receipt is sent",
             onClick = { onToggleRead(); onDismiss() }, trailing = null,

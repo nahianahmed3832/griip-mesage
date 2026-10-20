@@ -80,7 +80,13 @@ class AppContainer(
     /** The app directory and connected apps (docs/INTEGRATIONS.md). */
     val integrations = com.meldiq.android.data.repo.IntegrationRepository(api)
     /** Starred, sections, collapsed groups and mutes, kept on the server for every device (docs/WORKSPACE_ADMINISTRATION.md). */
-    val navPrefs = com.meldiq.android.data.repo.NavPreferences(api, db, features, scope)
+    val navPrefs = com.meldiq.android.data.repo.NavPreferences(api, db, features, scope).also { np ->
+        messages.notifyLevelOf = { conv ->
+            com.meldiq.android.data.model.NavPrefsRules.level(
+                np.prefs.value[com.meldiq.android.data.repo.NavPreferences.workspaceOf(conv)] ?: com.meldiq.android.data.api.NavPrefsDto(), conv.id,
+            )
+        }
+    }
     /** Reminders kept and fired by the server, sealed on this phone (docs/REMINDERS.md). */
     val reminderNotifier = com.meldiq.android.notify.ReminderNotifier(app, db) { session.session?.userId }
     val meetingNotifier = com.meldiq.android.notify.MeetingNotifier(app, api)

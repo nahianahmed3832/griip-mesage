@@ -100,10 +100,20 @@ object Channels {
 class MessageNotifier(private val context: Context) {
     private val history = NotificationHistory()
 
+    companion object {
+        const val PREFS = "griip_settings"
+        /** Round 3: messages make no notification until this time (ms); calls still ring. */
+        const val PAUSED_UNTIL = "notificationsPausedUntil"
+
+        fun paused(pausedUntil: Long, now: Long): Boolean = pausedUntil > now
+    }
+
     fun show(n: Notice) {
         // Settings › Notifications & Sounds (docs/NOTIFICATIONS.md): group chats can be silenced (mentions still come
         // through), and message text can be hidden from notifications altogether.
-        val prefs = context.getSharedPreferences("griip_settings", Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        // Paused from the profile sheet (round 3): the message still arrives and counts as unread, silently.
+        if (paused(prefs.getLong(PAUSED_UNTIL, 0L), System.currentTimeMillis())) return
         if (n.isGroup && !n.mention && !prefs.getBoolean("groupNotifications", true)) return
         if (!prefs.getBoolean("notificationPreviews", true)) {
             showPrivate(n)

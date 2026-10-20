@@ -70,6 +70,12 @@ import kotlinx.serialization.json.JsonObject
 // ───────── Users & devices ─────────
 @Serializable data class UserDto(
     val id: String, val username: String, val displayName: String, val avatarColor: Int = 0, val statusText: String? = null,
+    /** Round 3 (servers with `status-expiry`): the status emoji and when it ends; your own profile only for the end. */
+    val statusEmoji: String? = null, val statusExpiresAt: Long? = null,
+    /** Your own profile (servers with `notifications-pause`): notifications are paused until then, or null. */
+    val notificationsPausedUntil: Long? = null,
+    /** Someone else, when their last-seen setting lets you see it: they have paused notifications. */
+    val notificationsPaused: Boolean? = null,
     val online: Boolean? = null, val lastSeenAt: Long? = null, val identityKey: String? = null, val fingerprint: String? = null,
     val role: String? = null, val orgRole: String? = null, val title: String? = null,
     /** A guest's membership end date in the workspace directory (round 7), null without one. */
@@ -220,6 +226,8 @@ object OrgKind {
     const val TEAM = "team"
     const val COMMUNITY = "community"
 }
+/** Round 3: GET /v1/conversations/:id/presence. */
+@Serializable data class ConversationPresenceRes(val online: Int = 0, val members: Int = 0)
 @Serializable data class OrgsRes(val orgs: List<OrgDto>)
 @Serializable data class OrgRes(val org: OrgDto)
 /** `alreadyMember`: this person had already joined through the invite (a retry); the server used nothing up. */

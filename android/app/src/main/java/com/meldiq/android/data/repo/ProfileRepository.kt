@@ -40,6 +40,47 @@ class ProfileRepository(
         return u
     }
 
+    /** Your status and notification pause as the server last said (round 3); null until loaded. */
+    private val _mine = kotlinx.coroutines.flow.MutableStateFlow<UserDto?>(null)
+    val mine: kotlinx.coroutines.flow.StateFlow<UserDto?> = _mine
+
+    /** Loads your own profile for the status and pause rows (keeps the last answer when offline). */
+    suspend fun refreshStatus() {
+        runCatching { me() }.onSuccess { remember(it) }
+    }
+
+    /**
+     * Sets or clears your status (round 3). [text] and [emoji] null with [expiresAt] null clears it; the server ends it
+     * at [expiresAt]. Explicit JSON nulls, because the shared encoder leaves nulls out.
+     */
+    suspend fun setStatus(text: String?, emoji: String?, expiresAt: Long?): UserDto =
+        patchMe(
+            kotlinx.serialization.json.buildJsonObject {
+                put("statusText", text?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+                put("statusEmoji", emoji?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+                put("statusExpiresAt", expiresAt?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+            },
+        )
+
+    /** Pauses notifications on every device until [until], or resumes them (null). */
+    suspend fun setNotificationsPaused(until: Long?): UserDto =
+        patchMe(
+            kotlinx.serialization.json.buildJsonObject {
+                put("notificationsPausedUntil", until?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+            },
+        )
+
+    private suspend fun patchMe(body: kotlinx.serialization.json.JsonObject): UserDto =
+        api.patch<kotlinx.serialization.json.JsonObject, UserRes>("/v1/users/me", body).user.also { users.remember(it); remember(it) }
+
+    private fun remember(u: UserDto) {
+        _mine.value = u
+        // The notifier reads this before showing a message (MessageNotifier.show): pausing works on this phone even
+        // while it can't reach the server.
+        context.getSharedPreferences(com.meldiq.android.notify.MessageNotifier.PREFS, Context.MODE_PRIVATE).edit()
+            .putLong(com.meldiq.android.notify.MessageNotifier.PAUSED_UNTIL, u.notificationsPausedUntil ?: 0L).apply()
+    }
+
     suspend fun setPrivacy(field: PrivacyField, audience: Audience): Map<String, String> =
         api.put<Map<String, String>, PrivacyRes>("/v1/users/me/privacy", mapOf(field.wire to audience.wire)).privacy
 

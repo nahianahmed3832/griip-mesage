@@ -124,6 +124,10 @@ data class MemberSummary(
     val homeServer: String? = null,
     /** Profile photo revision when its owner shows it to everyone (server ≥ 2026-10-17). */
     val photoRev: Long? = null,
+    /** Round 3: their status and emoji as you may see them, and whether they paused notifications. */
+    val statusText: String? = null,
+    val statusEmoji: String? = null,
+    val notificationsPaused: Boolean? = null,
 )
 
 @Serializable

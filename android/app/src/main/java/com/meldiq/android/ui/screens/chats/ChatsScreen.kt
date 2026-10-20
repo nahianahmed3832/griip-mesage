@@ -291,7 +291,7 @@ private fun ChatsHome(nav: NavHostController, request: DmListRequest) {
         val starredIds by container.navPrefs.starred.collectAsStateWithLifecycle()
         ChatActionsSheet(
             conv, me, onDismiss = { actionsFor = null },
-            onToggleMute = { actions.toggleMute(conv) }, onToggleRead = { actions.toggleRead(conv) },
+            onToggleRead = { actions.toggleRead(conv) },
             onToggleArchive = { toggleArchive(conv) }, onInfo = { nav.navigate(Routes.info(conv.id)) },
             starred = conv.id in starredIds, onToggleStar = { actions.toggleStar(conv) },
             onMoveToSection = { movingFor = conv },

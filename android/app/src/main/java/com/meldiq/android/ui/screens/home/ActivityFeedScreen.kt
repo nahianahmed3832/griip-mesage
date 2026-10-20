@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -67,6 +68,9 @@ private fun ActivityFeed(nav: NavHostController) {
         WorkspaceHomeRules.missedCalls(callLog, System.currentTimeMillis(), WorkspaceHomeRules.MISSED_CALLS_ACTIVITY_WINDOW_MS).take(WorkspaceHomeRules.MISSED_CALLS_SHOWN)
     }
     val byId = remember(convs) { convs.associateBy { it.id } }
+    // Round 3 (the reference's Activity chips): All, Mentions, Threads, Calls.
+    var filter by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(ActivityRules.Filter.ALL) }
+    val show = { s: ActivityRules.Filter -> ActivityRules.shows(filter, s) }
 
     Box(Modifier.fillMaxSize().background(c.background)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + LocalTabBarPadding.current)) {
@@ -80,12 +84,20 @@ private fun ActivityFeed(nav: NavHostController) {
                 item(key = "loading") { ShimmerList(5, Modifier.padding(top = 8.dp)) }
                 return@LazyColumn
             }
-            if (mentions.isEmpty() && missed.isEmpty() && threads.isEmpty()) {
+            item(key = "filters") {
+                com.meldiq.android.ui.components.ChipRow(Modifier.padding(vertical = 4.dp)) {
+                    listOf(
+                        ActivityRules.Filter.ALL to R.string.r3_activity_all, ActivityRules.Filter.MENTIONS to R.string.r3_activity_mentions,
+                        ActivityRules.Filter.THREADS to R.string.r3_activity_threads, ActivityRules.Filter.CALLS to R.string.r3_activity_calls,
+                    ).forEach { (f, label) -> com.meldiq.android.ui.components.PillChip(stringResource(label), filter == f, { filter = f }) }
+                }
+            }
+            if (ActivityRules.empty(filter, mentions.size, threads.size, missed.size)) {
                 item(key = "empty") {
                     EmptyState(Icons.Outlined.NotificationsNone, stringResource(R.string.activity_empty_title), stringResource(R.string.activity_empty_body))
                 }
             }
-            if (mentions.isNotEmpty()) {
+            if (show(ActivityRules.Filter.MENTIONS) && mentions.isNotEmpty()) {
                 item(key = "mentions-header") { HomeSectionHeader(stringResource(R.string.home_mentions)) }
                 items(mentions, key = { "mention-" + it.id }) { conv ->
                     HomeListRow(
@@ -97,7 +109,7 @@ private fun ActivityFeed(nav: NavHostController) {
                     )
                 }
             }
-            if (threads.isNotEmpty()) {
+            if (show(ActivityRules.Filter.THREADS) && threads.isNotEmpty()) {
                 item(key = "threads-header") { HomeSectionHeader(stringResource(R.string.activity_threads)) }
                 items(threads, key = { "thread-" + it.rootId }) { t ->
                     val conv = byId[t.conversationId]
@@ -115,7 +127,7 @@ private fun ActivityFeed(nav: NavHostController) {
                     )
                 }
             }
-            if (missed.isNotEmpty()) {
+            if (show(ActivityRules.Filter.CALLS) && missed.isNotEmpty()) {
                 item(key = "calls-header") {
                     HomeSectionHeader(
                         stringResource(R.string.activity_missed_calls),
@@ -139,7 +151,7 @@ private fun ActivityFeed(nav: NavHostController) {
                     )
                 }
             }
-            orgLog?.let { log ->
+            if (filter == ActivityRules.Filter.ALL) orgLog?.let { log ->
                 item(key = "org-log") {
                     HomeListRow(
                         stringResource(R.string.activity_workspace_log),
@@ -152,5 +164,20 @@ private fun ActivityFeed(nav: NavHostController) {
                 }
             }
         }
+    }
+}
+
+/** Round 3: which Activity sections a filter chip shows (unit-tested in `StatusRulesTest`). */
+object ActivityRules {
+    enum class Filter { ALL, MENTIONS, THREADS, CALLS }
+
+    fun shows(filter: Filter, section: Filter): Boolean = filter == Filter.ALL || filter == section
+
+    /** Whether the chosen filter has nothing to show (then the empty state appears). */
+    fun empty(filter: Filter, mentions: Int, threads: Int, calls: Int): Boolean = when (filter) {
+        Filter.ALL -> mentions + threads + calls == 0
+        Filter.MENTIONS -> mentions == 0
+        Filter.THREADS -> threads == 0
+        Filter.CALLS -> calls == 0
     }
 }

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round 3 strings (docs/LANGUAGES.md). Generated from strings_round3.py. -->
+<resources>
+    <string name="r3_status_set">Set a status</string>
+    <string name="r3_status_title">Set a status</string>
+    <string name="r3_status_hint">What\'s your status?</string>
+    <string name="r3_status_emoji">Emoji</string>
+    <string name="r3_status_clear_after">Clear after</string>
+    <string name="r3_status_never">Don\'t clear</string>
+    <string name="r3_status_30m">30 minutes</string>
+    <string name="r3_status_1h">1 hour</string>
+    <string name="r3_status_4h">4 hours</string>
+    <string name="r3_status_today">Today</string>
+    <string name="r3_status_week">This week</string>
+    <string name="r3_status_save">Save status</string>
+    <string name="r3_status_clear">Clear status</string>
+    <string name="r3_status_until">Until %1$s</string>
+    <string name="r3_status_suggestions">Suggestions</string>
+    <string name="r3_preset_meeting">In a meeting</string>
+    <string name="r3_preset_commuting">Commuting</string>
+    <string name="r3_preset_sick">Out sick</string>
+    <string name="r3_preset_vacation">Vacationing</string>
+    <string name="r3_preset_remote">Working remotely</string>
+    <string name="r3_status_needs_update">This server can\'t keep a status end time yet; the status stays until you clear it.</string>
+    <string name="r3_pause">Pause notifications</string>
+    <string name="r3_pause_sub">Messages still arrive; your phones stay quiet. Calls still ring.</string>
+    <string name="r3_pause_2h">2 hours</string>
+    <string name="r3_pause_tomorrow">Until tomorrow, 9:00</string>
+    <string name="r3_paused_until">Notifications paused until %1$s</string>
+    <string name="r3_resume">Resume notifications</string>
+    <string name="r3_peer_paused">%1$s has paused notifications</string>
+    <string name="r3_online_count">%1$d online</string>
+    <string name="r3_mark_all_read">Mark all as read</string>
+    <string name="r3_marked_all_read">Marked as read</string>
+    <string name="r3_activity_all">All</string>
+    <string name="r3_activity_mentions">Mentions</string>
+    <string name="r3_activity_threads">Threads</string>
+    <string name="r3_activity_calls">Calls</string>
+    <string name="r3_welcome_channel">This is the very beginning of #%1$s.</string>
+    <string name="r3_welcome_add_description">Add description</string>
+    <string name="r3_welcome_add_people">Add people</string>
+    <string name="r3_copy_link">Copy link</string>
+    <string name="r3_link_copied">Link copied</string>
+    <string name="r3_notify_level">Notifications</string>
+    <string name="r3_notify_all">All new messages</string>
+    <string name="r3_notify_mentions">Only @mentions</string>
+    <string name="r3_notify_none">Nothing</string>
+</resources>
