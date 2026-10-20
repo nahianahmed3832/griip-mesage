@@ -1,13 +1,35 @@
+import type { DB } from "./db.js";
 import { ApiError } from "./util.js";
 
 /**
- * Entitlements (docs/PLANS.md): the one place where plan-based limits will live, so the app and the routes never
- * hard-code what a plan allows. No plans, prices or limits have been decided, so by default every capability is
- * available and nothing is limited. An operator can set server-wide limits (ENTITLEMENT_LIMITS, for example
- * "integrations.installed=10,integrations.webhooks=20"); they apply to every workspace and are shown honestly.
- * There is no upgrade flow, so no upgrade is ever offered.
+ * Entitlements (docs/PLANS.md, docs/USAGE_AND_PLANS.md): the one place where plan-based limits live, so the apps and the
+ * routes never hard-code what a plan allows. No plans, prices or limits have been decided, so by default every
+ * capability is available and nothing is limited. Two layers, both shown honestly:
+ *
+ * - server-wide limits set by the operator (ENTITLEMENT_LIMITS, for example "integrations.installed=10,members=50");
+ * - a workspace's own limits, set by platform admins (round 7), which replace the server-wide one for that workspace.
+ *
+ * Limits are enforced on the server when something is added. Nothing here charges anyone, and there is no upgrade
+ * flow, so no upgrade is ever offered.
  */
-export const ENTITLEMENT_KEYS = ["integrations.installed", "integrations.webhooks", "integrations.notifications", "roles.custom"] as const;
+export const ENTITLEMENT_KEYS = [
+  "integrations.installed",
+  "integrations.webhooks",
+  "integrations.notifications",
+  "roles.custom",
+  // Round 7 (docs/USAGE_AND_PLANS.md).
+  "members",
+  "storage.bytes",
+  "workflows",
+  "documents",
+  "groups",
+  "api_keys",
+  "webhooks.outgoing",
+  // Round 7 (docs/AI.md): AI requests per calendar month.
+  "ai.requests_monthly",
+  // Round 8 (docs/UNIFIED_INBOX.md): connected business accounts.
+  "inbox.accounts",
+] as const;
 export type EntitlementKey = (typeof ENTITLEMENT_KEYS)[number];
 
 const LABELS: Record<EntitlementKey, string> = {
@@ -15,20 +37,33 @@ const LABELS: Record<EntitlementKey, string> = {
   "integrations.webhooks": "Incoming webhooks",
   "integrations.notifications": "App notifications in channels",
   "roles.custom": "Custom roles",
+  members: "Members (including guests)",
+  "storage.bytes": "Stored file bytes",
+  workflows: "Workflows",
+  documents: "Documents",
+  groups: "User groups",
+  api_keys: "Active API keys",
+  "webhooks.outgoing": "Outgoing webhooks",
+  "ai.requests_monthly": "AI requests this month",
+  "inbox.accounts": "Connected business accounts",
 };
 
 export interface EntitlementConfig {
   limits: Readonly<Partial<Record<EntitlementKey, number>>>;
 }
 
+export function isEntitlementKey(k: string): k is EntitlementKey {
+  return (ENTITLEMENT_KEYS as readonly string[]).includes(k);
+}
+
 export function entitlementConfig(env: NodeJS.ProcessEnv): EntitlementConfig {
   const limits: Partial<Record<EntitlementKey, number>> = {};
   for (const part of (env.ENTITLEMENT_LIMITS ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
     const [key, value] = part.split("=").map((s) => s.trim());
-    if (!(ENTITLEMENT_KEYS as readonly string[]).includes(key)) throw new Error(`ENTITLEMENT_LIMITS: unknown capability "${key}" (known: ${ENTITLEMENT_KEYS.join(", ")})`);
+    if (!isEntitlementKey(key)) throw new Error(`ENTITLEMENT_LIMITS: unknown capability "${key}" (known: ${ENTITLEMENT_KEYS.join(", ")})`);
     const n = Number(value);
     if (!Number.isInteger(n) || n < 0) throw new Error(`ENTITLEMENT_LIMITS: ${key} needs a whole number`);
-    limits[key as EntitlementKey] = n;
+    limits[key] = n;
   }
   return { limits };
 }
@@ -36,31 +71,64 @@ export function entitlementConfig(env: NodeJS.ProcessEnv): EntitlementConfig {
 export interface EntitlementView {
   key: EntitlementKey;
   label: string;
-  /** null: no limit on this server. */
+  /** null: no limit. */
   limit: number | null;
   used: number;
   available: boolean;
+  /** Where the limit comes from: this workspace's own, the server's, or none. */
+  source: "workspace" | "server" | "none";
 }
 
 export class Entitlements {
-  constructor(private readonly config: EntitlementConfig) {}
+  constructor(
+    private readonly config: EntitlementConfig,
+    private readonly db?: DB,
+  ) {}
 
-  /** What a workspace has: the same for every workspace until plans exist. */
-  plan(usage: Readonly<Partial<Record<EntitlementKey, number>>>) {
-    const capabilities: EntitlementView[] = ENTITLEMENT_KEYS.map((key) => {
-      const limit = this.config.limits[key] ?? null;
-      const used = usage[key] ?? 0;
-      return { key, label: LABELS[key], limit, used, available: limit === null || used < limit };
-    });
-    // No plan has been assigned or priced: say so instead of inventing one.
-    return { plan: null, source: Object.keys(this.config.limits).length ? "server" : "none", capabilities, upgrade: null };
+  private overrides(orgId: string | undefined): Partial<Record<EntitlementKey, number>> {
+    if (!orgId || !this.db?.open) return {};
+    const rows = this.db.prepare("SELECT key, limit_value FROM org_entitlements WHERE org_id = ?").all(orgId) as { key: string; limit_value: number }[];
+    return Object.fromEntries(rows.filter((r) => isEntitlementKey(r.key)).map((r) => [r.key, r.limit_value]));
   }
 
-  /** Refuses adding one more of [key] once a server-wide limit is reached (409, with the limit in the message). */
-  check(key: EntitlementKey, used: number): void {
-    const limit = this.config.limits[key];
-    if (limit !== undefined && used >= limit) {
-      throw new ApiError(409, "limit_reached", `This server allows ${limit} ${LABELS[key].toLowerCase()} per workspace, and this workspace has reached it.`, { key, limit });
+  /** The limit that applies to [orgId] for [key], and where it comes from. */
+  limitFor(key: EntitlementKey, orgId?: string): { limit: number | null; source: EntitlementView["source"] } {
+    const own = this.overrides(orgId)[key];
+    if (own !== undefined) return { limit: own, source: "workspace" };
+    const server = this.config.limits[key];
+    return server !== undefined ? { limit: server, source: "server" } : { limit: null, source: "none" };
+  }
+
+  /** What a workspace has. With no plans, the answer says so (plan: null) and lists the limits that apply, if any. */
+  plan(usage: Readonly<Partial<Record<EntitlementKey, number>>>, orgId?: string) {
+    const capabilities: EntitlementView[] = ENTITLEMENT_KEYS.map((key) => {
+      const { limit, source } = this.limitFor(key, orgId);
+      const used = usage[key] ?? 0;
+      return { key, label: LABELS[key], limit, used, available: limit === null || used < limit, source };
+    });
+    const source = capabilities.some((c) => c.source === "workspace") ? "workspace" : Object.keys(this.config.limits).length ? "server" : "none";
+    return { plan: null, source, capabilities, upgrade: null };
+  }
+
+  /** Refuses adding [adding] more of [key] once the limit that applies would be passed (409, with the limit). */
+  check(key: EntitlementKey, used: number, orgId?: string, adding = 1): void {
+    const { limit, source } = this.limitFor(key, orgId);
+    if (limit !== null && used + adding > limit) {
+      const who = source === "workspace" ? "This workspace's plan allows" : "This server allows";
+      const amount = key === "storage.bytes" ? `${Math.round(limit / 1_048_576)} MB of stored files` : `${limit} ${LABELS[key].toLowerCase()}`;
+      throw new ApiError(409, "limit_reached", `${who} ${amount}${key === "storage.bytes" ? "" : " per workspace"}, and this workspace has reached it.`, { key, limit });
     }
+  }
+
+  /** Platform admins only (the caller checks): sets or clears ([null]) a workspace's own limits. */
+  setLimits(orgId: string, actorId: string, limits: Partial<Record<EntitlementKey, number | null>>, at: number): void {
+    if (!this.db) throw new Error("entitlements without a database");
+    const db = this.db;
+    db.transaction(() => {
+      for (const [key, value] of Object.entries(limits)) {
+        if (value === null || value === undefined) db.prepare("DELETE FROM org_entitlements WHERE org_id = ? AND key = ?").run(orgId, key);
+        else db.prepare("INSERT INTO org_entitlements (org_id, key, limit_value, set_by, set_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(org_id, key) DO UPDATE SET limit_value = excluded.limit_value, set_by = excluded.set_by, set_at = excluded.set_at").run(orgId, key, value, actorId, at);
+      }
+    })();
   }
 }

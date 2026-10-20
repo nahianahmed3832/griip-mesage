@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AlternateEmail
+import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -169,6 +170,19 @@ fun SettingsHub(nav: NavHostController) {
                     subtitle = AppLanguage.current(LocalContext.current).let { if (it == "system") stringResource(R.string.lang_system) else AppLanguage.nativeName(it) },
                     tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.LANGUAGE) },
                 )
+            }
+        }
+        item {
+            // Platform admins only (PLATFORM_ADMIN_USER_IDS on the server): the server's own health (round 7).
+            var platformAdmin by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { platformAdmin = runCatching { container.api.get<com.meldiq.android.data.api.PlatformMeRes>("/v1/platform/me").platformAdmin }.getOrDefault(false) }
+            if (platformAdmin) {
+                GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), contentPadding = PaddingValues(4.dp)) {
+                    MenuRow(
+                        Icons.Outlined.MonitorHeart, stringResource(R.string.ops_health), subtitle = stringResource(R.string.ops_health_sub),
+                        tint = c.success, tintBg = c.successSoft, onClick = { nav.navigate(Routes.SERVICE_HEALTH) },
+                    )
+                }
             }
         }
         item {

@@ -47,7 +47,41 @@ export function orgSummary(ctx: AppContext, org: any, userId: string) {
     createdAt: org.created_at,
     // The organisation's avatar revision (GET /v1/orgs/:orgId/photo), null without one.
     photoRev: org.photo_rev ?? null,
+    // Round 7 guest policy (docs/WORKSPACE_C5.md).
+    guestsAllowed: org.guests_allowed === undefined ? true : !!org.guests_allowed,
+    guestMaxDays: org.guest_max_days ?? null,
   };
+}
+
+/**
+ * Takes someone out of a workspace with everything that hangs off the membership (branches, teams, channels, groups,
+ * meeting invitations, personal arrangement and app connections), tells everyone concerned and records why:
+ * "left", "removed" by [actorId], or "expired" (a guest's end date, actorId null). Callers check permissions first.
+ */
+export async function removeFromWorkspace(ctx: AppContext, orgId: string, userId: string, actorId: string | null, reason: "left" | "removed" | "expired") {
+  const { db, authz } = ctx;
+  const role = authz.orgRole(orgId, userId);
+  if (!role) return;
+  const affected: string[] = [];
+  db.transaction(() => {
+    db.prepare("DELETE FROM branch_members WHERE user_id = ? AND branch_id IN (SELECT id FROM branches WHERE org_id = ?)").run(userId, orgId);
+    db.prepare("DELETE FROM team_members WHERE user_id = ? AND team_id IN (SELECT id FROM teams WHERE org_id = ?)").run(userId, orgId);
+    db.prepare("DELETE FROM user_group_members WHERE user_id = ? AND group_id IN (SELECT id FROM user_groups WHERE org_id = ?)").run(userId, orgId);
+    db.prepare("DELETE FROM meeting_participants WHERE user_id = ? AND meeting_id IN (SELECT id FROM meetings WHERE org_id = ?)").run(userId, orgId);
+    db.prepare("DELETE FROM org_members WHERE org_id = ? AND user_id = ?").run(orgId, userId);
+    affected.push(...authz.revalidateChannelMemberships(orgId, userId));
+  })();
+  // Their arrangement of this workspace (starred, sections) goes with them.
+  await ctx.prefs.deleteForMember(userId, orgId);
+  // And their personal app connections in this workspace (revoked, deleted).
+  await ctx.integrations.forgetMember(orgId, userId);
+  ctx.audit({ actorId, orgId, action: reason === "left" ? "member.leave" : reason === "removed" ? "member.remove" : "member.expire", target: userId });
+  const name = (db.prepare("SELECT display_name FROM users WHERE id = ?").get(userId) as { display_name: string } | undefined)?.display_name ?? "";
+  ctx.workflows?.emit({ type: "member.left", key: `left:${userId}:${now()}`, orgId, depth: 0, member: { id: userId, name, role, leaveReason: reason === "left" ? "left" : "removed" } });
+  notifyOrg(ctx, orgId);
+  for (const c of affected) notifyConversation(ctx, c, [userId]);
+  ctx.hub.sendToUser(userId, { t: "org.updated", orgId });
+  await evictRemovedMember(ctx, userId, affected);
 }
 
 /** Members who should be told that something in this org changed. */
@@ -190,6 +224,10 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
         canViewAudit: perms.has("audit.view"),
         canViewUsage: perms.has("workspace.usage.view"),
         canViewApps: perms.has("integrations.view"),
+        // Round 7: workspace workflows (docs/WORKFLOWS.md).
+        canManageWorkflows: perms.has("workflows.manage"),
+        canManageGroups: perms.has("groups.manage"),
+        canManageDevelopers: perms.has("developers.manage"),
         canManageApps: perms.has("integrations.install") || perms.has("integrations.configure"),
         canManagePolicies: perms.has("policies.manage"),
         canTransferOwnership: perms.has("workspace.transfer"),
@@ -595,7 +633,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const like = q ? `%${q.toLowerCase().replace(/[%_\\]/g, (c) => "\\" + c)}%` : "%";
     const rows = db
       .prepare(
-        `SELECT u.*, m.role AS org_role, m.title FROM org_members m JOIN users u ON u.id = m.user_id
+        `SELECT u.*, m.role AS org_role, m.title, m.expires_at FROM org_members m JOIN users u ON u.id = m.user_id
          WHERE m.org_id = ? AND (lower(u.display_name) LIKE ? ESCAPE '\\' OR u.username LIKE ? ESCAPE '\\')
          ORDER BY CASE m.role WHEN 'OWNER' THEN 0 WHEN 'ADMIN' THEN 1 WHEN 'MEMBER' THEN 2 ELSE 3 END, u.display_name LIMIT 500`,
       )
@@ -619,6 +657,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
           ...userSummary(u),
           orgRole: u.org_role,
           title: u.title,
+          // Round 7: a guest's membership end date (docs/WORKSPACE_C5.md), null without one.
+          expiresAt: u.expires_at ?? null,
           branches: branchRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.branch_id, role: r.role })),
           teams: teamRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.team_id, role: r.role })),
           customRoles: roleRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.id, name: r.name, color: r.color })),
@@ -660,6 +700,13 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       }
     })();
     if (body.role) ctx.audit({ actorId: actor, orgId: p.orgId, action: "member.role", target: p.userId, detail: `${targetRole}→${body.role}` });
+    if (body.role && body.role !== targetRole) {
+      const name = (ctx.db.prepare("SELECT display_name FROM users WHERE id = ?").get(p.userId) as { display_name: string } | undefined)?.display_name ?? "";
+      ctx.workflows?.emit({
+        type: "member.role_changed", key: `role:${p.userId}:${now()}`, orgId: p.orgId, depth: 0,
+        member: { id: p.userId, name, role: targetRole, newRole: body.role },
+      });
+    }
     notifyOrg(ctx, p.orgId);
     // The person's devices drop the channels; members refresh them. Envelopes still addressed to
     // the person's devices are refused by the recipient-set check (409 device_mismatch).
@@ -685,22 +732,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       );
     }
     if (targetRole === "OWNER" && ownerCount(p.orgId) <= 1) throw conflict("Transfer ownership before the last owner leaves");
-    const affected: string[] = [];
-    db.transaction(() => {
-      db.prepare("DELETE FROM branch_members WHERE user_id = ? AND branch_id IN (SELECT id FROM branches WHERE org_id = ?)").run(p.userId, p.orgId);
-      db.prepare("DELETE FROM team_members WHERE user_id = ? AND team_id IN (SELECT id FROM teams WHERE org_id = ?)").run(p.userId, p.orgId);
-      db.prepare("DELETE FROM org_members WHERE org_id = ? AND user_id = ?").run(p.orgId, p.userId);
-      affected.push(...authz.revalidateChannelMemberships(p.orgId, p.userId));
-    })();
-    // Their arrangement of this workspace (starred, sections) goes with them.
-    await ctx.prefs.deleteForMember(p.userId, p.orgId);
-    // And their personal app connections in this workspace (revoked, deleted).
-    await ctx.integrations.forgetMember(p.orgId, p.userId);
-    ctx.audit({ actorId: actor, orgId: p.orgId, action: self ? "member.leave" : "member.remove", target: p.userId });
-    notifyOrg(ctx, p.orgId);
-    for (const c of affected) notifyConversation(ctx, c, [p.userId]);
-    ctx.hub.sendToUser(p.userId, { t: "org.updated", orgId: p.orgId });
-    await evictRemovedMember(ctx, p.userId, affected);
+    await removeFromWorkspace(ctx, p.orgId, p.userId, actor, self ? "left" : "removed");
     return { ok: true };
   });
 
@@ -819,10 +851,16 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
         teamId: z.string().max(64).nullable().optional(),
         maxUses: z.number().int().min(1).max(500).default(1),
         expiresInHours: z.number().int().min(1).max(24 * 30).default(72),
+        // Round 7: how long a guest's membership lasts once they join (docs/WORKSPACE_C5.md).
+        guestDays: z.number().int().min(1).max(365).nullish(),
       }),
       req.body,
     );
     const actorRole = authz.requireOrgMember(orgId, actor);
+    const policy = db.prepare("SELECT guests_allowed, guest_max_days FROM orgs WHERE id = ?").get(orgId) as { guests_allowed: number; guest_max_days: number | null } | undefined;
+    if (body.role === "GUEST" && policy && !policy.guests_allowed) throw conflict("This workspace doesn't allow guests");
+    if (body.role !== "GUEST" && body.guestDays) throw badRequest("Only guest invitations have an end date");
+    const guestDays = body.role === "GUEST" ? (policy?.guest_max_days ? Math.min(body.guestDays ?? policy.guest_max_days, policy.guest_max_days) : (body.guestDays ?? null)) : null;
     let branchId = body.branchId ?? null;
     if (body.teamId) {
       const team = authz.team(body.teamId);
@@ -842,12 +880,12 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const t = now();
     const expiresAt = t + body.expiresInHours * 3600_000;
     db.prepare(
-      `INSERT INTO invitations (id, org_id, code_hash, code_hint, role, branch_id, team_id, max_uses, created_by, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, orgId, sha256Hex(code), code.slice(-4), body.role, branchId, body.teamId ?? null, body.maxUses, actor, t, expiresAt);
+      `INSERT INTO invitations (id, org_id, code_hash, code_hint, role, branch_id, team_id, max_uses, created_by, created_at, expires_at, guest_days)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, orgId, sha256Hex(code), code.slice(-4), body.role, branchId, body.teamId ?? null, body.maxUses, actor, t, expiresAt, guestDays);
     ctx.audit({ actorId: actor, orgId, action: "invite.create", target: id, detail: body.role });
     return {
-      invite: { id, code: `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}`, role: body.role, branchId, teamId: body.teamId ?? null, maxUses: body.maxUses, uses: 0, expiresAt },
+      invite: { id, code: `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}`, role: body.role, branchId, teamId: body.teamId ?? null, maxUses: body.maxUses, uses: 0, expiresAt, guestDays },
     };
   });
 
@@ -976,7 +1014,10 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     }
     const id = newId("c");
     const t = now();
-    const autoJoin = body.kind === "ANNOUNCEMENT" ? true : body.kind === "PRIVATE" ? false : body.autoJoin ?? body.scope !== "ORG";
+    // Public channels are joined by everyone who may see them unless the creator opts out (autoJoin: false). Until
+    // round 7 org-wide public channels defaulted to opt-in, and neither app sends autoJoin, so people added to a
+    // workspace weren't in its channels and couldn't read or post there (bug 6).
+    const autoJoin = body.kind === "ANNOUNCEMENT" ? true : body.kind === "PRIVATE" ? false : body.autoJoin ?? true;
     db.transaction(() => {
       db.prepare(
         `INSERT INTO conversations (id, type, org_id, scope, scope_id, kind, name, topic, auto_join, created_by, created_at, updated_at, voice)
@@ -1001,6 +1042,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       }
     })();
     ctx.audit({ actorId: actor, orgId, action: body.voice ? "voice_room.create" : "channel.create", target: id, detail: `${body.kind} ${body.name}` });
+    ctx.workflows?.emit({ type: "channel.created", key: `channel:${id}`, orgId, depth: 0, channel: { id, name: body.name, kind: body.kind, scope: body.scope } });
     notifyConversation(ctx, id);
     return { channel: conversationView(ctx, authz.conversation(id)!, actor) };
   });
@@ -1045,11 +1087,13 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
         return !!t && (authz.canAccessTeam(t, viewer) || (!!t.branch_id && !!authz.branchRole(t.branch_id, viewer)));
       }
       case "channel.create":
-      case "channel.access": {
+      case "channel.access":
+      case "voice_room.create": {
         const c = authz.conversation(target);
         return !!c && authz.canViewChannel(c, viewer);
       }
       case "call.start":
+      case "voice_room.open":
         return authz.isMember(target, viewer);
       case "invite.accept":
       case "member.leave":

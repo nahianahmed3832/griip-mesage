@@ -44,6 +44,16 @@ export const PERMISSION_KEYS = [
   "integrations.connect_workspace",
   "integrations.uninstall",
   "integrations.activity",
+  // Automation (round 7, docs/WORKFLOWS.md)
+  "workflows.manage",
+  // User groups (round 7, docs/WORKSPACE_C5.md)
+  "groups.manage",
+  // Developer access (round 7, docs/DEVELOPER_API.md)
+  "developers.manage",
+  // Unified Inbox (round 8, docs/UNIFIED_INBOX.md)
+  "inbox.view",
+  "inbox.reply",
+  "inbox.manage",
   // Security and administration
   "audit.view",
   "policies.manage",
@@ -103,6 +113,12 @@ const DEFS: Record<Permission, Def> = {
   "integrations.connect_workspace": { category: "integrations", label: "Connect workspace accounts", description: "Connect a shared account the whole workspace's app uses (for example a GitHub organisation).", admin: true },
   "integrations.uninstall": { category: "integrations", label: "Disconnect and uninstall apps", description: "Disconnect shared accounts and uninstall apps.", admin: true },
   "integrations.activity": { category: "integrations", label: "View app activity", description: "See apps' recent events, errors and health.", admin: true },
+  "developers.manage": { category: "integrations", label: "Manage API keys and webhooks", description: "Create and revoke the workspace's API keys and outgoing webhooks (they never reach messages or private channels).", admin: true },
+  "groups.manage": { category: "members", label: "Manage user groups", description: "Create groups such as Marketing or Engineering, choose their members, and remove groups.", admin: true },
+  "workflows.manage": { category: "integrations", label: "Manage workflows", description: "Create, change, test and switch off the workspace's workflows (they run with their owner's rights).", admin: true },
+  "inbox.view": { category: "messaging", label: "Work in the customer inbox", description: "See customer conversations from connected business accounts, write internal notes, and assign conversations.", restrictable: true },
+  "inbox.reply": { category: "messaging", label: "Reply to customers", description: "Send replies to customers on Messenger, Instagram and WhatsApp from the inbox.", restrictable: true },
+  "inbox.manage": { category: "messaging", label: "Manage the customer inbox", description: "Connect and disconnect business accounts, set up queues, AI and automation, see reports, and erase a customer's data.", admin: true },
   "audit.view": { category: "security", label: "View the audit log", description: "See every administrative change in the workspace.", admin: true },
   "policies.manage": { category: "security", label: "Manage policies", description: "Change the workspace's app policy (approval, blocked apps).", admin: true },
 };
@@ -208,6 +224,15 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     color: "#8FB59A",
     icon: "finance",
     permissions: ["workspace.usage.view"],
+    denies: [],
+  },
+  {
+    key: "support_agent",
+    name: "Support Agent",
+    description: "Answers customers in the Unified Inbox.",
+    color: "#7FA7D9",
+    icon: "support",
+    permissions: ["inbox.view", "inbox.reply"],
     denies: [],
   },
   {

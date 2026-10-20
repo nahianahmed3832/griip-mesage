@@ -64,6 +64,18 @@ async function enter(c: GriipClient): Promise<{ id: string; room: string }> {
   return { id: r.call.id, room: r.media.room };
 }
 
+describe("text channels (round 7)", () => {
+  it("refuses to start a call in a text channel, while DMs still ring", async () => {
+    const text = (await owner.req("POST", `/v1/orgs/${orgId}/channels`, { name: "general-text", scope: "ORG", kind: "PUBLIC", autoJoin: true })).channel.id;
+    await expectStatus(member.req("POST", "/v1/calls", { conversationId: text, video: false }), 409);
+    await expectStatus(member.req("POST", "/v1/calls", { conversationId: text, video: true }), 409);
+    const dm = (await member.req("POST", "/v1/conversations/dm", { userId: other.userId })).conversation.id;
+    const r = await member.req("POST", "/v1/calls", { conversationId: dm, video: false });
+    expect(r.call.state).toBe("RINGING");
+    await member.req("POST", `/v1/calls/${r.call.id}/end`);
+  });
+});
+
 describe("voice rooms", () => {
   it("advertises the feature and creates a voice channel", async () => {
     expect((await owner.req("GET", "/v1/server-info")).features).toContain("voice-rooms");

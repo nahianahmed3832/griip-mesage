@@ -59,6 +59,8 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val NAV_PREFERENCES = "nav-preferences"
         /** Messages saved for later in the personal preferences document (2026-10-19, Home › Later). */
         const val SAVED_ITEMS = "saved-items"
+        /** Universal search over server-readable content (round 7, docs/SEARCH.md). */
+        const val SEARCH = "search"
         /** Organisation avatars (2026-10-19). */
         const val ORG_PHOTOS = "org-photos"
         /** Custom workspace roles and delegated permissions (2026-10-19, docs/WORKSPACE_ROLES.md). */

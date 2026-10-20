@@ -16,6 +16,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddBusiness
 import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material.icons.outlined.DeleteForever
@@ -149,6 +155,9 @@ fun WorkspaceScreen(nav: NavHostController) {
     LaunchedEffect(Unit) { vm.refresh() }
 
     val d = detail
+    // AI shows once it can be used here, or for admins who can switch it on (round 7, docs/AI.md).
+    val aiStatus = com.meldiq.android.ui.screens.workspace.ai.rememberAiStatus(d?.org?.id)
+    val aiOffered = aiStatus?.available == true || (aiStatus?.canManage == true && aiStatus.providers.isNotEmpty())
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             com.meldiq.android.ui.components.GriipTopBar("Workspace", subtitle = d?.org?.name, onBack = { nav.popBackStack() }) {
@@ -253,7 +262,8 @@ fun WorkspaceScreen(nav: NavHostController) {
                             if (ch.joined) ArrowKnob()
                             else PillButton("Join", { vm.join(ch) { id -> nav.navigate(Routes.conversation(id)) } }, tone = ButtonTone.Glass, showKnob = false, height = 38.dp)
                         },
-                        onClick = if (ch.joined) ({ nav.navigate(Routes.conversation(ch.id)) }) else null,
+                        // A channel you haven't joined joins on a tap of the row too, not only its Join button (round 7).
+                        onClick = if (ch.joined) ({ nav.navigate(Routes.conversation(ch.id)) }) else ({ vm.join(ch) { id -> nav.navigate(Routes.conversation(id)) } }),
                     )
                 }
                 if (d.permissions.canCreateChannels) item {
@@ -282,6 +292,50 @@ fun WorkspaceScreen(nav: NavHostController) {
                             Icons.Outlined.Apps, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.manage_apps),
                             subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.manage_apps_sub), tint = c.peach, tintBg = c.peachSoft,
                             onClick = { nav.navigate(Routes.apps(d.org.id)) },
+                        )
+                        // Meetings and groups (round 7, docs/WORKSPACE_C5.md).
+                        MenuRow(
+                            Icons.Outlined.Event, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.mtg_title),
+                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.mtg_menu_sub), tint = c.peach, tintBg = c.peachSoft,
+                            onClick = { nav.navigate(Routes.meetings(d.org.id, canSchedule = d.org.myRole != "GUEST")) },
+                        )
+                        if (d.org.myRole != "GUEST") MenuRow(
+                            Icons.Outlined.Groups, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.grp_title),
+                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.grp_menu_sub), tint = c.lavender, tintBg = c.lavenderSoft,
+                            onClick = { nav.navigate(Routes.groups(d.org.id, canManage = d.permissions.canManageGroups)) },
+                        )
+                        if (d.permissions.canManageOrg && d.permissions.canCreateChannels) MenuRow(
+                            Icons.Outlined.AutoAwesome, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.tpl_title),
+                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.tpl_menu_sub),
+                            onClick = { sheet = "templates" },
+                        )
+                        // Documents (round 7): everyone sees the ones shared with them; guests can't create.
+                        MenuRow(
+                            Icons.Outlined.Description, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.doc_title),
+                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.doc_menu_sub), tint = c.primary, tintBg = c.primarySoft,
+                            onClick = { nav.navigate(Routes.documents(d.org.id, canCreate = d.org.myRole != "GUEST")) },
+                        )
+                        // The customer inbox (round 8, docs/UNIFIED_INBOX.md): for people with inbox access.
+                        if ("inbox.view" in d.permissions.effective) MenuRow(
+                            Icons.Outlined.Forum, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ib_title),
+                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ib_menu_sub), tint = c.success, tintBg = c.successSoft,
+                            onClick = { nav.navigate(Routes.inbox(d.org.id, canManage = "inbox.manage" in d.permissions.effective)) },
+                        )
+                        // AI (round 7, docs/AI.md): off until the server has a provider and an admin turns it on.
+                        if (d.org.myRole != "GUEST" && aiOffered) MenuRow(
+                            Icons.Outlined.AutoAwesome, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ai_title),
+                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ai_menu_sub), tint = c.lavender, tintBg = c.lavenderSoft,
+                            onClick = { nav.navigate(Routes.ai(d.org.id)) },
+                        )
+                        if (d.permissions.canManageWorkflows) MenuRow(
+                            Icons.Outlined.Bolt, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.wf_title),
+                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.wf_menu_sub), tint = c.success, tintBg = c.successSoft,
+                            onClick = { nav.navigate(Routes.workflows(d.org.id)) },
+                        )
+                        if (d.permissions.canManageDevelopers) MenuRow(
+                            Icons.Outlined.Code, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.dev_title),
+                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.dev_menu_sub),
+                            onClick = { nav.navigate(Routes.developer(d.org.id)) },
                         )
                         if (d.permissions.canViewAudit) MenuRow(
                             Icons.Outlined.Policy, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.manage_audit),
@@ -365,6 +419,7 @@ fun WorkspaceScreen(nav: NavHostController) {
             "department" -> CreateDepartmentSheet(det, { sheet = null }) { vm.refresh() }
             "team" -> CreateTeamSheet(det, branchFilter, { sheet = null }) { vm.refresh() }
             "channel" -> CreateChannelSheet(det, branchFilter, { sheet = null }) { id -> vm.refresh(); nav.navigate(Routes.conversation(id)) }
+            "templates" -> TemplatesSheet(det.org.id, onApplied = { sheet = null; vm.refresh() }, onDismiss = { sheet = null })
             "settings" -> WorkspaceSettingsSheet(det, onDismiss = { sheet = null }, onChanged = { vm.refresh() }, onLeft = { name ->
                 sheet = null
                 android.widget.Toast.makeText(ctx, ctx.getString(com.meldiq.android.R.string.ws_left, name), android.widget.Toast.LENGTH_SHORT).show()

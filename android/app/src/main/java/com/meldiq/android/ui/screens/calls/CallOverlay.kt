@@ -227,7 +227,7 @@ fun CallOverlay() {
             // In a bottom corner it sits above the sharing banner or an error as well as the controls.
             val banners = s.screenSharing || s.error != null || s.routeError != null
             MovablePreview(previewCorner, stage, showChrome, bottomExtra = if (banners) 64.dp else 0.dp, onCorner = { previewCorner = it }) {
-                VideoTile(local.camera, Modifier.fillMaxSize().clip(Shapes.tile).border(2.dp, Color.White.copy(alpha = 0.7f), Shapes.tile), mirror = true)
+                VideoTile(local.camera, Modifier.fillMaxSize().clip(Shapes.tile).border(2.dp, Color.White.copy(alpha = 0.7f), Shapes.tile), mirror = local.mirrored)
                 // Flipping the camera lives on your own picture, so the output button never has to give way to it.
                 FlipCameraButton(calls::flipCamera, Modifier.align(Alignment.BottomEnd).padding(6.dp))
             }
@@ -463,7 +463,7 @@ private fun ParticipantTile(p: ParticipantUi, modifier: Modifier, preferScreen: 
         val screen = p.screen.takeIf { !p.isLocal && preferScreen }
         val track = screen ?: p.camera
         if (track != null) {
-            VideoTile(track, Modifier.fillMaxSize(), mirror = p.isLocal && screen == null, fit = screen != null)
+            VideoTile(track, Modifier.fillMaxSize(), mirror = p.mirrored && screen == null, fit = screen != null)
         } else {
             val avatar = (minOf(maxWidth, maxHeight) * 0.42f).coerceIn(36.dp, 96.dp)
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {

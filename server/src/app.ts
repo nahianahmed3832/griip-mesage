@@ -31,6 +31,22 @@ import type { FetchLike } from "./integrations/http.js";
 import { Integrations } from "./integrations/index.js";
 import { Entitlements } from "./entitlements.js";
 import integrationRoutes from "./integrations/routes.js";
+import opsRoutes from "./ops/routes.js";
+import searchRoutes from "./routes/search.js";
+import workflowRoutes from "./routes/workflows.js";
+import documentRoutes from "./routes/documents.js";
+import aiRoutes from "./routes/ai.js";
+import inboxRoutes from "./routes/inbox.js";
+import { InboxService } from "./inbox/service.js";
+import { AiService } from "./ai/service.js";
+import { DocumentService } from "./documents/service.js";
+import workspaceC5Routes from "./routes/workspaceC5.js";
+import developerRoutes from "./routes/developer.js";
+import { DeveloperService } from "./developer/service.js";
+import { UsageMeter } from "./usage/meter.js";
+import { GroupService } from "./workspace/groups.js";
+import { MeetingService } from "./workspace/meetings.js";
+import { WorkflowService } from "./workflows/service.js";
 import preferenceRoutes from "./preferences/routes.js";
 import reminderRoutes from "./reminders/routes.js";
 import { ReminderService } from "./reminders/service.js";
@@ -38,6 +54,7 @@ import { FcmService } from "./push/fcm.js";
 import { SqlitePreferenceStore } from "./preferences/store.js";
 import pushRoutes from "./routes/push.js";
 import userRoutes from "./routes/users.js";
+import { Metrics } from "./ops/metrics.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
@@ -102,6 +119,7 @@ export async function buildApp(
     livekit: config.livekit ? new LiveKitService(config.livekit) : null,
     blobs: createBlobStore(config),
     log: app.log,
+    metrics: new Metrics(),
     audit: (e) => {
       db.prepare("INSERT INTO audit_log (at, actor_id, org_id, action, target, detail) VALUES (?, ?, ?, ?, ?, ?)").run(
         now(),
@@ -121,7 +139,8 @@ export async function buildApp(
   }
   ctx.accounts = new Accounts(ctx, { mailer: opts.mailer });
   ctx.prefs = ctx.mongo?.owns("preferences") ? new MongoPreferenceStore(ctx.mongo) : new SqlitePreferenceStore(db);
-  ctx.entitlements = new Entitlements(config.entitlements);
+  ctx.entitlements = new Entitlements(config.entitlements, db);
+  ctx.usage = new UsageMeter(db);
   ctx.integrations = new Integrations({
     entitlements: ctx.entitlements,
     db,
@@ -133,11 +152,27 @@ export async function buildApp(
     mongo: ctx.mongo,
     fetch: opts.integrationsFetch,
   });
+  ctx.integrations.metrics = ctx.metrics;
   ctx.integrations.start();
   app.addHook("onClose", async () => ctx.integrations.stop());
   ctx.reminders = new ReminderService(ctx);
   ctx.reminders.start(config.reminderTickMs);
   app.addHook("onClose", async () => ctx.reminders.stop());
+  ctx.developer = new DeveloperService(ctx);
+  ctx.developer.start(config.workflowTickMs);
+  app.addHook("onClose", async () => ctx.developer.stop());
+  ctx.documents = new DocumentService(ctx);
+  ctx.groups = new GroupService(ctx);
+  ctx.meetings = new MeetingService(ctx);
+  ctx.meetings.start(config.workflowTickMs > 0 ? 30_000 : 0);
+  app.addHook("onClose", async () => ctx.meetings.stop());
+  ctx.workflows = new WorkflowService(ctx);
+  ctx.workflows.start(config.workflowTickMs);
+  ctx.ai = new AiService(ctx);
+  ctx.inbox = new InboxService(ctx, opts.integrationsFetch);
+  ctx.inbox.worker.start(config.inbox.tickMs);
+  app.addHook("onClose", async () => ctx.inbox.worker.stop());
+  app.addHook("onClose", async () => ctx.workflows.stop());
 
   if (config.fcm && !config.push) ctx.hub.onQueuedOffline = (deviceId) => ctx.fcm?.queued(deviceId);
   if (config.trustProxy === true) {
@@ -147,6 +182,7 @@ export async function buildApp(
   if (config.fcm) {
     // Firebase wake-ups (docs/PUSH_FCM.md) beside UnifiedPush; the hub's hooks call both (set before UnifiedPush's).
     const fcm = new FcmService(db, ctx.hub, config.fcm, app.log);
+    fcm.metrics = ctx.metrics;
     ctx.fcm = fcm;
     app.addHook("preClose", (done) => {
       fcm.stop();
@@ -167,6 +203,11 @@ export async function buildApp(
       done();
     });
   }
+
+  // Every finished request, by route template (never the raw URL, which carries ids), for the health view.
+  app.addHook("onResponse", async (req, reply) => {
+    ctx.metrics.recordRequest(req.method, req.routeOptions?.url ?? "unmatched", reply.statusCode, reply.elapsedTime);
+  });
 
   // Attachment uploads are streamed to disk by their route (size and quota enforced while reading),
   // so the raw request stream is passed through instead of being buffered in memory.
@@ -275,6 +316,14 @@ export async function buildApp(
     await app.register(async (scope) => r(scope, ctx));
   }
   await app.register(async (scope) => integrationRoutes(scope, ctx, ctx.integrations));
+  await app.register(async (scope) => opsRoutes(scope, ctx, VERSION));
+  await app.register(async (scope) => searchRoutes(scope, ctx));
+  await app.register(async (scope) => workflowRoutes(scope, ctx));
+  await app.register(async (scope) => documentRoutes(scope, ctx));
+  await app.register(async (scope) => workspaceC5Routes(scope, ctx));
+  await app.register(async (scope) => developerRoutes(scope, ctx));
+  await app.register(async (scope) => aiRoutes(scope, ctx));
+  await app.register(async (scope) => inboxRoutes(scope, ctx));
   await app.register(async (scope) => accountRoutes(scope, ctx, ctx.accounts));
   const fed = ctx.federation;
   if (fed) {
@@ -305,6 +354,23 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     // 2026-10-19: custom workspace roles (docs/WORKSPACE_ROLES.md) and the app directory (docs/INTEGRATIONS.md).
     "custom-roles",
     "integrations",
+    // Round 7: universal search over server-readable content (docs/SEARCH.md).
+    "search",
+    // Round 7: workspace workflows (docs/WORKFLOWS.md).
+    "workflows",
+    // Round 7: workspace documents (docs/DOCUMENTS.md).
+    "documents",
+    // Round 7: workspace templates, user groups, guest end dates, scheduled meetings (docs/WORKSPACE_C5.md).
+    "workspace-templates",
+    "groups",
+    "guest-expiry",
+    "meetings",
+    // Round 7: API keys, the external API and outgoing webhooks (docs/DEVELOPER_API.md).
+    "developer-api",
+    // Round 7: AI features, off until configured and turned on per workspace (docs/AI.md).
+    "ai",
+    // Round 8: the Unified Inbox for business messaging (docs/UNIFIED_INBOX.md).
+    "unified-inbox",
     // Round 6: recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md).
     "recovery-codes",
     // Round 6: reminders kept and fired by the server (docs/REMINDERS.md).

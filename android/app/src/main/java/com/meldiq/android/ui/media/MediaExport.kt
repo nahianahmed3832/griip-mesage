@@ -10,6 +10,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
@@ -98,6 +99,26 @@ object MediaExport {
     suspend fun saveToDocument(context: Context, file: File, target: Uri) = withContext(Dispatchers.IO) {
         context.contentResolver.openOutputStream(target, "wt")?.use { out -> file.inputStream().use { it.copyTo(out, 64 * 1024) } }
             ?: throw java.io.IOException("Can't write to that location")
+    }
+
+    /**
+     * Copies [file] as a new document named [name] into the folder the person picked with the system folder picker
+     * ([tree], from OpenDocumentTree). Used by "save several files" (round 7, [BulkSave]); if the folder already has a
+     * file by that name, the provider picks a free one. A half-written document is removed.
+     */
+    suspend fun saveToFolder(context: Context, file: File, tree: Uri, name: String, mime: String): Uri = withContext(Dispatchers.IO) {
+        val resolver = context.contentResolver
+        val parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        val doc = DocumentsContract.createDocument(resolver, parent, mime.ifBlank { "application/octet-stream" }, name)
+            ?: throw java.io.IOException("That folder refused the file")
+        try {
+            resolver.openOutputStream(doc, "w")?.use { out -> file.inputStream().use { it.copyTo(out, 64 * 1024) } }
+                ?: throw java.io.IOException("Can't write to that folder")
+        } catch (e: Exception) {
+            runCatching { DocumentsContract.deleteDocument(resolver, doc) }
+            throw e
+        }
+        doc
     }
 
     /**

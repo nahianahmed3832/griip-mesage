@@ -2,7 +2,7 @@ import type { AppContext, AuthInfo } from "../context.js";
 import { now } from "../util.js";
 import { IdentityService } from "./identity.js";
 import { LegacyMigrationService } from "./legacy.js";
-import { createMailer, type Mailer } from "./mailer.js";
+import { createMailer, type Mailer, meteredMailer } from "./mailer.js";
 import { AccountService } from "./service.js";
 import { MongoAccountStore, sqliteIdentityRows } from "../mongo/accounts.js";
 import { type AccountStore, SqliteAccountStore } from "./store.js";
@@ -29,7 +29,7 @@ export class Accounts {
     this.store =
       opts.store ?? (ctx.mongo?.owns("accounts") ? new MongoAccountStore(ctx.mongo, sqliteIdentityRows(ctx.db)) : new SqliteAccountStore(ctx.db));
     this.mailer = opts.mailer ?? createMailer(ctx.config.accounts.mail);
-    this.service = new AccountService(ctx, this.store, this.mailer);
+    this.service = new AccountService(ctx, this.store, meteredMailer(this.mailer, ctx.metrics));
     this.identity = new IdentityService(ctx, this.service);
     this.legacy = new LegacyMigrationService(ctx, this.service);
     this.workspaces = new WorkspaceService(ctx, this.store);

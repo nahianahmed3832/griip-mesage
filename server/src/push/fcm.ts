@@ -3,6 +3,7 @@ import fs from "node:fs";
 import type { FastifyBaseLogger } from "fastify";
 import type { DB } from "../db.js";
 import type { Hub } from "../hub.js";
+import type { Metrics } from "../ops/metrics.js";
 import { now } from "../util.js";
 
 /**
@@ -79,6 +80,9 @@ export class FcmService {
     private readonly fetchFn: FetchFn = (url, init) => fetch(url, init),
   ) {}
 
+  /** Health view counters (docs/OPERATIONS.md); set by buildApp. Outcome kinds only. */
+  metrics?: Metrics;
+
   register(deviceId: string, token: string): { kind: "fcm"; updatedAt: number } {
     const t = now();
     this.db.transaction(() => {
@@ -139,11 +143,13 @@ export class FcmService {
     } catch (err) {
       // Only the error's type: a message could quote the token.
       this.log.warn({ deviceId, errorType: err instanceof Error ? err.name : typeof err }, "fcm wake-up failed");
+      this.metrics?.recordProvider("push.fcm", err);
       return "failed";
     }
   }
 
   private record(deviceId: string, token: string, status: number, body: unknown): "sent" | "failed" | "dropped" {
+    this.metrics?.recordProvider("push.fcm", status >= 200 && status < 300 ? undefined : { code: `http_${status}` });
     const t = now();
     if (status >= 200 && status < 300) {
       this.db.prepare("UPDATE fcm_tokens SET last_wake_at = ?, failing_since = NULL WHERE device_id = ? AND token = ?").run(t, deviceId, token);

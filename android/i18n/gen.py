@@ -8,10 +8,11 @@ from strings_workspace import S as WORKSPACE
 from strings_apps import S as APPS
 from strings_meldiq import S as MELDIQ
 from strings_round6 import S as ROUND6
+from strings_round7 import S as ROUND7
 res = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "src", "main", "res")
 # Every key must be unique across the tables (Android merges them into one namespace).
 _seen = {}
-for _name, _table in [("strings", S), ("strings_account", ACCOUNT), ("strings_workspace", WORKSPACE), ("strings_apps", APPS), ("strings_meldiq", MELDIQ), ("strings_round6", ROUND6)]:
+for _name, _table in [("strings", S), ("strings_account", ACCOUNT), ("strings_workspace", WORKSPACE), ("strings_apps", APPS), ("strings_meldiq", MELDIQ), ("strings_round6", ROUND6), ("strings_round7", ROUND7)]:
     for _k in _table:
         if _k in _seen:
             raise SystemExit(f"duplicate string key {_k!r} in {_name} and {_seen[_k]}")
@@ -74,3 +75,10 @@ for lang, folder, idx in [("en", "values", 0), ("zh", "values-zh-rCN", 1), ("bn"
     r6.append('</resources>')
     open(f"{res}/{folder}/strings_round6.xml", "w").write("\n".join(r6) + "\n")
     print(folder, "round6", len(ROUND6))
+    # Round 7 strings (2026-10-19): strings_round7.py.
+    r7 = ['<?xml version="1.0" encoding="utf-8"?>', '<!-- Round 7 strings (docs/LANGUAGES.md). Generated from strings_round7.py. -->', '<resources>']
+    for k, v in ROUND7.items():
+        r7.append(f'    <string name="{k}">{esc(v[idx])}</string>')
+    r7.append('</resources>')
+    open(f"{res}/{folder}/strings_round7.xml", "w").write("\n".join(r7) + "\n")
+    print(folder, "round7", len(ROUND7))

@@ -73,6 +73,34 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   team_members: "workspace",
   invitations: "workspace",
   org_deletions: "workspace",
+  // Workflows (round 7, docs/WORKFLOWS.md): a workspace's automations and their runs.
+  workflows: "workspace",
+  workflow_runs: "workspace",
+  // Documents (round 7, docs/DOCUMENTS.md).
+  documents: "workspace",
+  document_members: "workspace",
+  document_versions: "workspace",
+  document_comments: "workspace",
+  // Groups and meetings (round 7, docs/WORKSPACE_C5.md).
+  user_groups: "workspace",
+  user_group_members: "workspace",
+  meetings: "workspace",
+  meeting_participants: "workspace",
+  // API keys and webhooks (round 7, docs/DEVELOPER_API.md).
+  api_keys: "workspace",
+  webhooks: "workspace",
+  webhook_deliveries: "workspace",
+  // Usage and per-workspace limits (round 7, docs/USAGE_AND_PLANS.md).
+  usage_daily: "workspace",
+  // Unified Inbox (round 8, docs/UNIFIED_INBOX.md).
+  inbox_accounts: "workspace",
+  inbox_queues: "workspace",
+  inbox_contacts: "workspace",
+  inbox_conversations: "workspace",
+  inbox_messages: "workspace",
+  inbox_events: "workspace",
+  inbox_settings: "workspace",
+  org_entitlements: "workspace",
   audit_log: "workspace",
   // Custom roles live with the rest of authorisation, which is synchronous on the message path (docs/WORKSPACE_ROLES.md).
   org_roles: "workspace",

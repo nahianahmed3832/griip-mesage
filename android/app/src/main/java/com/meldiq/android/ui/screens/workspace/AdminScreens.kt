@@ -146,6 +146,23 @@ fun UsageScreen(nav: NavHostController, orgId: String) {
                 Text(stringResource(R.string.usage_roles) + ": ${x.roles.custom} · " + stringResource(R.string.usage_invites) + ": ${x.invitations.active}", style = Griip.type.bodySmall, color = c.textSecondary, modifier = Modifier.padding(top = 4.dp))
             }
         }
+        // Round 7: what the server measured over the last 30 days (counts and sizes only, docs/USAGE_AND_PLANS.md).
+        x.metered?.let { m ->
+            item {
+                GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp)) {
+                    Text(stringResource(R.string.usage_measured, m.days), style = Griip.type.section, color = c.textPrimary)
+                    Text(stringResource(R.string.usage_measured_note), style = Griip.type.caption, color = c.textSecondary)
+                    Spacer(Modifier.height(6.dp))
+                    m.metrics.forEach { metric ->
+                        val value = if (metric.metric.endsWith("bytes")) AttachmentPolicy.sizeLabel(metric.total) else "${metric.total}"
+                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                            Text(metric.label, style = Griip.type.bodySmall, color = c.textSecondary, modifier = Modifier.weight(1f))
+                            Text(value, style = Griip.type.bodySmall, color = c.textPrimary)
+                        }
+                    }
+                }
+            }
+        }
         // Plans: none exist yet. Server-wide limits, if the operator set any, are shown as they are; no upgrade is offered.
         plan?.let { p ->
             item {
@@ -154,7 +171,11 @@ fun UsageScreen(nav: NavHostController, orgId: String) {
                     val limited = p.capabilities.filter { it.limit != null }
                     if (limited.isEmpty()) Text(stringResource(R.string.usage_no_plan), style = Griip.type.bodySmall, color = c.textSecondary)
                     limited.forEach { cap ->
-                        Text(stringResource(R.string.usage_limit_line, cap.label, cap.used, cap.limit ?: 0), style = Griip.type.bodySmall, color = if (cap.available) c.textSecondary else c.warning)
+                        val bytes = cap.key.endsWith("bytes")
+                        val used = if (bytes) AttachmentPolicy.sizeLabel(cap.used) else "${cap.used}"
+                        val limit = if (bytes) AttachmentPolicy.sizeLabel(cap.limit ?: 0) else "${cap.limit ?: 0}"
+                        val from = stringResource(if (cap.source == "workspace") R.string.usage_limit_workspace else R.string.usage_limit_server)
+                        Text(stringResource(R.string.usage_limit_of, cap.label, used, limit, from), style = Griip.type.bodySmall, color = if (cap.available) c.textSecondary else c.warning)
                     }
                 }
             }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.ContactPage
@@ -44,7 +45,7 @@ import com.meldiq.android.ui.theme.Shapes
 import com.meldiq.android.ui.theme.Space
 
 /** What the attach panel can open. */
-enum class AttachAction { Gallery, Camera, RecordVideo, Files, Contact, Location, Poll, FromApp }
+enum class AttachAction { Gallery, Camera, RecordVideo, Files, Contact, Location, Poll, FromApp, AiWrite, AiCatchUp }
 
 /**
  * The attach panel (UI-003): six tiles in two rows instead of a long list, the gallery first, then the camera, a
@@ -54,7 +55,7 @@ enum class AttachAction { Gallery, Camera, RecordVideo, Files, Contact, Location
  * and Meldiq only sees what is picked. The limits shown are this server's, read from `/v1/server-info`.
  */
 @Composable
-fun AttachPanel(maxFile: Long, onAction: (AttachAction) -> Unit, onDismiss: () -> Unit) {
+fun AttachPanel(maxFile: Long, onAction: (AttachAction) -> Unit, onDismiss: () -> Unit, aiWrite: Boolean = false, aiCatchUp: Boolean = false) {
     val c = Griip.colors
     GlassSheet(onDismiss, title = stringResource(R.string.attach_title)) {
         val tiles = listOf(
@@ -67,6 +68,10 @@ fun AttachPanel(maxFile: Long, onAction: (AttachAction) -> Unit, onDismiss: () -
             Tile(AttachAction.Poll, Icons.Outlined.BarChart, stringResource(R.string.poll_label), c.primary, c.primarySoft),
             // A link to a file or item in a connected app (docs/INTEGRATIONS.md): the item stays at the provider.
             Tile(AttachAction.FromApp, Icons.Outlined.Apps, stringResource(R.string.attach_from_app), c.peach, c.peachSoft),
+        ) + listOfNotNull(
+            // AI (round 7, docs/AI.md): only where the workspace has it on.
+            if (aiWrite) Tile(AttachAction.AiWrite, Icons.Outlined.AutoAwesome, stringResource(R.string.ai_write_title), c.lavender, c.lavenderSoft) else null,
+            if (aiCatchUp) Tile(AttachAction.AiCatchUp, Icons.Outlined.AutoAwesome, stringResource(R.string.ai_catchup_title), c.lavender, c.lavenderSoft) else null,
         )
         tiles.chunked(3).forEach { row ->
             Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

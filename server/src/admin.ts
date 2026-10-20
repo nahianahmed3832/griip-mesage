@@ -22,6 +22,8 @@
  *   fed-block <serverId> [reason]  refuse federation with a server; fed-unblock <serverId> lifts it
  *   org-duplicates                 list workspaces one person owns under the same name, with what each holds (counts only)
  *   org-delete-empty <orgId> [--yes]  remove one provably empty duplicate (dry run without --yes; back up first)
+ *   channel-access-repair [--yes]  public channels created as opt-in before round 7: mark them auto-joined and add the
+ *                                  members who may see them (dry run without --yes; back up first)
  *   storage-check                  which file store is configured and whether it answers (no secrets printed)
  *   storage-orphans [--delete]     stored files no record refers to, older than a day (dry run; --delete queues them
  *                                  for the retention job)
@@ -42,6 +44,7 @@ import { endNewAccountLimits } from "./abuse.js";
 import { createRegistrationInvite } from "./invites.js";
 import type { AppContext } from "./context.js";
 import { runCleanup } from "./jobs.js";
+import { applyChannelAccessRepair, planChannelAccessRepair } from "./channelRepair.js";
 import { deleteEmptyOrg, findDuplicateOrgs, keepReason, orgFootprint } from "./orgRepair.js";
 import { humanCode, newId, now, sha256Hex } from "./util.js";
 import { createBlobStore } from "./storage/index.js";
@@ -289,6 +292,19 @@ switch (cmd) {
     }
     deleteEmptyOrg(db, orgId);
     console.log(`Deleted empty workspace ${orgId}.`);
+    break;
+  }
+  case "channel-access-repair": {
+    // Round 7 bug 6: public channels created as opt-in before the fix. Dry run unless --yes; back up first.
+    const plan = planChannelAccessRepair(db);
+    if (plan.length === 0) console.log("No public channel needs repair.");
+    else console.table(plan.map((r) => ({ channel: r.channelId, org: r.orgId, name: r.name, scope: r.scope, add: r.add.length, leftThemselves: r.skippedLeft })));
+    if (plan.length === 0) break;
+    if (!rest.includes("--yes")) {
+      console.log("Dry run: nothing changed. Run again with --yes to mark these channels auto-joined and add the members listed.");
+      break;
+    }
+    console.log(`Repaired ${plan.length} channels, added ${applyChannelAccessRepair(db, plan, now())} memberships.`);
     break;
   }
   case "fed-block":

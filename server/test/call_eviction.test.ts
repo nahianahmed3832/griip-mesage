@@ -111,9 +111,9 @@ describe("removing a member evicts them from live calls (T1.3)", () => {
     const viaLeave = await join("vialeave");
     const all = [stays, viaTeam, viaBranch, viaGuest, viaLeave];
     const teamChannel = (
-      await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "ops-private", scope: "TEAM", scopeId: team, kind: "PRIVATE", memberIds: all.map((c) => c.userId) })
+      await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "ops-private", scope: "TEAM", scopeId: team, kind: "PRIVATE", voice: true, memberIds: all.map((c) => c.userId) })
     ).channel.id;
-    const lobby = (await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "lobby", scope: "ORG", kind: "PUBLIC" })).channel.id;
+    const lobby = (await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "lobby", scope: "ORG", kind: "PUBLIC", voice: true })).channel.id;
     for (const c of all) await c.req("POST", `/v1/conversations/${lobby}/join`);
 
     const teamCall = await callWith(teamChannel, owner, ...all);

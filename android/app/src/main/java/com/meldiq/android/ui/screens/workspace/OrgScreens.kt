@@ -280,6 +280,7 @@ fun MembersScreen(nav: NavHostController, orgId: String) {
                 meta = {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         RoleBadge(u.orgRole)
+                        u.expiresAt?.let { TagPill(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.guest_until, com.meldiq.android.ui.TimeFmt.dayHeader(it)), c.warning, c.warningSoft) }
                         branchNames.take(2).forEach { TagPill(it, c.primaryDeep, c.primarySoft, icon = Icons.Outlined.Apartment) }
                         if (u.teams.isNotEmpty()) TagPill("${u.teams.size} team${if (u.teams.size > 1) "s" else ""}", c.textSecondary, c.surfaceVariant, icon = Icons.Outlined.Groups)
                     }
@@ -327,6 +328,7 @@ private fun MemberSheet(d: OrgDetailRes, u: UserDto, ownerCount: Int?, onDismiss
             item {
                 OrgRoleSection(d, u.copy(orgRole = role), ownerCount, onRole = { r -> role = r; onChanged() }, onError = { error = it })
                 OrgTitleField(d, u, onSaved = onChanged, onError = { error = it })
+                if (role == "GUEST") GuestExpirySection(d, u, onChanged = onChanged, onError = { error = it })
             }
             item { SectionHeader("Branches", Modifier.padding(top = 14.dp, bottom = 6.dp)) }
             items(d.branches, key = { "b" + it.id }) { b ->
@@ -395,6 +397,7 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
     // null: every invite; true: only usable ones; false: revoked, expired and used up.
     var stateFilter by remember { mutableStateOf<Boolean?>(null) }
     var revokeFor by remember { mutableStateOf<InviteDto?>(null) }
+    var guestDays by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(reload) {
         runCatching { container.orgs.detail(orgId) }.onSuccess { d ->
             detail = d
@@ -438,11 +441,21 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
                     Text("Expires", style = Griip.type.label, color = c.textSecondary, modifier = Modifier.width(56.dp))
                     listOf(24 to "1 day", 72 to "3 days", 168 to "7 days").forEach { (h, l) -> PillChip(l, hours == h, { hours = h }) }
                 }
+                // Round 7: a guest's membership can end on its own (the workspace's guest policy may cap it).
+                if (role == "GUEST") {
+                    Spacer(Modifier.height(8.dp))
+                    Text(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.guest_for), style = Griip.type.label, color = c.textSecondary)
+                    ChipRow(Modifier.padding(horizontal = 0.dp)) {
+                        listOf<Int?>(null, 7, 30, 90).forEach { days ->
+                            PillChip(days?.let { androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.guest_days, it) } ?: androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.guest_no_end), guestDays == days, { guestDays = days })
+                        }
+                    }
+                }
                 Spacer(Modifier.height(14.dp))
                 PillButton("Create invite", {
                     busy = true
                     scope.launch {
-                        runCatching { container.orgs.createInvite(orgId, role, branch, team, uses, hours) }.onSuccess { created = it; reload++ }.onFailure { error = it.friendly() }
+                        runCatching { container.orgs.createInvite(orgId, role, branch, team, uses, hours, guestDays) }.onSuccess { created = it; reload++ }.onFailure { error = it.friendly() }
                         busy = false
                     }
                 }, Modifier.fillMaxWidth(), loading = busy, height = 50.dp, enabled = d.permissions.canManageOrg || branch != null || team != null)

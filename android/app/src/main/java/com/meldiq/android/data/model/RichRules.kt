@@ -19,8 +19,19 @@ object RichRules {
         val name = c.name.trim().take(MAX_NAME)
         if (name.isEmpty()) return null
         fun list(l: List<String>) = l.map { it.trim().take(MAX_FIELD) }.filter { it.isNotEmpty() }.distinct().take(MAX_FIELDS)
+        val userId = c.userId?.trim()?.takeIf { USER_ID.matches(it) }
+        // A profile card is only a profile: it never carries numbers or addresses, whatever a sender put in.
+        if (userId != null) return ContactCard(name, userId = userId, username = c.username?.trim()?.takeIf { USERNAME.matches(it) })
         return ContactCard(name, list(c.phones), list(c.emails))
     }
+
+    /** The Meldiq profile card for a person (round 7): name, user id and username only. */
+    fun profileCard(userId: String, displayName: String, username: String?): ContactCard? =
+        clean(ContactCard(displayName.ifBlank { username.orEmpty() }, userId = userId, username = username))
+
+    private val USER_ID = Regex("^[A-Za-z0-9_-]{1,64}$")
+    // Local usernames, or federated ones with their server (name@server.example).
+    private val USERNAME = Regex("^[A-Za-z0-9_.-]{1,64}(@[A-Za-z0-9.-]{1,190})?$")
 
     /** A received or picked location, or null when the coordinates aren't real ones. */
     fun clean(l: SharedLocation?): SharedLocation? {
@@ -68,6 +79,7 @@ object RichRules {
 
     /** The text older apps (and notifications) show. */
     fun fallbackText(r: RichContent): String = when {
+        r.contact?.userId != null -> "👤 " + r.contact.name + (r.contact.username?.let { " (@$it)" } ?: "")
         r.contact != null -> "👤 " + (listOf(r.contact.name) + r.contact.phones + r.contact.emails).joinToString("\n")
         r.location != null -> "📍 " + (r.location.label?.let { "$it\n" } ?: "") + osmLink(r.location)
         r.animoji != null -> r.animoji

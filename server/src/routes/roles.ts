@@ -61,6 +61,25 @@ function throwRefusal(r: Refusal): never {
   throw new ApiError(r.status, r.code, r.message);
 }
 
+/** What a workspace uses of each limited capability (round 7 adds members, storage, workflows and more). */
+export function planUsage(ctx: AppContext, orgId: string, apps: { installed: number; webhooks: number; notifications: number }, customRoles: number) {
+  const n = (sql: string, ...p: unknown[]) => (ctx.db.prepare(sql).get(...p) as { n: number | null }).n ?? 0;
+  const t = now();
+  return {
+    "integrations.installed": apps.installed,
+    "integrations.webhooks": apps.webhooks,
+    "integrations.notifications": apps.notifications,
+    "roles.custom": customRoles,
+    members: n("SELECT COUNT(*) n FROM org_members WHERE org_id = ?", orgId),
+    "storage.bytes": n("SELECT SUM(a.size) n FROM attachments a JOIN conversations c ON c.id = a.conversation_id WHERE c.org_id = ? AND a.expires_at > ?", orgId, t),
+    workflows: n("SELECT COUNT(*) n FROM workflows WHERE org_id = ?", orgId),
+    documents: n("SELECT COUNT(*) n FROM documents WHERE org_id = ?", orgId),
+    groups: n("SELECT COUNT(*) n FROM user_groups WHERE org_id = ?", orgId),
+    api_keys: n("SELECT COUNT(*) n FROM api_keys WHERE org_id = ? AND revoked_at IS NULL AND expires_at > ?", orgId, t),
+    "webhooks.outgoing": n("SELECT COUNT(*) n FROM webhooks WHERE org_id = ?", orgId),
+  };
+}
+
 export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) {
   const auth = { preHandler: requireAuth(ctx) };
   const { authz, db } = ctx;
@@ -472,6 +491,11 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
       roles: { custom: count("SELECT COUNT(*) n FROM org_roles WHERE org_id = ? AND archived_at IS NULL", orgId) },
       apps,
       limits: { fileMaxBytes: ctx.config.fileMaxBytes, orgStoredBytes: ctx.config.abuse.orgStoredBytes || null },
+      // Round 7: measured usage over the last 30 days, per day (docs/USAGE_AND_PLANS.md). Counts and sizes only.
+      metered: (() => {
+        ctx.usage.snapshot();
+        return { days: 30, metrics: ctx.usage.series(orgId, 30) };
+      })(),
     };
   });
 
@@ -483,12 +507,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
     authz.requireOrgMember(orgId, userId);
     const apps = await ctx.integrations.usage(orgId);
     const customRoles = (db.prepare("SELECT COUNT(*) n FROM org_roles WHERE org_id = ? AND archived_at IS NULL").get(orgId) as { n: number }).n;
-    return ctx.entitlements.plan({
-      "integrations.installed": apps.installed,
-      "integrations.webhooks": apps.webhooks,
-      "integrations.notifications": apps.notifications,
-      "roles.custom": customRoles,
-    });
+    return ctx.entitlements.plan(planUsage(ctx, orgId, apps, customRoles), orgId);
   });
 
   // ───────────── The full audit log ─────────────

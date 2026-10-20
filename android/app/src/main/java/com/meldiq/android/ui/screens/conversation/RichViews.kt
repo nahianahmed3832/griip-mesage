@@ -1,11 +1,8 @@
 package com.meldiq.android.ui.screens.conversation
 
-import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.ContactsContract
-import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -37,14 +34,12 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -78,49 +73,15 @@ import com.meldiq.android.ui.theme.Shapes
 
 // ───────────────────────────── Contact cards ─────────────────────────────
 
-/**
- * Picks one phone number from the address book with Android's contact picker. The picker grants access to that one
- * entry only: Meldiq needs no contacts permission and never reads (or uploads) the address book.
- */
-class PickPhoneContact : ActivityResultContract<Unit, Uri?>() {
-    override fun createIntent(context: Context, input: Unit) = Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
-    override fun parseResult(resultCode: Int, intent: Intent?): Uri? = if (resultCode == Activity.RESULT_OK) intent?.data else null
-}
+// Round 7: new cards are Meldiq profile cards (ProfileCards.kt). The address-book picker that sent phone numbers is
+// gone; cards with numbers received from older apps still show below.
 
-/** Name and number of the picked entry, or null if it can't be read. */
-fun readPickedContact(context: Context, uri: Uri): ContactCard? = runCatching {
-    context.contentResolver.query(
-        uri, arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null,
-    )?.use { c -> if (c.moveToFirst()) RichRules.clean(ContactCard(c.getString(0) ?: "", listOfNotNull(c.getString(1)))) else null }
-}.getOrNull()
-
-/** Preview before sharing a contact: the person chooses which parts to send. */
 @Composable
-fun ContactShareSheet(card: ContactCard, onSend: (ContactCard) -> Unit, onDismiss: () -> Unit) {
-    val c = Griip.colors
-    var name by rememberSaveable { mutableStateOf(card.name) }
-    val phones = remember { mutableStateListOf(*card.phones.map { true }.toTypedArray()) }
-    GlassSheet(onDismiss, title = "Share contact") {
-        GriipTextField(name, { name = it.take(RichRules.MAX_NAME) }, "Name")
-        Spacer(Modifier.height(8.dp))
-        card.phones.forEachIndexed { i, p ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(phones[i], { phones[i] = it })
-                Text(p, style = Griip.type.body, color = c.textPrimary)
-            }
-        }
-        Text(
-            "Only what's ticked is sent, end-to-end encrypted, to this conversation.",
-            style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(vertical = 8.dp),
-        )
-        val out = RichRules.clean(ContactCard(name, card.phones.filterIndexed { i, _ -> phones[i] }))
-        PillButton("Send contact", { out?.let(onSend) }, Modifier.fillMaxWidth(), enabled = out != null)
-        Spacer(Modifier.height(16.dp))
+fun ContactCardView(card: ContactCard, out: Boolean, onCopy: (String) -> Unit, onFindOnMeldiq: ((String) -> Unit)?, onOpenProfile: (String) -> Unit = {}) {
+    card.userId?.let { id ->
+        ProfileCardView(card, id, out, onOpenProfile)
+        return
     }
-}
-
-@Composable
-fun ContactCardView(card: ContactCard, out: Boolean, onCopy: (String) -> Unit, onFindOnMeldiq: ((String) -> Unit)?) {
     val c = Griip.colors
     val ctx = LocalContext.current
     Column(Modifier.widthIn(min = 220.dp, max = 270.dp)) {

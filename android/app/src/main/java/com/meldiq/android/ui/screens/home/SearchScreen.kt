@@ -1,5 +1,6 @@
 package com.meldiq.android.ui.screens.home
 
+import android.content.Context
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -12,12 +13,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.SearchOff
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.res.stringResource
-import com.meldiq.android.R
-import com.meldiq.android.ui.components.BannerKind
-import com.meldiq.android.ui.components.StatusBanner
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,138 +24,271 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.meldiq.android.R
+import com.meldiq.android.data.api.ChannelHitDto
+import com.meldiq.android.data.api.ConversationDto
+import com.meldiq.android.data.api.SearchRes
 import com.meldiq.android.data.api.UserDto
+import com.meldiq.android.data.api.WorkspaceHitDto
 import com.meldiq.android.data.db.MessageEntity
+import com.meldiq.android.data.model.AttachmentRef
 import com.meldiq.android.data.repo.ConversationRepository
+import com.meldiq.android.data.repo.ServerFeatures
 import com.meldiq.android.ui.LocalContainer
 import com.meldiq.android.ui.Routes
-import com.meldiq.android.ui.TimeFmt
-import com.meldiq.android.ui.components.Avatar
-import com.meldiq.android.ui.components.ArrowKnob
+import com.meldiq.android.ui.components.BannerKind
+import com.meldiq.android.ui.components.ChipRow
 import com.meldiq.android.ui.components.EmptyState
 import com.meldiq.android.ui.components.GriipTopBar
-import com.meldiq.android.ui.components.ListCard
+import com.meldiq.android.ui.components.PillChip
 import com.meldiq.android.ui.components.SearchPill
 import com.meldiq.android.ui.components.SectionHeader
-import com.meldiq.android.ui.screens.chats.ConversationAvatar
+import com.meldiq.android.ui.components.StatusBanner
+import com.meldiq.android.ui.screens.home.SearchRules.Filter
+import com.meldiq.android.ui.screens.home.SearchRules.Section
 import com.meldiq.android.ui.theme.Griip
 import com.meldiq.android.ui.theme.Space
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** Global search: conversations (local), people (directory), message text (local history only). */
+/** What the server found, per kind, with the cursor for each kind's next page. */
+private data class ServerHits(
+    val people: List<UserDto> = emptyList(),
+    val channels: List<ChannelHitDto> = emptyList(),
+    val workspaces: List<WorkspaceHitDto> = emptyList(),
+    val groups: List<ConversationDto> = emptyList(),
+    val documents: List<com.meldiq.android.data.api.DocumentDto> = emptyList(),
+    val next: Map<Section, String> = emptyMap(),
+)
+
+/** What this phone found in its own (decrypted) history. */
+private data class DeviceHits(
+    val messages: List<MessageEntity> = emptyList(),
+    val files: List<Pair<MessageEntity, AttachmentRef>> = emptyList(),
+    val pinned: List<MessageEntity> = emptyList(),
+)
+
+/**
+ * Universal search (round 7 slice C2, docs/SEARCH.md): people, channels in every workspace you're in, workspaces and
+ * groups from the server's search (each with its own access rule); messages, files and pinned messages from this
+ * phone's history, which the server can't read. Searches 250 ms after typing stops; a filter narrows to one kind and
+ * pages it. Servers without search fall back to the directory and the selected workspace's channels.
+ */
 @Composable
 fun SearchScreen(nav: NavHostController) {
     val container = LocalContainer.current
     val c = Griip.colors
+    val ctx = LocalContext.current
     val me = container.session.session?.userId
-    var q by rememberSaveable { mutableStateOf("") }
-    var people by remember { mutableStateOf<List<UserDto>>(emptyList()) }
-    var messages by remember { mutableStateOf<List<MessageEntity>>(emptyList()) }
-    var searching by remember { mutableStateOf(false) }
-    var peopleFailed by remember { mutableStateOf(false) }
-    val convs by container.conversations.observeAll().collectAsStateWithLifecycle(emptyList())
     val scope = rememberCoroutineScope()
-    // Workspaces you belong to (the cached list) and channels you could join in the selected one (the server's list,
-    // which includes only channels you're allowed to see: private ones you're not in never appear).
-    val selectedOrg by container.orgs.selectedOrg.collectAsStateWithLifecycle()
-    var orgs by remember { mutableStateOf<List<com.meldiq.android.data.api.OrgDto>>(emptyList()) }
-    var channels by remember { mutableStateOf<List<com.meldiq.android.data.api.ConversationDto>>(emptyList()) }
-    LaunchedEffect(Unit) { orgs = container.orgs.cachedOrgs().orEmpty() }
-    LaunchedEffect(q) {
-        if (q.isBlank()) { people = emptyList(); messages = emptyList(); channels = emptyList(); searching = false; return@LaunchedEffect }
+    var q by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf(Filter.ALL) }
+    var server by remember { mutableStateOf(ServerHits()) }
+    var device by remember { mutableStateOf(DeviceHits()) }
+    var searching by remember { mutableStateOf(false) }
+    var serverFailed by remember { mutableStateOf(false) }
+    var recent by remember { mutableStateOf(RecentSearches.load(ctx)) }
+    val convs by container.conversations.observeAll().collectAsStateWithLifecycle(emptyList())
+
+    LaunchedEffect(q, filter) {
+        val term = SearchRules.usable(q)
+        if (term == null) {
+            server = ServerHits(); device = DeviceHits(); searching = false; serverFailed = false
+            return@LaunchedEffect
+        }
         searching = true
-        delay(250)
-        channels = selectedOrg?.let { id -> runCatching { container.orgs.channels(id, q.trim()) }.getOrDefault(emptyList()).filter { !it.joined && !it.archived } }.orEmpty()
-        messages = container.messages.search(q.trim())
-        val found = runCatching { container.users.search(q.trim()) }
-        peopleFailed = found.isFailure
-        people = found.getOrDefault(emptyList())
+        delay(SearchRules.DEBOUNCE_MS)
+        val sections = SearchRules.sections(filter)
+        device = DeviceHits(
+            messages = if (Section.MESSAGES in sections) container.messages.search(term) else emptyList(),
+            files = if (Section.FILES in sections) container.messages.searchFiles(term) else emptyList(),
+            pinned = if (Section.PINNED in sections) container.messages.searchPinned(term) else emptyList(),
+        )
+        val types = SearchRules.serverTypes(filter)
+        val found = if (types == null) Result.success(ServerHits()) else runCatching { searchServer(container, term, types, filter) }
+        serverFailed = found.isFailure
+        server = found.getOrDefault(ServerHits())
         searching = false
     }
-    val convMatches = if (q.isBlank()) emptyList() else convs.filter { ConversationRepository.title(it, me).contains(q.trim(), ignoreCase = true) }
-    val orgMatches = if (q.isBlank()) emptyList() else orgs.filter { it.name.contains(q.trim(), ignoreCase = true) }
-    val selectedName = orgs.firstOrNull { it.id == selectedOrg }?.name.orEmpty()
+
+    fun opened() {
+        recent = SearchRules.remember(recent, q).also { RecentSearches.save(ctx, it) }
+    }
+
+    fun showMore(section: Section) {
+        val cursor = server.next[section] ?: return
+        val type = when (section) {
+            Section.PEOPLE -> "people"; Section.CHANNELS -> "channels"; Section.WORKSPACES -> "workspaces"; Section.GROUPS -> "groups"; Section.DOCUMENTS -> "documents"
+            else -> return
+        }
+        scope.launch {
+            runCatching { container.api.get<SearchRes>(searchPath(q.trim(), type, cursor)).results }.onSuccess { r ->
+                server = server.copy(
+                    people = server.people + r.people?.items.orEmpty(),
+                    channels = server.channels + r.channels?.items.orEmpty(),
+                    workspaces = server.workspaces + r.workspaces?.items.orEmpty(),
+                    groups = server.groups + r.groups?.items.orEmpty(),
+                    documents = server.documents + r.documents?.items.orEmpty(),
+                    next = server.next - section + listOfNotNull(
+                        (r.people?.next ?: r.channels?.next ?: r.workspaces?.next ?: r.groups?.next ?: r.documents?.next)?.let { section to it },
+                    ),
+                )
+            }
+        }
+    }
+
+    val term = q.trim()
+    val sections = SearchRules.sections(filter)
+    val convMatches = if (term.isEmpty() || Section.CONVERSATIONS !in sections) emptyList()
+    else convs.filter { !it.removed && ConversationRepository.title(it, me).contains(term, ignoreCase = true) }
+    val limit = if (filter == Filter.ALL) SearchRules.PREVIEW_COUNT else Int.MAX_VALUE
+    val nothing = term.isNotEmpty() && !searching && convMatches.isEmpty() && server == ServerHits() && device == DeviceHits()
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        GriipTopBar("Search", onBack = { nav.popBackStack() })
-        SearchPill(q, { q = it }, "People, chats or message text", Modifier.padding(horizontal = Space.gutter, vertical = 6.dp))
-        Text(
-            "People in your organizations, or anyone by exact @username. Message text is searched in this phone's history only.",
-            style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(horizontal = Space.gutter + 4.dp, vertical = 2.dp),
-        )
-        if (searching) androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), color = c.primary, trackColor = c.surfaceVariant)
-        if (peopleFailed && !searching) StatusBanner("Couldn't search people right now. Chats and messages on this phone are still searched.", BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp))
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp, top = 8.dp)) {
-            if (q.isNotBlank() && !searching && convMatches.isEmpty() && people.isEmpty() && messages.isEmpty() && channels.isEmpty() && orgMatches.isEmpty()) {
-                item { EmptyState(Icons.Outlined.SearchOff, "No results", "Message search covers the history stored on this device.") }
+        GriipTopBar(stringResource(R.string.search_title), onBack = { nav.popBackStack() })
+        SearchPill(q, { q = it }, stringResource(R.string.search_hint), Modifier.padding(horizontal = Space.gutter, vertical = 6.dp))
+        ChipRow(Modifier.padding(vertical = 4.dp)) {
+            Filter.entries.forEach { f -> PillChip(filterLabel(f), filter == f, { filter = f }) }
+        }
+        if (searching) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), color = c.primary, trackColor = c.surfaceVariant)
+        if (serverFailed && !searching) StatusBanner(stringResource(R.string.search_server_failed), BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp))
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp, top = 4.dp)) {
+            if (term.isEmpty()) {
+                item {
+                    Text(stringResource(R.string.search_scope_note), style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(horizontal = Space.gutter + 4.dp, vertical = 6.dp))
+                }
+                if (recent.isNotEmpty()) {
+                    item {
+                        SectionHeader(stringResource(R.string.search_recent), Modifier.padding(vertical = 8.dp), action = stringResource(R.string.search_recent_clear), onAction = {
+                            recent = emptyList(); RecentSearches.save(ctx, emptyList())
+                        })
+                    }
+                    items(recent, key = { "r$it" }) { r -> RecentRow(r) { q = r } }
+                }
+                return@LazyColumn
             }
-            if (convMatches.isNotEmpty()) item { SectionHeader("Conversations", Modifier.padding(vertical = 8.dp)) }
-            items(convMatches.take(8), key = { "c" + it.id }) { conv ->
-                ListCard(
-                    ConversationRepository.title(conv, me).let { if (conv.type == "CHANNEL") "#$it" else it },
-                    Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                    subtitle = conv.scopeName ?: conv.topic,
-                    leading = { ConversationAvatar(conv, me, size = 44.dp) },
-                    trailing = { ArrowKnob() },
-                    onClick = { nav.navigate(Routes.conversation(conv.id)) },
-                )
+            if (nothing) item { EmptyState(Icons.Outlined.SearchOff, stringResource(R.string.search_none), stringResource(R.string.search_none_body)) }
+            if (convMatches.isNotEmpty()) {
+                item { SectionHeader(stringResource(R.string.search_conversations), Modifier.padding(vertical = 8.dp)) }
+                items(convMatches.take(limit), key = { "c" + it.id }) { conv -> ConversationHit(conv, me) { opened(); nav.navigate(Routes.conversation(conv.id)) } }
             }
-            if (channels.isNotEmpty()) item { SectionHeader(stringResource(R.string.search_channels, selectedName), Modifier.padding(vertical = 8.dp)) }
-            items(channels.take(8), key = { "ch" + it.id }) { ch ->
-                ListCard(
-                    "#${ch.name}", Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                    subtitle = listOfNotNull(ch.topic, ch.scopeName).joinToString(" · ").ifBlank { null },
-                    leading = {
-                        com.meldiq.android.ui.components.IconTile(com.meldiq.android.ui.screens.chats.channelIcon(ch.kind), c.textSecondary, c.surfaceVariant, size = 44.dp)
-                    },
-                    trailing = {
-                        com.meldiq.android.ui.components.PillButton(stringResource(R.string.search_join), {
-                            scope.launch { runCatching { container.conversations.join(ch.id) }.onSuccess { nav.navigate(Routes.conversation(ch.id)) } }
-                        }, tone = com.meldiq.android.ui.components.ButtonTone.Glass, height = 36.dp)
-                    },
-                )
+            if (server.channels.isNotEmpty()) {
+                item { SectionHeader(stringResource(R.string.search_section_channels), Modifier.padding(vertical = 8.dp)) }
+                items(server.channels.take(limit), key = { "ch" + it.id }) { ch ->
+                    ChannelHit(ch, onOpen = { opened(); nav.navigate(Routes.conversation(ch.id)) }, onJoin = {
+                        opened()
+                        scope.launch { runCatching { container.conversations.join(ch.id) }.onSuccess { nav.navigate(Routes.conversation(ch.id)) } }
+                    })
+                }
+                moreItem(filter, server.next[Section.CHANNELS]) { showMore(Section.CHANNELS) }
             }
-            if (orgMatches.isNotEmpty()) item { SectionHeader(stringResource(R.string.search_workspaces), Modifier.padding(vertical = 8.dp)) }
-            items(orgMatches, key = { "o" + it.id }) { o ->
-                val current = o.id == selectedOrg
-                ListCard(
-                    o.name, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                    subtitle = o.description ?: "@${o.slug}",
-                    leading = { com.meldiq.android.ui.components.OrgMark(o.id, o.name, com.meldiq.android.ui.screens.workspace.WorkspaceList.colorSeed(o), o.photoRev, size = 44.dp) },
-                    trailing = {
-                        if (current) com.meldiq.android.ui.components.TagPill(stringResource(R.string.search_current), c.primaryDeep, c.primarySoft)
-                        else Text(stringResource(R.string.search_switch), style = Griip.type.label, color = c.primaryDeep)
-                    },
-                    onClick = if (current) null else ({ scope.launch { container.orgs.select(o.id); nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = false } } } }),
-                )
+            if (server.documents.isNotEmpty()) {
+                item { SectionHeader(stringResource(R.string.doc_title), Modifier.padding(vertical = 8.dp)) }
+                items(server.documents.take(limit), key = { "d" + it.id }) { doc -> DocumentHit(doc) { opened(); nav.navigate(Routes.document(doc.id)) } }
+                moreItem(filter, server.next[Section.DOCUMENTS]) { showMore(Section.DOCUMENTS) }
             }
-            if (people.isNotEmpty()) item { SectionHeader("People", Modifier.padding(vertical = 8.dp)) }
-            items(people, key = { "p" + it.id }) { u ->
-                ListCard(
-                    u.displayName, Modifier.padding(horizontal = 8.dp, vertical = 1.dp), subtitle = "@${u.username}",
-                    leading = { Avatar(u.displayName, u.avatarColor, size = 44.dp, online = u.online) },
-                    trailing = { ArrowKnob(contentDescription = "Message ${u.displayName}") },
-                    onClick = { scope.launch { runCatching { container.conversations.openDm(u.id) }.onSuccess { nav.navigate(Routes.conversation(it.id)) } } },
-                )
+            if (server.workspaces.isNotEmpty()) {
+                item { SectionHeader(stringResource(R.string.search_workspaces), Modifier.padding(vertical = 8.dp)) }
+                items(server.workspaces.take(limit), key = { "o" + it.id }) { o ->
+                    WorkspaceHit(o) { opened(); scope.launch { container.orgs.select(o.id); nav.navigate(Routes.HOME) { popUpTo(Routes.HOME) { inclusive = false } } } }
+                }
+                moreItem(filter, server.next[Section.WORKSPACES]) { showMore(Section.WORKSPACES) }
             }
-            if (messages.isNotEmpty()) item { SectionHeader("Messages", Modifier.padding(vertical = 8.dp)) }
-            items(messages, key = { "m" + it.id }) { m ->
-                val conv = convs.firstOrNull { it.id == m.conversationId }
-                ListCard(
-                    conv?.let { ConversationRepository.title(it, me) } ?: "Conversation",
-                    Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                    subtitle = m.text,
-                    leading = conv?.let { cv -> { ConversationAvatar(cv, me, size = 44.dp) } },
-                    trailing = { Text(TimeFmt.listStamp(m.sortTs), style = Griip.type.caption, color = c.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    onClick = { nav.navigate(Routes.conversation(m.conversationId)) },
-                )
+            if (server.groups.isNotEmpty()) {
+                item { SectionHeader(stringResource(R.string.search_groups), Modifier.padding(vertical = 8.dp)) }
+                items(server.groups.take(limit), key = { "g" + it.id }) { g -> GroupHit(g) { opened(); nav.navigate(Routes.conversation(g.id)) } }
+            }
+            if (server.people.isNotEmpty()) {
+                item { SectionHeader(stringResource(R.string.search_people), Modifier.padding(vertical = 8.dp)) }
+                items(server.people.take(limit), key = { "p" + it.id }) { u ->
+                    PersonHit(u) { opened(); scope.launch { runCatching { container.conversations.openDm(u.id) }.onSuccess { nav.navigate(Routes.conversation(it.id)) } } }
+                }
+                moreItem(filter, server.next[Section.PEOPLE]) { showMore(Section.PEOPLE) }
+            }
+            if (device.messages.isNotEmpty()) {
+                item { SectionHeader(stringResource(R.string.search_messages), Modifier.padding(vertical = 8.dp)) }
+                items(device.messages.take(if (filter == Filter.ALL) 8 else 100), key = { "m" + it.id }) { m ->
+                    MessageHit(m, convs.firstOrNull { it.id == m.conversationId }, me, pinned = false) { opened(); nav.navigate(Routes.conversation(m.conversationId)) }
+                }
+            }
+            if (device.pinned.isNotEmpty()) {
+                item { SectionHeader(stringResource(R.string.search_pinned), Modifier.padding(vertical = 8.dp)) }
+                items(device.pinned.take(limit), key = { "pin" + it.id }) { m ->
+                    MessageHit(m, convs.firstOrNull { it.id == m.conversationId }, me, pinned = true) { opened(); nav.navigate(Routes.conversation(m.conversationId)) }
+                }
+            }
+            if (device.files.isNotEmpty()) {
+                item { SectionHeader(stringResource(R.string.search_files), Modifier.padding(vertical = 8.dp)) }
+                items(device.files.take(limit), key = { (m, ref) -> "f" + m.id + ref.id }) { (m, ref) ->
+                    FileHit(ref, convs.firstOrNull { it.id == m.conversationId }, me, m.sortTs) { opened(); nav.navigate(Routes.conversation(m.conversationId)) }
+                }
             }
             item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
         }
+    }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListScope.moreItem(filter: Filter, next: String?, onMore: () -> Unit) {
+    if (filter == Filter.ALL || next == null) return
+    item { ShowMoreRow(onMore) }
+}
+
+private fun searchPath(q: String, types: String, cursor: String? = null, limit: Int = 20): String =
+    "/v1/search?q=${java.net.URLEncoder.encode(q, "UTF-8")}&types=$types&limit=$limit" + (cursor?.let { "&cursor=$it" } ?: "")
+
+/** The server's search, or the older endpoints on a server without it. */
+private suspend fun searchServer(container: com.meldiq.android.di.AppContainer, q: String, types: String, filter: Filter): ServerHits {
+    if (container.features.has(ServerFeatures.SEARCH) == true) {
+        val r = container.api.get<SearchRes>(searchPath(q, types, limit = if (filter == Filter.ALL) SearchRules.PREVIEW_COUNT + 1 else 20)).results
+        return ServerHits(
+            people = r.people?.items.orEmpty(), channels = r.channels?.items.orEmpty(),
+            workspaces = r.workspaces?.items.orEmpty(), groups = r.groups?.items.orEmpty(), documents = r.documents?.items.orEmpty(),
+            next = listOfNotNull(
+                r.documents?.next?.let { Section.DOCUMENTS to it },
+                r.people?.next?.let { Section.PEOPLE to it }, r.channels?.next?.let { Section.CHANNELS to it },
+                r.workspaces?.next?.let { Section.WORKSPACES to it }, r.groups?.next?.let { Section.GROUPS to it },
+            ).toMap(),
+        )
+    }
+    val selected = container.orgs.selectedOrg.value
+    return ServerHits(
+        people = if ("people" in types) container.users.search(q) else emptyList(),
+        channels = if ("channels" in types && selected != null) container.orgs.channels(selected, q).filter { !it.archived }
+            .map { ChannelHitDto(it.id, it.orgId, null, it.name, it.topic, it.kind, it.scopeName, it.joined) } else emptyList(),
+        workspaces = if ("workspaces" in types) container.orgs.cachedOrgs().orEmpty().filter { it.name.contains(q, ignoreCase = true) }
+            .map { WorkspaceHitDto(it.id, it.name, it.slug) } else emptyList(),
+    )
+}
+
+@Composable
+private fun filterLabel(f: Filter): String = stringResource(
+    when (f) {
+        Filter.ALL -> R.string.search_filter_all
+        Filter.MESSAGES -> R.string.search_messages
+        Filter.FILES -> R.string.search_files
+        Filter.PINNED -> R.string.search_pinned
+        Filter.PEOPLE -> R.string.search_people
+        Filter.CHANNELS -> R.string.search_section_channels
+        Filter.DOCUMENTS -> R.string.doc_title
+        Filter.WORKSPACES -> R.string.search_workspaces
+    },
+)
+
+/** The last few searches the person opened a result from, on this phone only (a convenience, never sent anywhere). */
+private object RecentSearches {
+    private const val PREFS = "search"
+    private const val KEY = "recent"
+    private const val SEP = "\u001F"
+
+    fun load(ctx: Context): List<String> =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)?.split(SEP)?.filter { it.isNotBlank() }.orEmpty()
+
+    fun save(ctx: Context, list: List<String>) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, list.joinToString(SEP)).apply()
     }
 }

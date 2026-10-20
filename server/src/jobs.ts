@@ -3,6 +3,7 @@ import { expireDirectUploads, processAbandonedUploads, processBlobDeletes, purge
 import { purgeRevokedPushEndpoints } from "./push/service.js";
 import { purgeHistoryTombstones } from "./routes/history.js";
 import { broadcastCall, type CallRow, endCallRow, evictFromCall, loadCall, scheduleLost } from "./routes/calls.js";
+import { removeFromWorkspace } from "./routes/orgs.js";
 import { now } from "./util.js";
 
 export interface CleanupResult {
@@ -38,6 +39,8 @@ export interface CleanupResult {
   integrations: number;
   /** Old reminder occurrence records and reminders finished more than 30 days ago. */
   reminders: number;
+  /** Guests whose membership end date passed, taken out of the workspace (round 7, docs/WORKSPACE_C5.md). */
+  guestsExpired: number;
 }
 
 /**
@@ -95,7 +98,27 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     callRecordsPruned: 0,
     auditPruned: 0,
     integrations: 0,
+    guestsExpired: 0,
   };
+  // Usage gauges (seats, stored bytes, call minutes), at most every ten minutes (docs/USAGE_AND_PLANS.md).
+  try {
+    ctx.usage?.snapshot();
+  } catch (e) {
+    ctx.log.error({ errorType: (e as Error).name }, "usage snapshot failed");
+  }
+  // Guests past their end date leave the workspace the same way a removal does (round 7).
+  const expired = db.prepare("SELECT org_id, user_id FROM org_members WHERE role = 'GUEST' AND expires_at IS NOT NULL AND expires_at <= ? LIMIT 200").all(t) as {
+    org_id: string;
+    user_id: string;
+  }[];
+  for (const g of expired) {
+    try {
+      await removeFromWorkspace(ctx, g.org_id, g.user_id, null, "expired");
+      r.guestsExpired++;
+    } catch (e) {
+      ctx.log.error({ errorType: (e as Error).name }, "guest expiry failed");
+    }
+  }
   // Operational history (RETENTION.md, D16): ended calls and old audit rows don't accumulate forever.
   const callCutoff = t - ctx.config.callRecordRetentionDays * 86_400_000;
   const oldCalls = db.prepare("SELECT id FROM calls WHERE state = 'ENDED' AND COALESCE(ended_at, created_at) <= ?").all(callCutoff) as { id: string }[];
@@ -187,7 +210,7 @@ export function startJobs(ctx: AppContext): () => void {
   const timer = setInterval(() => {
     if (running) return;
     running = true;
-    runCleanup(ctx)
+    (ctx.metrics ? ctx.metrics.timeJob("retention.cleanup", () => runCleanup(ctx)) : runCleanup(ctx))
       .then((r) => {
         const total = Object.values(r).reduce((a, b) => a + b, 0);
         if (total > 0) ctx.log.info({ cleanup: r }, "retention cleanup");

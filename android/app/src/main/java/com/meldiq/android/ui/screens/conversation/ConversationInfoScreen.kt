@@ -78,6 +78,7 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
     var members by remember { mutableStateOf<List<UserDto>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     var showAdd by remember { mutableStateOf(false) }
+    var showAddGroup by remember { mutableStateOf(false) }
     var showEdit by remember { mutableStateOf(false) }
     var confirmLeave by remember { mutableStateOf(false) }
     var reload by remember { mutableStateOf(0) }
@@ -137,6 +138,8 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
                 if (cv.canManage) {
                     MenuRow(Icons.Outlined.Edit, if (cv.type == "CHANNEL") "Edit name & topic" else "Rename group", tint = c.lavender, tintBg = c.lavenderSoft, onClick = { showEdit = true })
                     if (cv.type != "DM") MenuRow(Icons.Outlined.PersonAdd, "Add members", onClick = { showAdd = true })
+                    // Round 7: add a user group's current members (docs/WORKSPACE_C5.md).
+                    if (cv.type == "CHANNEL" && cv.orgId != null) MenuRow(Icons.Outlined.PersonAdd, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.grp_add_to_channel), onClick = { showAddGroup = true })
                     if (cv.type == "CHANNEL") MenuRow(
                         if (cv.archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, if (cv.archived) "Unarchive channel" else "Archive channel",
                         tint = c.warning, tintBg = c.warningSoft,
@@ -188,6 +191,9 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
                 onClick = if (u.id != me) ({ nav.navigate(Routes.user(u.id)) }) else null,
             )
         }
+    }
+    if (showAddGroup) cv.orgId?.let { org ->
+        com.meldiq.android.ui.screens.workspace.groups.AddGroupSheet(org, conversationId, onDone = { msg -> showAddGroup = false; error = msg; reload++ }, onDismiss = { showAddGroup = false })
     }
     if (showAdd) AddMembersSheet(cv.orgId, members.map { it.id }.toSet(), onDismiss = { showAdd = false }) { ids ->
         scope.launch {

@@ -13,6 +13,15 @@ import type { MeldiqMongo } from "./mongo/client.js";
 import type { PreferenceStore } from "./preferences/store.js";
 import type { PushService } from "./push/service.js";
 import type { FcmService } from "./push/fcm.js";
+import type { Metrics } from "./ops/metrics.js";
+import type { WorkflowService } from "./workflows/service.js";
+import type { DocumentService } from "./documents/service.js";
+import type { GroupService } from "./workspace/groups.js";
+import type { DeveloperService } from "./developer/service.js";
+import type { UsageMeter } from "./usage/meter.js";
+import type { AiService } from "./ai/service.js";
+import type { InboxService } from "./inbox/service.js";
+import type { MeetingService } from "./workspace/meetings.js";
 import type { ReminderService } from "./reminders/service.js";
 import type { BlobStore } from "./storage/index.js";
 import { ApiError, badRequest, now, sha256Hex, unauthorized } from "./util.js";
@@ -43,6 +52,23 @@ export interface AppContext {
   integrations: Integrations;
   /** Reminders kept and fired by the server (src/reminders, docs/REMINDERS.md). */
   reminders: ReminderService;
+  /** In-process operational metrics for the platform health view (src/ops, docs/OPERATIONS.md). */
+  metrics: Metrics;
+  /** Workspace workflows (src/workflows, docs/WORKFLOWS.md). Set by buildApp. */
+  workflows: WorkflowService;
+  /** Workspace documents (src/documents, docs/DOCUMENTS.md). Set by buildApp. */
+  documents: DocumentService;
+  /** User groups and scheduled meetings (src/workspace, docs/WORKSPACE_C5.md). Set by buildApp. */
+  groups: GroupService;
+  meetings: MeetingService;
+  /** API keys and outgoing webhooks (src/developer, docs/DEVELOPER_API.md). Set by buildApp. */
+  developer: DeveloperService;
+  /** Usage metering per workspace and day (src/usage, docs/USAGE_AND_PLANS.md). */
+  usage: UsageMeter;
+  /** AI features (src/ai, docs/AI.md): off unless the operator configures a provider. Set by buildApp. */
+  ai: AiService;
+  /** The Unified Inbox (src/inbox, docs/UNIFIED_INBOX.md). Set by buildApp. */
+  inbox: InboxService;
   log: FastifyBaseLogger;
   audit: (e: { actorId?: string | null; orgId?: string | null; action: string; target?: string | null; detail?: string | null }) => void;
 }

@@ -33,6 +33,8 @@ import io.livekit.android.AudioOptions
 import io.livekit.android.LiveKitOverrides
 import io.livekit.android.room.participant.ConnectionQuality
 import io.livekit.android.room.participant.VideoTrackPublishDefaults
+import io.livekit.android.room.participant.AudioTrackPublishDefaults
+import io.livekit.android.room.track.LocalAudioTrackOptions
 import io.livekit.android.room.track.LocalVideoTrackOptions
 import io.livekit.android.room.track.VideoCaptureParameter
 import io.livekit.android.room.track.VideoEncoding
@@ -62,6 +64,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 enum class CallPhase { Idle, Incoming, Outgoing, Connecting, Connected, Reconnecting, Ended }
 
@@ -82,6 +86,8 @@ data class ParticipantUi(
     val connectionWeak: Boolean = false,
     /** This person's media reports an encryption failure (never hidden to make video show). */
     val e2eeProblem: Boolean = false,
+    /** Draw this camera mirrored: only your own front camera (round 7, [CallMediaPolicy.mirrorPreview]). */
+    val mirrored: Boolean = false,
 )
 
 data class CallUiState(
@@ -186,6 +192,16 @@ class CallManager(
     private var routeCheck: Job? = null
     /** Our own Stop (vs. Android or the status bar stopping the capture): only the latter gets a notice. */
     @Volatile private var stoppingShare = false
+    /** Follows display rotation during a screen share (round 7, bug 4). */
+    private val shareRotation = ScreenShareRotation(context, diag::log)
+    /** A camera switch in progress: further taps wait for it (round 7, bug 3). */
+    @Volatile private var cameraSwitching = false
+    /** Call-setup timings, stage names and milliseconds only (round 7, bug 7). */
+    private val timeline = CallTimeline()
+
+    private fun stage(name: String) {
+        timeline.mark(name)?.let { diag.log("call stage: $name at $it ms") }
+    }
     /** One teardown per call even when a hang-up, an "ended" event and a disconnect arrive on different threads at once. */
     private val finishLock = Any()
     private val _minimized = MutableStateFlow(false)
@@ -307,6 +323,7 @@ class CallManager(
             return
         }
         markHandled(call.id)
+        timeline.begin("callee")
         _minimized.value = false
         val conv = db.conversations().get(call.conversationId) ?: conversations.refreshOne(call.conversationId)
         val me = session.session?.userId
@@ -335,6 +352,7 @@ class CallManager(
             colorIndex = conv?.let { ConversationRepository.peer(it, me)?.avatarColor } ?: 0, video = video, cameraOn = video,
             isGroup = conv?.type != "DM", voiceRoom = conv?.voice == true, canModerate = conv?.voice == true && conv.canManage,
         )
+        timeline.begin("caller")
         try {
             val res = try {
                 api.post<StartCallReq, CallRes>("/v1/calls", StartCallReq(conversationId, video))
@@ -343,8 +361,11 @@ class CallManager(
                 throw e
             }
             markHandled(res.call.id)
+            stage("call created")
             _state.update { it.copy(callId = res.call.id, alerted = res.call.alertedAt != null, hands = res.call.hands) }
-            val key = if (res.joinedExisting) waitForKey(res.call.id) else newKey().also { messages.sendCallKey(conversationId, res.call.id, video, it) }
+            // Round 7 (bug 7): the encrypted key message goes out while this phone connects to the media room. This
+            // phone already has the key; only the callee needs the message, before it joins (it waits for it).
+            val key = if (res.joinedExisting) waitForKey(res.call.id) else newKey().also { k -> sendKeyInBackground(conversationId, res.call.id, video, k) }
             db.calls().upsertLog(CallLogEntity(res.call.id, conversationId, video, !res.joinedExisting, System.currentTimeMillis(), peerName = _state.value.title))
             connect(res.call.id, res.media!!, key, video)
         } catch (e: ApiException) {
@@ -356,11 +377,15 @@ class CallManager(
         val s = _state.value
         val callId = s.callId ?: return
         IncomingCallNotifier.cancel(context)
+        stage("accepted")
         _state.update { it.copy(phase = CallPhase.Connecting, cameraOn = it.video) }
         try {
-            val res = api.post<CallRes>("/v1/calls/$callId/join")
-            val key = waitForKey(callId)
-            connect(callId, res.media!!, key, s.video)
+            // Round 7 (bug 7): asking to join and waiting for the key (usually already here) run side by side.
+            coroutineScope {
+                val join = async { api.post<CallRes>("/v1/calls/$callId/join").also { stage("join granted") } }
+                val key = async { waitForKey(callId).also { stage("key ready") } }
+                connect(callId, join.await().media!!, key.await(), s.video)
+            }
         } catch (e: ApiException) {
             fail(CallFailure.forApi(e))
         }
@@ -396,9 +421,9 @@ class CallManager(
     private suspend fun waitForKey(callId: String): String? {
         if (!settings.current.mediaE2ee) return null
         _state.update { it.copy(waitingForKey = true) }
-        repeat(40) {
+        repeat(KEY_WAIT_STEPS) {
             messages.callKey(callId)?.let { k -> _state.update { it.copy(waitingForKey = false) }; return k }
-            delay(250)
+            delay(KEY_WAIT_STEP_MS)
         }
         _state.update { it.copy(waitingForKey = false) }
         throw ApiException(0, "no_key", "Couldn't get this call's encryption key, so the call wasn't joined. Ask the caller to try again.")
@@ -422,7 +447,15 @@ class CallManager(
             LiveKit.create(
                 context.applicationContext,
                 roomOptions(e2ee),
-                LiveKitOverrides(audioOptions = AudioOptions(javaAudioDeviceModuleCustomizer = { b -> b.setUseHardwareAcousticEchoCanceler(hwAec) })),
+                LiveKitOverrides(
+                    audioOptions = AudioOptions(
+                        javaAudioDeviceModuleCustomizer = { b ->
+                            b.setUseHardwareAcousticEchoCanceler(hwAec)
+                            // Round 7 (bugs 1 and 5): only WebRTC's noise suppressor; two in a row muffle speech.
+                            b.setUseHardwareNoiseSuppressor(CallMediaPolicy.USE_HARDWARE_NOISE_SUPPRESSOR)
+                        },
+                    ),
+                ),
             )
         } catch (t: Throwable) {
             // UnsatisfiedLinkError etc. are Errors, not Exceptions: never let media setup crash the app.
@@ -431,6 +464,7 @@ class CallManager(
             return
         }
         room = r
+        stage("engine ready")
         diag.start(r)
         val tracker = if (key != null) MediaSecurityTracker() else null
         synchronized(securityLock) { securityTracker = tracker }
@@ -450,16 +484,30 @@ class CallManager(
             return
         }
         diag.log("media room joined in ${System.currentTimeMillis() - t0} ms")
+        stage("media joined")
         startMediaMonitor(r)
-        try {
-            r.localParticipant.setMicrophoneEnabled(true)
-        } catch (e: Throwable) {
-            _state.update { it.copy(error = CallFailure.MICROPHONE) }
-        }
-        if (video) try {
-            r.localParticipant.setCameraEnabled(true)
-        } catch (e: Throwable) {
-            _state.update { it.copy(error = CallFailure.CAMERA) }
+        // Microphone and camera publish side by side (LiveKit locks each source on its own; round 7, bug 7).
+        coroutineScope {
+            launch {
+                try {
+                    r.localParticipant.setMicrophoneEnabled(true)
+                    stage("mic on")
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    _state.update { it.copy(error = CallFailure.MICROPHONE) }
+                }
+            }
+            if (video) launch {
+                try {
+                    r.localParticipant.setCameraEnabled(true)
+                    stage("camera on")
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    _state.update { it.copy(error = CallFailure.CAMERA) }
+                }
+            }
         }
         watchAudioRoute(r)
         runCatching { api.post<CallRes>("/v1/calls/$callId/connected") }
@@ -482,6 +530,7 @@ class CallManager(
      * bytes actually arrive, and the redacted network path (udp/tcp/relay) is recorded for diagnosis.
      */
     private fun startMediaMonitor(r: Room) {
+        volumeHintShown = false
         mediaJob?.cancel()
         val monitor = MediaFlowMonitor()
         // Sound on its own (UI-003): video can flow while a person's audio doesn't, which reads as "too quiet".
@@ -520,13 +569,48 @@ class CallManager(
                         diag.log("audio recv=${stats.receivingAudio?.describe()} mic=${stats.sendingAudioDb} dBFS volume=${stats.callVolume}")
                     }
                     _state.update { it.copy(stats = stats.copy(echoCanceller = it.stats?.echoCanceller)) }
+                    // Round 7 (bug 5): a low call volume is the commonest "too quiet". Said once per call, on the call
+                    // screen; Meldiq never changes the person's volume itself.
+                    if (stats.volumeLow && !volumeHintShown) {
+                        volumeHintShown = true
+                        _state.update { it.copy(notice = "Call volume is low on this phone. Press the volume-up button to hear more.") }
+                    }
                 }
             }
         }
     }
 
+    /**
+     * The first remote audio bytes (round 7, bug 7): "connected" means sound arrives, not that signalling finished.
+     * Polls that track's statistics every 100 ms for up to 5 s, then logs the whole timeline once.
+     */
+    private fun watchFirstAudio(r: Room, track: Track) = scope.launch {
+        val t0 = System.currentTimeMillis()
+        while (room === r && System.currentTimeMillis() - t0 < FIRST_AUDIO_WATCH_MS) {
+            val bytes = runCatching { track.getRTCStats() }.getOrNull()?.statsMap?.values
+                ?.filter { it.type == "inbound-rtp" }?.sumOf { (it.members["bytesReceived"] as? Number)?.toLong() ?: 0L } ?: 0L
+            if (bytes > 0) {
+                stage("first remote audio")
+                break
+            }
+            delay(100)
+        }
+        if (room === r) diag.log(timeline.summary())
+    }
+
+    /** Sends the call's key message without holding up this phone's own connection; a failure ends the call clearly. */
+    private fun sendKeyInBackground(conversationId: String, callId: String, video: Boolean, key: String) = scope.launch {
+        runCatching { messages.sendCallKey(conversationId, callId, video, key) }
+            .onSuccess { stage("key sent") }
+            .onFailure { e ->
+                Log.w(TAG, "call key send failed: ${e.javaClass.simpleName}")
+                if (_state.value.callId == callId) fail("Couldn't send the call's encryption key, so the other person can't join. Try calling again.")
+            }
+    }
+
     private var ticks = 0
     private var micStatsLogged = false
+    private var volumeHintShown = false
 
     /** Sender and receiver video numbers for the largest camera and screen streams, plus the current audio route. */
     private suspend fun sampleStats(r: Room): CallMediaStats {
@@ -672,6 +756,12 @@ class CallManager(
             adaptiveStream = true,
             dynacast = true,
             e2eeOptions = e2ee,
+            // Microphone processing and Opus settings, explicit (round 7, [CallMediaPolicy]).
+            audioTrackCaptureDefaults = LocalAudioTrackOptions(
+                noiseSuppression = true, echoCancellation = true, autoGainControl = true, highPassFilter = true,
+                typingNoiseDetection = CallMediaPolicy.TYPING_NOISE_DETECTION,
+            ),
+            audioTrackPublishDefaults = AudioTrackPublishDefaults(audioBitrate = CallMediaPolicy.AUDIO_MAX_BITRATE, dtx = true, red = true),
             videoTrackCaptureDefaults = LocalVideoTrackOptions(captureParams = VideoCaptureParameter(CallMediaPolicy.CAMERA_WIDTH, CallMediaPolicy.CAMERA_HEIGHT, CallMediaPolicy.CAMERA_FPS)),
             videoTrackPublishDefaults = VideoTrackPublishDefaults(videoEncoding = VideoPreset169.H720.encoding, simulcast = true),
             // The SDK orients the capture to the screen: (long, short) on a landscape display, (short, long) on a portrait one.
@@ -688,6 +778,7 @@ class CallManager(
         diag.event(ev)
         when (ev) {
             is RoomEvent.ParticipantConnected -> {
+                stage("peer joined")
                 peerWait?.cancel()
                 peerWait = null
                 _state.update { if (it.phase == CallPhase.Outgoing) it.copy(phase = CallPhase.Connected, connectedAt = System.currentTimeMillis(), peerReconnecting = false) else it.copy(peerReconnecting = false) }
@@ -718,6 +809,11 @@ class CallManager(
             // The SDK has set up the track's frame cryptor by now: register the track for the badge, then
             // swap in the crash-safe observer.
             is RoomEvent.TrackSubscribed -> {
+                if (ev.publication.kind == Track.Kind.AUDIO) {
+                    stage("remote audio subscribed")
+                    watchFirstAudio(ev.room, ev.track)
+                }
+                if (ev.publication.kind == Track.Kind.VIDEO) stage("remote video subscribed")
                 trackChanged { it.trackAdded(trackKey(ev.participant, ev.publication), remote = true, muted = ev.publication.muted) }
                 cryptorGuard?.guard(ev.room, ev.publication, ev.participant)
             }
@@ -790,6 +886,7 @@ class CallManager(
                 cameraOn = camPub != null,
                 connectionWeak = p.connectionQuality == ConnectionQuality.POOR || p.connectionQuality == ConnectionQuality.LOST,
                 e2eeProblem = id in problems,
+                mirrored = CallMediaPolicy.mirrorPreview(local, (cam as? LocalVideoTrack)?.options?.position == io.livekit.android.room.track.CameraPosition.BACK),
             )
         }
         // One tile per identity in a stable order (others by arrival, then you), never yourself twice.
@@ -828,10 +925,31 @@ class CallManager(
         refreshParticipants()
     }
 
+    /**
+     * Switches between the front and back camera (round 7, bug 3). One switch at a time: LiveKit updates the track's
+     * camera position only once the new camera's first frame arrives, so a second tap before that used to aim at the
+     * wrong camera and stack switches. The preview's mirroring follows the position LiveKit reports, so it changes
+     * with the first frame of the new camera, never on a stale frame.
+     */
     fun flipCamera() {
-        val track = room?.localParticipant?.videoTrackPublications?.firstOrNull { it.first.source == Track.Source.CAMERA }?.second as? LocalVideoTrack
-        val pos = track?.options?.position
-        track?.switchCamera(position = if (pos == io.livekit.android.room.track.CameraPosition.FRONT) io.livekit.android.room.track.CameraPosition.BACK else io.livekit.android.room.track.CameraPosition.FRONT)
+        if (cameraSwitching) return
+        val r = room ?: return
+        val track = r.localParticipant.videoTrackPublications.firstOrNull { it.first.source == Track.Source.CAMERA }?.second as? LocalVideoTrack ?: return
+        val back = io.livekit.android.room.track.CameraPosition.BACK
+        val front = io.livekit.android.room.track.CameraPosition.FRONT
+        val target = if (track.options.position == back) front else back
+        cameraSwitching = true
+        scope.launch {
+            try {
+                val t0 = System.currentTimeMillis()
+                runCatching { track.switchCamera(position = target) }.onFailure { _state.update { s -> s.copy(error = CallFailure.CAMERA) } }
+                while (room === r && track.options.position != target && System.currentTimeMillis() - t0 < CAMERA_SWITCH_TIMEOUT_MS) delay(50)
+                diag.log("camera switch to ${target.name.lowercase()} ${if (track.options.position == target) "done" else "not confirmed"} in ${System.currentTimeMillis() - t0} ms")
+            } finally {
+                cameraSwitching = false
+                refreshParticipants()
+            }
+        }
     }
 
     /**
@@ -905,7 +1023,12 @@ class CallManager(
                 notification = CallService.shareNotification(context, _state.value.title),
                 onStop = { scope.launch { onCaptureStopped(r) } },
             )
-            if (!r.localParticipant.setScreenShareEnabled(true, params)) _state.update { it.copy(error = "Screen sharing failed to start") }
+            if (!r.localParticipant.setScreenShareEnabled(true, params)) {
+                _state.update { it.copy(error = "Screen sharing failed to start") }
+            } else {
+                val share = r.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE)?.track as? LocalVideoTrack
+                (share?.capturer as? livekit.org.webrtc.ScreenCapturerAndroid)?.let { shareRotation.start(it) }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "screen share start failed: ${e.javaClass.simpleName}")
             _state.update { it.copy(error = "Screen sharing failed to start") }
@@ -914,6 +1037,7 @@ class CallManager(
     }
 
     private fun onCaptureStopped(r: Room) {
+        shareRotation.stop()
         if (room !== r) return
         val ours = stoppingShare
         stoppingShare = false
@@ -927,6 +1051,7 @@ class CallManager(
         val r = room ?: return@launch
         if (!r.localParticipant.isScreenShareEnabled) return@launch
         stoppingShare = true
+        shareRotation.stop()
         runCatching { r.localParticipant.setScreenShareEnabled(false, null) }
         refreshParticipants()
     }
@@ -1077,6 +1202,7 @@ class CallManager(
 
     private fun reset() {
         userRoute = null
+        shareRotation.stop()
         _minimized.value = false
         _state.value = CallUiState()
         // No call any more: no ongoing-call notification either, whatever raced the service's stop.
@@ -1087,5 +1213,11 @@ class CallManager(
         private const val TAG = "CallManager"
         /** How long after a route change the phone's reported route is checked. */
         private const val ROUTE_CHECK_MS = 1500L
+        /** Longest wait for a camera switch to show the new camera's first frame. */
+        private const val CAMERA_SWITCH_TIMEOUT_MS = 3000L
+        /** The callee looks for the call's key every 50 ms, for up to 10 s (it used to look every 250 ms). */
+        private const val KEY_WAIT_STEP_MS = 50L
+        private const val KEY_WAIT_STEPS = 200
+        private const val FIRST_AUDIO_WATCH_MS = 5000L
     }
 }

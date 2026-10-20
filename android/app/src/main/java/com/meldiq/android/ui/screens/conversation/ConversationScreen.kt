@@ -46,6 +46,22 @@ import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import com.meldiq.android.data.model.ComposerAux
+import com.meldiq.android.ui.media.BulkSave
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -206,6 +222,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> if (uris.isNotEmpty()) vm.pick(ctx, uris) }
     val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(AttachmentPolicy.MAX_ITEMS)) { uris -> if (uris.isNotEmpty()) vm.pick(ctx, uris) }
     var attachSheet by remember { mutableStateOf(false) }
+    var aiSheet by remember { mutableStateOf<AttachAction?>(null) }
     // Sharing a link to an item in a connected app (docs/INTEGRATIONS.md).
     var shareFromApp by remember { mutableStateOf(false) }
     // Whose app connections previews of shared links use: the channel's workspace, else the one selected on Home.
@@ -247,10 +264,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         else { pendingCamera = video; cameraPermission.launch(android.Manifest.permission.CAMERA) }
     }
     // Contact: one picked entry, previewed before sending.
-    var contactCard by remember { mutableStateOf<com.meldiq.android.data.model.ContactCard?>(null) }
-    val pickContact = rememberLauncherForActivityResult(PickPhoneContact()) { uri ->
-        if (uri != null) contactCard = readPickedContact(ctx, uri) ?: run { vm.error.value = "Couldn't read that contact"; null }
-    }
+    // Round 7: a Meldiq profile card (yours or someone you talk to), never an address-book entry or phone number.
+    var profileSheet by remember { mutableStateOf(false) }
     // Location: once, after the person confirms.
     var locationSheet by remember { mutableStateOf(false) }
     var location by remember { mutableStateOf<com.meldiq.android.data.model.SharedLocation?>(null) }
@@ -380,6 +395,12 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         return MentionRules.spans(m.text, stored.ids, stored.all) { id -> users[id]?.username ?: mentionMembers.firstOrNull { it.id == id }?.username }
     }
     fun previewOf(m: MessageEntity) = m.text.ifEmpty { VoiceNote.label(vm.c.messages.attachments(m)) ?: "📎 Attachment" }
+    /** Scrolls to a message (a search hit or a pin), loading older pages first when it isn't loaded yet. */
+    fun jumpTo(id: String) {
+        val idx = messages.indexOfFirst { it.id == id }
+        if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) }
+        else vm.loadUntil(id) { found -> scope.launch { listState.animateScrollToItem(found) } }
+    }
     val peer = conv?.let { ConversationRepository.peer(it, me) }
     val peerUser = peer?.let { users[it.id] }
     val isGroup = conv?.type != "DM"
@@ -388,6 +409,30 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val federation by vm.c.conversations.federation.collectAsStateWithLifecycle()
     val remoteServers = federation[conversationId]?.servers.orEmpty()
     var showSecurity by remember { mutableStateOf(false) }
+    var showPinned by remember { mutableStateOf(false) }
+    // The composer's attach/emoji buttons step aside while typing (round 7, [ComposerAux]); any touch on the messages
+    // brings them back at once.
+    val composerAux = remember { mutableStateOf(ComposerAux.State()) }
+    // Saving several files at once (round 7): the selected messages (null while not selecting), and files the person
+    // left out of the batch in the review sheet.
+    var selected by remember { mutableStateOf<Set<String>?>(null) }
+    var bulkSheet by remember { mutableStateOf(false) }
+    var bulkExcluded by remember { mutableStateOf(emptySet<String>()) }
+    val bulkBatch by vm.bulk.batch.collectAsStateWithLifecycle()
+    fun bulkPicked(): List<Pair<String, AttachmentRef>> = selected.orEmpty().let { ids ->
+        messages.filter { it.id in ids }.sortedBy { it.sortTs }.flatMap { m -> vm.c.messages.attachments(m).map { m.id to it } }
+    }
+    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        val plan = BulkSave.plan(bulkPicked(), bulkExcluded)
+        if (uri != null && plan is BulkSave.Plan.Ready) vm.bulk.start(plan.items, BulkSaver.Target.Folder(uri))
+    }
+    fun endSelection() {
+        vm.bulk.close()
+        bulkSheet = false
+        selected = null
+        bulkExcluded = emptySet()
+    }
+    androidx.activity.compose.BackHandler(selected != null) { if (bulkBatch?.summary?.running != true) endSelection() }
     val securityFacts = com.meldiq.android.data.model.ConversationSecurity.Facts(
         type = conv?.type ?: "DM",
         peerVerified = if (conv?.type == "DM") peerUser?.verified == true else null,
@@ -406,7 +451,14 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
 
     Column(Modifier.fillMaxSize().imePadding()) {
         // Header (or the search bar while searching this conversation)
-        if (searching) {
+        if (selected != null) {
+            BulkSelectionBar(
+                files = bulkPicked().size, messages = selected.orEmpty().size,
+                onClose = { endSelection() },
+                onSelectAll = { selected = messages.filter { !it.deleted && vm.c.messages.attachments(it).isNotEmpty() }.map { it.id }.toSet() },
+                onSave = { bulkExcluded = emptySet(); bulkSheet = true },
+            )
+        } else if (searching) {
             ConversationSearchBar(searchQuery, { searchQuery = it }, onClose = { searching = false; searchQuery = "" })
         } else Row(
             Modifier.fillMaxWidth().background(c.surface).statusBarsPadding().height(64.dp).padding(start = 4.dp, end = 4.dp),
@@ -426,10 +478,14 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             }
             // With people on another server, calls need this server to host them (it says so per conversation).
             val canCall = remoteMembers.isEmpty() || federation[conversationId]?.calls == true
-            if (threadRoot == null && conv?.removed != true && canCall && conv?.voice != true) {
+            // Text channels have no call buttons (round 7): a workspace's calls happen in its voice rooms. DMs and
+            // groups still call each other.
+            val textChannel = conv?.type == "CHANNEL"
+            if (threadRoot == null && conv?.removed != true && canCall && conv?.voice != true && !textChannel) {
                 CircleIconButton(Icons.Rounded.Videocam, "Video call", { permission(true) { vm.startCall(true) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
                 CircleIconButton(Icons.Rounded.Call, "Voice call", { permission(false) { vm.startCall(false) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
             }
+            if (threadRoot == null) PinnedButton(pinned.size) { showPinned = true }
             if (threadRoot == null) SecurityPadlock(securityFacts) { showSecurity = true }
             CircleIconButton(Icons.Rounded.Search, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.conv_search), { searching = true }, tint = c.textSecondary)
         }
@@ -440,10 +496,17 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 onDismiss = { showSecurity = false },
             )
         }
+        if (showPinned) {
+            PinnedMessagesSheet(
+                pinned, users, ::previewOf, canUnpin = conv?.canPost != false,
+                onOpen = { m -> showPinned = false; jumpTo(m.id) },
+                onUnpin = { m -> vm.pin(m) },
+                onDismiss = { showPinned = false },
+            )
+        }
         if (!searching && threadRoot == null) {
             ConversationContextStrip(
-                pinned = pinned.size, saved = savedHere,
-                onPinned = { nav.navigate(Routes.info(conversationId)) },
+                saved = savedHere,
                 onFiles = { nav.navigate(Routes.info(conversationId)) },
                 onSaved = { nav.navigate(com.meldiq.android.ui.Routes.LATER) },
             )
@@ -491,7 +554,10 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         if (conv?.type == "CHANNEL" && threadRoot == null) ChannelAppUpdatesBar(conversationId)
 
         // Messages, over Settings › Chats › wallpaper.
-        Box(Modifier.weight(1f).then(com.meldiq.android.ui.theme.Wallpapers.modifier(chatSettings.wallpaper, c))) {
+        Box(
+            Modifier.weight(1f).then(com.meldiq.android.ui.theme.Wallpapers.modifier(chatSettings.wallpaper, c))
+                .observeTouches { composerAux.value = ComposerAux.onOutside(composerAux.value) },
+        ) {
             if (messages.isEmpty() && threadRoot == null) {
                 EmptyState(
                     Icons.Rounded.Lock, "Say hello 👋",
@@ -509,9 +575,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     onOpen = { hit ->
                         searching = false
                         searchQuery = ""
-                        val idx = messages.indexOfFirst { it.id == hit.id }
-                        if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) }
-                        else vm.loadUntil(hit.id) { idx -> scope.launch { listState.animateScrollToItem(idx) } }
+                        jumpTo(hit.id)
                     },
                     modifier = Modifier.fillMaxSize().background(c.background),
                 )
@@ -527,9 +591,15 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     val reply = m.replyToId?.let { byId[it] }
                     // Same rule as the long-press menu's "Reply": a posted text/attachment message where you may post.
                     val canSwipeReply = conv?.canPost != false && !m.deleted && m.kind == "text"
-                    Column {
+                    val hasFiles = !m.deleted && vm.c.messages.attachments(m).isNotEmpty()
+                    Column(
+                        Modifier.bulkSelectable(selected != null, m.id in selected.orEmpty(), hasFiles, c.primary) {
+                            val now = selected.orEmpty()
+                            selected = if (m.id in now) now - m.id else now + m.id
+                        },
+                    ) {
                         if (older == null || !TimeFmt.sameDay(older.sortTs, m.sortTs)) DayDivider(m.sortTs)
-                        SwipeToReply(canSwipeReply, onReply = { vm.replyTo.value = m; vm.editing.value = null; focusComposer() }) {
+                        SwipeToReply(canSwipeReply && selected == null, onReply = { vm.replyTo.value = m; vm.editing.value = null; focusComposer() }) {
                         MessageBubble(
                             BubbleModel(
                                 m, users[m.senderUserId], showSender = first, showAvatar = lastInRun, firstInGroup = first, reply = reply,
@@ -664,6 +734,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 onToggleDraft = vm::toggleDraftPlayback,
                 onSeekDraft = vm::seekDraft,
                 focus = composerFocus,
+                aux = composerAux,
             )
         }
     }
@@ -696,6 +767,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     vm.editing.value = m; vm.replyTo.value = null; setText(m.text); actionFor = null
                 }, trailing = null)
                 if (interactive) MenuRow(Icons.Outlined.PushPin, if (m.pinned) "Unpin" else "Pin for everyone", tint = c.peach, tintBg = c.peachSoft, onClick = { vm.pin(m); actionFor = null }, trailing = null)
+                if (vm.c.messages.attachments(m).isNotEmpty()) MenuRow(Icons.Outlined.CheckCircle, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.bulk_menu_select), onClick = { selected = setOf(m.id); actionFor = null }, trailing = null)
                 val pollOpen = vm.c.messages.rich(m)?.let { it.poll != null && it.pollClosed != true } == true
                 if (interactive && m.outgoing && pollOpen) MenuRow(Icons.Outlined.Lock, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.poll_close), onClick = { vm.closePoll(m); actionFor = null }, trailing = null)
             }
@@ -756,6 +828,18 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             InfoLine("Encryption", "griip-envelope-v1 · signed by this device")
         }
     }
+    val aiStatus = com.meldiq.android.ui.screens.workspace.ai.rememberAiStatus(appLinkOrg)
+    val aiOrg = appLinkOrg
+    if (aiSheet == AttachAction.AiWrite && aiOrg != null) {
+        com.meldiq.android.ui.screens.workspace.ai.AiWriteSheet(aiOrg, field.text, onUse = { t -> setText(t); aiSheet = null }, onDismiss = { aiSheet = null })
+    } else if (aiSheet == AttachAction.AiCatchUp && aiOrg != null) {
+        val lines = remember(messages, users) {
+            com.meldiq.android.ui.screens.workspace.ai.AiRules.catchUp(messages.asReversed().map { m ->
+                com.meldiq.android.ui.screens.workspace.ai.AiRules.Line(users[m.senderUserId]?.displayName ?: "?", m.text, m.sortTs, m.kind == "text" && !m.deleted)
+            })
+        }
+        com.meldiq.android.ui.screens.workspace.ai.AiCatchUpSheet(aiOrg, conversationId, lines, onDismiss = { aiSheet = null })
+    }
     if (attachSheet) {
         AttachPanel(maxFile, onAction = { action ->
             attachSheet = false
@@ -764,12 +848,13 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 AttachAction.Camera -> openCamera(false)
                 AttachAction.RecordVideo -> openCamera(true)
                 AttachAction.Files -> picker.launch("*/*")
-                AttachAction.Contact -> runCatching { pickContact.launch(Unit) }.onFailure { vm.error.value = "No contacts app is available" }
+                AttachAction.Contact -> profileSheet = true
                 AttachAction.Location -> shareLocation()
                 AttachAction.Poll -> pollSheet = true
                 AttachAction.FromApp -> shareFromApp = true
+                AttachAction.AiWrite, AttachAction.AiCatchUp -> aiSheet = action
             }
-        }, onDismiss = { attachSheet = false })
+        }, onDismiss = { attachSheet = false }, aiWrite = aiStatus?.available == true, aiCatchUp = aiStatus?.available == true && conv?.type == "CHANNEL" && threadRoot == null)
     } else if (shareFromApp) {
         // A channel's own workspace; for DMs and groups, the workspace selected on Home (connections belong to one).
         ShareFromAppSheet(appLinkOrg, onShare = { text, card -> shareFromApp = false; vm.sendLink(text, card) }, onDismiss = { shareFromApp = false })
@@ -780,8 +865,29 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             maxFile = maxFile,
         )
     }
-    contactCard?.let { card ->
-        ContactShareSheet(card, onSend = { vm.sendRich(com.meldiq.android.data.model.RichContent(contact = it)); contactCard = null }, onDismiss = { contactCard = null })
+    if (bulkSheet) {
+        val picked = bulkPicked()
+        BulkSaveSheet(
+            plan = BulkSave.plan(picked, bulkExcluded),
+            candidates = (BulkSave.plan(picked) as? BulkSave.Plan.Ready)?.items.orEmpty(),
+            excluded = bulkExcluded,
+            onToggle = { k -> bulkExcluded = if (k in bulkExcluded) bulkExcluded - k else bulkExcluded + k },
+            batch = bulkBatch,
+            onSaveToFolder = { runCatching { pickFolder.launch(null) }.onFailure { vm.error.value = ctx.getString(com.meldiq.android.R.string.bulk_no_picker) } },
+            onSaveToGallery = { (BulkSave.plan(picked, bulkExcluded) as? BulkSave.Plan.Ready)?.let { vm.bulk.start(it.items, BulkSaver.Target.Gallery) } },
+            onCancel = vm.bulk::cancel,
+            onRetry = vm.bulk::retry,
+            onDone = { endSelection() },
+            onClose = { bulkSheet = false },
+        )
+    }
+    if (profileSheet) {
+        val people by vm.c.db.users().observeAll().collectAsStateWithLifecycle(emptyList())
+        ProfileShareSheet(
+            people, people.firstOrNull { it.id == me },
+            onSend = { vm.sendRich(com.meldiq.android.data.model.RichContent(contact = it)); profileSheet = false },
+            onDismiss = { profileSheet = false },
+        )
     }
     if (locationSheet) {
         LocationShareSheet(
@@ -938,8 +1044,21 @@ private fun Composer(
     onToggleDraft: () -> Unit,
     onSeekDraft: (Long) -> Unit,
     focus: FocusRequester? = null,
+    aux: MutableState<ComposerAux.State> = remember { mutableStateOf(ComposerAux.State()) },
 ) {
     val c = Griip.colors
+    // Round 7: typing hides attach and emoji; 2 s without typing brings them back. Keyed on the generation, so newer
+    // typing or an outside touch cancels a running timer instead of letting it fire late ([ComposerAux]).
+    val auxState = aux.value
+    LaunchedEffect(auxState.generation) {
+        if (auxState.hidden) {
+            kotlinx.coroutines.delay(ComposerAux.IDLE_MS)
+            aux.value = ComposerAux.onIdle(aux.value, auxState.generation)
+        }
+    }
+    // Emptied from elsewhere (sent, edit cancelled): show them at once.
+    if (text.text.isEmpty() && auxState.hidden) SideEffect { aux.value = ComposerAux.onOutside(aux.value) }
+    val showAux = !auxState.hidden
     // The field grows line by line (up to six, then scrolls inside); the growth is animated unless animations are off.
     val reduced = com.meldiq.android.ui.theme.rememberReducedMotion()
     val grow = if (reduced) androidx.compose.animation.core.snap() else com.meldiq.android.ui.theme.Motion.quick<androidx.compose.ui.unit.IntSize>()
@@ -973,8 +1092,17 @@ private fun Composer(
                 }
             }
             Row(verticalAlignment = Alignment.Bottom) {
-                ComposerIcon(Icons.Outlined.AttachFile, "Attach a photo, video, file, contact or location", onAttach)
-                ComposerIcon(Icons.Outlined.EmojiEmotions, "Emoji and animated emoji", onEmoji)
+                AnimatedVisibility(
+                    showAux,
+                    enter = if (reduced) EnterTransition.None else expandHorizontally(expandFrom = Alignment.Start) + fadeIn(),
+                    exit = if (reduced) ExitTransition.None else shrinkHorizontally(shrinkTowards = Alignment.Start) + fadeOut(),
+                ) {
+                    Row {
+                        ComposerIcon(Icons.Outlined.AttachFile, "Attach a photo, video, file, contact or location", onAttach)
+                        ComposerIcon(Icons.Outlined.EmojiEmotions, "Emoji and animated emoji", onEmoji)
+                    }
+                }
+                if (!showAux) Spacer(Modifier.width(4.dp))
                 Box(
                     Modifier.weight(1f).heightIn(min = 48.dp).animateContentSize(grow).clip(fieldShape)
                         .background(c.surfaceVariant).border(1.dp, c.border, fieldShape)
@@ -983,9 +1111,13 @@ private fun Composer(
                 ) {
                     if (text.text.isEmpty()) Text(placeholder, style = Griip.type.body, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     BasicTextField(
-                        value = text, onValueChange = onText, textStyle = Griip.type.body.copy(color = c.textPrimary), cursorBrush = SolidColor(c.primary), maxLines = 6,
+                        value = text,
+                        onValueChange = { new -> aux.value = ComposerAux.onTextChanged(aux.value, text.text, new.text); onText(new) },
+                        textStyle = Griip.type.body.copy(color = c.textPrimary), cursorBrush = SolidColor(c.primary), maxLines = 6,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                        modifier = Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier).semantics { contentDescription = placeholder },
+                        modifier = Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier)
+                            .onFocusChanged { if (!it.isFocused) aux.value = ComposerAux.onOutside(aux.value) }
+                            .semantics { contentDescription = placeholder },
                     )
                 }
                 Spacer(Modifier.width(6.dp))
@@ -1016,5 +1148,16 @@ private fun ComposerIcon(icon: ImageVector, label: String, onClick: () -> Unit) 
     val c = Griip.colors
     Box(Modifier.size(48.dp).clip(CircleShape).pressable(onClick, onClickLabel = label).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
         Icon(icon, null, tint = c.textSecondary, modifier = Modifier.size(24.dp))
+    }
+}
+
+/**
+ * Calls [onTouch] when a finger goes down anywhere in this area, without taking the touch from what's underneath (it
+ * listens in the initial pass and consumes nothing): messages, menus and scrolling behave as before.
+ */
+private fun Modifier.observeTouches(onTouch: () -> Unit): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        onTouch()
     }
 }

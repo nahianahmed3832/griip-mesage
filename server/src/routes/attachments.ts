@@ -100,13 +100,16 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
         throw new ApiError(429, "quota_exceeded", "You've reached your file storage limit. Older files expire after 7 days.");
       }
     }
-    if (who.orgId && abuse.orgStoredBytes > 0) {
+    const storageLimit = who.orgId ? ctx.entitlements.limitFor("storage.bytes", who.orgId).limit : null;
+    if (who.orgId && (abuse.orgStoredBytes > 0 || storageLimit !== null)) {
       const org =
         sum("SELECT SUM(a.size) n FROM attachments a JOIN conversations c ON c.id = a.conversation_id WHERE c.org_id = ? AND a.expires_at > ?", who.orgId, t) +
         sum("SELECT SUM(p.size) n FROM attachment_uploads p JOIN conversations c ON c.id = p.conversation_id WHERE c.org_id = ?", who.orgId);
-      if (org + (inFlight.orgs.get(who.orgId) ?? 0) + reserve > abuse.orgStoredBytes) {
+      if (abuse.orgStoredBytes > 0 && org + (inFlight.orgs.get(who.orgId) ?? 0) + reserve > abuse.orgStoredBytes) {
         throw new ApiError(429, "org_quota_exceeded", "This workspace has reached its file storage limit. Older files expire after 7 days.");
       }
+      // Round 7: the workspace's plan limit for stored files, if one applies (docs/USAGE_AND_PLANS.md).
+      ctx.entitlements.check("storage.bytes", org + (inFlight.orgs.get(who.orgId) ?? 0), who.orgId, reserve);
     }
     const total = sum("SELECT SUM(size) n FROM attachments WHERE expires_at > ?", t) + pending("1 = 1");
     if (exceeds(cfg.attachmentTotalBytes, total + inFlight.bytes + reserve)) {
@@ -193,6 +196,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     ctx.db
       .prepare("INSERT INTO attachments (id, conversation_id, uploader_user_id, size, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)")
       .run(id, conv.id, userId, size, t, expiresAt);
+    ctx.usage?.add(conv.org_id, "files.upload_bytes", size);
     // Federated conversation: the ciphertext is pushed to the other people's servers, so they download it from
     // their own server. Queued before the message that references it, and delivered in order.
     ctx.federation?.pushAttachment(conv.id, { id, conversationId: conv.id, uploaderUserId: userId, size, expiresAt });
@@ -208,6 +212,10 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     // Same 404 for unknown, expired and unauthorised: no oracle for guessing ids.
     if (!a || a.expires_at <= now() || !ctx.authz.isMember(a.conversation_id, userId)) throw notFound("Attachment not found or expired");
     reply.header("cache-control", "private, no-store");
+    // Usage (round 7): bytes asked for, whether served here or from S3 (a range counts its own length).
+    const orgOf = (ctx.authz.conversation(a.conversation_id)?.org_id ?? null) as string | null;
+    const askedRange = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range ?? ""));
+    ctx.usage?.add(orgOf, "files.download_bytes", askedRange ? Math.max(0, (askedRange[2] === "" ? a.size - 1 : Math.min(Number(askedRange[2]), a.size - 1)) - Number(askedRange[1]) + 1) : a.size);
     // S3 with presigned downloads: after the checks above, a link valid for a few minutes (the client follows it; its
     // Range header still applies). The bucket itself stays private.
     const direct = await blobs.presignedGet("attachments", a.id);
@@ -422,6 +430,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
       return true;
     })();
     if (!recorded) throw new ApiError(410, "upload_expired", "This upload took too long. Start it again.");
+    ctx.usage?.add(conv.org_id, "files.upload_bytes", u.size);
     ctx.federation?.pushAttachment(conv.id, { id: u.id, conversationId: conv.id, uploaderUserId: userId, size: u.size, expiresAt });
     return { id: u.id, size: u.size, expiresAt };
   });

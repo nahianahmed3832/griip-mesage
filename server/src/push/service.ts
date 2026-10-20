@@ -249,6 +249,9 @@ export class PushService {
 
   /** Logs carry the device id and a reason code, never the endpoint or its host. */
   private record(deviceId: string, endpoint: string, r: WakeResult): void {
+    // Health view (docs/OPERATIONS.md): outcome kind only, never the endpoint or the device.
+    const ok = "status" in r && r.status >= 200 && r.status < 300;
+    this.ctx.metrics?.recordProvider("push.unifiedpush", ok ? undefined : { code: "status" in r ? `http_${r.status}` : r.error });
     if (!this.ctx.db.open) return;
     const { db } = this.ctx;
     const t = now();

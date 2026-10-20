@@ -352,7 +352,7 @@ private fun MessageBody(b: BubbleModel, me: String?, tinted: Boolean, transfer: 
             }
             val rich = b.rich
             when {
-                rich?.contact != null -> ContactCardView(rich.contact, tinted, cb.onCopyText, cb.onFindPhone)
+                rich?.contact != null -> ContactCardView(rich.contact, tinted, cb.onCopyText, cb.onFindPhone, onOpenProfile = cb.onMentionClick)
                 rich?.location != null -> LocationCardView(rich.location, tinted)
                 rich?.poll != null -> PollCard(rich, me, b.canVote, cb.onVote)
                 rich?.sticker != null -> StickerView(com.meldiq.android.data.model.StickerCatalog.find(rich.sticker), m.text, animate = b.animateEmoji)

@@ -214,5 +214,9 @@ import kotlinx.serialization.Serializable
 @Serializable data class SearchAllRes(val results: List<SearchAllGroup> = emptyList())
 
 /** What this workspace can use (servers with `integrations`); no plan exists yet, and no upgrade is offered. */
-@Serializable data class PlanCapabilityDto(val key: String, val label: String = "", val limit: Int? = null, val used: Int = 0, val available: Boolean = true)
+@Serializable data class PlanCapabilityDto(
+    val key: String, val label: String = "", val limit: Long? = null, val used: Long = 0, val available: Boolean = true,
+    /** Round 7: "workspace" (this workspace's own limit), "server" or "none". */
+    val source: String = "none",
+)
 @Serializable data class PlanRes(val plan: String? = null, val source: String = "none", val capabilities: List<PlanCapabilityDto> = emptyList())

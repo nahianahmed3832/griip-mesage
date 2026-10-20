@@ -297,10 +297,13 @@ export class ReminderService {
     this.timer = setInterval(() => {
       if (this.running || !this.ctx.db.open) return;
       this.running = true;
+      const t0 = performance.now();
       try {
         const r = this.tick();
+        this.ctx.metrics?.recordJob("reminders.tick", performance.now() - t0);
         if (r.fired || r.retried || r.failed) this.ctx.log.info(r, "reminders fired");
       } catch (err) {
+        this.ctx.metrics?.recordJob("reminders.tick", performance.now() - t0, err);
         this.ctx.log.error({ errorType: err instanceof Error ? err.name : typeof err }, "reminder tick failed");
       } finally {
         this.running = false;

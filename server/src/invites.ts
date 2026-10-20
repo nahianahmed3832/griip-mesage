@@ -118,7 +118,11 @@ export function joinOrgByInvite(ctx: AppContext, inv: OrgInviteRow, userId: stri
   const existing = authz.orgRole(inv.org_id, userId);
   const rank: Record<string, number> = { GUEST: 0, MEMBER: 1, ADMIN: 2, OWNER: 3 };
   if (!existing) {
-    db.prepare("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)").run(inv.org_id, userId, inv.role, t);
+    // Round 7: the workspace's member limit, if one applies (docs/USAGE_AND_PLANS.md).
+    ctx.entitlements.check("members", (db.prepare("SELECT COUNT(*) n FROM org_members WHERE org_id = ?").get(inv.org_id) as { n: number }).n, inv.org_id);
+    // A guest invitation can carry an end date for the membership (round 7, docs/WORKSPACE_C5.md).
+    const guestDays = inv.role === "GUEST" ? (inv as { guest_days?: number | null }).guest_days ?? null : null;
+    db.prepare("INSERT INTO org_members (org_id, user_id, role, joined_at, expires_at) VALUES (?, ?, ?, ?, ?)").run(inv.org_id, userId, inv.role, t, guestDays ? t + guestDays * 86_400_000 : null);
   } else if (rank[inv.role] > rank[existing]) {
     db.prepare("UPDATE org_members SET role = ? WHERE org_id = ? AND user_id = ?").run(inv.role, inv.org_id, userId);
   }
@@ -132,5 +136,10 @@ export function joinOrgByInvite(ctx: AppContext, inv: OrgInviteRow, userId: stri
   // still under them doesn't, so nobody can vouch for their own extra accounts.
   if (!hasNewAccountLimits(db, inv.created_by, t)) endNewAccountLimits(db, userId);
   authz.autoJoinScope(inv.org_id, userId, t);
+  // Workflows (docs/WORKFLOWS.md): a new member, once per membership (the event key carries the join time).
+  if (!existing) {
+    const name = (ctx.db.prepare("SELECT display_name FROM users WHERE id = ?").get(userId) as { display_name: string } | undefined)?.display_name ?? "";
+    ctx.workflows?.emit({ type: "member.joined", key: `joined:${userId}:${t}`, orgId: inv.org_id, depth: 0, member: { id: userId, name, role } });
+  }
   return { orgId: inv.org_id, inviteId: inv.id, role };
 }

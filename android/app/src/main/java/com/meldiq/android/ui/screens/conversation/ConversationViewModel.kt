@@ -480,6 +480,11 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
 
     fun pauseVoice() = c.voicePlayer.pause()
 
+    /** Saving several files at once (round 7): runs while this conversation is open; leaving it cancels what's left. */
+    val bulk = BulkSaver(viewModelScope, c.app, ::mediaFile) { ref, f ->
+        AttachmentPolicy.kind(ref.mime, withContext(Dispatchers.IO) { sniffFile(f) }) != AttachmentPolicy.Kind.FILE
+    }
+
     fun saveToGallery(ref: AttachmentRef) = viewModelScope.launch {
         runCatching {
             val f = mediaFile(ref)

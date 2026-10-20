@@ -166,6 +166,14 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :cid AND kind = 'text' AND deleted = 0 AND text LIKE '%' || :q || '%' ESCAPE '\\' ORDER BY sortTs DESC LIMIT 100")
     suspend fun searchIn(cid: String, q: String): List<MessageEntity>
 
+    /** Messages whose files may be named [q] (round 7 search): the caller checks the names in the decoded list. */
+    @Query("SELECT * FROM messages WHERE deleted = 0 AND attachmentsJson != '[]' AND attachmentsJson LIKE '%' || :q || '%' ESCAPE '\\' ORDER BY sortTs DESC LIMIT 200")
+    suspend fun searchFiles(q: String): List<MessageEntity>
+
+    /** Pinned messages whose text matches [q] (round 7 search). */
+    @Query("SELECT * FROM messages WHERE pinned = 1 AND deleted = 0 AND text LIKE '%' || :q || '%' ESCAPE '\\' ORDER BY sortTs DESC LIMIT 100")
+    suspend fun searchPinned(q: String): List<MessageEntity>
+
     @Query("SELECT * FROM messages WHERE conversationId = :cid AND outgoing = 1 AND status IN ('SENT','DELIVERED') AND sortTs <= :upTo")
     suspend fun outgoingUpTo(cid: String, upTo: Long): List<MessageEntity>
 

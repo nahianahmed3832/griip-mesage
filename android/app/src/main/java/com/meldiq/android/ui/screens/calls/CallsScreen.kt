@@ -143,7 +143,8 @@ fun CallsScreen(nav: NavHostController) {
                             if (e.video) Icons.Rounded.Videocam else Icons.Rounded.Call,
                             if (e.video) "Video call $name" else "Voice call $name",
                             { callBack(e.conversationId, e.video) },
-                            tint = c.primary, enabled = idle && conv != null && !conv.removed,
+                            // An older call in a text channel can't be called back: text channels have no calls (round 7).
+                            tint = c.primary, enabled = idle && conv != null && !conv.removed && (conv.type != "CHANNEL" || conv.voice),
                         )
                     },
                     onClick = { if (conv != null) nav.navigate(Routes.conversation(conv.id)) },

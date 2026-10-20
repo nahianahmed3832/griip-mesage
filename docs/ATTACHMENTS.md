@@ -93,6 +93,25 @@ ciphertext, under random ids. Files expire after 7 days unless a member's phone 
 can still open them. With presigned downloads on, the app is redirected to a short-lived S3 link after the server's
 checks. The app follows it and drops its own credentials on the way.
 
+## Saving several files (round 7, 2026-10-20)
+
+Long-press a message with files › **Select files to save**. Tap other messages to add or remove them (the whole album
+of a message counts); the header shows how many files, and **Select all** takes every loaded message with files. Save
+opens a review sheet that lists every file with a tick, so single photos of an album can be left out. Then:
+
+- **Save to a folder…** (Android's folder picker; any mix of photos, videos and documents), or
+- **Save to gallery** (Android 10+, only when every file is a photo or video, checked by content as for single saves).
+
+The batch runs one file at a time (`BulkSaver`): each is downloaded through the same membership-checked endpoint as a
+single tap, verified and decrypted on the phone, then copied. Every file ends **saved**, **failed** (with the reason)
+or **stopped**; Stop cancels what's left, and Retry tries the failed and stopped files again. Leaving the conversation
+stops the batch. Limits (`BulkSave`): 200 files and 4 GiB per batch; a larger selection is refused with the limit
+rather than cut, so the person saves it in parts. Names that clash in one batch get " (1)", " (2)".
+
+There is no server-side archive: files are end-to-end encrypted, so the server can't open or zip them, and nothing new
+on the server is needed. Access is still checked per file by the download endpoint, so a file from a conversation the
+person has left fails with the server's reason instead of being saved.
+
 ## Encryption
 
 Unchanged format (`griip-envelope-v1` attachments): one AES-256-GCM key and nonce per file, streamed through the cipher

@@ -56,9 +56,19 @@ data class StickerRef(val pack: String, val id: String)
 @Serializable
 data class LinkPreview(val url: String, val title: String? = null, val description: String? = null, val siteName: String? = null)
 
-/** A shared contact: only the fields the sender chose. Phone numbers as written in their address book. */
+/**
+ * A shared contact. Since round 7 the app sends only Meldiq profile cards: the person's display name, Meldiq user id and
+ * username, never a phone number or anything from the address book. [phones] and [emails] remain so cards received
+ * from older apps still show; nothing new fills them.
+ */
 @Serializable
-data class ContactCard(val name: String, val phones: List<String> = emptyList(), val emails: List<String> = emptyList())
+data class ContactCard(
+    val name: String,
+    val phones: List<String> = emptyList(),
+    val emails: List<String> = emptyList(),
+    val userId: String? = null,
+    val username: String? = null,
+)
 
 /** A one-time location (never live): coordinates, accuracy in metres when known, and an optional place name. */
 @Serializable

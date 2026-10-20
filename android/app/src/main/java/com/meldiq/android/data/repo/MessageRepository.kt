@@ -130,7 +130,16 @@ class MessageRepository(
     /** Something about apps changed for this person in a workspace (the workspace id): app screens reload. */
     private val _appUpdates = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val appUpdates: SharedFlow<String> = _appUpdates
+    /** Round 7: a meeting starting in ten minutes (its id), and a workspace whose meetings changed (its id). */
+    private val _meetingSoon = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    val meetingSoon: SharedFlow<String> = _meetingSoon
+    private val _meetingUpdates = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    val meetingUpdates: SharedFlow<String> = _meetingUpdates
     val orgEvents: SharedFlow<String> = _orgEvents
+    /** Round 8: something changed in a workspace's customer inbox (ids only, docs/UNIFIED_INBOX.md). */
+    data class InboxEvent(val kind: String, val orgId: String, val conversationId: String?)
+    private val _inboxEvents = MutableSharedFlow<InboxEvent>(extraBufferCapacity = 32)
+    val inboxEvents: SharedFlow<InboxEvent> = _inboxEvents
     private val _orgDeleted = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val orgDeleted: SharedFlow<String> = _orgDeleted
     private val _reminderEvents = MutableSharedFlow<String>(extraBufferCapacity = 16)
@@ -182,6 +191,16 @@ class MessageRepository(
         val esc = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         return if (cid == null) db.messages().search(esc) else db.messages().searchIn(cid, esc)
     }
+
+    /** Files on this phone whose name contains [q], newest first, with the message each belongs to (round 7 search). */
+    suspend fun searchFiles(q: String): List<Pair<MessageEntity, AttachmentRef>> {
+        val esc = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return db.messages().searchFiles(esc).flatMap { m -> attachments(m).filter { it.name.contains(q, ignoreCase = true) }.map { m to it } }.take(100)
+    }
+
+    /** Pinned messages on this phone whose text contains [q] (round 7 search). */
+    suspend fun searchPinned(q: String): List<MessageEntity> =
+        db.messages().searchPinned(q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_"))
 
     fun reactions(m: MessageEntity): Map<String, List<String>> = runCatching { json.decodeFromString(reactionsSer, m.reactionsJson) }.getOrDefault(emptyMap())
     fun attachments(m: MessageEntity): List<AttachmentRef> = runCatching { json.decodeFromString(attachmentsSer, m.attachmentsJson) }.getOrDefault(emptyList())
@@ -833,6 +852,11 @@ class MessageRepository(
             "reminder.due", "reminders.changed" -> f.id?.let { _reminderEvents.tryEmit(it) }
             "integration.event" -> f.conversationId?.let { _appEvents.tryEmit(it) }
             "integration.updated" -> f.orgId?.let { _appUpdates.tryEmit(it) }
+            // Round 7 meetings (docs/WORKSPACE_C5.md).
+            "meeting.soon" -> f.meetingId?.let { _meetingSoon.tryEmit(it) }
+            "meeting.updated" -> f.orgId?.let { _meetingUpdates.tryEmit(it) }
+            "inbox.updated", "inbox.escalated", "inbox.overdue", "inbox.delivery_failed", "inbox.account_failed" ->
+                f.orgId?.let { _inboxEvents.tryEmit(InboxEvent(f.t, it, f.conversationId)) }
             "call" -> _callFrames.tryEmit(f)
         }
     }

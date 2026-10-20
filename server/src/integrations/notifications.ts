@@ -418,11 +418,15 @@ export async function channelEvents(k: Kernel, conversationId: string, userId: s
   const rows = await k.deps.store.events(conversationId, after, limit);
   return rows.map((r) => {
     const def = k.visibleDefs().find((d) => d.id === r.connector_id);
+    // Workspace workflows (docs/WORKFLOWS.md) post under their own label, not an installed app's.
+    const workflow = r.connector_id === "workflows";
+    // Updates posted with an API key (docs/DEVELOPER_API.md) name the key.
+    const api = r.connector_id === "api";
     return {
       id: r.id,
       connectorId: r.connector_id,
-      appName: def?.name ?? r.connector_id,
-      icon: def?.icon ?? "apps",
+      appName: workflow ? "Workflows" : api ? `API · ${r.actor ?? "key"}` : (def?.name ?? r.connector_id),
+      icon: workflow ? "bolt" : api ? "code" : (def?.icon ?? "apps"),
       kind: r.kind,
       title: r.title,
       url: r.url,

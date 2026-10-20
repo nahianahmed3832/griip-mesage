@@ -410,6 +410,11 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
       await assertCallHasRoom(ctx, existing, `${userId}.${deviceId}`);
       return { call: callView(ctx, existing), media: await actions.issue(existing, userId, deviceId), joinedExisting: true };
     }
+    // Round 7: a text channel is for messages; calls in a workspace happen in its voice rooms. A call already running
+    // in a text channel (started before this rule) can still be joined above.
+    if (conv.type === "CHANNEL" && !conv.voice) {
+      throw new ApiError(409, "text_channel_no_calls", "Calls happen in voice rooms, not in text channels");
+    }
     const id = newId("call");
     const room = `griip-${crypto.randomBytes(12).toString("hex")}`;
     if (conv.voice) {

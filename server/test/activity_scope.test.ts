@@ -25,8 +25,9 @@ beforeAll(async () => {
     const code = (await owner.req("POST", `/v1/orgs/${org}/invites`, { role: "MEMBER", branchId: branch })).invite.code;
     await c.req("POST", "/v1/invites/accept", { code });
   }
-  channelA = (await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "dhaka-general", scope: "BRANCH", scopeId: branchA, kind: "PUBLIC" })).channel.id;
+  channelA = (await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "dhaka-general", scope: "BRANCH", scopeId: branchA, kind: "PUBLIC", voice: true })).channel.id;
   privateB = (await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "london-board", scope: "BRANCH", scopeId: branchB, kind: "PRIVATE" })).channel.id;
+  // A voice room (round 7: text channels have no calls).
   await owner.req("POST", "/v1/calls", { conversationId: channelA });
 });
 afterAll(async () => h.close());
@@ -44,7 +45,7 @@ describe("activity feed respects branch isolation (T1.8)", () => {
     expect(targets(mine)).not.toContain(teamA);
     expect(targets(mine)).not.toContain(deptA);
     expect(targets(mine)).not.toContain(channelA);
-    expect(mine.some((a) => a.action === "call.start")).toBe(false);
+    expect(mine.some((a) => a.action === "voice_room.open")).toBe(false);
     // Their own branch's structure, and org-level events, are still shown.
     expect(targets(mine)).toContain(teamB);
     expect(mine.filter((a) => a.action === "branch.create").map((a) => a.detail).sort()).toEqual(["Dhaka", "London"]);
@@ -57,7 +58,7 @@ describe("activity feed respects branch isolation (T1.8)", () => {
     await inA.req("POST", `/v1/conversations/${channelA}/join`).catch(() => {});
     const mine = await feed(inA);
     expect(targets(mine)).toEqual(expect.arrayContaining([teamA, deptA, channelA]));
-    expect(mine.some((a) => a.action === "call.start" && a.target === channelA)).toBe(true);
+    expect(mine.some((a) => a.action === "voice_room.open" && a.target === channelA)).toBe(true);
     expect(targets(mine)).not.toContain(teamB);
   });
 

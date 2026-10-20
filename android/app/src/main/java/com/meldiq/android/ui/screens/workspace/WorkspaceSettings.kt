@@ -96,6 +96,8 @@ fun WorkspaceSettingsSheet(detail: OrgDetailRes, onDismiss: () -> Unit, onChange
 
     GlassSheet(onDismiss, title = stringResource(R.string.ws_settings_title)) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+            // Round 7 (docs/WORKSPACE_C5.md): who may be a guest, and for how long.
+            if (canEdit) GuestPolicyCard(org.id, org.guestsAllowed, org.guestMaxDays, onChanged = onChanged)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OrgMark(org.id, org.name, WorkspaceList.colorSeed(org), photoRev, size = 52.dp)
                 Spacer(Modifier.width(12.dp))

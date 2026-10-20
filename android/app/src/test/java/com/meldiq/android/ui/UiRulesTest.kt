@@ -73,8 +73,8 @@ class UiRulesTest {
     @Test
     fun everyLanguageHasEveryStringWithTheSamePlaceholders() {
         val res = File("src/main/res")
-        // Every generated table: strings.xml, strings_account.xml (Orbit 2.0) and strings_workspace.xml (2026-10-19).
-        val tables = listOf("strings.xml", "strings_account.xml", "strings_workspace.xml")
+        // Every generated table (android/i18n/gen.py), up to round 7.
+        val tables = listOf("strings.xml", "strings_account.xml", "strings_workspace.xml", "strings_apps.xml", "strings_meldiq.xml", "strings_round6.xml", "strings_round7.xml")
         fun strings(folder: String): Map<String, String> = tables.flatMap { table ->
             Regex("""<string name="([a-z0-9_]+)">(.*?)</string>""").findAll(File(res, "$folder/$table").readText()).map { it.groupValues[1] to it.groupValues[2] }.toList()
         }.toMap()

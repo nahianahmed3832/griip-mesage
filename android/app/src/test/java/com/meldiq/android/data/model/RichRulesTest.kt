@@ -26,6 +26,28 @@ class RichRulesTest {
     }
 
     @Test
+    fun `profile cards carry no phone number or address`() {
+        val card = RichRules.profileCard("usr_Ab12-x", "Ayesha", "ayesha")!!
+        assertEquals(ContactCard("Ayesha", userId = "usr_Ab12-x", username = "ayesha"), card)
+        // Whatever a sender (or an altered app) puts in, a profile card keeps only name, id and username.
+        val received = RichRules.clean(ContactCard("Ayesha", listOf("+8801712"), listOf("a@example.com"), userId = "usr_1", username = "ayesha@chat.example.org"))!!
+        assertTrue(received.phones.isEmpty() && received.emails.isEmpty())
+        assertEquals("ayesha@chat.example.org", received.username)
+        assertEquals("👤 Ayesha (@ayesha)", RichRules.fallbackText(RichContent(contact = card)))
+        // The wire format has no phone keys with values for a profile card.
+        val json = GriipJson.encodeToString(ContactCard.serializer(), card)
+        assertFalse(json.contains("+"))
+    }
+
+    @Test
+    fun `malformed profile ids fall back to a plain card`() {
+        val c = RichRules.clean(ContactCard("Ayesha", userId = "../../etc", username = "x y"))!!
+        assertNull(c.userId)
+        assertNull(RichRules.clean(ContactCard("Ayesha", userId = "usr_1", username = "bad name"))!!.username)
+        assertNull(RichRules.profileCard("usr_1", "  ", null))
+    }
+
+    @Test
     fun animatedEmojiIsOneEmoji() {
         assertEquals("❤️", RichRules.cleanEmoji("❤️"))
         assertEquals("👍", RichRules.cleanEmoji(" 👍 "))

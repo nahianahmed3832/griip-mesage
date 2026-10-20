@@ -68,6 +68,8 @@ import kotlinx.serialization.json.JsonObject
     val id: String, val username: String, val displayName: String, val avatarColor: Int = 0, val statusText: String? = null,
     val online: Boolean? = null, val lastSeenAt: Long? = null, val identityKey: String? = null, val fingerprint: String? = null,
     val role: String? = null, val orgRole: String? = null, val title: String? = null,
+    /** A guest's membership end date in the workspace directory (round 7), null without one. */
+    val expiresAt: Long? = null,
     val branches: List<ScopedRole> = emptyList(), val teams: List<ScopedRole> = emptyList(),
     // Federation (2026-10-16): set for people on another server (their username is then "name:server").
     val homeServer: String? = null, val address: String? = null,
@@ -192,6 +194,9 @@ import kotlinx.serialization.json.JsonObject
     val memberCount: Int = 0, val createdAt: Long = 0,
     /** The organisation's avatar revision (servers with `org-photos`); null without one. */
     val photoRev: Long? = null,
+    /** Round 7 guest policy (docs/WORKSPACE_C5.md). */
+    val guestsAllowed: Boolean = true,
+    val guestMaxDays: Int? = null,
 )
 @Serializable data class OrgsRes(val orgs: List<OrgDto>)
 @Serializable data class OrgRes(val org: OrgDto)
@@ -224,6 +229,12 @@ import kotlinx.serialization.json.JsonObject
     val canViewApps: Boolean = false,
     val canManageApps: Boolean = false,
     val canManagePolicies: Boolean = false,
+    /** Round 7: may create and change workspace workflows (docs/WORKFLOWS.md). */
+    val canManageWorkflows: Boolean = false,
+    /** Round 7: may create and change user groups (docs/WORKSPACE_C5.md). */
+    val canManageGroups: Boolean = false,
+    /** Round 7: may manage API keys and webhooks (docs/DEVELOPER_API.md). */
+    val canManageDevelopers: Boolean = false,
     val canTransferOwnership: Boolean = false,
     /** The caller's effective permission keys in this workspace (empty on older servers). */
     val effective: List<String> = emptyList(),
@@ -250,7 +261,11 @@ import kotlinx.serialization.json.JsonObject
     val voice: Boolean = false,
 )
 @Serializable data class OrgRoleReq(val role: String? = null, val title: String? = null)
-@Serializable data class InviteReq(val role: String, val branchId: String? = null, val teamId: String? = null, val maxUses: Int, val expiresInHours: Int)
+@Serializable data class InviteReq(
+    val role: String, val branchId: String? = null, val teamId: String? = null, val maxUses: Int, val expiresInHours: Int,
+    /** Round 7: how many days a guest's membership lasts once they join; null for no end date. */
+    val guestDays: Int? = null,
+)
 @Serializable data class InviteDto(
     val id: String, val code: String? = null, val hint: String? = null, val role: String, val branchId: String? = null,
     val teamId: String? = null, val maxUses: Int, val uses: Int = 0, val createdAt: Long = 0, val expiresAt: Long,
@@ -338,6 +353,9 @@ import kotlinx.serialization.json.JsonObject
 /** Raw realtime frame; fields depend on `t`. */
 @Serializable data class RealtimeFrame(
     val t: String,
+    /** "meeting.soon" / "meeting.updated" (round 7, docs/WORKSPACE_C5.md). */
+    val meetingId: String? = null,
+    val startsAt: Long? = null,
     /** "prefs.updated": which workspace's personal preferences changed on another device of this person. */
     val workspaceId: String? = null,
     val items: List<QueueItem>? = null,

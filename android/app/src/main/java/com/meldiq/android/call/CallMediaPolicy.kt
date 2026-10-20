@@ -15,6 +15,15 @@ package com.meldiq.android.call
  * - Echo: on Android 10+ LiveKit enables the phone's hardware echo canceller, and WebRTC then turns its own (AEC3)
  *   off. Echo cancellation therefore depended entirely on the phone model. Default now: WebRTC's AEC3 (hardware
  *   AEC not requested); the hardware one stays available as a setting.
+ * - Noise (round 7, bug 1/5): WebRTC's JavaAudioDeviceModule also switches on the phone's built-in noise suppressor
+ *   whenever the phone has one, on top of WebRTC's own. Two suppressors in a row eat into speech (muffled, quieter
+ *   voices, and the other side's AGC then lifts the noise floor). Now only WebRTC's suppressor runs, alongside its
+ *   echo canceller, gain control and high-pass filter; typing-noise detection is off (it only gates on keyboard clicks).
+ * - Local preview (round 7, bug 3): your own picture was mirrored whatever camera was on, so the back camera's
+ *   picture moved the wrong way as the phone moved. Only the front camera is mirrored now; what's sent was never mirrored.
+ * - Screen share rotation (round 7, bug 4): LiveKit resizes the capture only when the motion sensor reports a turn. A
+ *   game that turns the display to landscape by itself (auto-rotate off, or the phone already sideways) kept a portrait
+ *   capture, so the landscape game didn't fit. The call follows the display itself now ([ScreenShareRotation]).
  */
 object CallMediaPolicy {
     const val CAMERA_WIDTH = 1280
@@ -38,6 +47,27 @@ object CallMediaPolicy {
         fun even(v: Double) = (v.toInt() / 2 * 2).coerceAtLeast(2)
         return even(long * scale) to even(short * scale)
     }
+
+    /**
+     * The screen-capture size for the display as it is now: landscape when the display is landscape (a game turned it),
+     * portrait otherwise, never stretched ([screenCaptureSize]).
+     */
+    fun orientedCaptureSize(displayW: Int, displayH: Int): Pair<Int, Int> {
+        val (long, short) = screenCaptureSize(displayW, displayH)
+        return if (displayW > displayH) long to short else short to long
+    }
+
+    /** Your own picture is mirrored only for the front camera, like a mirror; the back camera shows the world as it is. */
+    fun mirrorPreview(isLocal: Boolean, backCamera: Boolean): Boolean = isLocal && !backCamera
+
+    /** Only WebRTC's noise suppressor (see the class comment). */
+    const val USE_HARDWARE_NOISE_SUPPRESSOR = false
+
+    /** Microphone processing: WebRTC's echo canceller, noise suppressor, gain control and high-pass filter. */
+    const val TYPING_NOISE_DETECTION = false
+
+    /** Opus at up to 48 kbit/s with DTX and RED (LiveKit's own default, now explicit): full-band speech, loss-resilient. */
+    const val AUDIO_MAX_BITRATE = 48_000
 
     /** Whether to ask for the phone's built-in echo canceller (see the class comment). */
     fun useHardwareEchoCanceller(setting: Boolean): Boolean = setting

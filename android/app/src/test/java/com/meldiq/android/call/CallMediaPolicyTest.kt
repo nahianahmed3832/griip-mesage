@@ -23,6 +23,28 @@ class CallMediaPolicyTest {
     }
 
     @Test
+    fun `a landscape game gets a landscape capture of the same aspect`() {
+        // HONOR ELI-AN00 turned landscape by a game: 2664×1200. Before round 7 the capture stayed 864×1920 (portrait).
+        assertEquals(1920 to 864, CallMediaPolicy.orientedCaptureSize(2664, 1200))
+        assertEquals(864 to 1920, CallMediaPolicy.orientedCaptureSize(1200, 2664))
+        val (w, h) = CallMediaPolicy.orientedCaptureSize(2664, 1200)
+        assertEquals(2664.0 / 1200, w.toDouble() / h, 0.01) // the whole display, not stretched or cropped
+    }
+
+    @Test
+    fun `only your own front camera is mirrored`() {
+        assertTrue(CallMediaPolicy.mirrorPreview(isLocal = true, backCamera = false))
+        assertFalse(CallMediaPolicy.mirrorPreview(isLocal = true, backCamera = true))
+        assertFalse(CallMediaPolicy.mirrorPreview(isLocal = false, backCamera = false))
+    }
+
+    @Test
+    fun `one noise suppressor, not two`() {
+        assertFalse(CallMediaPolicy.USE_HARDWARE_NOISE_SUPPRESSOR)
+        assertEquals(48_000, CallMediaPolicy.AUDIO_MAX_BITRATE)
+    }
+
+    @Test
     fun webrtcsEchoCancellerIsTheDefaultAndTheChoiceIsLoggedWithoutIdentifiers() {
         assertFalse(CallMediaPolicy.useHardwareEchoCanceller(false))
         assertTrue(CallMediaPolicy.useHardwareEchoCanceller(true))

@@ -4,6 +4,7 @@ import path from "node:path";
 import { SendEmailCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import nodemailer from "nodemailer";
 import MailComposer from "nodemailer/lib/mail-composer";
+import type { Metrics } from "../ops/metrics.js";
 import type { MailConfig } from "./config.js";
 import { type InlineImage, type MailContent, renderMail } from "./mailTemplate.js";
 
@@ -40,6 +41,28 @@ export interface Mailer {
   /** False when no transport is configured: routes that must send email answer 503 instead of pretending. */
   readonly available: boolean;
   send(message: MailMessage): Promise<void>;
+}
+
+/**
+ * The same mailer, with each send's outcome counted for the platform health view (docs/OPERATIONS.md). Only the
+ * transport and the error's kind are recorded, never the address or the message.
+ */
+export function meteredMailer(inner: Mailer, metrics: Metrics | undefined): Mailer {
+  if (!metrics) return inner;
+  const name = `mail.${inner.kind}`;
+  return {
+    kind: inner.kind,
+    available: inner.available,
+    async send(message: MailMessage): Promise<void> {
+      try {
+        await inner.send(message);
+        metrics.recordProvider(name);
+      } catch (e) {
+        metrics.recordProvider(name, e);
+        throw e;
+      }
+    },
+  };
 }
 
 class NoMailer implements Mailer {

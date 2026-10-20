@@ -3,6 +3,8 @@ import { type MongoConfig, mongoConfig } from "./mongo/config.js";
 import { type AccountsConfig, accountsConfig } from "./accounts/config.js";
 import { type IntegrationsConfig, integrationsConfig } from "./integrations/config.js";
 import { type EntitlementConfig, entitlementConfig } from "./entitlements.js";
+import { type AiConfig, aiConfig } from "./ai/provider.js";
+import { type InboxConfig, inboxConfig } from "./inbox/config.js";
 import type { S3Config } from "./storage/s3.js";
 import { type FcmConfig, fcmConfig } from "./push/fcm.js";
 
@@ -47,6 +49,8 @@ export interface Config {
   queueTtlSeconds: number;
   /** How often due reminders are fired (docs/REMINDERS.md); 0 turns the loop off (tests fire them by hand). */
   reminderTickMs: number;
+  /** How often the workflow engine looks for due schedules and runs (docs/WORKFLOWS.md); 0 stops it. */
+  workflowTickMs: number;
   attachmentTtlSeconds: number;
   attachmentMaxBytes: number;
   /**
@@ -93,6 +97,10 @@ export interface Config {
   integrations: IntegrationsConfig;
   /** Server-wide limits for future plans (docs/PLANS.md); none by default. */
   entitlements: EntitlementConfig;
+  /** AI providers and limits (docs/AI.md); no providers by default, so AI is off. */
+  ai: AiConfig;
+  /** The Unified Inbox's provider settings (docs/UNIFIED_INBOX.md). */
+  inbox: InboxConfig;
   /** "invite" (default): registering needs a registration or org invite code. "open": anyone may register. */
   registrationMode: "invite" | "open";
   sessionTtlSeconds: number;
@@ -344,6 +352,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     callMaxParticipants: Math.max(int("CALL_MAX_PARTICIPANTS", 12), 2),
     queueTtlSeconds: Math.max(queueTtl, 1),
     reminderTickMs: Math.min(Math.max(int("REMINDER_TICK_MS", 15_000), 0), 300_000),
+    workflowTickMs: Math.min(Math.max(int("WORKFLOW_TICK_MS", 3_000), 0), 300_000),
     attachmentTtlSeconds: Math.min(int("ATTACHMENT_TTL_SECONDS", SEVEN_DAYS_S), SEVEN_DAYS_S),
     // 1 GiB per file since Orbit 2.0 (files over 25 MB use the chunked format; docs/ATTACHMENTS.md). Uploads to S3 go
     // straight from the app; uploads through the server need the reverse proxy to allow bodies this large.
@@ -353,6 +362,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     mongo: mongoConfig(env, env.APP_ENV?.trim() || "development", int),
     integrations: integrationsConfig(env, env.APP_ENV?.trim() || "development", int),
     entitlements: entitlementConfig(env),
+    // Round 7: AI (docs/AI.md); off without AI_PROVIDERS.
+    ai: aiConfig(env),
+    inbox: inboxConfig(env),
     // No upload quotas by default (0: no limit; owner's decision 2026-10-18, UI-003).
     attachmentUserDailyBytes: Math.max(int("ATTACHMENT_USER_DAILY_BYTES", 0), 0),
     attachmentUserStoredBytes: Math.max(int("ATTACHMENT_USER_STORED_BYTES", 0), 0),

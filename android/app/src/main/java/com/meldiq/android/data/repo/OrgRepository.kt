@@ -165,8 +165,11 @@ class OrgRepository(
         if (role == null) api.delete<OkRes>("/v1/teams/$teamId/members/$userId") else api.put<RoleReq, OkRes>("/v1/teams/$teamId/members/$userId", RoleReq(role))
     suspend fun moveMember(fromTeam: String, userId: String, toTeam: String) = api.post<MoveReq, OkRes>("/v1/teams/$fromTeam/members/$userId/move", MoveReq(toTeam))
 
-    suspend fun createInvite(orgId: String, role: String, branchId: String?, teamId: String?, maxUses: Int, hours: Int) =
-        api.post<InviteReq, InviteRes>("/v1/orgs/$orgId/invites", InviteReq(role, branchId, teamId, maxUses, hours)).invite
+    suspend fun createInvite(orgId: String, role: String, branchId: String?, teamId: String?, maxUses: Int, hours: Int, guestDays: Int? = null) =
+        api.post<InviteReq, InviteRes>("/v1/orgs/$orgId/invites", InviteReq(role, branchId, teamId, maxUses, hours, guestDays.takeIf { role == "GUEST" })).invite
+    /** Round 7 (docs/WORKSPACE_C5.md): a guest's end date, null for none. */
+    suspend fun setGuestExpiry(orgId: String, userId: String, expiresAt: Long?) =
+        api.put<com.meldiq.android.data.api.GuestExpiryReq, kotlinx.serialization.json.JsonObject>("/v1/orgs/$orgId/members/$userId/expiry", com.meldiq.android.data.api.GuestExpiryReq(expiresAt))
     suspend fun invites(orgId: String) = api.get<InvitesRes>("/v1/orgs/$orgId/invites").invites
     suspend fun revokeInvite(id: String) = api.delete<OkRes>("/v1/invites/$id")
     suspend fun previewInvite(code: String) = api.post<CodeReq, InvitePreviewRes>("/v1/invites/preview", CodeReq(code))

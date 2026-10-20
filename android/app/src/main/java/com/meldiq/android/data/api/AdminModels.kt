@@ -102,6 +102,12 @@ import kotlinx.serialization.json.JsonElement
 @Serializable data class UsageRes(
     val members: UsageMembers = UsageMembers(), val structure: UsageStructure = UsageStructure(), val files: UsageFiles = UsageFiles(),
     val invitations: UsageCount = UsageCount(), val roles: UsageCount = UsageCount(), val apps: UsageApps = UsageApps(),
+    /** Round 7: measured usage over the last 30 days (docs/USAGE_AND_PLANS.md); absent from older servers. */
+    val metered: MeteredDto? = null,
 )
+
+@Serializable data class MeteredDayDto(val day: String, val value: Long)
+@Serializable data class MeteredMetricDto(val metric: String, val label: String, val kind: String, val total: Long, val daily: List<MeteredDayDto> = emptyList())
+@Serializable data class MeteredDto(val days: Int, val metrics: List<MeteredMetricDto> = emptyList())
 
 @Serializable data class AuditRes(val entries: List<ActivityDto> = emptyList(), val nextBefore: Long? = null)
