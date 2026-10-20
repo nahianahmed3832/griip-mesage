@@ -96,6 +96,25 @@ Rollback: set `image:` back to the `-rollback` tag and run the same `up -d --no-
 additive, so the older code starts on the newer database (it ignores tables it doesn't know). A full data restore uses
 `scripts/restore.sh` with the pre-upgrade archive.
 
+### API 0.8.1 (2026-10-20, 13:04 UTC, owner's go-ahead)
+
+0.8.0 (internal-beta `64a5254`, the server the Android 0.2.3-beta build uses; deployed ~11:45 UTC by another session)
++ `170b988`: integration sign-ins can return to Meldiq Web (`INTEGRATIONS_WEB_RETURN_URLS`, docs/INTEGRATIONS.md §3).
+Branch `api-0.8.1-web-return`. No migrations (schema stays 28).
+
+| Step | Result |
+|---|---|
+| Checks before | `tsc`, build, server tests 723 passed in SQLite and in MongoDB mode (MongoDB mode with 3 workers: at full parallelism its suites time out starting replica sets) |
+| Pre-flight | running image 0.8.0; every VPS `server/` file's checksum equal to `64a5254`; `compose.yaml` unchanged; 54 GB free |
+| Backup | `backups/pre-0.8.1-20261020T130126Z`: integrity ok, schema 28, 32 users, `.env` + `compose.yaml` copies; image tagged `0.8.0-rollback`; sources kept as `server.pre-0.8.1` |
+| Config | `.env` += `INTEGRATIONS_WEB_RETURN_URLS=https://web.meldiq.app/#/workspace/apps` (unquoted: the `#` follows a `/`); a one-off container from the new image parsed it from the real env file before the switch |
+| Switch | `validate-env.sh`, `config -q`, `up -d --no-deps --no-build api`; healthy; LiveKit and ntfy not restarted |
+| Checks after | `verify.sh` 0 restarts; `/healthz` 0.8.1 on msg.griipbuddy.cloud and through web.meldiq.app; the variable inside the container; no warnings or errors in the log |
+
+Not verifiable on production yet: no one can connect an app there (`integrations-status`: no `INTEGRATIONS_TOKEN_KEY`, no
+provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
+`up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
+
 ## Redeploying from a workstation
 
 ```bash
