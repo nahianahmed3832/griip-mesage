@@ -163,6 +163,15 @@ export class MongoAccountStore implements AccountStore {
     return true;
   }
 
+  async deleteAccount(id: string): Promise<boolean> {
+    const res = await this.accounts.deleteOne({ _id: id }, this.o);
+    // ON DELETE CASCADE in SQLite. Recovery codes and tickets are the recovery store's (RecoveryStore.deleteForAccount).
+    await this.sessions.deleteMany({ account_id: id }, this.o);
+    await this.codes.deleteMany({ account_id: id }, this.o);
+    await this.tickets.deleteMany({ account_id: id }, this.o);
+    return res.deletedCount === 1;
+  }
+
   async linkIdentity(accountId: string, userId: string, sessionId: string, at: number, createRows: () => string): Promise<string | null> {
     // Claim first: of two requests for one account, only one gets to create rows.
     const claimed = await this.accounts.updateOne({ _id: accountId, user_id: null }, { $set: { user_id: userId, updated_at: at } }, this.o);

@@ -30,6 +30,8 @@ export interface RecoveryStore {
   /** Replaces the account's whole set (generating new codes revokes the old ones). */
   replaceCodes(accountId: string, rows: RecoveryCodeRow[]): Promise<void>;
   deleteCodes(accountId: string): Promise<number>;
+  /** Account deletion: the account's codes and its recovery tickets. */
+  deleteForAccount(accountId: string): Promise<void>;
   codes(accountId: string): Promise<RecoveryCodeRow[]>;
   /** Marks the unused code with this hash used; false when it was already used (or isn't the account's). */
   useCode(accountId: string, codeHash: string, at: number): Promise<boolean>;
@@ -58,6 +60,11 @@ export class SqliteRecoveryStore implements RecoveryStore {
 
   async deleteCodes(accountId: string): Promise<number> {
     return this.db.prepare("DELETE FROM account_recovery_codes WHERE account_id = ?").run(accountId).changes;
+  }
+
+  async deleteForAccount(accountId: string): Promise<void> {
+    this.db.prepare("DELETE FROM account_recovery_codes WHERE account_id = ?").run(accountId);
+    this.db.prepare("DELETE FROM account_recovery_tickets WHERE account_id = ?").run(accountId);
   }
 
   async codes(accountId: string): Promise<RecoveryCodeRow[]> {

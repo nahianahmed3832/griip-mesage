@@ -216,13 +216,17 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
     const body = parse(z.object({ deviceId: z.string().max(64), nonce: z.string().min(16).max(64), signature: zSig }), req.body);
     const dev = ctx.db
       // A remote user's stand-in (home_server_id set) can never sign in here, even with its device key.
-      .prepare("SELECT d.*, u.disabled_at FROM devices d JOIN users u ON u.id = d.user_id WHERE d.id = ? AND u.home_server_id IS NULL")
-      .get(body.deviceId) as { id: string; user_id: string; signing_key: string; revoked_at: number | null; disabled_at: number | null } | undefined;
+      .prepare("SELECT d.*, u.disabled_at, u.deleted_at FROM devices d JOIN users u ON u.id = d.user_id WHERE d.id = ? AND u.home_server_id IS NULL")
+      .get(body.deviceId) as
+      | { id: string; user_id: string; signing_key: string; revoked_at: number | null; disabled_at: number | null; deleted_at: number | null }
+      | undefined;
     // Same error for unknown device and bad signature: don't reveal which device ids exist.
     if (!dev || !verifyEd25519(dev.signing_key, canonical.authProof("login", body.nonce, dev.signing_key), body.signature)) {
       throw unauthorized("Invalid device proof");
     }
     if (!consumeChallenge(ctx, body.nonce)) throw unauthorized("Challenge expired or already used");
+    // The account's other devices learn why they were signed out (docs/ACCOUNT_DELETION.md).
+    if (dev.deleted_at) throw new ApiError(401, "account_deleted", "This account was deleted");
     if (dev.revoked_at) throw new ApiError(401, "device_revoked", "This device has been removed from the account");
     if (dev.disabled_at) throw new ApiError(401, "account_disabled", "This account is disabled");
     const session = issueSession(ctx, dev.user_id, dev.id);

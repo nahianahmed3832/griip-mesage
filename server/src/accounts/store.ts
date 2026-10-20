@@ -121,6 +121,12 @@ export interface AccountStore {
   /** Removes an account nobody verified and no identity is linked to; false when it doesn't qualify. */
   deleteUnverifiedAccount(id: string): Promise<boolean>;
   /**
+   * Removes an account for good (account deletion, docs/ACCOUNT_DELETION.md) with everything that hangs off it: its
+   * sessions, email codes and legacy tickets. The encryption identity (users row) is anonymised separately. False when
+   * the account was already gone.
+   */
+  deleteAccount(id: string): Promise<boolean>;
+  /**
    * Links a new encryption identity: [createRows] makes its SQLite rows (user, first device, org membership) and returns
    * the device id; the account gets [userId] and the session that device. Null when the account already has an
    * identity (nothing is made).
@@ -235,6 +241,11 @@ export class SqliteAccountStore implements AccountStore {
 
   async deleteUnverifiedAccount(id: string): Promise<boolean> {
     return this.db.prepare("DELETE FROM accounts WHERE id = ? AND email_verified_at IS NULL AND user_id IS NULL").run(id).changes === 1;
+  }
+
+  async deleteAccount(id: string): Promise<boolean> {
+    // Sessions, codes, legacy tickets and recovery codes and tickets go with it (ON DELETE CASCADE).
+    return this.db.prepare("DELETE FROM accounts WHERE id = ?").run(id).changes === 1;
   }
 
   async insertSession(r: SessionRow): Promise<void> {

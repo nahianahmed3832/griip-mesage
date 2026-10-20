@@ -343,6 +343,8 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     "chunked-attachments",
     "call-reconnect",
     "org-delete",
+    // Deleting your own account, DELETE /v2/account (docs/ACCOUNT_DELETION.md).
+    "account-delete",
     "accounts-v2",
     "workspaces-v2",
     "files-1g",

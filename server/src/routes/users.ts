@@ -293,7 +293,8 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
     const { ids } = parse(z.object({ ids: z.string().max(5000) }), req.query);
     const wanted = [...new Set(ids.split(",").filter(Boolean))].slice(0, 200);
     const rows = wanted.length
-      ? (ctx.db.prepare(`SELECT * FROM users WHERE id IN (${wanted.map(() => "?").join(",")})`).all(...wanted) as ProfileRow[])
+      ? // Disabled and deleted accounts are left out: their last-seen time stays in memory until the server restarts.
+        (ctx.db.prepare(`SELECT * FROM users WHERE disabled_at IS NULL AND id IN (${wanted.map(() => "?").join(",")})`).all(...wanted) as ProfileRow[])
       : [];
     // Each person's "last seen" setting decides (contacts by default, the rule this endpoint always had).
     const list = rows.filter((u) => canSeeLastSeen(ctx, userId, u)).map((u) => u.id);

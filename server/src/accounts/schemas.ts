@@ -37,6 +37,9 @@ export const preferencesBody = z.object({ selectedWorkspaceId: z.string().min(3)
 
 /** Recovery codes (docs/ACCOUNT_RECOVERY.md): making or revoking a set needs the password again. */
 export const recoveryPasswordBody = z.object({ password: zPassword });
+
+/** Deleting your account (docs/ACCOUNT_DELETION.md): the password again, and the account's email typed by the person. */
+export const deleteAccountBody = z.object({ password: zPassword, confirmEmail: zEmail });
 export const zRecoveryCode = z.string().trim().min(8).max(40);
 export const recoveryStartBody = z.object({ email: zEmail, code: zRecoveryCode, newEmail: zEmail });
 export const recoveryCompleteBody = z.object({ ticket: z.string().min(20).max(200), code: zVerifyCode, newPassword: zPassword });

@@ -3,9 +3,11 @@ import { z } from "zod";
 import { type AppContext, bearer, parse } from "../context.js";
 import { removePushEndpoint } from "../push/service.js";
 import { notFound, now, unauthorized } from "../util.js";
+import { DELETE_ACCOUNT_RATE_LIMIT, deleteOwnAccount } from "./deletion.js";
 import type { Accounts } from "./index.js";
 import {
   changePasswordBody,
+  deleteAccountBody,
   emailBody,
   enrollDeviceBody,
   legacyCompleteBody,
@@ -130,6 +132,14 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
     // The encryption identity shows the same name to contacts (the same edit again repairs a half-done one).
     if (a.user_id) ctx.db.prepare("UPDATE users SET display_name = ?, updated_at = ? WHERE id = ?").run(name, t, a.user_id);
     return { account: service.view((await store.accountById(a.id))!) };
+  });
+
+  // Deleting the account for good (docs/ACCOUNT_DELETION.md): the password again and the account's email typed out.
+  // Refused with 409 owns_workspaces, changing nothing, while the person is a workspace's only owner.
+  app.delete("/v2/account", { preHandler: requireAccount, config: { rateLimit: DELETE_ACCOUNT_RATE_LIMIT } }, async (req, reply) => {
+    const body = parse(deleteAccountBody, req.body ?? {});
+    const result = await deleteOwnAccount(ctx, accounts, await accountOf(req), body, req.ip, reply);
+    return { deleted: true, deletedAt: result.deletedAt };
   });
 
   app.post("/v2/account/password", authedStrict, async (req, reply) => {

@@ -34,6 +34,11 @@ export class MongoRecoveryStore implements RecoveryStore {
     return (await this.codesCol.deleteMany({ account_id: accountId })).deletedCount;
   }
 
+  async deleteForAccount(accountId: string): Promise<void> {
+    await this.codesCol.deleteMany({ account_id: accountId });
+    await this.tickets.deleteMany({ account_id: accountId });
+  }
+
   async codes(accountId: string): Promise<RecoveryCodeRow[]> {
     const docs = await this.codesCol.find({ account_id: accountId }).sort({ created_at: 1, _id: 1 }).toArray();
     return docs.map((d) => strip(d)!);
