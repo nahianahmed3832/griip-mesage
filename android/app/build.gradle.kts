@@ -12,6 +12,23 @@ plugins {
 // app builds as before and simply never registers for Firebase wake-ups.
 val firebaseConfigured = file("google-services.json").exists()
 if (firebaseConfigured) apply(plugin = "com.google.gms.google-services")
+// A release must not quietly ship without Firebase wake-ups: release builds stop here unless the file is present, or
+// the build says on purpose that it's a check build without Firebase (-Pmeldiq.allowNoFirebase=true, as CI does: it
+// has no google-services.json and never publishes what it builds). Debug builds are unaffected.
+val allowNoFirebase = (project.findProperty("meldiq.allowNoFirebase") as String?)?.trim() == "true"
+val checkFirebaseForRelease = tasks.register("checkFirebaseForRelease") {
+    val configured = firebaseConfigured
+    val allowed = allowNoFirebase
+    doLast {
+        if (!configured && !allowed) {
+            throw GradleException(
+                "android/app/google-services.json is missing, so this release would have no Firebase wake-ups (docs/PUSH_FCM.md). " +
+                    "Put the owner's file there, or pass -Pmeldiq.allowNoFirebase=true for a build that won't be published.",
+            )
+        }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(checkFirebaseForRelease) }
 
 // The app's default server address, per environment (docs/ENVIRONMENTS.md). People can still pick another server.
 //   meldiq.environment            development (debug builds' default) | staging | production (release builds' default)

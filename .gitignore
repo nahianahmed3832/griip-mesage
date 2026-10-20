@@ -5,6 +5,8 @@ deploy/livekit/livekit.yaml
 android/local.properties
 # Firebase client config for the owner's project (not a secret, but kept out of this public repo; docs/PUSH_FCM.md)
 android/app/google-services.json
+# Extra downloads of it (google-services2.json, …) and copies anywhere in the tree
+google-services*.json
 tools/griip-bot/bot-identity*.json
 # Play upload / signing keys and their passwords: never in this (public) repository
 signed_file/
@@ -24,6 +26,10 @@ android/.kotlin/
 *.aab
 android/app/release/
 !artifacts/.keep
+
+# Python bytecode (android/i18n/gen.py)
+__pycache__/
+*.pyc
 
 # OS / IDE
 .DS_Store

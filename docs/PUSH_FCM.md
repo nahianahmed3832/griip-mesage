@@ -36,8 +36,9 @@ their own device's token; only the server decides whom to wake.
    - `FcmRegistrar` sends the token with `PUT /v1/devices/current/fcm` when signed in, again when Firebase rotates it,
      and retries after a network failure (`FcmRegistrarTest`).
    - Firebase is switched on only when `android/app/google-services.json` exists. That file is client config, not a
-     secret, but it stays out of this public repo through `.gitignore`. Builds without it work as before and never
-     register.
+     secret, but it stays out of this public repo through `.gitignore`. Debug builds without it work as before and never
+     register. **Release builds stop** without it (`checkFirebaseForRelease`, 2026-10-20), so a published release can't
+     quietly lose Firebase wake-ups. A build that won't be published passes `-Pmeldiq.allowNoFirebase=true`, as CI does.
 
 ## Phone test, 2026-10-20 (HONOR ELI-AN00, Meldiq Test build, local server)
 

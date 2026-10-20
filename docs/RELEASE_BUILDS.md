@@ -103,34 +103,37 @@ If releases are ever built in CI:
 ## Making a release for employees (owner)
 
 1. **Start clean.** Check out the commit to release, with a clean tree and CI green. Make sure the server it needs is
-   deployed.
-2. **Bump the version.** Raise `versionCode` (Play refuses a code it has seen) and set `versionName` in
+   deployed. Build from a checkout of that commit (`git status` clean, `git log -1` showing it), never from an older
+   checkout that only had its version bumped.
+2. **Firebase config.** Put the owner's `google-services.json` in `android/app/`. Without it the release build stops
+   with "google-services.json is missing" (docs/PUSH_FCM.md).
+3. **Bump the version.** Raise `versionCode` (Play refuses a code it has seen) and set `versionName` in
    `android/app/build.gradle.kts`. Commit it.
-3. **Check the default server.** `meldiq.apiBaseUrl.production` (if set in `android/local.properties`) must be the
+4. **Check the default server.** `meldiq.apiBaseUrl.production` (if set in `android/local.properties`) must be the
    approved production address. After building, confirm the value:
    ```bash
    grep -E "DEFAULT_SERVER_URL|MELDIQ_ENVIRONMENT" android/app/build/generated/source/buildConfig/release/com/griipbuddy/meldiq/BuildConfig.java
    ```
-4. **Build and sign.** Use Android Studio › **Build › Generate Signed App Bundle**: choose `release` and the upload key.
-5. **Check the bundle's signer.** Run this on the bundle (Android Studio writes it to `android/app/release/`):
+5. **Build and sign.** Use Android Studio › **Build › Generate Signed App Bundle**: choose `release` and the upload key.
+6. **Check the bundle's signer.** Run this on the bundle (Android Studio writes it to `android/app/release/`):
    ```bash
    keytool -printcert -jarfile android/app/release/app-release.aab
    ```
    The SHA-256 must match the **upload key certificate** in Play Console › App integrity.
-6. **Check it isn't debuggable.** Build the same commit as an APK with `./gradlew :app:assembleRelease`, then dump its
+7. **Check it isn't debuggable.** Build the same commit as an APK with `./gradlew :app:assembleRelease`, then dump its
    manifest:
    ```bash
    "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree --file AndroidManifest.xml android/app/build/outputs/apk/release/app-release-unsigned.apk
    ```
    Look in the output: `android:debuggable` must not appear, and `android:networkSecurityConfig` must be there.
-7. **Keep the R8 mapping.** Keep `android/app/build/outputs/mapping/release/mapping.txt` with the release, and upload
+8. **Keep the R8 mapping.** Keep `android/app/build/outputs/mapping/release/mapping.txt` with the release, and upload
    it to Play so crash reports are readable. It isn't a secret, but it belongs with the release, not in Git.
-8. **Upload to internal testing.** Upload to **Play Console › Testing › Internal testing**. Add testers by email list.
+9. **Upload to internal testing.** Upload to **Play Console › Testing › Internal testing**. Add testers by email list.
    Install it on a physical phone from Play, then check:
    - sign-in;
    - a message each way;
    - a photo, video, voice message and file;
    - a voice and a video call;
    - the app after a restart.
-9. **Hand it to employees.** Only after that, and with the owner's approval, add employees to the testing list. Never
+10. **Hand it to employees.** Only after that, and with the owner's approval, add employees to the testing list. Never
    promote to production without a separate decision.
