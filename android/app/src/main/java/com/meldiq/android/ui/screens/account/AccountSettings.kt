@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Password
@@ -58,6 +59,7 @@ fun AccountSecurityCard(modifier: Modifier = Modifier) {
     var message by remember { mutableStateOf<Pair<String, BannerKind>?>(null) }
     var changing by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
     val load: () -> Unit = { scope.launch { runCatching { container.accounts.sessions() }.onSuccess { sessions = it }.onFailure { message = it.friendly() to BannerKind.Error } } }
     LaunchedEffect(account.id) { load() }
 
@@ -66,6 +68,10 @@ fun AccountSecurityCard(modifier: Modifier = Modifier) {
         MenuRow(Icons.Outlined.Password, stringResource(R.string.acct_settings_password), subtitle = stringResource(R.string.acct_settings_password_sub), onClick = { changing = true })
         RecoveryCodesRow()
         MenuRow(Icons.AutoMirrored.Outlined.Logout, stringResource(R.string.acct_settings_logout), subtitle = stringResource(R.string.acct_settings_logout_sub), onClick = { confirmLogout = true })
+        MenuRow(
+            Icons.Outlined.DeleteForever, stringResource(R.string.acct_delete), subtitle = stringResource(R.string.acct_delete_sub),
+            tint = c.danger, tintBg = c.dangerSoft, onClick = { deleting = true },
+        )
     }
     message?.let { (text, kind) -> StatusBanner(text, kind, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) }
     Text(stringResource(R.string.acct_settings_sessions), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(horizontal = Space.gutter + 4.dp, vertical = 8.dp))
@@ -89,6 +95,7 @@ fun AccountSecurityCard(modifier: Modifier = Modifier) {
             )
         }
     }
+    if (deleting) DeleteAccountSheet(account.email, onDismiss = { deleting = false })
     if (changing) ChangePasswordDialog(account.email, onDone = { ok -> changing = false; if (ok) { message = null; load() } })
     if (confirmLogout) {
         AlertDialog(

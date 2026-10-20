@@ -108,4 +108,19 @@
     <string name="acct_settings_this_phone">本机</string>
     <string name="acct_settings_last_used">上次使用：%1$s</string>
     <string name="acct_settings_sign_out_one">退出</string>
+    <string name="acct_delete">删除账户</string>
+    <string name="acct_delete_sub">从服务器上清除你的账户及其数据</string>
+    <string name="acct_delete_body">这将永久删除 Meldiq 账户 %1$s。你会退出所有工作区、群组和频道，所有设备都会退出登录，个人资料会被清除。此操作无法撤销。</string>
+    <string name="acct_delete_stays">与你聊过天的人会保留对话，显示为“已删除的账户”。已送达的消息会留在他们的设备上。</string>
+    <string name="acct_delete_phone">服务器确认后，这部手机也会清除该账户的本地副本。</string>
+    <string name="acct_delete_confirm_email">输入你的邮箱以确认</string>
+    <string name="acct_delete_submit">删除我的账户</string>
+    <string name="acct_delete_keep">保留我的账户</string>
+    <string name="acct_delete_done">你的账户已删除</string>
+    <string name="acct_delete_err_mismatch">请准确输入你账户的邮箱地址。没有删除任何内容。</string>
+    <string name="acct_delete_err_password">密码不正确。没有删除任何内容。</string>
+    <string name="acct_delete_err_owner">你是 %1$s 的唯一所有者。请先让其他人成为所有者，或删除它。没有删除任何内容。</string>
+    <string name="acct_delete_err_unavailable">此服务器暂不支持删除账户。没有删除任何内容。</string>
+    <string name="acct_delete_err_offline">无法连接服务器。请检查网络后重试。</string>
+    <string name="acct_delete_err_other">出了点问题，你的账户可能尚未删除。请重试。</string>
 </resources>

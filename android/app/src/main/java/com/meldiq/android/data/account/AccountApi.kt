@@ -28,6 +28,7 @@ interface AccountApi {
     suspend fun me(): AccountMeRes
     suspend fun updateName(name: String): AccountDto
     suspend fun changePassword(req: ChangePasswordReq)
+    suspend fun deleteAccount(req: DeleteAccountReq): DeleteAccountRes
     suspend fun sessions(): List<SessionListItem>
     suspend fun revokeSession(id: String)
     suspend fun enroll(req: EnrollDeviceReq): EnrollRes
@@ -88,6 +89,8 @@ class HttpAccountApi(
     override suspend fun changePassword(req: ChangePasswordReq) {
         authed.post<ChangePasswordReq, OkRes>("/v2/account/password", req)
     }
+
+    override suspend fun deleteAccount(req: DeleteAccountReq): DeleteAccountRes = authed.delete<DeleteAccountReq, DeleteAccountRes>("/v2/account", req)
 
     override suspend fun sessions(): List<SessionListItem> = authed.get<SessionListRes>("/v2/account/sessions").sessions
 

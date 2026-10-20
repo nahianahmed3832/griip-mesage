@@ -51,6 +51,8 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val HISTORY = "history"
         const val ATTACHMENT_KEEP = "attachment-keep"
         const val ORG_DELETE = "org-delete"
+        /** Deleting your own account, `DELETE /v2/account` (docs/ACCOUNT_DELETION.md). */
+        const val ACCOUNT_DELETE = "account-delete"
         const val DIRECT_UPLOAD = "direct-upload"
         const val PUSH_UNIFIEDPUSH = "push-unifiedpush"
         /** Firebase Cloud Messaging wake-ups (docs/PUSH_FCM.md). */

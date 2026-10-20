@@ -327,6 +327,13 @@ class AccountRepository(
 
     suspend fun sessions(): List<SessionListItem> = api.sessions()
 
+    /**
+     * Deletes the account on the server for good (docs/ACCOUNT_DELETION.md). The caller erases this phone's copy once it
+     * returns: the server has already ended every session.
+     */
+    suspend fun deleteAccount(password: String, typedEmail: String): DeleteAccountRes =
+        api.deleteAccount(DeleteAccountReq(password, AccountRules.normalizeEmail(typedEmail)))
+
     suspend fun revokeSession(id: String) = api.revokeSession(id)
 
     suspend fun rename(name: String): AccountDto {

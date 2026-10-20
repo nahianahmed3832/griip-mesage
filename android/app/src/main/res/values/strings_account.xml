@@ -108,4 +108,19 @@
     <string name="acct_settings_this_phone">this phone</string>
     <string name="acct_settings_last_used">Last used %1$s</string>
     <string name="acct_settings_sign_out_one">Sign out</string>
+    <string name="acct_delete">Delete account</string>
+    <string name="acct_delete_sub">Erase your account and its data from the server</string>
+    <string name="acct_delete_body">This deletes the Meldiq account %1$s for good. You leave every workspace, group and channel, every device is signed out and your profile is erased. It can\'t be undone.</string>
+    <string name="acct_delete_stays">People you messaged keep the conversation, shown as \"Deleted account\". Messages already delivered stay on their devices.</string>
+    <string name="acct_delete_phone">Once the server confirms, this phone erases its copy of the account too.</string>
+    <string name="acct_delete_confirm_email">Type your email to confirm</string>
+    <string name="acct_delete_submit">Delete my account</string>
+    <string name="acct_delete_keep">Keep my account</string>
+    <string name="acct_delete_done">Your account was deleted</string>
+    <string name="acct_delete_err_mismatch">Type your account\'s email address exactly. Nothing was deleted.</string>
+    <string name="acct_delete_err_password">That password isn\'t right. Nothing was deleted.</string>
+    <string name="acct_delete_err_owner">You\'re the only owner of %1$s. Make someone else an owner, or delete it, first. Nothing was deleted.</string>
+    <string name="acct_delete_err_unavailable">This server can\'t delete accounts yet. Nothing was deleted.</string>
+    <string name="acct_delete_err_offline">Couldn\'t reach the server. Check your connection and try again.</string>
+    <string name="acct_delete_err_other">Something went wrong, and your account may not have been deleted. Try again.</string>
 </resources>

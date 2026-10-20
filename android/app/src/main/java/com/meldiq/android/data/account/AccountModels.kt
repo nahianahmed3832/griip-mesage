@@ -34,6 +34,13 @@ data class ResetPasswordReq(val email: String, val code: String, val newPassword
 @Serializable
 data class ChangePasswordReq(val currentPassword: String, val newPassword: String)
 
+/** `DELETE /v2/account` (docs/ACCOUNT_DELETION.md): the password again and the account's email typed by the person. */
+@Serializable
+data class DeleteAccountReq(val password: String, val confirmEmail: String)
+
+@Serializable
+data class DeleteAccountRes(val deleted: Boolean = false, val deletedAt: Long = 0)
+
 @Serializable
 data class UpdateAccountReq(val name: String)
 

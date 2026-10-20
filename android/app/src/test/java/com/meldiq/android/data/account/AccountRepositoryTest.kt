@@ -58,6 +58,18 @@ class AccountRepositoryTest {
     }
 
     @Test
+    fun `deleting the account sends the password and the normalised email, and refuses a wrong password`() = runBlocking {
+        val r = repo()
+        r.register(URL, "Ada", "ada@example.com", PASSWORD, null)
+        r.verifyEmail("12-34-56", PASSWORD)
+        r.login(URL, "ada@example.com", PASSWORD)
+        expectCode("invalid_credentials") { r.deleteAccount("wrong password", "ada@example.com") }
+        expectCode("confirm_mismatch") { r.deleteAccount(PASSWORD, "someone@example.com") }
+        assertTrue(r.deleteAccount(PASSWORD, "  ADA@example.com ").deleted)
+        assertEquals(3, api.calls.count { it == "delete" })
+    }
+
+    @Test
     fun `this phone signs in again with its device key and keeps its keys`() = runBlocking {
         val r = repo()
         api.verifiedAccount("grace@example.com")

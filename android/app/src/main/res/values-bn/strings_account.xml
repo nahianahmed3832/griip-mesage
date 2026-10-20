@@ -108,4 +108,19 @@
     <string name="acct_settings_this_phone">এই ফোন</string>
     <string name="acct_settings_last_used">সর্বশেষ ব্যবহার %1$s</string>
     <string name="acct_settings_sign_out_one">সাইন আউট</string>
+    <string name="acct_delete">অ্যাকাউন্ট মুছুন</string>
+    <string name="acct_delete_sub">সার্ভার থেকে আপনার অ্যাকাউন্ট ও এর ডেটা মুছে ফেলুন</string>
+    <string name="acct_delete_body">এটি Meldiq অ্যাকাউন্ট %1$s চিরতরে মুছে দেবে। আপনি সব ওয়ার্কস্পেস, গ্রুপ ও চ্যানেল ছেড়ে যাবেন, সব ডিভাইস সাইন আউট হবে এবং আপনার প্রোফাইল মুছে যাবে। এটি আর ফেরানো যাবে না।</string>
+    <string name="acct_delete_stays">যাদের সঙ্গে কথা বলেছেন তারা কথোপকথনটি রাখবেন, সেখানে \"মুছে ফেলা অ্যাকাউন্ট\" দেখাবে। আগেই পৌঁছানো বার্তা তাদের ডিভাইসে থেকে যাবে।</string>
+    <string name="acct_delete_phone">সার্ভার নিশ্চিত করলে এই ফোনও অ্যাকাউন্টের নিজস্ব কপি মুছে ফেলবে।</string>
+    <string name="acct_delete_confirm_email">নিশ্চিত করতে আপনার ইমেইল লিখুন</string>
+    <string name="acct_delete_submit">আমার অ্যাকাউন্ট মুছুন</string>
+    <string name="acct_delete_keep">আমার অ্যাকাউন্ট রাখুন</string>
+    <string name="acct_delete_done">আপনার অ্যাকাউন্ট মুছে ফেলা হয়েছে</string>
+    <string name="acct_delete_err_mismatch">আপনার অ্যাকাউন্টের ইমেইল ঠিকানা হুবহু লিখুন। কিছুই মোছা হয়নি।</string>
+    <string name="acct_delete_err_password">পাসওয়ার্ডটি সঠিক নয়। কিছুই মোছা হয়নি।</string>
+    <string name="acct_delete_err_owner">আপনি %1$s-এর একমাত্র মালিক। আগে অন্য কাউকে মালিক করুন, অথবা এটি মুছে দিন। কিছুই মোছা হয়নি।</string>
+    <string name="acct_delete_err_unavailable">এই সার্ভার এখনও অ্যাকাউন্ট মুছতে পারে না। কিছুই মোছা হয়নি।</string>
+    <string name="acct_delete_err_offline">সার্ভারে পৌঁছানো যায়নি। সংযোগ দেখে আবার চেষ্টা করুন।</string>
+    <string name="acct_delete_err_other">কিছু একটা ভুল হয়েছে, আপনার অ্যাকাউন্ট হয়তো মোছা হয়নি। আবার চেষ্টা করুন।</string>
 </resources>

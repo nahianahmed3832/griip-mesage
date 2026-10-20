@@ -163,6 +163,14 @@ class FakeAccountApi : AccountApi {
         a.password = req.newPassword
     }
 
+    override suspend fun deleteAccount(req: DeleteAccountReq): DeleteAccountRes {
+        calls += "delete"
+        val a = current()
+        if (a.password != req.password) throw ApiException(401, "invalid_credentials", "No")
+        if (a.email != req.confirmEmail) throw ApiException(400, "confirm_mismatch", "No")
+        return DeleteAccountRes(deleted = true, deletedAt = 1)
+    }
+
     override suspend fun sessions(): List<SessionListItem> = listOf(SessionListItem("s", "test", boundDevice, current = true))
 
     override suspend fun revokeSession(id: String) = Unit
