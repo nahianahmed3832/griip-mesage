@@ -60,6 +60,8 @@ class AppContainer(
     val recoveryCodes = com.meldiq.android.data.account.RecoveryCodesApi(api)
     /** What this account's server supports (server-info features, 2026-10-17). */
     val features = com.meldiq.android.data.repo.ServerFeatures(api)
+    /** Experiments and content-free analytics counts, silent unless the server turns them on (docs/product/EXPERIMENTS.md). */
+    val analytics = com.meldiq.android.data.repo.ProductSignals(api, features, scope)
     val db: GriipDatabase = GriipDatabase.open(app, identity.databasePassphrase(), profile.dbName)
     val realtime = RealtimeClient(app, api.http, scope, { session.serverUrl }, { session.token }, { session.reauth() })
     val users = UserRepository(api, db)

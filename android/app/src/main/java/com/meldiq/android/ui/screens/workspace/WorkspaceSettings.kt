@@ -82,6 +82,9 @@ fun WorkspaceSettingsSheet(detail: OrgDetailRes, onDismiss: () -> Unit, onChange
     var photoBusy by remember { mutableStateOf(false) }
     var photosSupported by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { photosSupported = container.features.has(ServerFeatures.ORG_PHOTOS) == true }
+    var communities by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { communities = container.features.has(ServerFeatures.COMMUNITIES) == true }
+    var kind by remember(org.id, org.kind) { mutableStateOf(org.kind) }
     val ctx = LocalContext.current
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) scope.launch {
@@ -169,6 +172,36 @@ fun WorkspaceSettingsSheet(detail: OrgDetailRes, onDismiss: () -> Unit, onChange
                 }, Modifier.fillMaxWidth(), enabled = changed && name.isNotBlank(), loading = busy, height = 50.dp)
             } else {
                 Text(stringResource(R.string.ws_admin_only), style = Griip.type.bodySmall, color = c.textSecondary)
+            }
+
+            // Meldiq 2.0: team or community. Owners only; it changes what the apps show first, never members or data.
+            if (communities) {
+                SectionHeader(stringResource(R.string.m2_kind_setting), Modifier.padding(top = 16.dp, bottom = 6.dp))
+                val owner = org.myRole == "OWNER"
+                com.meldiq.android.ui.components.SegmentedPills(
+                    listOf(stringResource(R.string.m2_kind_team), stringResource(R.string.m2_kind_community)),
+                    if (kind == com.meldiq.android.data.api.OrgKind.COMMUNITY) 1 else 0,
+                    { i ->
+                        val next = if (i == 1) com.meldiq.android.data.api.OrgKind.COMMUNITY else com.meldiq.android.data.api.OrgKind.TEAM
+                        if (owner && next != kind && !busy) {
+                            val before = kind
+                            kind = next
+                            busy = true
+                            error = null
+                            scope.launch {
+                                runCatching { container.orgs.updateKind(org.id, next) }
+                                    .onSuccess { onChanged() }
+                                    .onFailure { kind = before; error = it.friendly() }
+                                busy = false
+                            }
+                        }
+                    },
+                    Modifier.fillMaxWidth(),
+                )
+                Text(
+                    stringResource(if (owner) R.string.m2_kind_setting_sub else R.string.m2_kind_owner_only), style = Griip.type.caption,
+                    color = c.textSecondary, modifier = Modifier.padding(top = 6.dp),
+                )
             }
 
             Spacer(Modifier.height(16.dp))

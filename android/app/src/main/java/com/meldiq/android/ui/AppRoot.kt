@@ -9,7 +9,6 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -31,6 +30,7 @@ import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Notifications
 import com.meldiq.android.ui.theme.DarkSurfaceSystemBars
+import com.meldiq.android.ui.theme.Motion
 import com.meldiq.android.ui.theme.ProvideGriipPalette
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -205,8 +205,8 @@ fun AppRoot(container: AppContainer, pendingConversation: String?, pendingInvite
                     }
                     AnimatedVisibility(
                         visible = inCall && !pip && (!minimized || call.phase == CallPhase.Incoming),
-                        enter = slideInVertically(tween(260)) { it / 3 } + fadeIn(tween(200)),
-                        exit = slideOutVertically(tween(220)) { it / 3 } + fadeOut(tween(200)),
+                        enter = slideInVertically(Motion.enter()) { it / 3 } + fadeIn(Motion.enter(Motion.STANDARD)),
+                        exit = slideOutVertically(Motion.exit(Motion.STANDARD)) { it / 3 } + fadeOut(Motion.exit(Motion.STANDARD)),
                     ) { CallPalette { CallOverlay() } }
                 }
                 if (pip && inCall) CallPalette { com.meldiq.android.ui.screens.calls.CallPipView(call) }
@@ -398,16 +398,16 @@ class NavMotion(private val animate: Boolean) {
 
     fun enter(scope: AnimatedContentTransitionScope<NavBackStackEntry>, forward: Boolean): EnterTransition = when {
         !animate -> EnterTransition.None
-        tabs(scope) -> fadeIn(tween(180, delayMillis = 60)) + scaleIn(tween(240, delayMillis = 60), initialScale = 0.985f)
-        forward -> scope.slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(260)) { it / 4 } + fadeIn(tween(200))
-        else -> scope.slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(260)) { it / 10 } + fadeIn(tween(220))
+        tabs(scope) -> fadeIn(Motion.enter(Motion.QUICK, Motion.FADE_THROUGH_DELAY)) + scaleIn(Motion.enter(Motion.STANDARD, Motion.FADE_THROUGH_DELAY), initialScale = 0.985f)
+        forward -> scope.slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, Motion.enter()) { it / 4 } + fadeIn(Motion.enter(Motion.STANDARD))
+        else -> scope.slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, Motion.enter()) { it / 10 } + fadeIn(Motion.enter(Motion.STANDARD))
     }
 
     fun exit(scope: AnimatedContentTransitionScope<NavBackStackEntry>, forward: Boolean): ExitTransition = when {
         !animate -> ExitTransition.None
-        tabs(scope) -> fadeOut(tween(90))
-        forward -> scope.slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(260)) { it / 10 } + fadeOut(tween(200))
-        else -> scope.slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(240)) { it / 4 } + fadeOut(tween(180))
+        tabs(scope) -> fadeOut(Motion.exit(Motion.INSTANT))
+        forward -> scope.slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Start, Motion.exit()) { it / 10 } + fadeOut(Motion.exit(Motion.STANDARD))
+        else -> scope.slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, Motion.exit(Motion.STANDARD)) { it / 4 } + fadeOut(Motion.exit(Motion.QUICK))
     }
 }
 

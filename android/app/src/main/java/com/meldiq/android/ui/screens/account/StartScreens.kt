@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.GroupAdd
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Workspaces
@@ -112,7 +113,16 @@ internal fun RecoveryKeySaveScreen(recoveryKey: String, onSaved: () -> Unit) {
 internal fun WorkspaceStartScreen(onDone: (joinRequested: String?) -> Unit) {
     val container = LocalContainer.current
     val scope = rememberCoroutineScope()
-    var creating by rememberSaveable { mutableStateOf(false) }
+    // null: choosing; otherwise the kind being created (OrgKind.TEAM or OrgKind.COMMUNITY).
+    var creatingKind by rememberSaveable { mutableStateOf<String?>(null) }
+    val creating = creatingKind != null
+    val communityLabel = stringResource(R.string.m2_create_community)
+    // Communities only where the server has them; an older server would quietly make a team.
+    var communities by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        communities = runCatching { container.features.get() }.getOrNull()?.contains(com.meldiq.android.data.repo.ServerFeatures.COMMUNITIES) == true
+    }
+    val isCommunity = creatingKind == com.meldiq.android.data.api.OrgKind.COMMUNITY
     var orgName by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -124,20 +134,21 @@ internal fun WorkspaceStartScreen(onDone: (joinRequested: String?) -> Unit) {
             onDone(null)
         }
     }
-    BackHandler(enabled = !busy) { if (creating) creating = false else personal() }
+    BackHandler(enabled = !busy) { if (creating) creatingKind = null else personal() }
     Box(Modifier.fillMaxSize().background(Griip.colors.background)) {
         AuthScaffold(
             title = stringResource(R.string.acct_start_title), subtitle = stringResource(R.string.acct_start_subtitle),
-            onBack = { if (creating) creating = false else personal() }, backEnabled = !busy,
+            onBack = { if (creating) creatingKind = null else personal() }, backEnabled = !busy,
             bottomBar = if (!creating) null else {
                 {
                     PillButton(
-                        stringResource(R.string.acct_start_create_submit), {
+                        if (isCommunity) communityLabel else stringResource(R.string.acct_start_create_submit), {
                             busy = true
                             error = null
                             scope.launch {
                                 runCatching {
-                                    val org = container.orgs.create(orgName.trim(), null, requestId)
+                                    val org = container.orgs.create(orgName.trim(), null, requestId, creatingKind)
+                                    container.analytics.track(if (isCommunity) "community.created" else "workspace.created")
                                     container.workspaces.refresh()
                                     container.workspaces.select(org.id)
                                 }.onSuccess { onDone(null) }.onFailure { error = it.friendly() }
@@ -152,14 +163,18 @@ internal fun WorkspaceStartScreen(onDone: (joinRequested: String?) -> Unit) {
             if (!creating) {
                 Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
                     ChoiceCard(Icons.Outlined.Person, stringResource(R.string.acct_start_personal), stringResource(R.string.acct_start_personal_sub), personal)
-                    ChoiceCard(Icons.Outlined.Business, stringResource(R.string.acct_start_create), stringResource(R.string.acct_start_create_sub), { creating = true })
+                    ChoiceCard(Icons.Outlined.Business, stringResource(R.string.acct_start_create), stringResource(R.string.acct_start_create_sub), { creatingKind = com.meldiq.android.data.api.OrgKind.TEAM })
+                    if (communities) {
+                        ChoiceCard(Icons.Outlined.Groups, stringResource(R.string.m2_start_community), stringResource(R.string.m2_start_community_sub), { creatingKind = com.meldiq.android.data.api.OrgKind.COMMUNITY })
+                    }
                     ChoiceCard(Icons.Outlined.GroupAdd, stringResource(R.string.acct_start_join), stringResource(R.string.acct_start_join_sub), { onDone("") })
                 }
             } else {
                 GriipTextField(
-                    orgName, { orgName = it.take(80) }, stringResource(R.string.acct_start_org_name), leadingIcon = Icons.Rounded.Workspaces,
+                    orgName, { orgName = it.take(80) }, stringResource(if (isCommunity) R.string.m2_community_name else R.string.acct_start_org_name),
+                    leadingIcon = if (isCommunity) Icons.Outlined.Groups else Icons.Rounded.Workspaces,
                     shape = Shapes.field, enabled = !busy,
-                    helper = stringResource(R.string.acct_start_org_help),
+                    helper = stringResource(if (isCommunity) R.string.m2_community_help else R.string.acct_start_org_help),
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
                 )
             }

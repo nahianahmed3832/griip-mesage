@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import kotlinx.coroutines.launch
 import com.meldiq.android.crypto.IdentityStore
 import com.meldiq.android.data.repo.ProfileRegistry
 import com.meldiq.android.data.repo.ProfileStorage
@@ -41,10 +42,16 @@ class GriipApp : Application() {
                 c.appState.foreground.value = true
                 // FGS may only be started while visible: (re)start the optional background connection here.
                 BackgroundDelivery.sync(this@GriipApp)
+                // Experiments and analytics: silent unless this account's server turned them on.
+                if (c.session.session != null) c.scope.launch {
+                    c.analytics.refresh()
+                    c.analytics.track("app.opened")
+                }
             }
 
             override fun onStop(owner: LifecycleOwner) {
                 container?.appState?.foreground?.value = false
+                container?.let { c -> c.scope.launch { c.analytics.flush() } }
             }
         })
     }

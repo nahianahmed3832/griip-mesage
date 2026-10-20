@@ -68,6 +68,8 @@ import com.meldiq.android.ui.theme.Space
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
+import androidx.compose.ui.res.stringResource
+import com.meldiq.android.R
 
 /** Join a workspace with an invite code, or create a new organisation (you become its owner). */
 @Composable
@@ -82,6 +84,13 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
     var checking by remember { mutableStateOf(false) }
     var orgName by rememberSaveable { mutableStateOf("") }
     var orgDesc by rememberSaveable { mutableStateOf("") }
+    // Team or community (Meldiq 2.0), offered only where the server has communities.
+    var kindIndex by rememberSaveable { mutableIntStateOf(0) }
+    var communities by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        communities = runCatching { container.features.get() }.getOrNull()?.contains(com.meldiq.android.data.repo.ServerFeatures.COMMUNITIES) == true
+    }
+    val isCommunity = communities && kindIndex == 1
     // One id per create form: a retry or a second tap returns the workspace the first one made (server dedupes).
     var createRequestId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
     var existingOrg by remember { mutableStateOf<String?>(null) }
@@ -185,15 +194,28 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
                     }
                 }
             } else {
+                if (communities) {
+                    Text(stringResource(R.string.m2_kind_title), style = Griip.type.titleSmall, color = c.textPrimary)
+                    Spacer(Modifier.height(8.dp))
+                    com.meldiq.android.ui.components.SegmentedPills(
+                        listOf(stringResource(R.string.m2_kind_team), stringResource(R.string.m2_kind_community)), kindIndex, { kindIndex = it },
+                        Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
                 GlassCard(Modifier.fillMaxWidth()) {
                     Row {
-                        IconTile(Icons.Outlined.Apartment, c.lavender, c.lavenderSoft, size = 40.dp)
+                        IconTile(if (isCommunity) Icons.Outlined.Groups else Icons.Outlined.Apartment, c.lavender, c.lavenderSoft, size = 40.dp)
                         Spacer(Modifier.width(12.dp))
-                        Text("You'll be the owner. Add branches, departments and teams next, then invite colleagues.", style = Griip.type.bodySmall, color = c.textSecondary)
+                        Text(
+                            if (isCommunity) stringResource(R.string.m2_community_help)
+                            else "You'll be the owner. Add branches, departments and teams next, then invite colleagues.",
+                            style = Griip.type.bodySmall, color = c.textSecondary,
+                        )
                     }
                 }
                 Spacer(Modifier.height(16.dp))
-                GriipTextField(orgName, { orgName = it.take(80) }, "Organization name", placeholder = "GriipBuddy", leadingIcon = Icons.Outlined.Groups,
+                GriipTextField(orgName, { orgName = it.take(80) }, if (isCommunity) stringResource(R.string.m2_community_name) else "Organization name", placeholder = "GriipBuddy", leadingIcon = Icons.Outlined.Groups,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
                 Spacer(Modifier.height(16.dp))
                 GriipTextField(orgDesc, { orgDesc = it.take(300) }, "Description (optional)", placeholder = "What is this workspace for?", singleLine = false, minLines = 2)
@@ -210,7 +232,7 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
             }
         }
         PillButton(
-            if (tab == 0) "Join workspace" else "Create workspace",
+            if (tab == 0) "Join workspace" else if (isCommunity) stringResource(R.string.m2_create_community) else "Create workspace",
             {
                 if (busy) return@PillButton
                 busy = true; error = null; existingOrg = null
@@ -221,8 +243,12 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
                             .onSuccess { r -> if (r.alreadyMember) info = "You're already in ${r.org.name}."; done(r.org.id) }
                             .onFailure { error = InviteOutcome.message(it) }
                     } else {
-                        runCatching { container.orgs.create(orgName.trim(), orgDesc.trim().ifEmpty { null }, createRequestId) }
-                            .onSuccess { createRequestId = UUID.randomUUID().toString(); done(it.id) }
+                        val kind = if (isCommunity) com.meldiq.android.data.api.OrgKind.COMMUNITY else com.meldiq.android.data.api.OrgKind.TEAM
+                        runCatching { container.orgs.create(orgName.trim(), orgDesc.trim().ifEmpty { null }, createRequestId, kind) }
+                            .onSuccess {
+                                container.analytics.track(if (isCommunity) "community.created" else "workspace.created")
+                                createRequestId = UUID.randomUUID().toString(); done(it.id)
+                            }
                             .onFailure {
                                 existingOrg = InviteOutcome.existingOrg(it)
                                 error = it.friendly()

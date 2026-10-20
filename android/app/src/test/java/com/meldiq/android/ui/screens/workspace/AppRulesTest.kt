@@ -20,6 +20,23 @@ class AppRulesTest {
         AppSummaryDto(id, id.replaceFirstChar { it.uppercase() }, category = category, state = state, actions = actions, featured = featured, capabilities = caps, myAccount = account, installState = if (state in setOf("installed", "connected", "error")) "installed" else null)
 
     @Test
+    fun theDirectoryLeadsWithEssentialAppsAndNeverListsPlannedOnes() {
+        val apps = listOf(
+            app("github", "available").copy(tier = "essential"),
+            app("zoom", "available", featured = true).copy(tier = "optional"),
+            app("drive", "connected").copy(tier = "essential"),
+            app("gmail", "coming_soon").copy(tier = "planned", availability = "coming_soon"),
+        )
+        val (recommended, more) = AppRules.recommended(apps)
+        assertEquals(listOf("drive", "github"), recommended.map { it.id })
+        assertEquals(listOf("zoom"), more.map { it.id })
+        // An older server sends no tier: its featured apps lead instead.
+        val (oldRecommended, oldMore) = AppRules.recommended(listOf(app("a", "available", featured = true), app("b", "available")))
+        assertEquals(listOf("a"), oldRecommended.map { it.id })
+        assertEquals(listOf("b"), oldMore.map { it.id })
+    }
+
+    @Test
     fun picksTheOneMostUsefulAction() {
         assertEquals("approve", AppRules.primaryAction(listOf("decline", "approve")))
         assertEquals("install", AppRules.primaryAction(listOf("install")))

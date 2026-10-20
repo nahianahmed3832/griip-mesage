@@ -208,6 +208,7 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
             }.onFailure { error.value = it.friendly(); restoreText.value = t }.isSuccess
             // The message is stored with its reply (retries resend it from there), so the composer's target can go.
             replyTo.value = ReplyTarget.afterSend(replyTo.value, replyId, ok)
+            if (ok && ed == null) c.analytics.track("message.sent", mapOf("surface" to if (threadRoot != null) "thread" else "channel"))
             if (ok) {
                 linkPreview.value = null
                 previewJob?.cancel()

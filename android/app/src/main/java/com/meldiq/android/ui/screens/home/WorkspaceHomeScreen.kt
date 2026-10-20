@@ -157,6 +157,7 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
     val org = orgs?.firstOrNull { it.id == selectedId }
     val orgName = org?.name ?: stringResource(R.string.home_no_workspace)
     val unreadDms = remember(convs) { WorkspaceHomeRules.unreadDms(convs) }
+    val unreadByWorkspace = remember(convs) { WorkspaceHomeRules.unreadByWorkspace(convs) }
     val mentions = remember(convs, org?.id) { WorkspaceHomeRules.mentions(convs, org?.id) }
     // Personal arrangement (starred, sections, collapsed groups): this workspace's and the personal one's, synced.
     val navPrefs by container.navPrefs.prefs.collectAsStateWithLifecycle()
@@ -269,6 +270,17 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
                 )
             }
             item(key = "sheet-top") { HomeSheetTop() }
+            // Meldiq 2.0: one tap between workspaces and communities, with a dot where something is unread.
+            val railOrgs = orgs.orEmpty()
+            if (railOrgs.size >= WorkspaceHomeRules.RAIL_MIN_WORKSPACES) item(key = "rail") {
+                com.meldiq.android.ui.screens.workspace.WorkspaceRail(
+                    com.meldiq.android.ui.screens.workspace.WorkspaceList.normalize(railOrgs), org?.id,
+                    onSelect = { id -> if (id != org?.id) vm.switchOrg(id) },
+                    onAdd = { nav.navigate(Routes.JOIN + "?code=") },
+                    modifier = Modifier.padding(bottom = 6.dp),
+                    unread = unreadByWorkspace,
+                )
+            }
             item(key = "connection") {
                 com.meldiq.android.ui.screens.home.ConnectionBanner(conn, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) { container.realtime.reconnectNow() }
             }

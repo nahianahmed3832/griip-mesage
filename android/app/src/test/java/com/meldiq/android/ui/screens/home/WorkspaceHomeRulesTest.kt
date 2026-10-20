@@ -33,6 +33,22 @@ class WorkspaceHomeRulesTest {
     )
 
     @Test
+    fun theWorkspaceRailMarksWorkspacesWithUnreadChannelsYouHaventMuted() {
+        val convs = listOf(
+            conv("general", orgId = "o1", unread = 3),
+            conv("random", orgId = "o1", mentions = 1),
+            conv("quiet", orgId = "o2", unread = 9, muted = true),
+            conv("left", orgId = "o2", unread = 2, removed = true),
+            conv("not-joined", orgId = "o3", unread = 4, joined = false),
+            conv("archived", orgId = "o3", unread = 1, archivedAt = 5),
+            conv("lounge", orgId = "o4", unread = 1),
+            conv("ann", type = "DM", unread = 2),
+        )
+        assertEquals(mapOf("o1" to 2, "o4" to 1), WorkspaceHomeRules.unreadByWorkspace(convs))
+        assertEquals(emptyMap<String, Int>(), WorkspaceHomeRules.unreadByWorkspace(emptyList()))
+    }
+
+    @Test
     fun unreadDmsAreUnreadDirectAndGroupChatsInTheListsOrder() {
         val convs = listOf(
             conv("ann", type = "DM", unread = 2),

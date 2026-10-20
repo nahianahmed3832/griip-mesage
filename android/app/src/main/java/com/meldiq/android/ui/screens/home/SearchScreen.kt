@@ -245,6 +245,10 @@ private fun searchPath(q: String, types: String, cursor: String? = null, limit: 
 private suspend fun searchServer(container: com.meldiq.android.di.AppContainer, q: String, types: String, filter: Filter): ServerHits {
     if (container.features.has(ServerFeatures.SEARCH) == true) {
         val r = container.api.get<SearchRes>(searchPath(q, types, limit = if (filter == Filter.ALL) SearchRules.PREVIEW_COUNT + 1 else 20)).results
+        // Counted only (docs/product/EXPERIMENTS.md): the scope and a bucket of how many came back, never the words.
+        val found = (r.people?.items?.size ?: 0) + (r.channels?.items?.size ?: 0) + (r.workspaces?.items?.size ?: 0) +
+            (r.groups?.items?.size ?: 0) + (r.documents?.items?.size ?: 0)
+        container.analytics.track("search.performed", mapOf("scope" to SearchRules.analyticsScope(filter), "results" to SearchRules.resultBucket(found)))
         return ServerHits(
             people = r.people?.items.orEmpty(), channels = r.channels?.items.orEmpty(),
             workspaces = r.workspaces?.items.orEmpty(), groups = r.groups?.items.orEmpty(), documents = r.documents?.items.orEmpty(),

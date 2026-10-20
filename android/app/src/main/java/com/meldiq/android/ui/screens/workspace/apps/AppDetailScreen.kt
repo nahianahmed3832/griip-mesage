@@ -167,6 +167,8 @@ fun AppDetailScreen(nav: NavHostController, orgId: String, appId: String) {
         onDispose { lifecycle.removeObserver(obs) }
     }
     LaunchedEffect(Unit) { vm.refresh() }
+    val container = com.meldiq.android.ui.LocalContainer.current
+    LaunchedEffect(appId) { container.analytics.track("integration.viewed", mapOf("connector" to appId)) }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item { GriipTopBar(d?.app?.name ?: stringResource(R.string.apps_title), subtitle = d?.app?.publisher, onBack = { nav.popBackStack() }) }

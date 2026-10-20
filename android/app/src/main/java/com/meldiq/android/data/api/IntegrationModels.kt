@@ -41,6 +41,8 @@ import kotlinx.serialization.Serializable
     val icon: String = "apps",
     val summary: String = "",
     val featured: Boolean = false,
+    /** Meldiq 2.0 curation: essential, optional or planned; "" from servers before it (then [featured] decides). */
+    val tier: String = "",
     /** available, coming_soon or sandbox */
     val availability: String = "available",
     val sensitivity: String = "standard",

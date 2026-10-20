@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Meldiq 2.0 strings (docs/LANGUAGES.md). Generated from strings_meldiq2.py. -->
+<resources>
+    <string name="m2_start_community">Start a community</string>
+    <string name="m2_start_community_sub">Bring people together around a topic, project or place; you\'ll run it</string>
+    <string name="m2_community_name">Community name</string>
+    <string name="m2_community_help">It starts with #welcome, #announcements, #general, #introductions and a lounge to talk in. You can change all of it later.</string>
+    <string name="m2_create_community">Create community</string>
+    <string name="m2_kind_title">What is it for?</string>
+    <string name="m2_kind_team">Team</string>
+    <string name="m2_kind_team_sub">Colleagues working together: branches, teams and admin tools</string>
+    <string name="m2_kind_community">Community</string>
+    <string name="m2_kind_community_sub">People with a shared interest: channels, voice rooms and open invitations</string>
+    <string name="m2_community_members">Community · %1$d members</string>
+    <string name="m2_kind_setting">Kind of workspace</string>
+    <string name="m2_kind_setting_sub">Changes what Meldiq shows first. Nothing is added or removed.</string>
+    <string name="m2_kind_owner_only">Only owners can change this.</string>
+    <string name="m2_rail_label">Your workspaces and communities</string>
+    <string name="m2_rail_switch">Switch to %1$s</string>
+    <string name="m2_rail_unread">%1$s, %2$d with unread messages</string>
+    <string name="m2_rail_add">Join or create</string>
+    <string name="m2_apps_recommended">Recommended</string>
+    <string name="m2_apps_more">More apps</string>
+</resources>

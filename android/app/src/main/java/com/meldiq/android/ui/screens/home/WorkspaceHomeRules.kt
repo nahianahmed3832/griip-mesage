@@ -46,6 +46,20 @@ object WorkspaceHomeRules {
     /** Unread DMs listed on Home before "See all". */
     const val UNREAD_DMS_SHOWN = 5
 
+    /** The rail on Home appears from this many workspaces (with one there is nothing to switch to). */
+    const val RAIL_MIN_WORKSPACES = 2
+
+    /**
+     * For the workspace rail (Meldiq 2.0): how many of each workspace's channels have unread messages, by organisation
+     * id. Only channels you are in and haven't muted count, so a quiet workspace shows no marker; DMs belong to no
+     * workspace and never count here.
+     */
+    fun unreadByWorkspace(convs: List<ConversationEntity>): Map<String, Int> =
+        convs.asSequence()
+            .filter { it.orgId != null && it.joined && !it.removed && !it.muted && it.archivedAt == null && (it.unreadCount > 0 || it.mentionCount > 0) }
+            .groupingBy { it.orgId!! }
+            .eachCount()
+
     /** The Calls card counts calls missed in the last day; the Activity tab lists a week of them. */
     const val MISSED_CALLS_CARD_WINDOW_MS = 24L * 60 * 60 * 1000
     const val MISSED_CALLS_ACTIVITY_WINDOW_MS = 7L * 24 * 60 * 60 * 1000

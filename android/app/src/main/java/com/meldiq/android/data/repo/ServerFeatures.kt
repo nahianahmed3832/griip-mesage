@@ -53,6 +53,11 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val ORG_DELETE = "org-delete"
         /** Deleting your own account, `DELETE /v2/account` (docs/ACCOUNT_DELETION.md). */
         const val ACCOUNT_DELETE = "account-delete"
+        /** Meldiq 2.0: communities as a kind of workspace (docs/product/MELDIQ_2_DECISIONS.md). */
+        const val COMMUNITIES = "communities"
+        /** Meldiq 2.0: experiments and content-free analytics counts (docs/product/EXPERIMENTS.md). */
+        const val EXPERIMENTS = "experiments"
+        const val ANALYTICS_EVENTS = "analytics-events"
         const val DIRECT_UPLOAD = "direct-upload"
         const val PUSH_UNIFIEDPUSH = "push-unifiedpush"
         /** Firebase Cloud Messaging wake-ups (docs/PUSH_FCM.md). */

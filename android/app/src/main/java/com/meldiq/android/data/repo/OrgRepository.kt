@@ -94,8 +94,12 @@ class OrgRepository(
     suspend fun cachedDetail(orgId: String): OrgDetailRes? =
         db.kv().get("cache.org.$orgId")?.let { runCatching { GriipJson.decodeFromString(OrgDetailRes.serializer(), it) }.getOrNull() }
 
-    suspend fun create(name: String, description: String?, requestId: String? = null) =
-        api.post<CreateOrgReq, OrgRes>("/v1/orgs", CreateOrgReq(name, description, requestId)).org
+    /** [kind]: [com.meldiq.android.data.api.OrgKind]; null asks for a team (and works with servers before communities). */
+    suspend fun create(name: String, description: String?, requestId: String? = null, kind: String? = null) =
+        api.post<CreateOrgReq, OrgRes>("/v1/orgs", CreateOrgReq(name, description, requestId, kind?.takeIf { it != com.meldiq.android.data.api.OrgKind.TEAM })).org
+    /** Team or community (owners only; the server checks). */
+    suspend fun updateKind(orgId: String, kind: String) =
+        api.patch<com.meldiq.android.data.api.UpdateOrgKindReq, OrgRes>("/v1/orgs/$orgId", com.meldiq.android.data.api.UpdateOrgKindReq(kind)).org.also { runCatching { orgs() } }
     /** Name and description (owners and admins; the server checks). A blank description clears it. */
     suspend fun updateOrg(orgId: String, name: String, description: String?) =
         api.patch<UpdateOrgReq, OrgRes>("/v1/orgs/$orgId", UpdateOrgReq(name.trim(), jsonOrNull(description))).org.also { runCatching { orgs() } }

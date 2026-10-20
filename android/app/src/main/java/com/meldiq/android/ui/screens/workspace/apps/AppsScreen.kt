@@ -166,19 +166,24 @@ fun AppsScreen(nav: NavHostController, orgId: String) {
                         AppRules.CATEGORIES.forEach { cat -> PillChip(categoryLabel(cat), category == cat, { category = if (category == cat) null else cat }) }
                     }
                 }
-                val featured = apps.filter { it.featured && it.availability != "coming_soon" }
-                if (query.isBlank() && category == null && featured.isNotEmpty()) {
-                    item { SectionHeader(stringResource(R.string.apps_featured), Modifier.padding(horizontal = Space.gutter, vertical = 8.dp)) }
-                    item {
-                        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = Space.gutter), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            featured.forEach { a -> FeaturedCard(a) { nav.navigate(appRoute(orgId, a.id)) } }
-                        }
+                if (query.isBlank() && category == null) {
+                    // Meldiq 2.0: recommended apps first, then everything else that can actually be connected.
+                    val (recommended, more) = AppRules.recommended(apps)
+                    if (recommended.isNotEmpty()) {
+                        item { SectionHeader(stringResource(R.string.m2_apps_recommended), Modifier.padding(horizontal = Space.gutter, vertical = 8.dp)) }
+                        items(recommended, key = { it.id }) { a -> AppCard(a) { nav.navigate(appRoute(orgId, a.id)) } }
                     }
+                    if (more.isNotEmpty()) {
+                        item { SectionHeader(stringResource(R.string.m2_apps_more), Modifier.padding(horizontal = Space.gutter, vertical = 8.dp)) }
+                        items(more, key = { it.id }) { a -> AppCard(a) { nav.navigate(appRoute(orgId, a.id)) } }
+                    }
+                    if (recommended.isEmpty() && more.isEmpty()) item { EmptyState(Icons.Outlined.Apps, stringResource(R.string.apps_none_found), "") }
+                } else {
+                    val shown = AppRules.filter(apps, query, category)
+                    item { SectionHeader(categoryLabel(category), Modifier.padding(horizontal = Space.gutter, vertical = 8.dp)) }
+                    if (shown.isEmpty()) item { EmptyState(Icons.Outlined.Apps, stringResource(R.string.apps_none_found), "") }
+                    items(shown, key = { it.id }) { a -> AppCard(a) { nav.navigate(appRoute(orgId, a.id)) } }
                 }
-                val shown = AppRules.filter(apps, query, category)
-                item { SectionHeader(categoryLabel(category), Modifier.padding(horizontal = Space.gutter, vertical = 8.dp)) }
-                if (shown.isEmpty()) item { EmptyState(Icons.Outlined.Apps, stringResource(R.string.apps_none_found), "") }
-                items(shown, key = { it.id }) { a -> AppCard(a) { nav.navigate(appRoute(orgId, a.id)) } }
             }
             AppsTab.Installed -> {
                 val list = AppRules.installed(apps)
@@ -212,25 +217,6 @@ private fun tabLabel(t: AppsTab): String = when (t) {
     AppsTab.Mine -> stringResource(R.string.apps_tab_mine)
     AppsTab.Workflows -> stringResource(R.string.apps_tab_workflows)
     AppsTab.Activity -> stringResource(R.string.apps_tab_activity)
-}
-
-@Composable
-private fun FeaturedCard(a: AppSummaryDto, onClick: () -> Unit) {
-    val c = Griip.colors
-    GlassCard(Modifier.width(220.dp), onClick = onClick) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AppTile(a.icon, a.state, size = 40.dp)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(a.name, style = Griip.type.titleSmall, color = c.textPrimary, maxLines = 1)
-                Text(a.publisher, style = Griip.type.caption, color = c.textSecondary, maxLines = 1)
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(a.summary, style = Griip.type.bodySmall, color = c.textSecondary, maxLines = 3, minLines = 3)
-        Spacer(Modifier.height(8.dp))
-        StatePill(a.state)
-    }
 }
 
 @Composable

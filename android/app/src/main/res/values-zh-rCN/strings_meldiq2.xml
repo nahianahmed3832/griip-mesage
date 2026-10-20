@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Meldiq 2.0 strings (docs/LANGUAGES.md). Generated from strings_meldiq2.py. -->
+<resources>
+    <string name="m2_start_community">创建社区</string>
+    <string name="m2_start_community_sub">围绕话题、项目或地点聚集大家，由你来管理</string>
+    <string name="m2_community_name">社区名称</string>
+    <string name="m2_community_help">社区会自带 #welcome、#announcements、#general、#introductions 和一个语音休息室，之后都可以修改。</string>
+    <string name="m2_create_community">创建社区</string>
+    <string name="m2_kind_title">用途是什么？</string>
+    <string name="m2_kind_team">团队</string>
+    <string name="m2_kind_team_sub">一起工作的同事：分部、团队和管理工具</string>
+    <string name="m2_kind_community">社区</string>
+    <string name="m2_kind_community_sub">有共同兴趣的人：频道、语音房间和开放邀请</string>
+    <string name="m2_community_members">社区 · %1$d 位成员</string>
+    <string name="m2_kind_setting">工作区类型</string>
+    <string name="m2_kind_setting_sub">只改变 Meldiq 优先显示的内容，不会增加或删除任何东西。</string>
+    <string name="m2_kind_owner_only">只有所有者可以修改。</string>
+    <string name="m2_rail_label">你的工作区和社区</string>
+    <string name="m2_rail_switch">切换到 %1$s</string>
+    <string name="m2_rail_unread">%1$s，%2$d 个有未读消息</string>
+    <string name="m2_rail_add">加入或创建</string>
+    <string name="m2_apps_recommended">推荐</string>
+    <string name="m2_apps_more">更多应用</string>
+</resources>

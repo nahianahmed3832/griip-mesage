@@ -209,7 +209,17 @@ import kotlinx.serialization.json.JsonObject
     /** Round 7 guest policy (docs/WORKSPACE_C5.md). */
     val guestsAllowed: Boolean = true,
     val guestMaxDays: Int? = null,
-)
+    /** Meldiq 2.0: "team" or "community" (servers with `communities`; older ones send nothing: a team). */
+    val kind: String = OrgKind.TEAM,
+) {
+    val isCommunity: Boolean get() = kind == OrgKind.COMMUNITY
+}
+
+/** What kind of workspace an organisation is (docs/product/MELDIQ_2_DECISIONS.md): the same model, different defaults. */
+object OrgKind {
+    const val TEAM = "team"
+    const val COMMUNITY = "community"
+}
 @Serializable data class OrgsRes(val orgs: List<OrgDto>)
 @Serializable data class OrgRes(val org: OrgDto)
 /** `alreadyMember`: this person had already joined through the invite (a retry); the server used nothing up. */
@@ -258,7 +268,9 @@ import kotlinx.serialization.json.JsonObject
     val myRoles: List<RoleRef> = emptyList(),
 )
 /** [requestId]: one per create form, so a retry or double tap returns the same workspace (server ≥ 2026-10-16). */
-@Serializable data class CreateOrgReq(val name: String, val description: String? = null, val requestId: String? = null)
+@Serializable data class CreateOrgReq(val name: String, val description: String? = null, val requestId: String? = null, val kind: String? = null)
+/** Owners only: switches between a team and a community (only what the apps show first changes). */
+@Serializable data class UpdateOrgKindReq(val kind: String)
 @Serializable data class CreateBranchReq(val name: String, val description: String? = null, val location: String? = null)
 @Serializable data class CreateDepartmentReq(val name: String, val description: String? = null)
 @Serializable data class CreateTeamReq(val name: String, val description: String? = null, val branchId: String? = null, val departmentId: String? = null)

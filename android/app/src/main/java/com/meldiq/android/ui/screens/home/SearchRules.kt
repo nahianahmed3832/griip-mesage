@@ -10,6 +10,23 @@ package com.meldiq.android.ui.screens.home
 object SearchRules {
     enum class Filter { ALL, MESSAGES, FILES, PINNED, PEOPLE, CHANNELS, DOCUMENTS, WORKSPACES }
 
+    /** The analytics scope for a filter (the server's closed list: all, messages, people, channels, files, apps). */
+    fun analyticsScope(filter: Filter): String = when (filter) {
+        Filter.ALL, Filter.WORKSPACES -> "all"
+        Filter.MESSAGES, Filter.PINNED -> "messages"
+        Filter.PEOPLE -> "people"
+        Filter.CHANNELS -> "channels"
+        Filter.FILES, Filter.DOCUMENTS -> "files"
+    }
+
+    /** How many results came back, bucketed as the analytics catalogue requires (never the exact count). */
+    fun resultBucket(n: Int): String = when {
+        n <= 0 -> "0"
+        n == 1 -> "1"
+        n <= 5 -> "2-5"
+        else -> "6+"
+    }
+
     enum class Section { CONVERSATIONS, CHANNELS, DOCUMENTS, WORKSPACES, GROUPS, PEOPLE, MESSAGES, FILES, PINNED }
 
     /** Pause after typing before searching. */

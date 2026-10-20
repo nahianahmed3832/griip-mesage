@@ -15,6 +15,16 @@ object AppRules {
     fun primaryAction(actions: List<String>): String? =
         listOf("approve", "install", "request", "reconnect", "connect", "configure").firstOrNull { it in actions }
 
+    /**
+     * The directory's two groups when nothing is searched (Meldiq 2.0): the apps most teams need first, then the rest.
+     * Planned apps never appear here (the server leaves them out). An older server sends no tier: featured apps lead.
+     */
+    fun recommended(apps: List<AppSummaryDto>): Pair<List<AppSummaryDto>, List<AppSummaryDto>> {
+        val usable = filter(apps, "", null).filter { it.availability != "coming_soon" }
+        val tiered = usable.any { it.tier.isNotEmpty() }
+        return usable.partition { if (tiered) it.tier == "essential" else it.featured }
+    }
+
     fun filter(apps: List<AppSummaryDto>, query: String, category: String?): List<AppSummaryDto> {
         val q = query.trim().lowercase()
         return apps.filter { a ->

@@ -60,6 +60,7 @@ object WorkspaceList {
 
     /** The line under a workspace's name: what tells same-named workspaces apart (handle, then creation date). */
     fun subtitle(org: OrgDto, sameNameAsAnother: Boolean, date: (Long) -> String = TimeFmt::dayHeader): String = buildList {
+        if (org.isCommunity) add("Community")
         add("${org.memberCount} ${if (org.memberCount == 1) "member" else "members"}")
         if (sameNameAsAnother) {
             if (org.slug.isNotEmpty()) add("@${org.slug}")
@@ -73,20 +74,41 @@ object WorkspaceList {
  * with a bar and a ring, then "+" to join or create. Shown only when there is more than one workspace.
  */
 @Composable
-fun WorkspaceRail(orgs: List<OrgDto>, selectedId: String?, onSelect: (String) -> Unit, onAdd: () -> Unit, modifier: Modifier = Modifier) {
+fun WorkspaceRail(
+    orgs: List<OrgDto>,
+    selectedId: String?,
+    onSelect: (String) -> Unit,
+    onAdd: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Channels with unread messages, by organisation id: a dot on the tile (Home, Meldiq 2.0). */
+    unread: Map<String, Int> = emptyMap(),
+) {
     val c = Griip.colors
+    val addLabel = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.m2_rail_add)
     LazyRow(modifier, contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items(orgs, key = { it.id }) { o ->
             val selected = o.id == selectedId
             val ring by animateColorAsState(if (selected) c.primary else c.border, label = "ring")
             val bar by animateDpAsState(if (selected) 18.dp else 0.dp, label = "bar")
+            val unreadHere = unread[o.id] ?: 0
+            val switchLabel = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.m2_rail_switch, o.name)
+            val described = if (unreadHere > 0) androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.m2_rail_unread, o.name, unreadHere) else o.name
             Column(
-                Modifier.width(64.dp).clip(Shapes.tile).pressable({ onSelect(o.id) }, onClickLabel = "Switch to ${o.name}")
-                    .semantics { this.selected = selected },
+                Modifier.width(64.dp).clip(Shapes.tile).pressable({ onSelect(o.id) }, onClickLabel = switchLabel)
+                    .semantics { this.selected = selected; contentDescription = described },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Box(Modifier.padding(top = 4.dp).border(2.dp, ring, Shapes.iconTile).padding(3.dp)) {
-                    com.meldiq.android.ui.components.OrgMark(o.id, o.name, WorkspaceList.colorSeed(o), o.photoRev, size = 46.dp)
+                Box {
+                    Box(Modifier.padding(top = 4.dp).border(2.dp, ring, Shapes.iconTile).padding(3.dp)) {
+                        com.meldiq.android.ui.components.OrgMark(o.id, o.name, WorkspaceList.colorSeed(o), o.photoRev, size = 46.dp)
+                    }
+                    // Unread marker: a dot in the brand's badge colour, ringed with the background so it reads on any photo.
+                    if (unreadHere > 0 && !selected) {
+                        Box(
+                            Modifier.align(Alignment.TopEnd).size(14.dp).clip(Shapes.pill).background(c.background).padding(2.dp)
+                                .clip(Shapes.pill).background(c.badge),
+                        )
+                    }
                 }
                 Spacer(Modifier.height(4.dp))
                 Box(Modifier.height(3.dp).width(bar).clip(Shapes.pill).background(c.primary))
@@ -97,9 +119,9 @@ fun WorkspaceRail(orgs: List<OrgDto>, selectedId: String?, onSelect: (String) ->
             }
         }
         item(key = "add") {
-            Column(Modifier.width(64.dp).clip(Shapes.tile).pressable(onAdd, onClickLabel = "Join or create a workspace"), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.width(64.dp).clip(Shapes.tile).pressable(onAdd, onClickLabel = addLabel), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
-                    Modifier.padding(top = 4.dp).size(52.dp).clip(Shapes.iconTile).background(c.surfaceVariant).semantics { contentDescription = "Join or create a workspace" },
+                    Modifier.padding(top = 4.dp).size(52.dp).clip(Shapes.iconTile).background(c.surfaceVariant).semantics { contentDescription = addLabel },
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Rounded.Add, null, tint = c.primary) }
                 Spacer(Modifier.height(7.dp))
