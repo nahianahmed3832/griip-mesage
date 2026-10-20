@@ -1,7 +1,12 @@
 # Meldiq round 3: reference-to-implementation matrix (2026-10-21)
 
 Branch `claude/meldiq-3-reference-rebuild` in this repository and in meldiq-web, cut from the round 2 tips (meldiq
-`cb63510`, web `a54ff5c`). **Not pushed, not merged, not deployed.**
+`cb63510`, web `a54ff5c`).
+
+**Release state (owner's instruction, 2026-10-20 evening):**
+- Pushed, and fast-forwarded into `internal-beta` (`d6a8d08`) and `main` (`d870db2`).
+- Deployed as API 0.10.0 and Meldiq Web `d870db2` (docs/DEPLOYMENT.md), before phone acceptance.
+- Android 16 / 0.2.9-beta: the owner builds and signs it.
 
 ## Source and limits
 
@@ -98,3 +103,22 @@ Branch `claude/meldiq-3-reference-rebuild` in this repository and in meldiq-web,
    - AutoMod and bans (moderation policy);
    - public community discovery;
    - convert-to-private (access review).
+
+## Verification on the final source (2026-10-20, meldiq `c6402a5` + version bump, web `d870db2`)
+
+| Check | Result |
+|---|---|
+| Server typecheck, build | pass |
+| Server, SQLite / MongoDB mode | **753 passed, 10 skipped, 0 failed** in each (skipped: 9 live-S3, 1 MongoDB-only) |
+| Web typecheck, lint, format, build | pass |
+| Web unit / full (against this server) | **251 / 402 passed** |
+| Android unit | **546 passed, 0 failed** |
+| Android lint | 0 errors, 160 warnings, 8 hints |
+| Android release and test builds | pass; test APK `meldiq-3-test.apk` (`com.meldiq.android.test`) |
+| Browser (local throwaway server) | profile menu entries; status suggestion saved and shown; pause until 9:00 shown; community channel header "1 online"; welcome with Add description / Add people; voice room listed once; Activity chips; Mark all as read absent with nothing unread |
+
+Not run:
+- Android on a phone;
+- web Playwright end-to-end;
+- the live S3 suite;
+- Mark all as read with real unread channels in the browser (unit-tested only).

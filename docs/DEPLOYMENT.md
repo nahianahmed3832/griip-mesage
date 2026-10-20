@@ -7,7 +7,7 @@
 | VPS | Hostinger VM 1245833, `srv1245833.hstgr.cloud`, **72.60.107.88** (Ubuntu 24.04, 2 vCPU, 8 GB) |
 | Compose project | **`griip-internal-messaging`** |
 | Directory | **`/opt/griip-internal-messaging`** (root, 0750; `.env` 0600) |
-| Services | `api` (`griip-internal-messaging-api:0.9.0` since 2026-10-20 16:53 UTC, built on the VPS; `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
+| Services | `api` (`griip-internal-messaging-api:0.10.0` since 2026-10-20 18:09 UTC, built on the VPS; `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
 | Volume / network | `griip-internal-messaging_api-data`, `griip-internal-messaging_default` |
 | Public URLs | `https://msg.griipbuddy.cloud` (API + WebSocket), `wss://rtc.griipbuddy.cloud` (LiveKit signalling) |
 | TLS | host nginx (`/etc/nginx/sites-available/griip-message.conf`) with certbot certificate `griip-message`, which renews automatically |
@@ -114,6 +114,28 @@ Branch `api-0.8.1-web-return`. No migrations (schema stays 28).
 Not verifiable on production yet: no one can connect an app there (`integrations-status`: no `INTEGRATIONS_TOKEN_KEY`, no
 provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
 `up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
+
+### API 0.10.0 and Meldiq Web d870db2 (2026-10-20, 18:09 UTC, owner's go-ahead)
+
+Round 3 (`claude/meldiq-3-reference-rebuild` at `d6a8d08`): statuses with an emoji and an end time, pausing
+notifications, "N online" per conversation (migration 030), plus the client work in
+docs/product/MELDIQ_3_REFERENCE_MATRIX.md. Deployed before phone acceptance, on the owner's instruction; the owner
+plans full testing next.
+
+| Step | Result |
+|---|---|
+| Checks before | on the final source: server 753 passed / 10 skipped in SQLite and MongoDB modes; web 402 passed; Android 546 passed, lint 0 errors |
+| Pre-flight | running 0.9.0, healthy; VPS `server/` sources identical to `5ef1b71` (checksum); 52 GB free |
+| Backup | `backups/pre-0.10.0-20261020T180755Z`: integrity ok, schema 29, 33 users, `.env` + `compose.yaml` copies; image tagged `0.9.0-rollback`; sources kept as `server.pre-0.10.0` |
+| Rehearsal | 0.10.0 on a copy of the snapshot, `--network none`: migration 30 applied, the three columns present, `verify-backup` ok (schema 30, 33 users) |
+| Switch | `validate-env.sh` 0 errors, `config -q`, `up -d --no-deps --no-build api`; healthy; LiveKit and ntfy not restarted |
+| Checks after | `/healthz` 0.10.0; restarts 0; no warnings or errors in the log; schema 30, 33 users; server-info lists `status-expiry`, `notifications-pause`, `conversation-presence` |
+| Web | release `0.2.4-beta-d870db2` (contains `4a79225`); `verify.sh https://web.meldiq.app` all passed; API 0.10.0 through it |
+
+Rollback:
+- API: `image: griip-internal-messaging-api:0.9.0-rollback`, then `up -d --no-deps --no-build api`. 0.9.0 ignores the
+  three new columns.
+- Web: `bash /root/meldiq-web-0.2.4-beta-d870db2/rollback.sh`.
 
 ### API 0.9.0 and Meldiq Web 4a79225 (2026-10-20, 16:53 UTC, owner's go-ahead)
 
