@@ -10,7 +10,7 @@ services:
   api:
     build:
       context: ./server
-    image: griip-internal-messaging-api:0.9.0
+    image: griip-internal-messaging-api:0.10.0
     restart: unless-stopped
     env_file: .env
     environment:
