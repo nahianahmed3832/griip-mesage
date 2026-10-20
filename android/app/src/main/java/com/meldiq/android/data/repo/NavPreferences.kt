@@ -122,7 +122,8 @@ class NavPreferences(
 
     suspend fun setMuted(conv: ConversationEntity, muted: Boolean) {
         db.conversations().setMuted(conv.id, muted)
-        change(workspaceOf(conv), NavOp.Notify(conv.id, if (muted) NotifyLevel.MENTIONS else NotifyLevel.ALL))
+        // Muted is "none" (only a mention of you by name), as on the web; "mentions" also lets @everyone through.
+        change(workspaceOf(conv), NavOp.Notify(conv.id, if (muted) NotifyLevel.NONE else NotifyLevel.ALL))
     }
 
     /**
@@ -198,7 +199,7 @@ class NavPreferences(
 
     /** This phone's muted conversations the server copy doesn't have, added the first time a workspace syncs. */
     private suspend fun localMutes(workspaceId: String, prefs: NavPrefsDto): List<NavOp> =
-        conversationsOf(workspaceId).filter { it.muted && it.id !in prefs.notify }.map { NavOp.Notify(it.id, NotifyLevel.MENTIONS) }
+        conversationsOf(workspaceId).filter { it.muted && it.id !in prefs.notify }.map { NavOp.Notify(it.id, NotifyLevel.NONE) }
 
     /** The server's levels on this phone's mute switches, for the workspace's conversations. */
     private suspend fun applyMutes(workspaceId: String, prefs: NavPrefsDto) {

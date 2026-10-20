@@ -156,7 +156,15 @@ object MentionNotify {
     fun shouldNotify(notifications: Boolean, muted: Boolean, mention: Boolean, personal: Boolean): Boolean =
         notifications && (!muted || personal)
 
-    /** Round 3: the conversation's level ("Nothing" silences even a mention of you by name); otherwise as above. */
+    /**
+     * Round 3, the rule the web uses too (docs/MENTIONS.md): "all" notifies everything; "mentions" lets mentions and
+     * @everyone through; "none" (muted, "Off") only a mention of you by name. A conversation muted on a server without
+     * synced levels has [muted] set and level "all": it stays muted.
+     */
     fun shouldNotify(notifications: Boolean, level: String, muted: Boolean, mention: Boolean, personal: Boolean): Boolean =
-        level != com.meldiq.android.data.model.NotifyLevel.NONE && shouldNotify(notifications, muted, mention, personal)
+        notifications && when (level) {
+            NotifyLevel.NONE -> personal
+            NotifyLevel.MENTIONS -> mention
+            else -> !muted || personal
+        }
 }

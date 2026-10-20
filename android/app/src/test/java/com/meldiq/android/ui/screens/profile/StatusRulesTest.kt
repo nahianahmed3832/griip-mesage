@@ -68,10 +68,18 @@ class StatusRulesTest {
     }
 
     @Test
-    fun nothingSilencesEvenAMentionOfYou() {
-        assertFalse(MentionNotify.shouldNotify(true, NotifyLevel.NONE, muted = true, mention = true, personal = true))
-        assertTrue(MentionNotify.shouldNotify(true, NotifyLevel.MENTIONS, muted = true, mention = true, personal = true))
-        assertFalse(MentionNotify.shouldNotify(true, NotifyLevel.MENTIONS, muted = true, mention = true, personal = false))
+    fun levelsFollowTheSameRuleAsTheWeb() {
+        // Off (none, muted): only a mention of you by name. Same cases as web navPrefs shouldNotify.
+        assertTrue(MentionNotify.shouldNotify(true, NotifyLevel.NONE, muted = true, mention = true, personal = true))
+        assertFalse(MentionNotify.shouldNotify(true, NotifyLevel.NONE, muted = true, mention = true, personal = false))
+        assertFalse(MentionNotify.shouldNotify(true, NotifyLevel.NONE, muted = true, mention = false, personal = false))
+        // Mentions only: mentions and @everyone.
+        assertTrue(MentionNotify.shouldNotify(true, NotifyLevel.MENTIONS, muted = true, mention = true, personal = false))
+        assertFalse(MentionNotify.shouldNotify(true, NotifyLevel.MENTIONS, muted = true, mention = false, personal = false))
+        // All, and a chat muted on a server without synced levels.
         assertTrue(MentionNotify.shouldNotify(true, NotifyLevel.ALL, muted = false, mention = false, personal = false))
+        assertFalse(MentionNotify.shouldNotify(true, NotifyLevel.ALL, muted = true, mention = true, personal = false))
+        // The app's own switch wins.
+        assertFalse(MentionNotify.shouldNotify(false, NotifyLevel.ALL, muted = false, mention = true, personal = true))
     }
 }

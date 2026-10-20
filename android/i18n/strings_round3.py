@@ -50,6 +50,8 @@ S = {
 "r3_link_copied": ("Link copied", "链接已复制", "লিংক কপি হয়েছে"),
 "r3_notify_level": ("Notifications", "通知", "নোটিফিকেশন"),
 "r3_notify_all": ("All new messages", "所有新消息", "সব নতুন বার্তা"),
-"r3_notify_mentions": ("Only @mentions", "仅 @提及", "শুধু @উল্লেখ"),
-"r3_notify_none": ("Nothing", "不通知", "কিছুই না"),
+"r3_notify_mentions": ("Mentions only", "仅提及", "শুধু উল্লেখ"),
+"r3_notify_mentions_sub": ("Mentions of you and @everyone", "提及你和 @everyone", "আপনার উল্লেখ ও @everyone"),
+"r3_notify_none": ("Off", "关闭", "বন্ধ"),
+"r3_notify_none_sub": ("Only when someone mentions you by name", "仅当有人点名提及你", "কেউ নাম ধরে উল্লেখ করলে তবেই"),
 }

@@ -43,6 +43,8 @@
     <string name="r3_link_copied">链接已复制</string>
     <string name="r3_notify_level">通知</string>
     <string name="r3_notify_all">所有新消息</string>
-    <string name="r3_notify_mentions">仅 @提及</string>
-    <string name="r3_notify_none">不通知</string>
+    <string name="r3_notify_mentions">仅提及</string>
+    <string name="r3_notify_mentions_sub">提及你和 @everyone</string>
+    <string name="r3_notify_none">关闭</string>
+    <string name="r3_notify_none_sub">仅当有人点名提及你</string>
 </resources>

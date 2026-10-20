@@ -43,6 +43,8 @@
     <string name="r3_link_copied">Link copied</string>
     <string name="r3_notify_level">Notifications</string>
     <string name="r3_notify_all">All new messages</string>
-    <string name="r3_notify_mentions">Only @mentions</string>
-    <string name="r3_notify_none">Nothing</string>
+    <string name="r3_notify_mentions">Mentions only</string>
+    <string name="r3_notify_mentions_sub">Mentions of you and @everyone</string>
+    <string name="r3_notify_none">Off</string>
+    <string name="r3_notify_none_sub">Only when someone mentions you by name</string>
 </resources>

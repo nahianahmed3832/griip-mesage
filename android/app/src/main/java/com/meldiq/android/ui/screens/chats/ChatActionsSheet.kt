@@ -99,8 +99,8 @@ fun ChatActionsSheet(
             subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.sec_move_to_sub),
             onClick = { onDismiss(); onMoveToSection() }, trailing = null,
         )
-        // Round 3 (the reference's channel notification choices): all messages, only @mentions, or nothing. Kept for
-        // every device like mute was; "Only @mentions" is the old mute.
+        // Round 3 (the reference's channel notification choices), the same three levels and rule as the web: All new
+        // messages, Mentions only (mentions and @everyone), Off (muted: only a mention of you by name). Kept for every device.
         val container = com.meldiq.android.ui.LocalContainer.current
         val level = container.navPrefs.levelOf(conv)
         com.meldiq.android.ui.components.SectionHeader(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.r3_notify_level))
@@ -112,6 +112,11 @@ fun ChatActionsSheet(
             MenuRow(
                 if (value == com.meldiq.android.data.model.NotifyLevel.ALL) Icons.Outlined.NotificationsActive else Icons.Outlined.NotificationsOff,
                 androidx.compose.ui.res.stringResource(label),
+                subtitle = when (value) {
+                    com.meldiq.android.data.model.NotifyLevel.MENTIONS -> androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.r3_notify_mentions_sub)
+                    com.meldiq.android.data.model.NotifyLevel.NONE -> androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.r3_notify_none_sub)
+                    else -> null
+                },
                 onClick = { container.scope.launch { container.navPrefs.setLevel(conv, value) }; onDismiss() },
                 trailing = if (level == value) ({ androidx.compose.material3.Icon(Icons.Rounded.Check, null, tint = com.meldiq.android.ui.theme.Griip.colors.primary) }) else null,
             )

@@ -43,6 +43,8 @@
     <string name="r3_link_copied">লিংক কপি হয়েছে</string>
     <string name="r3_notify_level">নোটিফিকেশন</string>
     <string name="r3_notify_all">সব নতুন বার্তা</string>
-    <string name="r3_notify_mentions">শুধু @উল্লেখ</string>
-    <string name="r3_notify_none">কিছুই না</string>
+    <string name="r3_notify_mentions">শুধু উল্লেখ</string>
+    <string name="r3_notify_mentions_sub">আপনার উল্লেখ ও @everyone</string>
+    <string name="r3_notify_none">বন্ধ</string>
+    <string name="r3_notify_none_sub">কেউ নাম ধরে উল্লেখ করলে তবেই</string>
 </resources>
