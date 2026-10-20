@@ -98,7 +98,15 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class PrivacyRes(val privacy: Map<String, String>)
 @Serializable data class PhotoRes(val photoRev: Long? = null)
 @Serializable data class DeviceKeyDto(val id: String, val signingKey: String, val encryptionKey: String, val certificate: String)
-@Serializable data class UserKeysDto(val userId: String, val identityKey: String, val devices: List<DeviceKeyDto>)
+/** A device removed from its account: never encrypted to; envelopes the server accepted up to [revokedAt] verify (T1.5). */
+@Serializable data class RevokedDeviceKeyDto(
+    val id: String, val signingKey: String, val encryptionKey: String, val certificate: String, val revokedAt: Long,
+)
+@Serializable data class UserKeysDto(
+    val userId: String, val identityKey: String, val devices: List<DeviceKeyDto>,
+    /** Servers with the T1.5 fix list devices revoked within the queue lifetime; older ones omit it. */
+    val revokedDevices: List<RevokedDeviceKeyDto> = emptyList(),
+)
 @Serializable data class KeysRes(val users: List<UserKeysDto>)
 @Serializable data class UserIdsReq(val userIds: List<String>)
 @Serializable data class MyDeviceDto(

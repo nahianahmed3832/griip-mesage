@@ -920,7 +920,7 @@ class MessageRepository(
         // A duplicate delivery is ignored, but a placeholder left by an earlier failure may be replaced.
         val placeholder = existing?.kind == "undecryptable" && existing.senderUserId == item.senderUserId
         if (existing != null && p.cls == "message" && !placeholder) return
-        val signingKey = when (val k = directory.senderKey(item.senderUserId, item.senderDeviceId)) {
+        val signingKey = when (val k = directory.senderKey(item.senderUserId, item.senderDeviceId, p.serverTs ?: item.createdAt)) {
             is SenderKey.Trusted -> k.signingKey
             SenderKey.IdentityChanged -> throw SenderIdentityChanged()
             SenderKey.Unknown -> throw EnvelopeException("unknown or uncertified sender device")

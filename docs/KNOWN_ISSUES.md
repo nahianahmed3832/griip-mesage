@@ -37,7 +37,7 @@ Details and evidence: `FEATURE_INVENTORY.md`. Fix plan: `FEATURE_ROADMAP.md`.
   - ~~Pinned identity keys aren't enforced (T1.2).~~ Enforced 2026-10-16: a changed key pauses messaging until the user accepts it. The device UI check is pending.
   - ~~Removed members stay in live calls (P3, T1.3).~~ Fixed on the server 2026-10-16, **not yet deployed** (`RELEASE_PLAN.md`).
   - ~~Any local error while processing a delivery discards the message (T1.4).~~ Fixed 2026-10-16: acknowledgement only after a local commit, with bounded retries and a local set-aside.
-  - Messages from a device revoked before delivery are lost (P7, T1.5).
+  - ~~Messages from a device revoked before delivery are lost (P7, T1.5).~~ Fixed (remediation round 1, 2026-10-20): the key directory lists devices revoked within the queue lifetime under `revokedDevices`, and the apps accept such a device's signature only on envelopes the server accepted at or before its `revokedAt`. Server, Android and reference client; the web app's part is in meldiq-web. **Not deployed; no device check yet.**
   - ~~Open registration with no upload quotas on a shared VPS (P5, T1.6).~~ Fixed on the server 2026-10-16 (invite-only registration, streamed uploads with quotas, container CPU and process limits). **Not yet deployed**: testers need an app build with the invitation-code field (added 2026-10-16) before it goes live (`RELEASE_PLAN.md`).
   - ~~Presence is readable by anyone (P4, T1.7).~~ Fixed on the server 2026-10-16, **not yet deployed**.
   - ~~The activity feed leaks other branches' team and channel names (P2, T1.8).~~ Fixed on the server 2026-10-16, **not yet deployed**.

@@ -82,9 +82,11 @@ class KeyDirectory(private val source: KeySource, private val pins: PinStore) {
         }
     }
 
-    private fun certified(u: UserKeysDto, identityKey: String) = u.devices.filter { d ->
-        Ed25519.verify(identityKey.unb64(), Canonical.deviceCert(identityKey, d.signingKey, d.encryptionKey).toByteArray(), d.certificate.unb64())
-    }
+    private fun certifies(identityKey: String, signingKey: String, encryptionKey: String, certificate: String) =
+        Ed25519.verify(identityKey.unb64(), Canonical.deviceCert(identityKey, signingKey, encryptionKey).toByteArray(), certificate.unb64())
+
+    private fun certified(u: UserKeysDto, identityKey: String) =
+        u.devices.filter { certifies(identityKey, it.signingKey, it.encryptionKey, it.certificate) }
 
     private suspend fun conversationUsers(conversationId: String, force: Boolean): List<UserKeysDto> {
         val now = System.currentTimeMillis()
@@ -124,12 +126,21 @@ class KeyDirectory(private val source: KeySource, private val pins: PinStore) {
         convCache.clear()
     }
 
-    /** Signing key of a sender device, if the device is certified by the sender's pinned identity. */
-    suspend fun senderKey(userId: String, deviceId: String): SenderKey {
-        val cached = cache[userId]?.keys?.takeIf { k -> k.devices.any { it.id == deviceId } }
+    /**
+     * Signing key of the device that signed an envelope the server accepted at [serverTs], if the device is certified
+     * by the sender's pinned identity: an active device, or one revoked no earlier than [serverTs] (T1.5). The server
+     * accepts nothing from a device once it's revoked, so a later envelope is [SenderKey.Unknown]. Revoked devices are
+     * never encryption targets (recipients are read from `devices` only).
+     */
+    suspend fun senderKey(userId: String, deviceId: String, serverTs: Long): SenderKey {
+        val cached = cache[userId]?.keys?.takeIf { k -> k.devices.any { it.id == deviceId } || k.revokedDevices.any { it.id == deviceId } }
         val keys = cached ?: source.userKeys(userId)?.also { cache[userId] = Cached(it, System.currentTimeMillis()) } ?: return SenderKey.Unknown
         val trusted = trustedKey(keys) ?: return SenderKey.IdentityChanged
-        return certified(keys, trusted).firstOrNull { it.id == deviceId }?.let { SenderKey.Trusted(it.signingKey.unb64()) } ?: SenderKey.Unknown
+        certified(keys, trusted).firstOrNull { it.id == deviceId }?.let { return SenderKey.Trusted(it.signingKey.unb64()) }
+        val revoked = keys.revokedDevices.firstOrNull {
+            it.id == deviceId && serverTs <= it.revokedAt && certifies(trusted, it.signingKey, it.encryptionKey, it.certificate)
+        }
+        return revoked?.let { SenderKey.Trusted(it.signingKey.unb64()) } ?: SenderKey.Unknown
     }
 
     /**

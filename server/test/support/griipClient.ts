@@ -62,10 +62,16 @@ export interface DeviceKeys {
   encryptionKey: string;
   certificate: string;
 }
+/** A device removed from its account: never encrypted to; envelopes the server accepted up to `revokedAt` verify. */
+export interface RevokedDeviceKeys extends DeviceKeys {
+  revokedAt: number;
+}
 export interface UserKeys {
   userId: string;
   identityKey: string;
   devices: DeviceKeys[];
+  /** Servers from 2026-10-17 (T1.5); older ones omit it. */
+  revokedDevices?: RevokedDeviceKeys[];
 }
 
 export interface DecryptedMessage {
@@ -352,9 +358,24 @@ export class GriipClient {
 
   /** Only devices whose certificate verifies against the user's *pinned* identity key are encrypted to. */
   verifiedDevices(u: UserKeys): DeviceKeys[] {
+    return this.certified(u, u.devices);
+  }
+
+  private certified<D extends DeviceKeys>(u: UserKeys, devices: D[]): D[] {
     const key = this.trustedKey(u);
     if (key === null) return [];
-    return u.devices.filter((d) => verify(key, canonical.deviceCert(key, d.signingKey, d.encryptionKey), d.certificate));
+    return devices.filter((d) => verify(key, canonical.deviceCert(key, d.signingKey, d.encryptionKey), d.certificate));
+  }
+
+  /**
+   * The device that signed an envelope the server accepted at `serverTs`: an active one, or one revoked no earlier
+   * than that (T1.5). The server accepts nothing from a device after revoking it, so a later envelope is refused.
+   */
+  private senderDevice(u: UserKeys, deviceId: string, serverTs: number): DeviceKeys | undefined {
+    return (
+      this.verifiedDevices(u).find((d) => d.id === deviceId) ??
+      this.certified(u, u.revokedDevices ?? []).find((d) => d.id === deviceId && serverTs <= d.revokedAt)
+    );
   }
 
   /** Drop cached key lists, e.g. after a test changes keys on the server behind the client's back. */
@@ -378,7 +399,7 @@ export class GriipClient {
     const p = item.payload;
     const sender = await this.userKeys(item.senderUserId);
     if (this.trustedKey(sender) === null) throw new IdentityChangedError([item.senderUserId]);
-    const dev = this.verifiedDevices(sender).find((d) => d.id === item.senderDeviceId);
+    const dev = this.senderDevice(sender, item.senderDeviceId, p.serverTs ?? item.createdAt);
     if (!dev) {
       this.keyCache.delete(item.senderUserId);
       if (!refetched) return this.decrypt(item, true); // keys may have changed since they were cached

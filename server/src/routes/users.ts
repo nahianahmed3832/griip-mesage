@@ -31,8 +31,38 @@ export interface DeviceKeyRow {
   certificate: string;
 }
 
-/** Public key directory entries for a set of users (active devices only). */
-export function deviceDirectory(ctx: AppContext, userIds: string[]) {
+export interface DirectoryDevice {
+  id: string;
+  signingKey: string;
+  encryptionKey: string;
+  certificate: string;
+}
+
+/** A device removed from the account: never encrypted to, but its earlier envelopes still verify (T1.5). */
+export interface RevokedDirectoryDevice extends DirectoryDevice {
+  revokedAt: number;
+}
+
+export interface DirectoryEntry {
+  userId: string;
+  identityKey: string;
+  devices: DirectoryDevice[];
+  revokedDevices: RevokedDirectoryDevice[];
+}
+
+const directoryDevice = (r: Omit<DeviceKeyRow, "user_id" | "identity_key">): DirectoryDevice => ({
+  id: r.id,
+  signingKey: r.signing_key,
+  encryptionKey: r.encryption_key,
+  certificate: r.certificate,
+});
+
+/**
+ * Public key directory entries for a set of users. `devices` are the active devices, the only ones to encrypt to.
+ * `revokedDevices` are the devices revoked within the queue lifetime: envelopes they sent before `revokedAt` may still
+ * be queued, and recipients verify those against these keys. Anything older has left every queue, so isn't listed.
+ */
+export function deviceDirectory(ctx: AppContext, userIds: string[]): DirectoryEntry[] {
   if (userIds.length === 0) return [];
   const placeholders = userIds.map(() => "?").join(",");
   const rows = ctx.db
@@ -42,14 +72,19 @@ export function deviceDirectory(ctx: AppContext, userIds: string[]) {
        WHERE u.id IN (${placeholders}) AND u.disabled_at IS NULL`,
     )
     .all(...userIds) as (DeviceKeyRow & { id: string | null })[];
-  const byUser = new Map<string, { userId: string; identityKey: string; devices: object[] }>();
+  const byUser = new Map<string, DirectoryEntry>();
   for (const r of rows) {
     let e = byUser.get(r.user_id);
-    if (!e) byUser.set(r.user_id, (e = { userId: r.user_id, identityKey: r.identity_key, devices: [] }));
-    if (r.id) {
-      e.devices.push({ id: r.id, signingKey: r.signing_key, encryptionKey: r.encryption_key, certificate: r.certificate });
-    }
+    if (!e) byUser.set(r.user_id, (e = { userId: r.user_id, identityKey: r.identity_key, devices: [], revokedDevices: [] }));
+    if (r.id) e.devices.push(directoryDevice(r));
   }
+  const revoked = ctx.db
+    .prepare(
+      `SELECT user_id, id, signing_key, encryption_key, certificate, revoked_at FROM devices
+       WHERE user_id IN (${placeholders}) AND revoked_at IS NOT NULL AND revoked_at > ? ORDER BY revoked_at`,
+    )
+    .all(...userIds, now() - ctx.config.queueTtlSeconds * 1000) as (Omit<DeviceKeyRow, "identity_key"> & { revoked_at: number })[];
+  for (const r of revoked) byUser.get(r.user_id)?.revokedDevices.push({ ...directoryDevice(r), revokedAt: r.revoked_at });
   return [...byUser.values()];
 }
 
