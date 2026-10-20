@@ -46,3 +46,42 @@ of the Meldiq database to the same archive before moving production to MongoDB.
 | Email provider down | health view: mail failing | sign-up codes and resets wait; `MAIL_TRANSPORT` can be switched back to SES (`.env` backup) | minutes after the switch |
 | Connector outage | health view: app jobs dead or failing | jobs retry with backoff; dead jobs stay listed | provider's recovery |
 | Media server overloaded | calls fail to connect; the call screen's connection details | one SFU on 2 shared vCPUs: no failover; capacity needs a bigger or dedicated server | none without new capacity |
+
+## 4. Restore drill, round 1 candidate (2026-10-20, synthetic data, owner's Mac)
+
+A second drill, on the remediation round 1 candidate (`claude/remediation-round-1`). It covers the whole off-site path
+and the new migration 013. It was isolated: a throwaway server in a temporary folder in the session scratchpad, with
+made-up accounts only, deleted afterwards along with its throwaway `age` key. Docker isn't installed here, so the
+container steps of `backup.sh` and `restore.sh` ran as the same `node dist/admin.js` commands.
+
+| Step | What ran | Result |
+|---|---|---|
+| Seed | Test-harness server: 3 users, a DM with 5 messages (recipient offline, so they were queued), a group, a workspace with a channel, a 4 KB attachment | done |
+| Snapshot | `admin.js backup` on the **running** server, then `verify-backup` and `table-counts` | `ok: true`, integrity `ok`, schema 28, 3 users |
+| Archive | `tar -czf <name>.tar.gz backups/<name>.sqlite attachments` (as `backup.sh`) | 35,867 bytes |
+| Off-site encrypt | `scripts/offsite-backup.sh --local … --label drill` with `ORBIT_BACKUP_ARCHIVE` and a throwaway age recipient | `.tar.gz.age` and manifest written |
+| Off-site restore check | `scripts/offsite-restore-check.sh <age> <manifest> <key>` | sha256 matches the manifest, `verify-backup` ok, **row counts match the manifest (83 tables)**, "restore check passed" |
+| Restore and boot (same version) | Snapshot as `griip.sqlite` in a fresh data folder, attachments copied, `node dist/index.js` | `/healthz` ok (0.8.1); 28 migrations; 3 users, 7 queued items, 1 attachment row and its file |
+| Restore and boot (upgrade from 0.8.1) | The same, from a copy changed to look like a 0.8.1 database (`users.deleted_at` dropped, migration 13 unrecorded) | `/healthz` ok; migration 013 applied at start; `users.deleted_at` present; data intact |
+
+Not covered:
+- Docker and `restore.sh` themselves.
+- S3-hosted attachments.
+- A real upload to, and download from, a backup bucket.
+- A production-sized database.
+- Rolling back to 0.8.1 on a database that has 013, and timing.
+
+**Rollback after 013.** Migration 013 adds one nullable column. 0.8.1 reads `users` with `SELECT *` and inserts with
+explicit columns, and `verify-backup` compares the highest version (still 28), so rolling back to the `0.8.1-rollback`
+image after deploying round 1 is expected to work. That rollback wasn't tested.
+
+**Secrets.** `.env` and `livekit/livekit.yaml` aren't in any archive (on purpose). Their only copies are on the VPS
+(`env.backup` next to each pre-deploy snapshot). They hold:
+- the S3 runtime key;
+- `INTEGRATIONS_TOKEN_KEY`;
+- SMTP;
+- LiveKit;
+- the FCM service account.
+
+Rebuilding after losing the VPS needs a copy kept off it, in the owner's password manager or AWS Secrets Manager.
+That's an owner decision, alongside §2.
