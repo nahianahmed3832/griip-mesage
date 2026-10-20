@@ -7,7 +7,7 @@
 | VPS | Hostinger VM 1245833, `srv1245833.hstgr.cloud`, **72.60.107.88** (Ubuntu 24.04, 2 vCPU, 8 GB) |
 | Compose project | **`griip-internal-messaging`** |
 | Directory | **`/opt/griip-internal-messaging`** (root, 0750; `.env` 0600) |
-| Services | `api` (`griip-internal-messaging-api:0.7.0` since 2026-10-19 13:38 UTC, built on the VPS; `0.6.0-rollback` and `0.5.0-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
+| Services | `api` (`griip-internal-messaging-api:0.9.0` since 2026-10-20 16:53 UTC, built on the VPS; `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
 | Volume / network | `griip-internal-messaging_api-data`, `griip-internal-messaging_default` |
 | Public URLs | `https://msg.griipbuddy.cloud` (API + WebSocket), `wss://rtc.griipbuddy.cloud` (LiveKit signalling) |
 | TLS | host nginx (`/etc/nginx/sites-available/griip-message.conf`) with certbot certificate `griip-message`, which renews automatically |
@@ -114,6 +114,31 @@ Branch `api-0.8.1-web-return`. No migrations (schema stays 28).
 Not verifiable on production yet: no one can connect an app there (`integrations-status`: no `INTEGRATIONS_TOKEN_KEY`, no
 provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
 `up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
+
+### API 0.9.0 and Meldiq Web 4a79225 (2026-10-20, 16:53 UTC, owner's go-ahead)
+
+Branch `claude/meldiq-2-redesign` at `5ef1b71`: production 0.8.1, remediation round 1 (account deletion, migration
+013; revoked-device fix) and Meldiq 2.0 round 1 (communities and analytics, migration 029; curated directory;
+experiments off). The owner chose to deploy before the phone acceptance test.
+
+| Step | Result |
+|---|---|
+| Checks before | GitHub CI green on both branches in both repositories (server, Android, web); server 745 tests passed locally |
+| Pre-flight | running image 0.8.1, healthy; VPS `server/` sources identical to `api-0.8.1-web-return` (checksum); 53 GB free |
+| Backup | `backups/pre-0.9.0-20261020T165059Z`: integrity ok, schema 28, 33 users, `.env` + `compose.yaml` copies; image tagged `0.8.1-rollback`; sources kept as `server.pre-0.9.0` |
+| Rehearsal | 0.9.0 image on a copy of the snapshot, `--network none`: migrations 13 and 29 applied, `verify-backup` ok (schema 29, 33 users), 6 workspaces all `team` |
+| Switch | `validate-env.sh` 0 errors, `config -q`, `up -d --no-deps --no-build api`; healthy; LiveKit and ntfy not restarted |
+| Checks after | `verify.sh` 0 restarts; `/healthz` 0.9.0; server-info lists `account-delete`, `communities`, `experiments`, `analytics-events`; no warnings or errors in the log. `EXPERIMENTS_MODE` and `ANALYTICS_ENABLED` are unset, so both are off |
+| Web | release `0.2.4-beta-4a79225` (contains the previous `e95c739`), installed with the same command as before; `verify.sh https://web.meldiq.app` all passed; API 0.9.0 through it; web.griipbuddy.cloud still redirects |
+
+Not done: the bot round-trip (the permission check refused reading the bot's identity file) and phone acceptance.
+
+Rollback:
+- API: `image: griip-internal-messaging-api:0.8.1-rollback`, then the same `up -d --no-deps --no-build api`. 0.8.1
+  ignores `users.deleted_at`, `orgs.kind` and `analytics_daily`.
+- Web: `bash /root/meldiq-web-0.2.4-beta-4a79225/rollback.sh`.
+
+Existing `.env` warnings, unchanged by this deploy: `APP_ENV=development` and `REGISTRATION_MODE=open` on production.
 
 ## Redeploying from a workstation
 
