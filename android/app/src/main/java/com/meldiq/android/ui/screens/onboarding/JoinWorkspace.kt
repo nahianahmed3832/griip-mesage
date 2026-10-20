@@ -201,6 +201,10 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
                         listOf(stringResource(R.string.m2_kind_team), stringResource(R.string.m2_kind_community)), kindIndex, { kindIndex = it },
                         Modifier.fillMaxWidth(),
                     )
+                    Text(
+                        stringResource(if (kindIndex == 1) R.string.m2_kind_community_sub else R.string.m2_kind_team_sub),
+                        style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(top = 6.dp),
+                    )
                     Spacer(Modifier.height(12.dp))
                 }
                 GlassCard(Modifier.fillMaxWidth()) {

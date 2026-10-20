@@ -11,13 +11,11 @@
     <string name="m2_kind_team_sub">একসাথে কাজ করা সহকর্মী: শাখা, টিম ও অ্যাডমিন টুল</string>
     <string name="m2_kind_community">কমিউনিটি</string>
     <string name="m2_kind_community_sub">একই আগ্রহের মানুষ: চ্যানেল, ভয়েস রুম ও খোলা আমন্ত্রণ</string>
-    <string name="m2_community_members">কমিউনিটি · %1$d জন সদস্য</string>
     <string name="m2_kind_setting">ওয়ার্কস্পেসের ধরন</string>
     <string name="m2_kind_setting_sub">Meldiq প্রথমে কী দেখায় শুধু তা বদলায়। কিছু যোগ বা মুছে যায় না।</string>
     <string name="m2_kind_owner_only">শুধু মালিকরা এটি বদলাতে পারেন।</string>
-    <string name="m2_rail_label">আপনার ওয়ার্কস্পেস ও কমিউনিটি</string>
     <string name="m2_rail_switch">%1$s-এ যান</string>
-    <string name="m2_rail_unread">%1$s, %2$dটিতে না-পড়া বার্তা</string>
+    <string name="m2_rail_unread">%1$s, না-পড়া চ্যানেল: %2$d</string>
     <string name="m2_rail_add">যোগ দিন বা তৈরি করুন</string>
     <string name="m2_apps_recommended">প্রস্তাবিত</string>
     <string name="m2_apps_more">আরও অ্যাপ</string>
