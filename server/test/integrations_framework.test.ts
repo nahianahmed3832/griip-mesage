@@ -33,7 +33,7 @@ describe("directory", () => {
     const list = (await member.req("GET", `/v1/orgs/${orgId}/integrations`)).apps as any[];
     const state = (id: string) => list.find((a) => a.id === id)?.state;
     for (const id of ["google-drive", "google-calendar", "microsoft-onedrive", "microsoft-sharepoint", "microsoft-outlook-calendar", "github", "jira", "notion", "linear"]) expect([id, state(id)]).toEqual([id, "needs_configuration"]);
-    for (const id of ["gmail", "outlook-mail", "microsoft-teams", "salesforce", "zapier", "ai-assistants"]) expect([id, state(id)]).toEqual([id, "coming_soon"]);
+    for (const id of ["gmail", "outlook-mail", "microsoft-teams", "salesforce", "zapier"]) expect([id, state(id)]).toEqual([id, "coming_soon"]);
     expect(list.find((a) => a.id === "gmail").capabilities).toEqual([]);
     expect(state("meldiq-sandbox")).toBe("available");
     expect(list.find((a) => a.id === "meldiq-sandbox").actions).toEqual(["request"]);

@@ -21,15 +21,47 @@ their own device's token; only the server decides whom to wake.
 
 ## Owner steps to turn it on
 
-1. Create a Firebase project (no paid plan needed for FCM) and add the Android app `com.meldiq.android`.
-2. Create a service account with the role **Firebase Cloud Messaging API Admin** only, and a JSON key. Keep the key file
-   out of the repository; put it on the VPS (`chmod 600`) and mount it read-only into the API container.
-3. Set `FCM_PROJECT_ID` and `FCM_SERVICE_ACCOUNT_FILE` (see `deploy/.env.example`), run `validate-env.sh`, restart the
-   API service only.
-4. Android: add the `firebase-messaging` library and the project's `google-services.json` (client config, not a
-   secret, but specific to the project), register the token with `PUT /v1/devices/current/fcm` and treat a message as
-   a wake-up. **Not done in this round**: without a project there is nothing to build against, and the library would
-   add size for nothing.
+1. **Done 2026-10-20:** Firebase on the Google Cloud project `meldiq` (Spark, Analytics off).
+   - Android apps: `com.meldiq.android` and `com.meldiq.android.test`.
+   - The FCM API (V1) is enabled.
+2. Create a JSON key for a service account with the role **Firebase Cloud Messaging API Admin** only.
+   - The owner does this: Firebase console › Project settings › Service accounts.
+   - Keep the key out of the repository. Locally it goes in `~/.meldiq-secrets/fcm-service-account.json`; on the VPS,
+     `chmod 600` and mounted read-only into the API container.
+3. Set `FCM_PROJECT_ID=meldiq` and `FCM_SERVICE_ACCOUNT_FILE` (see `deploy/.env.example`), run `validate-env.sh`,
+   then restart the API service only. The local test server (scratchpad `testenv/start.sh`) sets both itself when the
+   key file exists.
+4. **Android: built 2026-10-20.**
+   - `MeldiqFcmService` wakes the app through `WakeWorker` and never reads the payload.
+   - `FcmRegistrar` sends the token with `PUT /v1/devices/current/fcm` when signed in, again when Firebase rotates it,
+     and retries after a network failure (`FcmRegistrarTest`).
+   - Firebase is switched on only when `android/app/google-services.json` exists. That file is client config, not a
+     secret, but it stays out of this public repo through `.gitignore`. Builds without it work as before and never
+     register.
+
+## Phone test, 2026-10-20 (HONOR ELI-AN00, Meldiq Test build, local server)
+
+**Result: works end to end.**
+
+- **Server credentials:** with the owner's service-account key, Google issued an access token for project `meldiq`
+  (the free `push-fcm` connector check).
+- **Token:** the app started Firebase, got a token and registered it (`PUT /v1/devices/current/fcm` 200;
+  `MeldiqFcm: wake-ups: Active`).
+- **Real wake-up:** the app was in the background with "Stay connected" off. One wake-up went through Google at
+  16:51:47.9; Google returned 200 ("sent"). Google Play services received it at 16:51:48.7. The app ran `WakeWorker`
+  ("wake-up fetch: Fetched") and reconnected at 16:51:49.5, about 1.6 s after sending. The message carried no content.
+- **China:** in mainland China this needs a VPN in **Global** mode, so that Google Play services reach `mtalk.google.com`
+  (ports 5228–5230) and `firebaseinstallations.googleapis.com`. With the VPN's smart/fake-IP DNS, Google answered
+  `SERVICE_NOT_AVAILABLE` and the app correctly stayed `Unavailable`. People in China without a VPN need UnifiedPush
+  through ntfy on Meldiq's own server, or the "Stay connected" fallback.
+- **Bug found and fixed:**
+  - What happened: `DELETE /v1/devices/current/push` (withdraw the UnifiedPush endpoint) also deleted the device's FCM
+    token. The app withdraws UnifiedPush whenever no distributor app is installed, which is exactly the case on phones
+    that rely on Firebase, so FCM unregistered itself as soon as Settings opened.
+  - Fix: `removeUnifiedPushEndpoint` now touches only UnifiedPush. Sign-out and device revocation still remove both.
+  - Test: `push_fcm.test.ts` checks both.
+- **Not yet:** production needs `FCM_PROJECT_ID=meldiq` and the key file on the server (an approved change), plus a
+  deploy of this code.
 
 ## Tests
 

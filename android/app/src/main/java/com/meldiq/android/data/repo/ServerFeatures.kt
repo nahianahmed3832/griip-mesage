@@ -53,6 +53,8 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val ORG_DELETE = "org-delete"
         const val DIRECT_UPLOAD = "direct-upload"
         const val PUSH_UNIFIEDPUSH = "push-unifiedpush"
+        /** Firebase Cloud Messaging wake-ups (docs/PUSH_FCM.md). */
+        const val PUSH_FCM = "push-fcm"
         /** Channel access modes, invitation states, archived branches and teams (docs/WORKSPACE_ADMINISTRATION.md). */
         const val WORKSPACE_ADMIN = "workspace-admin"
         /** Personal navigation preferences kept on the server: starred, sections, notification levels (2026-10-19). */

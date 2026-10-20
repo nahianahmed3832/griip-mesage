@@ -121,6 +121,7 @@ object Routes {
     const val STORAGE = "settings/storage"
     /** Platform admins only (round 7, docs/OPERATIONS.md). */
     const val SERVICE_HEALTH = "settings/health"
+    const val CONNECTORS = "settings/connectors"
     const val CONTACTS = "contacts"
     const val PRIVACY = "privacy"
     const val BLOCKED = "blocked"
@@ -347,6 +348,7 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             composable(Routes.LANGUAGE) { com.meldiq.android.ui.screens.profile.LanguageScreen(nav) }
             composable(Routes.STORAGE) { com.meldiq.android.ui.screens.profile.StorageScreen(nav) }
             composable(Routes.SERVICE_HEALTH) { com.meldiq.android.ui.screens.profile.ServiceHealthScreen(nav) }
+            composable(Routes.CONNECTORS) { com.meldiq.android.ui.screens.profile.ConnectorsScreen(nav) }
             composable(Routes.PRIVACY) { com.meldiq.android.ui.screens.profile.PrivacyScreen(nav) }
             composable(Routes.BLOCKED) { com.meldiq.android.ui.screens.profile.BlockedUsersScreen(nav) }
         }

@@ -155,7 +155,7 @@ const int = (env: NodeJS.ProcessEnv, name: string, def: number, min: number, max
 };
 
 /** Environment names per provider. Only Claude has a default model; ChatGPT and Gemini need the operator to name one. */
-const ENV: Record<AiProviderId, { key: string; model: string; defaultModel: string | null }> = {
+export const AI_ENV: Record<AiProviderId, { key: string; model: string; defaultModel: string | null }> = {
   anthropic: { key: "AI_ANTHROPIC_API_KEY", model: "AI_ANTHROPIC_MODEL", defaultModel: "claude-haiku-5-5" },
   openai: { key: "AI_OPENAI_API_KEY", model: "AI_OPENAI_MODEL", defaultModel: null },
   gemini: { key: "AI_GEMINI_API_KEY", model: "AI_GEMINI_MODEL", defaultModel: null },
@@ -175,7 +175,7 @@ export function aiConfig(env: NodeJS.ProcessEnv): AiConfig {
   const ids = (env.AI_PROVIDERS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter((s) => s && s !== "none");
   const providers = [...new Set(ids)].map((id) => {
     if (!isProviderId(id)) throw new Error(`AI_PROVIDERS: unknown provider "${id}" (known: ${AI_PROVIDER_IDS.join(", ")})`);
-    const names = ENV[id];
+    const names = AI_ENV[id];
     const key = secretFrom(env, names.key);
     if (!key) throw new Error(`AI_PROVIDERS includes ${id}, which needs ${names.key} or ${names.key}_FILE`);
     const model = env[names.model]?.trim() || names.defaultModel;

@@ -8,6 +8,11 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Firebase Cloud Messaging (docs/PUSH_FCM.md): the owner's google-services.json (gitignored) turns it on. Without it the
+// app builds as before and simply never registers for Firebase wake-ups.
+val firebaseConfigured = file("google-services.json").exists()
+if (firebaseConfigured) apply(plugin = "com.google.gms.google-services")
+
 // The app's default server address, per environment (docs/ENVIRONMENTS.md). People can still pick another server.
 //   meldiq.environment            development (debug builds' default) | staging | production (release builds' default)
 //   meldiq.apiBaseUrl.<environment>  the address for that environment: gradle -P… or android/local.properties
@@ -172,6 +177,8 @@ dependencies {
     // Push wake-ups through a UnifiedPush distributor such as ntfy (docs/BACKGROUND_DELIVERY.md). Apache-2.0. The
     // connector asks for Tink's JVM build, which brings full protobuf-java and clashes with LiveKit's protobuf-javalite;
     // it only uses Tink's subtle primitives (WebPush keys), so Tink's Android build (no protobuf at all) stands in.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
     implementation(libs.unifiedpush.connector) { exclude(group = "com.google.crypto.tink", module = "tink") }
     implementation(libs.tink.android)
     // Message translation on the phone (docs/LANGUAGES.md › Translation): message text never leaves the device; only the

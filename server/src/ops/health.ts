@@ -59,7 +59,7 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   }
 }
 
-async function storageCheck(ctx: AppContext): Promise<HealthReport["checks"]["storage"]> {
+export async function storageCheck(ctx: AppContext): Promise<HealthReport["checks"]["storage"]> {
   try {
     await withTimeout(
       (async () => {

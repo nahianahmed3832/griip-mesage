@@ -100,6 +100,15 @@
             </intent-filter>
         </service>
 
+        <!-- Firebase Cloud Messaging wake-ups (docs/PUSH_FCM.md): a message only means "fetch your queue". -->
+        <service
+            android:name=".service.MeldiqFcmService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- Restarts "stay connected" after a reboot or an app update (T2.5). System broadcasts only. -->
         <receiver
             android:name=".service.BackgroundDeliveryRestartReceiver"

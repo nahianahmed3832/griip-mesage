@@ -486,17 +486,6 @@ export const CONNECTORS: readonly ConnectorDef[] = [
     ["intercom", "none", "Intercom", "Intercom", "crm", "support", "Conversation links and updates.", "standard", null],
     ["zapier", "none", "Zapier", "Zapier", "automation", "apps", "A native Zapier app. Today: a Zap's webhook step can post to a Meldiq incoming webhook.", "standard", null],
     ["make", "none", "Make", "Make", "automation", "apps", "A native Make app. Today: a scenario's HTTP module can post to a Meldiq incoming webhook.", "standard", null],
-    [
-      "ai-assistants",
-      "none",
-      "AI assistants",
-      "OpenAI, Anthropic and others",
-      "automation",
-      "science",
-      "Summaries and drafting with an assistant your organisation approves. Messages are end-to-end encrypted, so nothing would ever be sent to an AI service without an explicit, per-conversation choice.",
-      "high",
-      "Needs an approved product design and organisation controls before any message content leaves a device.",
-    ],
   ]),
 ];
 

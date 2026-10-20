@@ -39,6 +39,10 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class PushEndpointReq(val kind: String, val endpoint: String)
 @Serializable data class PushRegistrationDto(val kind: String, val host: String, val updatedAt: Long)
 @Serializable data class PushEndpointRes(val push: PushRegistrationDto)
+/** Firebase wake-ups (docs/PUSH_FCM.md): the device's registration token, and what the server stored. */
+@Serializable data class FcmTokenReq(val token: String)
+@Serializable data class FcmPushDto(val kind: String, val updatedAt: Long)
+@Serializable data class FcmTokenRes(val push: FcmPushDto)
 @Serializable data class PushRemoveRes(val ok: Boolean = true, val removed: Boolean = false)
 
 // ───────── Encrypted message history (docs/MESSAGE_HISTORY.md) ─────────

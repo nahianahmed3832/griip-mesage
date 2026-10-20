@@ -3,6 +3,8 @@
 deploy/.env
 deploy/livekit/livekit.yaml
 android/local.properties
+# Firebase client config for the owner's project (not a secret, but kept out of this public repo; docs/PUSH_FCM.md)
+android/app/google-services.json
 tools/griip-bot/bot-identity*.json
 # Play upload / signing keys and their passwords: never in this (public) repository
 signed_file/

@@ -113,9 +113,12 @@ describe("FCM wake-ups", () => {
     expect(h.ctx.db.prepare("SELECT 1 FROM fcm_tokens WHERE device_id = ?").get(alice.deviceId)).toBeUndefined();
   });
 
-  it("forgets the token when the device signs out of push", async () => {
+  it("keeps the token when only the UnifiedPush endpoint is withdrawn, and forgets it on sign-out", async () => {
     await alice.req("PUT", "/v1/devices/current/fcm", { token });
+    // The app withdraws UnifiedPush whenever no distributor app is installed: that mustn't end Firebase wake-ups.
     await alice.req("DELETE", "/v1/devices/current/push");
+    expect(h.ctx.db.prepare("SELECT 1 FROM fcm_tokens WHERE device_id = ?").get(alice.deviceId)).toBeTruthy();
+    await alice.req("POST", "/v1/auth/logout");
     expect(h.ctx.db.prepare("SELECT 1 FROM fcm_tokens WHERE device_id = ?").get(alice.deviceId)).toBeUndefined();
   });
 });

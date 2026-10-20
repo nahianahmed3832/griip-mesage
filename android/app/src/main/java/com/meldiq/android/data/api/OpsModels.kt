@@ -68,3 +68,28 @@ import kotlinx.serialization.Serializable
     val name: String, val ok: Int, val failed: Int,
     val lastOkAt: Long? = null, val lastFailureAt: Long? = null, val lastErrorKind: String? = null,
 )
+
+// ───────── Connector register (platform admins only, docs/CONNECTORS.md) ─────────
+// Mirrors server/src/ops/connectors.ts: names of missing settings only, counts only, error kinds only.
+
+@Serializable data class ConnectorsRes(val connectors: List<ConnectorDto>, val checkable: List<String> = emptyList())
+
+@Serializable data class ConnectorCheckRes(val result: ConnectorCheckDto, val connectors: List<ConnectorDto>)
+
+@Serializable data class ConnectorCheckDto(val ok: Boolean, val errorKind: String? = null)
+
+@Serializable data class ConnectorDto(
+    val id: String,
+    val name: String,
+    val category: String,
+    val state: String,
+    val missing: List<String> = emptyList(),
+    val detail: String = "",
+    val usage: Map<String, Int> = emptyMap(),
+    val lastOkAt: Long? = null,
+    val lastFailureAt: Long? = null,
+    val lastErrorKind: String? = null,
+    val checkable: Boolean = false,
+    val ownerAction: String? = null,
+    val docs: String = "",
+)

@@ -23,11 +23,16 @@ mlkitTranslate = "17.0.3"
 mlkitLanguageId = "17.0.6"
 iconsExtended = "1.7.8"
 unifiedpush = "3.3.5"
+# Firebase Cloud Messaging wake-ups (docs/PUSH_FCM.md); only active when android/app/google-services.json exists.
+firebaseBom = "33.7.0"
+googleServices = "4.4.2"
 tink = "1.23.0"
 
 [libraries]
 androidx-work = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 unifiedpush-connector = { module = "org.unifiedpush.android:connector", version.ref = "unifiedpush" }
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
+firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 tink-android = { module = "com.google.crypto.tink:tink-android", version.ref = "tink" }
 mlkit-translate = { module = "com.google.mlkit:translate", version.ref = "mlkitTranslate" }
 mlkit-language-id = { module = "com.google.mlkit:language-id", version.ref = "mlkitLanguageId" }
@@ -82,3 +87,4 @@ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }

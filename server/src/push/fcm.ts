@@ -173,6 +173,18 @@ export class FcmService {
     return "failed";
   }
 
+  /** The connector check: signs in to Google with the service account (sends nothing to any phone). */
+  async checkCredentials(): Promise<void> {
+    this.accessToken = null;
+    try {
+      await this.token();
+      this.metrics?.recordProvider("push.fcm");
+    } catch (e) {
+      this.metrics?.recordProvider("push.fcm", e);
+      throw e;
+    }
+  }
+
   /** A cached OAuth access token for FCM, renewed a few minutes before it expires. */
   private async token(): Promise<string> {
     const t = Date.now();

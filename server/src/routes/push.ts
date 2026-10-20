@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { type AppContext, me, parse, requireAuth } from "../context.js";
 import { checkEndpoint, ENDPOINT_REFUSALS, MAX_ENDPOINT_LENGTH } from "../push/address.js";
-import { removePushEndpoint } from "../push/service.js";
+import { removeUnifiedPushEndpoint } from "../push/service.js";
 import { MAX_FCM_TOKEN_LENGTH } from "../push/fcm.js";
 import { ApiError } from "../util.js";
 
@@ -43,7 +43,7 @@ export default async function pushRoutes(app: FastifyInstance, ctx: AppContext) 
   // Also works while the server has push turned off, so a device can always withdraw its endpoint.
   app.delete("/v1/devices/current/push", auth, async (req) => {
     const { deviceId } = me(req);
-    const removed = ctx.push ? ctx.push.unregister(deviceId) : removePushEndpoint(ctx.db, deviceId);
+    const removed = ctx.push ? ctx.push.unregister(deviceId) : removeUnifiedPushEndpoint(ctx.db, deviceId);
     return { ok: true, removed };
   });
 }

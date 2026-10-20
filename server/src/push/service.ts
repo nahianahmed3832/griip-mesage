@@ -35,11 +35,19 @@ interface Deferred {
   call: boolean;
 }
 
-/** Removes a device's endpoint (unregistered, revoked, signed out). */
-export function removePushEndpoint(db: DB, deviceId: string): boolean {
-  // A signed-out device isn't woken through Firebase either (docs/PUSH_FCM.md).
-  db.prepare("DELETE FROM fcm_tokens WHERE device_id = ?").run(deviceId);
+/** Removes only a device's UnifiedPush endpoint (the app withdrew it, or the push server reported it gone). */
+export function removeUnifiedPushEndpoint(db: DB, deviceId: string): boolean {
   return db.prepare("DELETE FROM push_endpoints WHERE device_id = ?").run(deviceId).changes > 0;
+}
+
+/**
+ * Removes every wake-up address of a device (signed out or revoked): its UnifiedPush endpoint and its Firebase token
+ * (docs/PUSH_FCM.md). Withdrawing UnifiedPush alone must not touch Firebase: the app withdraws it whenever no
+ * distributor app is installed, which is exactly the case on phones that rely on Firebase.
+ */
+export function removePushEndpoint(db: DB, deviceId: string): boolean {
+  db.prepare("DELETE FROM fcm_tokens WHERE device_id = ?").run(deviceId);
+  return removeUnifiedPushEndpoint(db, deviceId);
 }
 
 /** Retention: endpoints of revoked devices (revocations by the admin CLI or older code included). */
@@ -94,7 +102,7 @@ export class PushService {
 
   unregister(deviceId: string): boolean {
     this.cancel(deviceId);
-    return removePushEndpoint(this.ctx.db, deviceId);
+    return removeUnifiedPushEndpoint(this.ctx.db, deviceId);
   }
 
   /** An envelope was queued for [deviceId] while it had no open socket. */

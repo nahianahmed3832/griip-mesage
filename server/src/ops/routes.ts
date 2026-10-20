@@ -3,6 +3,7 @@ import { z } from "zod";
 import { type AppContext, me, parse, requireAuth } from "../context.js";
 import { ENTITLEMENT_KEYS, type EntitlementKey, isEntitlementKey } from "../entitlements.js";
 import { badRequest, forbidden, notFound } from "../util.js";
+import { CHECKS, checkConnector, connectorReport } from "./connectors.js";
 import { healthReport } from "./health.js";
 
 /**
@@ -19,6 +20,23 @@ export default async function opsRoutes(app: FastifyInstance, ctx: AppContext, v
   app.get("/v1/admin/health", auth, async (req) => {
     requirePlatformAdmin(me(req).userId);
     return { health: await healthReport(ctx, version) };
+  });
+
+  // ───────────── Connector register (docs/CONNECTORS.md) ─────────────
+  /** Every outside service with its measured state and the setting names still missing (never values). */
+  app.get("/v1/admin/connectors", auth, async (req) => {
+    requirePlatformAdmin(me(req).userId);
+    return { connectors: await connectorReport(ctx), checkable: CHECKS };
+  });
+
+  /** A check that sends nothing to anyone and costs nothing (sign in to SMTP, list storage, FCM token, Mongo ping). */
+  app.post("/v1/admin/connectors/:id/check", auth, async (req) => {
+    const userId = me(req).userId;
+    requirePlatformAdmin(userId);
+    const { id } = parse(z.object({ id: z.enum(CHECKS) }), req.params);
+    const result = await checkConnector(ctx, id);
+    ctx.audit({ actorId: userId, action: "connector.check", target: id, detail: result.ok ? "ok" : result.errorKind });
+    return { result, connectors: await connectorReport(ctx) };
   });
 
   // ───────────── Usage and limits across workspaces (round 7 slice C7, docs/USAGE_AND_PLANS.md) ─────────────

@@ -1,5 +1,6 @@
 package com.meldiq.android.ui.screens.profile
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
@@ -34,6 +36,7 @@ import com.meldiq.android.data.api.HealthDto
 import com.meldiq.android.data.api.HealthRes
 import com.meldiq.android.data.api.MeasuredDto
 import com.meldiq.android.ui.LocalContainer
+import com.meldiq.android.ui.Routes
 import com.meldiq.android.ui.components.BannerKind
 import com.meldiq.android.ui.components.CircleIconButton
 import com.meldiq.android.ui.components.GlassCard
@@ -75,6 +78,20 @@ fun ServiceHealthScreen(nav: NavHostController) {
             return@LazyColumn
         }
         item { Summary(h) }
+        item {
+            GlassCard(
+                Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 4.dp).clickable { nav.navigate(Routes.CONNECTORS) },
+                contentPadding = PaddingValues(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Connectors", style = Griip.type.body.copy(fontWeight = FontWeight.SemiBold), color = Griip.colors.textPrimary)
+                        Text("Every outside service, what works and what's missing", style = Griip.type.bodySmall, color = Griip.colors.textSecondary)
+                    }
+                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = Griip.colors.textTertiary)
+                }
+            }
+        }
         item { SectionHeader("Checks", Modifier.padding(top = 12.dp, bottom = 4.dp)) }
         item {
             Card {

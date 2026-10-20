@@ -99,6 +99,8 @@ class AppContainer(
         profile.id, PrefsPushStore(app), ApiPushServer(api, features),
         ConnectorDistributor(app) { "Meldiq · " + (runCatching { java.net.URI(session.serverUrl).host }.getOrNull() ?: session.serverUrl) },
     )
+    /** Firebase wake-ups (docs/PUSH_FCM.md): only in builds with the owner's google-services.json. */
+    val fcm = com.meldiq.android.data.repo.FcmRegistrar(com.meldiq.android.service.FirebaseTokenSource(app), com.meldiq.android.data.repo.ApiFcmServer(api, features))
     /** What a wake-up does: hold the relay connection until the backlog drained and ringing calls were looked up. */
     val wakeFetch = WakeFetch(scope, appState.wakeHolds, messages.backlogDrained, calls.ringChecks, calls.state.map { it.phase == CallPhase.Incoming })
 
@@ -153,6 +155,16 @@ class AppContainer(
         }
         // An endpoint the server couldn't be told about (it was unreachable) goes as soon as the app connects again.
         scope.launch { realtime.state.collect { if (it == ConnState.Connected) push.retryPending() } }
+        // Firebase wake-ups follow the session: registered when signed in, forgotten when signed out.
+        scope.launch {
+            session.state.map { it is SessionState.SignedIn }.distinctUntilChanged().collect { signedIn ->
+                if (signedIn) {
+                    runCatching { fcm.start() }.onFailure { android.util.Log.w("MeldiqFcm", "start failed: ${it.javaClass.simpleName}") }
+                    android.util.Log.i("MeldiqFcm", "wake-ups: ${fcm.state.value}")
+                } else fcm.reset()
+            }
+        }
+        scope.launch { realtime.state.collect { if (it == ConnState.Connected) runCatching { fcm.retryPending() } } }
     }
 
     fun close() {

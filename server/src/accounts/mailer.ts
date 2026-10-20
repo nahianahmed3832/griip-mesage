@@ -41,6 +41,8 @@ export interface Mailer {
   /** False when no transport is configured: routes that must send email answer 503 instead of pretending. */
   readonly available: boolean;
   send(message: MailMessage): Promise<void>;
+  /** Connects and signs in without sending anything (the connector check); absent when the transport can't. */
+  verify?(): Promise<void>;
 }
 
 /**
@@ -62,6 +64,17 @@ export function meteredMailer(inner: Mailer, metrics: Metrics | undefined): Mail
         throw e;
       }
     },
+    verify: inner.verify
+      ? async () => {
+          try {
+            await inner.verify?.();
+            metrics.recordProvider(name);
+          } catch (e) {
+            metrics.recordProvider(name, e);
+            throw e;
+          }
+        }
+      : undefined,
   };
 }
 
@@ -125,6 +138,7 @@ export class SesMailer implements Mailer {
 /** The part of a nodemailer transport this mailer uses (tests pass a fake). */
 export interface SmtpSender {
   sendMail(message: MimeMessage): Promise<unknown>;
+  verify?(): Promise<unknown>;
 }
 
 /**
@@ -142,6 +156,10 @@ export class SmtpMailer implements Mailer {
 
   async send(m: MailMessage): Promise<void> {
     await this.transport.sendMail(mimeMessage(this.from, m));
+  }
+
+  async verify(): Promise<void> {
+    await this.transport.verify?.();
   }
 }
 
