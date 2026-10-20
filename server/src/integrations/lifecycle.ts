@@ -68,6 +68,9 @@ export async function directory(k: Kernel, orgId: string, userId: string, includ
     const viewer = { perms, roleIds, connected: account?.status === "active", accountError: !!account && account.status !== "active" };
     const platform = await k.platform(def, platformPolicy);
     const state = connectorState(def, platform, policy, install, viewer, k.installConfig(install));
+    // An app this server can't connect yet (no provider credentials) is only noise for someone who can't set it up:
+    // they could neither use nor request it. Admins still see it, with what the server operator has to configure.
+    if (state === "needs_configuration" && !perms.has("integrations.install") && !perms.has("integrations.configure")) continue;
     apps.push({
       id: def.id,
       name: def.name,

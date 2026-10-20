@@ -136,6 +136,63 @@ describe("communities", () => {
   });
 });
 
+describe("community permissions", () => {
+  const status = (p: Promise<unknown>) => p.then(() => 200, (e: { status?: number }) => e.status ?? 0);
+
+  it("enforce the same server checks as a team, so a page the community hides can't be opened to get around them", async () => {
+    const owner = await AccountClient.ready(h.baseUrl, mailer, "permowner");
+    const member = await AccountClient.ready(h.baseUrl, mailer, "permmember");
+    const outsider = await AccountClient.ready(h.baseUrl, mailer, "permoutsider");
+    const probe = async (kind?: string) => {
+      const orgId = (await owner.req("POST", "/v1/orgs", { name: `Probe ${kind ?? "team"}`, ...(kind ? { kind } : {}) })).org.id;
+      const code = (await owner.req("POST", `/v1/orgs/${orgId}/invites`, { role: "MEMBER" })).invite.code;
+      await member.req("POST", "/v1/invites/accept", { code });
+      const calls = (c: AccountClient) => [
+        status(c.req("POST", `/v1/orgs/${orgId}/branches`, { name: "Dhaka office" })),
+        status(c.req("GET", `/v1/orgs/${orgId}/inbox/accounts`)),
+        status(c.req("GET", `/v1/orgs/${orgId}/inbox/queues`)),
+        status(c.req("GET", `/v1/orgs/${orgId}`)),
+        status(c.req("PATCH", `/v1/orgs/${orgId}`, { kind: "team" })),
+      ];
+      return { member: await Promise.all(calls(member)), outsider: await Promise.all(calls(outsider)) };
+    };
+    const team = await probe();
+    const community = await probe("community");
+    // The kind switch is the only difference: a member may never change it, in either kind.
+    expect(community.member).toEqual(team.member);
+    expect(community.outsider).toEqual(team.outsider);
+    expect(community.member[0]).toBe(403);
+    expect(community.member[4]).toBe(403);
+    expect(community.outsider.every((s) => s === 403 || s === 404)).toBe(true);
+  });
+
+  it("switching between team and community changes only the kind: members, roles, channels and settings stay", async () => {
+    const owner = await AccountClient.ready(h.baseUrl, mailer, "kindowner");
+    const member = await AccountClient.ready(h.baseUrl, mailer, "kindmember");
+    const orgId = (await owner.req("POST", "/v1/orgs", { name: "Kind Switch Co" })).org.id;
+    const code = (await owner.req("POST", `/v1/orgs/${orgId}/invites`, { role: "ADMIN" })).invite.code;
+    await member.req("POST", "/v1/invites/accept", { code });
+    await owner.req("POST", `/v1/orgs/${orgId}/channels`, { name: "design", scope: "ORG", kind: "PUBLIC", autoJoin: true });
+    await owner.req("POST", `/v1/orgs/${orgId}/branches`, { name: "Chattogram" });
+    const snapshot = () => ({
+      org: h.ctx.db.prepare("SELECT name, slug, description, created_by, guests_allowed, guest_max_days, ai_enabled, photo_rev FROM orgs WHERE id = ?").get(orgId),
+      members: h.ctx.db.prepare("SELECT user_id, role FROM org_members WHERE org_id = ? ORDER BY user_id").all(orgId),
+      channels: h.ctx.db.prepare("SELECT * FROM conversations WHERE org_id = ? ORDER BY id").all(orgId),
+      channelMembers: h.ctx.db.prepare("SELECT conversation_id, user_id, role FROM conversation_members WHERE conversation_id IN (SELECT id FROM conversations WHERE org_id = ?) ORDER BY 1, 2").all(orgId),
+      branches: h.ctx.db.prepare("SELECT id, name FROM branches WHERE org_id = ? ORDER BY id").all(orgId),
+      roles: h.ctx.db.prepare("SELECT * FROM org_roles WHERE org_id = ? ORDER BY id").all(orgId),
+    });
+    const before = snapshot();
+    expect((await owner.req("PATCH", `/v1/orgs/${orgId}`, { kind: "community" })).org.kind).toBe("community");
+    expect(snapshot()).toEqual(before);
+    expect((await owner.req("PATCH", `/v1/orgs/${orgId}`, { kind: "team" })).org.kind).toBe("team");
+    expect(snapshot()).toEqual(before);
+    // An admin (not an owner) can still edit the details, but not the kind.
+    await expectStatus(member.req("PATCH", `/v1/orgs/${orgId}`, { kind: "community" }), 403);
+    expect(h.ctx.db.prepare("SELECT kind FROM orgs WHERE id = ?").get(orgId)).toEqual({ kind: "team" });
+  });
+});
+
 describe("experiments and analytics over the API", () => {
   it("tells each person their stable assignments and counts events without who sent them", async () => {
     const c = await AccountClient.ready(h.baseUrl, mailer, "exper");
