@@ -33,6 +33,12 @@ class WorkspaceHomeRulesTest {
     )
 
     @Test
+    fun aVoiceRoomIsListedOnceInItsOwnSectionNotAgainAmongTheChannels() {
+        val convs = listOf(conv("general"), conv("lounge").copy(voice = true))
+        assertEquals(listOf("general"), WorkspaceHomeRules.channelGroups(convs, "o1", "Acme").flatMap { g -> g.channels.map { it.id } })
+    }
+
+    @Test
     fun theWorkspaceRailMarksWorkspacesWithUnreadChannelsYouHaventMuted() {
         val convs = listOf(
             conv("general", orgId = "o1", unread = 3),

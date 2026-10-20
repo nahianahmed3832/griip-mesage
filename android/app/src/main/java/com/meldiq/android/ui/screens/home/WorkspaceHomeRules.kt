@@ -105,8 +105,9 @@ object WorkspaceHomeRules {
     ): List<ChannelGroup> {
         if (orgId == null) return emptyList()
         return convs.asSequence()
-            // A channel that's starred or in a custom section shows there instead of twice.
-            .filter { it.type == "CHANNEL" && it.orgId == orgId && it.joined && listed(it) && it.id !in placed && (!unreadOnly || it.unreadCount > 0) }
+            // A channel that's starred or in a custom section shows there instead of twice; voice rooms have their own
+            // section (with who is in them), so they aren't listed here as well.
+            .filter { it.type == "CHANNEL" && !it.voice && it.orgId == orgId && it.joined && listed(it) && it.id !in placed && (!unreadOnly || it.unreadCount > 0) }
             .groupBy { "${it.scope ?: "ORG"}:${it.scopeId ?: orgId}" }
             .map { (key, channels) ->
                 val first = channels.first()
