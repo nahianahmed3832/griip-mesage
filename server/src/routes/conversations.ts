@@ -3,7 +3,7 @@ import { mentionAllPermission } from "../mentions.js";
 import { z } from "zod";
 import type { ConversationRow } from "../authz.js";
 import { type AppContext, me, parse, requireAuth, zText } from "../context.js";
-import { memberView } from "../profile.js";
+import { canSeeLastSeen, memberView, type ProfileRow } from "../profile.js";
 import { ApiError, badRequest, conflict, forbidden, newId, notFound, now } from "../util.js";
 import { fedDmId } from "../federation/service.js";
 import { userSummary } from "./auth.js";
@@ -96,6 +96,22 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
       )
       .all(userId) as ConversationRow[];
     return { conversations: rows.map((c) => conversationView(ctx, c, userId)) };
+  });
+
+  /**
+   * How many of a conversation's members are online now (round 3: "# general · 3 online"), for members only. Counts
+   * only people whose "last seen" setting lets the viewer see their online state, so the number reveals no one who
+   * hides it; the viewer counts too.
+   */
+  app.get("/v1/conversations/:id/presence", { ...auth, config: { rateLimit: { max: 60, timeWindow: "1 minute" } } }, async (req) => {
+    const { userId } = me(req);
+    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    authz.requireMember(id, userId);
+    const members = ctx.db
+      .prepare("SELECT u.* FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? AND u.disabled_at IS NULL")
+      .all(id) as ProfileRow[];
+    const online = members.filter((u) => (u.id === userId || canSeeLastSeen(ctx, userId, u)) && ctx.hub.isUserOnline(u.id)).length;
+    return { online, members: members.length };
   });
 
   app.get("/v1/conversations/:id", auth, async (req) => {

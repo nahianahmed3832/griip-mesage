@@ -206,7 +206,7 @@ function anonymize(ctx: AppContext, userId: string, photoRev: number | null, t: 
   const placeholder = `deleted-${crypto.randomBytes(8).toString("hex")}`;
   ctx.db
     .prepare(
-      `UPDATE users SET username = ?, display_name = ?, status_text = NULL, avatar_color = 0, first_name = NULL, last_name = NULL,
+      `UPDATE users SET username = ?, display_name = ?, status_text = NULL, status_emoji = NULL, status_expires_at = NULL, notifications_paused_until = NULL, avatar_color = 0, first_name = NULL, last_name = NULL,
          birthday = NULL, phone = NULL, photo_rev = NULL, privacy = NULL, username_changed_at = NULL, limited_until = NULL,
          disabled_at = COALESCE(disabled_at, ?), deleted_at = COALESCE(deleted_at, ?), updated_at = ? WHERE id = ?`,
     )

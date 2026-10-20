@@ -109,6 +109,9 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
 
   // The person's own profile. Every field is optional; null clears it. Hidden fields stay stored (privacy decides who
   // sees them, not whether they exist).
+  /** Longest status ("Vacationing" for a year at most) and longest notification pause. */
+  const STATUS_MAX_MS = 366 * 86_400_000;
+  const PAUSE_MAX_MS = 30 * 86_400_000;
   const zOptText = (max: number) =>
     z
       .string()
@@ -123,6 +126,10 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
       z.object({
         displayName: zName.optional(),
         statusText: zOptText(140),
+        // Round 3: an emoji for the status (no letters or digits), its end time, and pausing notifications.
+        statusEmoji: zOptText(16).refine((v) => v == null || !/[\p{L}\p{N}]/u.test(v), "The status emoji can't contain letters or digits"),
+        statusExpiresAt: z.number().int().nullable().optional(),
+        notificationsPausedUntil: z.number().int().nullable().optional(),
         avatarColor: z.number().int().min(0).max(15).optional(),
         firstName: zOptText(40),
         lastName: zOptText(40),
@@ -158,14 +165,28 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
       username = body.username;
     }
     const pick = <T>(v: T | undefined, old: T) => (v === undefined ? old : v);
+    const t = now();
+    if (body.statusExpiresAt != null && (body.statusExpiresAt <= t || body.statusExpiresAt > t + STATUS_MAX_MS)) {
+      throw badRequest("A status ends in the future, within a year");
+    }
+    if (body.notificationsPausedUntil != null && (body.notificationsPausedUntil <= t || body.notificationsPausedUntil > t + PAUSE_MAX_MS)) {
+      throw badRequest("Notifications can be paused for up to 30 days");
+    }
+    // A new status without an end time doesn't inherit the old one's.
+    const statusChanged = body.statusText !== undefined || body.statusEmoji !== undefined;
+    const statusExpiresAt = body.statusExpiresAt !== undefined ? body.statusExpiresAt : statusChanged ? null : u.status_expires_at;
     ctx.db
       .prepare(
-        `UPDATE users SET display_name = ?, status_text = ?, avatar_color = ?, first_name = ?, last_name = ?, birthday = ?, phone = ?,
+        `UPDATE users SET display_name = ?, status_text = ?, status_emoji = ?, status_expires_at = ?, notifications_paused_until = ?,
+           avatar_color = ?, first_name = ?, last_name = ?, birthday = ?, phone = ?,
            username = ?, username_changed_at = ?, updated_at = ? WHERE id = ?`,
       )
       .run(
         body.displayName ?? u.display_name,
         pick(body.statusText, u.status_text),
+        pick(body.statusEmoji, u.status_emoji ?? null),
+        statusExpiresAt ?? null,
+        pick(body.notificationsPausedUntil, u.notifications_paused_until ?? null),
         body.avatarColor ?? u.avatar_color,
         pick(body.firstName, u.first_name),
         pick(body.lastName, u.last_name),

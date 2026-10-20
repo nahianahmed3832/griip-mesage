@@ -36,6 +36,9 @@ export interface ProfileRow {
   display_name: string;
   avatar_color: number;
   status_text: string | null;
+  status_emoji?: string | null;
+  status_expires_at?: number | null;
+  notifications_paused_until?: number | null;
   first_name?: string | null;
   last_name?: string | null;
   birthday?: string | null;
@@ -82,6 +85,24 @@ export function allows(audience: Audience, r: Relation): boolean {
 }
 
 /**
+ * A person's status as others see it right now (round 3): text and emoji until its end time, then nothing. The row
+ * isn't cleared when it expires; every view applies the end time, so an expired status never shows.
+ */
+export function activeStatus(
+  u: Pick<ProfileRow, "status_text" | "status_emoji" | "status_expires_at">,
+  at = Date.now(),
+): { text: string | null; emoji: string | null; expiresAt: number | null } {
+  const expired = u.status_expires_at != null && u.status_expires_at <= at;
+  if (expired) return { text: null, emoji: null, expiresAt: null };
+  return { text: u.status_text ?? null, emoji: u.status_emoji ?? null, expiresAt: u.status_expires_at ?? null };
+}
+
+/** Whether the person has paused notifications right now (round 3). */
+export function notificationsPaused(u: Pick<ProfileRow, "notifications_paused_until">, at = Date.now()): boolean {
+  return u.notifications_paused_until != null && u.notifications_paused_until > at;
+}
+
+/**
  * The profile [r]'s viewer may see. Fields they may not see are absent (not null), so "hidden" and "empty" look the same
  * to them. The person themself also gets their privacy settings.
  */
@@ -95,7 +116,10 @@ export function profileView(u: ProfileRow, r: Relation) {
     avatarColor: u.avatar_color,
     homeServer: u.home_server_id ?? null,
   };
-  if (show("bio") && u.status_text) view.statusText = u.status_text;
+  const status = activeStatus(u);
+  if (show("bio") && status.text) view.statusText = status.text;
+  if (show("bio") && status.emoji) view.statusEmoji = status.emoji;
+  if (show("bio") && (status.text || status.emoji) && status.expiresAt) view.statusExpiresAt = status.expiresAt;
   if (show("name")) {
     if (u.first_name) view.firstName = u.first_name;
     if (u.last_name) view.lastName = u.last_name;
@@ -103,7 +127,10 @@ export function profileView(u: ProfileRow, r: Relation) {
   if (show("photo") && u.photo_rev) view.photoRev = u.photo_rev;
   if (show("birthday") && u.birthday) view.birthday = u.birthday;
   if (show("phone") && u.phone) view.phone = u.phone;
-  if (r.self) view.privacy = p;
+  if (r.self) {
+    view.privacy = p;
+    view.notificationsPausedUntil = notificationsPaused(u) ? u.notifications_paused_until : null;
+  }
   return view;
 }
 
@@ -139,10 +166,15 @@ export function isJpeg(b: Buffer): boolean {
 export function memberView(ctx: AppContext, viewerId: string, u: ProfileRow, base: Record<string, unknown>) {
   const r = relation(ctx, viewerId, u.id);
   const p = privacyOf(u);
+  const status = activeStatus(u);
+  const seen = allows(p.lastSeen, r);
   return {
     ...base,
-    statusText: allows(p.bio, r) ? u.status_text : null,
+    statusText: allows(p.bio, r) ? status.text : null,
+    statusEmoji: allows(p.bio, r) ? status.emoji : null,
     ...(allows(p.photo, r) && u.photo_rev ? { photoRev: u.photo_rev } : {}),
-    online: allows(p.lastSeen, r) ? ctx.hub.isUserOnline(u.id) : null,
+    online: seen ? ctx.hub.isUserOnline(u.id) : null,
+    // "Ada has paused notifications": shown to the people who may see when Ada was last online (round 3).
+    notificationsPaused: seen ? notificationsPaused(u) : null,
   };
 }

@@ -351,6 +351,10 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     "communities",
     "experiments",
     "analytics-events",
+    // Round 3: statuses with an emoji and an end time, pausing notifications, and "N online" for a conversation.
+    "status-expiry",
+    "notifications-pause",
+    "conversation-presence",
     "accounts-v2",
     "workspaces-v2",
     "files-1g",

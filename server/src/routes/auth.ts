@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { DAY_MS, HOUR_MS, networkKey, openRegistrationsToday, SlidingWindow } from "../abuse.js";
 import { type AppContext, bearer, me, parse, requireAuth, zKey, zName, zSig } from "../context.js";
-import { privacyOf } from "../profile.js";
+import { activeStatus, privacyOf } from "../profile.js";
 import { canonical, isValidPublicKey, keyFingerprint, verifyEd25519 } from "../crypto.js";
 import { findOrgInvite, findRegistrationInvite, INVITE_PROBLEMS, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../invites.js";
 import { removePushEndpoint } from "../push/service.js";
@@ -73,6 +73,8 @@ export function userSummary(u: {
   display_name: string;
   avatar_color: number;
   status_text: string | null;
+  status_emoji?: string | null;
+  status_expires_at?: number | null;
   identity_key?: string;
   home_server_id?: string | null;
   photo_rev?: number | null;
@@ -86,7 +88,8 @@ export function userSummary(u: {
     username: u.username,
     displayName: u.display_name,
     avatarColor: u.avatar_color,
-    statusText: p.bio === "everyone" ? u.status_text : null,
+    statusText: p.bio === "everyone" ? activeStatus(u).text : null,
+    statusEmoji: p.bio === "everyone" ? activeStatus(u).emoji : null,
     ...(p.photo === "everyone" && u.photo_rev ? { photoRev: u.photo_rev } : {}),
     // Set for people on another server: their home server's id (username is then "name:domain").
     homeServer: u.home_server_id ?? null,
