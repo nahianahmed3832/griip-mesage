@@ -55,9 +55,20 @@ None of them is wired into a screen yet. A variant gets built only once the owne
   this way.
 - A connector property must name an app in the catalogue.
 
-**Storage is aggregate only.** `analytics_daily` (migration 029) holds daily counts per event, allowed property
-values, platform, and experiment variant. There is no user id, device id or IP address. Each event adds one overall
-row and one row per experiment the sender is in.
+**What the database keeps.** `analytics_daily` (migration 029) holds daily counts per event, allowed property
+values, platform, and experiment variant. It has no column for a user id, device id or IP address; a test checks
+this. Each event adds one overall row and one row per experiment the sender is in.
+
+**What else the server sees.** Checked 2026-10-21; this isn't "anonymous analytics".
+- **The request is signed in.** While handling it, the server knows the account and device, as for any API call.
+  The device id keys the in-memory rate limit, 30 batches a minute.
+- **Request logs.** The API log line for each request records method, path, host, IP address and time, as for every
+  request. It never records the body or the auth header (`server/src/app.ts` serializers and redaction), so event
+  names and properties don't reach the log.
+- **Small counts.** A daily row with a count of 1 or 2 in a tiny experiment variant could point to a person when
+  combined with outside knowledge. Report only variants with enough people before drawing conclusions.
+- **Retention.** No automatic cleanup of `analytics_daily` exists yet (§4, step 5). Request logs follow the
+  container's log rotation.
 
 | Event | Properties | Value |
 |---|---|---|
@@ -79,8 +90,20 @@ row and one row per experiment the sender is in.
 - Web: app opens, sends, searches, workspace and community creation.
 - The rest are defined for later.
 
-**Clients.** Each queues at most 200 events, sends at most 50 at a time, waits 30 s between sends, and also sends when
-the app goes to the background. They send nothing unless the server says analytics is on.
+**Clients.**
+- **Queue.** Each queues at most 200 events, in memory only (never written to disk), dropping the oldest. It sends at
+  most 50 at a time, waits 30 s between sends, and also sends when the app goes to the background.
+- **When off.** They queue and send nothing unless the server says analytics is on.
+- **Failures.** A failed send keeps the batch for the next try and never throws into messaging, search or
+  navigation. A failed experiments request keeps the established experience. Web tests in `test/meldiq2.test.ts`
+  cover both; Android follows the same code paths (`ProductSignals.kt`), and its queue is unit-tested.
+- **Feature flags.** Both clients do nothing unless server-info lists `experiments`, and send only if it also lists
+  `analytics-events`.
+
+**Production, checked 2026-10-21.**
+- None of the switches is set, so experiments are off and analytics is disabled.
+- `analytics_daily` has 0 rows.
+- An unauthenticated post is refused (401).
 
 **Report.** `GET /v1/admin/experiments?days=28` (platform admins only) shows totals per event and per experiment
 variant.
