@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Key backup strings (docs/LANGUAGES.md). Generated from strings_keybackup.py. -->
+<resources>
+    <string name="kb_setup_email">ইমেইলে কোড নিন</string>
+    <string name="kb_setup_email_sub">আপনার কী পাসওয়ার্ড দিয়ে ব্যাকআপ করা আছে। এখানে আনলক করতে আমরা ইমেইলে একটি কোড পাঠাব।</string>
+    <string name="kb_setup_other_ways">ইমেইল পাচ্ছেন না?</string>
+    <string name="kb_setup_no_backup">আপনার বর্তমান পাসওয়ার্ডের জন্য কোনো কী ব্যাকআপ নেই (যেমন পাসওয়ার্ড রিসেটের পরে), তাই অন্য ফোন বা রিকভারি কী ব্যবহার করুন।</string>
+    <string name="kb_unlock_title">আপনার ইমেইল দেখুন</string>
+    <string name="kb_unlock_subtitle">আমরা %1$s-এ একটি কোড পাঠিয়েছি। এই ফোনে বার্তা আনলক করতে কোডটি দিন।</string>
+    <string name="kb_unlock_submit">আনলক করুন</string>
+    <string name="kb_unlock_password_help">আপনার পাসওয়ার্ড এই ফোনে ব্যাকআপটি খোলে।</string>
+    <string name="kb_settings_title">কী ব্যাকআপ</string>
+    <string name="kb_settings_on">চালু: নতুন ফোনে আপনার পাসওয়ার্ড ও ইমেইলে পাঠানো কোড লাগবে</string>
+    <string name="kb_settings_off">বন্ধ: নতুন ফোনে রিকভারি কী বা অন্য ফোন লাগবে</string>
+    <string name="kb_settings_turn_on">কী ব্যাকআপ চালু করুন</string>
+    <string name="kb_settings_turn_off">কী ব্যাকআপ বন্ধ করুন</string>
+    <string name="kb_settings_explain">কী এই ফোন ছাড়ার আগে আপনার পাসওয়ার্ড দিয়ে লক হয়। সার্ভার নিজে তা খুলতে পারে না, তবে সাইন ইনের সময় আপনার পাসওয়ার্ড দেখে, তাই রিকভারি কী-ই সবচেয়ে নিরাপদ পথ। ভুলে যাওয়া পাসওয়ার্ড রিসেট করলে ব্যাকআপ বন্ধ হয়ে যায়।</string>
+    <string name="kb_settings_password">চালু করতে পাসওয়ার্ড দিন</string>
+    <string name="kb_settings_saved">কী ব্যাকআপ চালু হয়েছে</string>
+    <string name="kb_settings_removed">কী ব্যাকআপ বন্ধ হয়েছে</string>
+</resources>

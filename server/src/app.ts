@@ -385,6 +385,8 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     "unified-inbox",
     // Round 6: recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md).
     "recovery-codes",
+    // 2026-10-21: keys backed up under the password, unlocked on a new device by an emailed code (docs/KEY_BACKUP.md).
+    "key-backup",
     // Round 6: reminders kept and fired by the server (docs/REMINDERS.md).
     "reminders",
     // Round 6: voice rooms (docs/VOICE_ROOMS.md).

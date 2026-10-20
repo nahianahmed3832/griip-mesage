@@ -63,7 +63,7 @@ S = {
 "acct_password_changed": ("Password changed. Sign in with the new one.", "密码已更改，请使用新密码登录。", "পাসওয়ার্ড বদলানো হয়েছে। নতুনটি দিয়ে সাইন ইন করুন।"),
 # Encryption on this phone
 "acct_setup_title": ("Unlock your messages", "解锁你的消息", "আপনার বার্তা আনলক করুন"),
-"acct_setup_subtitle": ("You're signed in. Your messages are end-to-end encrypted, so this phone needs your account's key, which your password can't replace.", "你已登录。消息采用端到端加密，所以这台手机需要你账户的密钥，密码无法替代它。", "আপনি সাইন ইন করেছেন। বার্তাগুলো এন্ড-টু-এন্ড এনক্রিপ্টেড, তাই এই ফোনে আপনার অ্যাকাউন্টের কী লাগবে; পাসওয়ার্ড তার বিকল্প নয়।"),
+"acct_setup_subtitle": ("You're signed in. Your messages are end-to-end encrypted, so this phone needs your account's keys.", "你已登录。消息采用端到端加密，所以这台手机需要你账户的密钥。", "আপনি সাইন ইন করেছেন। বার্তাগুলো এন্ড-টু-এন্ড এনক্রিপ্টেড, তাই এই ফোনে আপনার অ্যাকাউন্টের কী লাগবে।"),
 "acct_setup_link": ("Approve from another phone", "从另一台手机批准", "অন্য ফোন থেকে অনুমোদন দিন"),
 "acct_setup_link_sub": ("A phone already signed in approves this one", "由一台已登录的手机批准这台手机", "আগে থেকে সাইন-ইন করা একটি ফোন এটি অনুমোদন করবে"),
 "acct_setup_key": ("Use my recovery key", "使用恢复密钥", "আমার রিকভারি কী ব্যবহার করুন"),
@@ -77,7 +77,7 @@ S = {
 "acct_fresh_submit": ("Start fresh", "重新开始", "নতুন করে শুরু করুন"),
 # Recovery key, shown once
 "acct_key_title": ("Save your recovery key", "保存你的恢复密钥", "আপনার রিকভারি কী সংরক্ষণ করুন"),
-"acct_key_subtitle": ("With it you can read your messages on a new phone. Your password can't do that.", "有了它，你可以在新手机上读取消息。密码无法做到这一点。", "এটি থাকলে নতুন ফোনে আপনার বার্তা পড়তে পারবেন। পাসওয়ার্ড দিয়ে তা সম্ভব নয়।"),
+"acct_key_subtitle": ("A new phone usually needs only your password and a code sent to your email. If you lose that email or reset your password, this key is the way to read your messages again.", "新手机通常只需要你的密码和发到邮箱的验证码。如果你无法使用该邮箱或重置了密码，就需要这个密钥才能再次读取消息。", "নতুন ফোনে সাধারণত শুধু আপনার পাসওয়ার্ড ও ইমেইলে পাঠানো কোড লাগে। সেই ইমেইল হারালে বা পাসওয়ার্ড রিসেট করলে, এই কী দিয়েই আবার বার্তা পড়া যাবে।"),
 "acct_key_copy": ("Copy", "复制", "কপি করুন"),
 "acct_key_copied": ("Copied", "已复制", "কপি হয়েছে"),
 "acct_key_warning": ("Keep it offline (on paper or in a password manager). Anyone with it can read your encrypted history.", "请离线保存（写在纸上或存入密码管理器）。任何拿到它的人都能读取你的加密历史。", "এটি অফলাইনে রাখুন (কাগজে বা পাসওয়ার্ড ম্যানেজারে)। যার কাছে এটি থাকবে সে আপনার এনক্রিপ্টেড ইতিহাস পড়তে পারবে।"),

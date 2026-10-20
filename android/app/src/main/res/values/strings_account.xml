@@ -57,7 +57,7 @@
     <string name="acct_reset_submit">Save new password</string>
     <string name="acct_password_changed">Password changed. Sign in with the new one.</string>
     <string name="acct_setup_title">Unlock your messages</string>
-    <string name="acct_setup_subtitle">You\'re signed in. Your messages are end-to-end encrypted, so this phone needs your account\'s key, which your password can\'t replace.</string>
+    <string name="acct_setup_subtitle">You\'re signed in. Your messages are end-to-end encrypted, so this phone needs your account\'s keys.</string>
     <string name="acct_setup_link">Approve from another phone</string>
     <string name="acct_setup_link_sub">A phone already signed in approves this one</string>
     <string name="acct_setup_key">Use my recovery key</string>
@@ -70,7 +70,7 @@
     <string name="acct_fresh_warning">Your other phones will be signed out, encrypted history stored on the server will be deleted, and contacts will see that your security code changed. Your workspaces, groups and contacts stay.</string>
     <string name="acct_fresh_submit">Start fresh</string>
     <string name="acct_key_title">Save your recovery key</string>
-    <string name="acct_key_subtitle">With it you can read your messages on a new phone. Your password can\'t do that.</string>
+    <string name="acct_key_subtitle">A new phone usually needs only your password and a code sent to your email. If you lose that email or reset your password, this key is the way to read your messages again.</string>
     <string name="acct_key_copy">Copy</string>
     <string name="acct_key_copied">Copied</string>
     <string name="acct_key_warning">Keep it offline (on paper or in a password manager). Anyone with it can read your encrypted history.</string>

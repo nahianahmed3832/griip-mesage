@@ -6,9 +6,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.MarkEmailRead
 import androidx.compose.material.icons.outlined.PhonelinkSetup
 import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Pin
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -19,6 +22,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import com.meldiq.android.R
+import com.meldiq.android.data.account.AccountRules
 import com.meldiq.android.data.account.AccountRepository
 import com.meldiq.android.data.api.UsernameAvailableRes
 import com.meldiq.android.data.repo.PendingPairing
@@ -26,25 +30,70 @@ import com.meldiq.android.data.repo.SessionRepository
 import com.meldiq.android.ui.components.BannerKind
 import com.meldiq.android.ui.components.ChoiceCard
 import com.meldiq.android.ui.components.GriipTextField
+import com.meldiq.android.ui.components.SectionHeader
 import com.meldiq.android.ui.components.StatusBanner
 import com.meldiq.android.ui.screens.onboarding.AuthGateway
 import com.meldiq.android.ui.screens.onboarding.AuthScaffold
+import com.meldiq.android.ui.screens.onboarding.AuthSwitchLink
 import com.meldiq.android.ui.theme.Griip
 import com.meldiq.android.ui.theme.Shapes
 import com.meldiq.android.ui.theme.Space
 
 /**
- * Signed in on a phone without this account's encryption keys: the three ways to get them. The password can't decrypt
- * messages, which is why this step exists (docs/ORBIT_2_ARCHITECTURE §3).
+ * Signed in on a phone without this account's encryption keys: the ways to get them (docs/ORBIT_2_ARCHITECTURE §3).
+ * With a key backup for the current password, an emailed code comes first (docs/KEY_BACKUP.md); another phone, the
+ * recovery key and starting fresh are for when the email can't work.
  */
 @Composable
 internal fun DeviceSetupScreen(vm: AccountFlowViewModel, state: AccountFormState, onSignOut: () -> Unit) {
     AuthScaffold(title = stringResource(R.string.acct_setup_title), subtitle = stringResource(R.string.acct_setup_subtitle), onBack = onSignOut) {
+        when (state.keyBackup) {
+            true -> {
+                ChoiceCard(Icons.Outlined.MarkEmailRead, stringResource(R.string.kb_setup_email), stringResource(R.string.kb_setup_email_sub), { if (!state.submitting) vm.startEmailUnlock() })
+                Spacer(Modifier.height(Space.lg))
+                SectionHeader(stringResource(R.string.kb_setup_other_ways))
+            }
+            false -> {
+                StatusBanner(stringResource(R.string.kb_setup_no_backup), BannerKind.Info, icon = Icons.Rounded.Info)
+                Spacer(Modifier.height(Space.md))
+            }
+            null -> Unit
+        }
         ChoiceCard(Icons.Outlined.PhonelinkSetup, stringResource(R.string.acct_setup_link), stringResource(R.string.acct_setup_link_sub), { vm.goTo(AccountStep.Link) })
         Spacer(Modifier.height(Space.md))
         ChoiceCard(Icons.Outlined.Key, stringResource(R.string.acct_setup_key), stringResource(R.string.acct_setup_key_sub), { vm.goTo(AccountStep.RestoreKey) })
         Spacer(Modifier.height(Space.md))
         ChoiceCard(Icons.Outlined.RestartAlt, stringResource(R.string.acct_setup_fresh), stringResource(R.string.acct_setup_fresh_sub), { vm.goTo(AccountStep.StartFresh) })
+        FormProblems(state)
+    }
+}
+
+/** The code emailed for unlocking the key backup, and the password again if the app forgot it since sign-in. */
+@Composable
+internal fun EmailUnlockScreen(vm: AccountFlowViewModel, state: AccountFormState, onBack: () -> Unit) {
+    val focus = LocalFocusManager.current
+    AuthScaffold(
+        title = stringResource(R.string.kb_unlock_title), subtitle = stringResource(R.string.kb_unlock_subtitle, state.unlockSentTo.orEmpty()),
+        onBack = onBack, backEnabled = !state.submitting,
+        bottomBar = {
+            StepButton(stringResource(R.string.kb_unlock_submit), stringResource(R.string.acct_working), state, state.canUnlock) { focus.clearFocus(); vm.unlockWithEmail() }
+            AuthSwitchLink(stringResource(R.string.acct_no_code), stringResource(R.string.acct_resend), vm::startEmailUnlock)
+        },
+    ) {
+        GriipTextField(
+            state.code, { v -> vm.edit { it.copy(code = AccountRules.cleanVerifyCode(v)) } }, stringResource(R.string.acct_code),
+            placeholder = "123456", leadingIcon = Icons.Rounded.Pin, shape = Shapes.field, enabled = !state.submitting,
+            textStyle = Griip.type.title.copy(fontFamily = FontFamily.Monospace),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = if (state.unlockNeedsPassword) ImeAction.Next else ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { if (state.canUnlock) vm.unlockWithEmail() }),
+        )
+        if (state.unlockNeedsPassword) {
+            Spacer(Modifier.height(Space.lg))
+            PasswordField(
+                state.password, { v -> vm.edit { it.copy(password = v) } }, stringResource(R.string.acct_password), !state.submitting,
+                helper = stringResource(R.string.kb_unlock_password_help), onDone = { if (state.canUnlock) vm.unlockWithEmail() },
+            )
+        }
         FormProblems(state)
     }
 }

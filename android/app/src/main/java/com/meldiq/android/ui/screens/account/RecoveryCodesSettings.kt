@@ -119,15 +119,16 @@ fun RecoveryCodesRow() {
     shown?.let { codes -> NewCodesSheet(codes) { shown = null } }
 }
 
+/** Asks for the password before a security change; [message] says what it is for. */
 @Composable
-private fun PasswordPrompt(title: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+internal fun PasswordPrompt(title: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit, message: String = stringResource(R.string.codes_password_prompt)) {
     var password by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
             Column {
-                Text(stringResource(R.string.codes_password_prompt), style = Griip.type.bodySmall, color = Griip.colors.textSecondary)
+                Text(message, style = Griip.type.bodySmall, color = Griip.colors.textSecondary)
                 Spacer(Modifier.height(12.dp))
                 PasswordField(password, { password = it }, stringResource(R.string.acct_password), enabled = true, onDone = { if (password.isNotEmpty()) onConfirm(password) })
             }

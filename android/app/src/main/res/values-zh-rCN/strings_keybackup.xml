@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Key backup strings (docs/LANGUAGES.md). Generated from strings_keybackup.py. -->
+<resources>
+    <string name="kb_setup_email">通过邮件获取验证码</string>
+    <string name="kb_setup_email_sub">你的密钥已用密码备份。我们会通过邮件发送验证码，在这里解锁。</string>
+    <string name="kb_setup_other_ways">收不到邮件？</string>
+    <string name="kb_setup_no_backup">你当前的密码没有对应的密钥备份（例如重置密码之后），请使用另一台手机或恢复密钥。</string>
+    <string name="kb_unlock_title">查看你的邮箱</string>
+    <string name="kb_unlock_subtitle">我们已向 %1$s 发送验证码。输入它即可在这台手机上解锁消息。</string>
+    <string name="kb_unlock_submit">解锁</string>
+    <string name="kb_unlock_password_help">你的密码会在这台手机上打开备份。</string>
+    <string name="kb_settings_title">密钥备份</string>
+    <string name="kb_settings_on">已开启：新手机需要你的密码和发到邮箱的验证码</string>
+    <string name="kb_settings_off">已关闭：新手机需要恢复密钥或另一台手机</string>
+    <string name="kb_settings_turn_on">开启密钥备份</string>
+    <string name="kb_settings_turn_off">关闭密钥备份</string>
+    <string name="kb_settings_explain">密钥在离开这台手机前会用你的密码锁定。服务器无法自行打开，但你登录时它能看到你的密码，所以恢复密钥仍是最可靠的方式。重置忘记的密码会关闭备份。</string>
+    <string name="kb_settings_password">输入密码以开启</string>
+    <string name="kb_settings_saved">密钥备份已开启</string>
+    <string name="kb_settings_removed">密钥备份已关闭</string>
+</resources>

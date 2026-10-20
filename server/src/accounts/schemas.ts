@@ -31,7 +31,25 @@ export const verifyEmailBody = z.object({ email: zEmail, code: zVerifyCode, pass
 export const loginBody = z.object({ email: zEmail, password: zPassword, deviceName: zName.optional(), device: zDeviceProof.optional() });
 export const refreshBody = z.object({ refreshToken: z.string().min(20).max(200) });
 export const resetPasswordBody = z.object({ email: zEmail, code: zVerifyCode, newPassword: zPassword });
-export const changePasswordBody = z.object({ currentPassword: zPassword, newPassword: zPassword });
+/** Base64 of exactly [bytes] bytes (with padding). */
+const zB64 = (bytes: number) => z.string().length(4 * Math.ceil(bytes / 3)).regex(/^[A-Za-z0-9+/]+={0,2}$/);
+
+/**
+ * The identity seed sealed under the password (docs/KEY_BACKUP.md): PBKDF2-HMAC-SHA256 with [iterations] over a 16-byte
+ * salt, AES-256-GCM with a 12-byte nonce over the 32-byte seed (48 bytes with the tag).
+ */
+export const zKeyBackup = z.object({
+  version: z.literal(1),
+  iterations: z.number().int().min(300_000).max(5_000_000),
+  salt: zB64(16),
+  nonce: zB64(12),
+  ciphertext: zB64(48),
+  identityKey: zKey,
+});
+export const putKeyBackupBody = z.object({ password: zPassword, backup: zKeyBackup });
+export const keyUnlockBody = z.object({ code: zVerifyCode });
+/** [keyBackup]: the keys sealed again under the new password, so a backup survives the change. */
+export const changePasswordBody = z.object({ currentPassword: zPassword, newPassword: zPassword, keyBackup: zKeyBackup.optional() });
 export const updateAccountBody = z.object({ name: zName });
 export const preferencesBody = z.object({ selectedWorkspaceId: z.string().min(3).max(64) });
 

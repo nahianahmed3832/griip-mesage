@@ -57,7 +57,7 @@
     <string name="acct_reset_submit">保存新密码</string>
     <string name="acct_password_changed">密码已更改，请使用新密码登录。</string>
     <string name="acct_setup_title">解锁你的消息</string>
-    <string name="acct_setup_subtitle">你已登录。消息采用端到端加密，所以这台手机需要你账户的密钥，密码无法替代它。</string>
+    <string name="acct_setup_subtitle">你已登录。消息采用端到端加密，所以这台手机需要你账户的密钥。</string>
     <string name="acct_setup_link">从另一台手机批准</string>
     <string name="acct_setup_link_sub">由一台已登录的手机批准这台手机</string>
     <string name="acct_setup_key">使用恢复密钥</string>
@@ -70,7 +70,7 @@
     <string name="acct_fresh_warning">你的其他手机将被退出登录，服务器上存储的加密历史将被删除，联系人会看到你的安全码已更改。你的工作区、群组和联系人会保留。</string>
     <string name="acct_fresh_submit">重新开始</string>
     <string name="acct_key_title">保存你的恢复密钥</string>
-    <string name="acct_key_subtitle">有了它，你可以在新手机上读取消息。密码无法做到这一点。</string>
+    <string name="acct_key_subtitle">新手机通常只需要你的密码和发到邮箱的验证码。如果你无法使用该邮箱或重置了密码，就需要这个密钥才能再次读取消息。</string>
     <string name="acct_key_copy">复制</string>
     <string name="acct_key_copied">已复制</string>
     <string name="acct_key_warning">请离线保存（写在纸上或存入密码管理器）。任何拿到它的人都能读取你的加密历史。</string>

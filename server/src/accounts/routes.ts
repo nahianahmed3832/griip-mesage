@@ -10,10 +10,12 @@ import {
   deleteAccountBody,
   emailBody,
   enrollDeviceBody,
+  keyUnlockBody,
   legacyCompleteBody,
   legacyVerifyBody,
   loginBody,
   preferencesBody,
+  putKeyBackupBody,
   recoveryCompleteBody,
   recoveryPasswordBody,
   recoveryStartBody,
@@ -39,7 +41,7 @@ function session(req: FastifyRequest): ActiveSession {
 
 /** The v2 account API (docs/ORBIT_2_ARCHITECTURE §6). */
 export default async function accountRoutes(app: FastifyInstance, ctx: AppContext, accounts: Accounts) {
-  const { service, identity, legacy, workspaces, store, recovery } = accounts;
+  const { service, identity, legacy, workspaces, store, recovery, keyBackups } = accounts;
   // Unauthenticated routes that hash passwords or send email: tighter than the global limit, per network.
   const strict = { config: { rateLimit: { max: ctx.config.accounts.authRateLimitPerMinute, timeWindow: "1 minute" } } };
   const requireAccount = async (req: FastifyRequest) => {
@@ -144,9 +146,25 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
 
   app.post("/v2/account/password", authedStrict, async (req, reply) => {
     const body = parse(changePasswordBody, req.body);
+    if (body.keyBackup) keyBackups.requireCurrentIdentity(await accountOf(req), body.keyBackup);
     await service.changePassword(session(req), body.currentPassword, body.newPassword, req.ip, reply);
+    // The old backup no longer matches the password; the keys sealed under the new one replace it.
+    if (body.keyBackup) await keyBackups.save(await accountOf(req), body.keyBackup);
+    return { ok: true, keyBackup: !!body.keyBackup };
+  });
+
+  // ───────────── Keys backed up under the password (docs/KEY_BACKUP.md) ─────────────
+  app.get("/v2/account/key-backup", authed, async (req) => keyBackups.status(session(req)));
+  app.put("/v2/account/key-backup", authedStrict, async (req, reply) => {
+    const body = parse(putKeyBackupBody, req.body);
+    return keyBackups.put(session(req), body.password, body.backup, req.ip, reply);
+  });
+  app.delete("/v2/account/key-backup", authed, async (req) => {
+    await keyBackups.remove(session(req));
     return { ok: true };
   });
+  app.post("/v2/account/key-backup/unlock/start", authedStrict, async (req) => keyBackups.startUnlock(session(req)));
+  app.post("/v2/account/key-backup/unlock", authedStrict, async (req) => keyBackups.unlock(session(req), parse(keyUnlockBody, req.body).code));
 
   app.get("/v2/account/sessions", authed, async (req) => {
     const s = session(req);

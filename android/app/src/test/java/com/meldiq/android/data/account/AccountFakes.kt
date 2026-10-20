@@ -50,6 +50,9 @@ class FakeAccountApi : AccountApi {
         val devices: MutableMap<String, String> = mutableMapOf(), // device id → signing key
         val revoked: MutableSet<String> = mutableSetOf(),
         var legacyLinked: Boolean = false,
+        /** The key backup, and the password it was saved under (a later change makes it stale, like the server). */
+        var keyBackup: KeyBackupDto? = null,
+        var keyBackupPassword: String? = null,
     )
 
     val accounts = mutableMapOf<String, Account>()
@@ -73,6 +76,9 @@ class FakeAccountApi : AccountApi {
         return AccountSessionRes(next("access"), 1_000, next("refresh"), 2_000, SessionDto(next("s"), deviceId), dto(a))
     }
     private fun current(): Account = signedIn ?: throw ApiException(401, "unauthorized", "Authentication required")
+
+    /** The signed-in account, for [FakeKeyBackupApi]. */
+    internal fun signedInAccount(): Account = current()
     private fun consume(nonce: String) {
         if (!nonces.remove(nonce)) throw ApiException(401, "invalid_proof", "The challenge expired")
     }
@@ -161,6 +167,7 @@ class FakeAccountApi : AccountApi {
         val a = current()
         if (a.password != req.currentPassword) throw ApiException(401, "invalid_credentials", "No")
         a.password = req.newPassword
+        req.keyBackup?.let { a.keyBackup = it; a.keyBackupPassword = req.newPassword }
     }
 
     override suspend fun deleteAccount(req: DeleteAccountReq): DeleteAccountRes {
@@ -233,5 +240,44 @@ class FakeAccountApi : AccountApi {
         const val RESET_CODE = "ABCDEFGHJK"
         const val PASSWORD = "correct horse battery"
         const val URL = "https://meldiq.test"
+    }
+}
+
+/** The server's key backup (docs/KEY_BACKUP.md) for [FakeAccountApi]'s signed-in account; the emailed code is [UNLOCK_CODE]. */
+class FakeKeyBackupApi(private val accounts: FakeAccountApi) : KeyBackupApi {
+    private var pending: String? = null
+
+    private fun usable(a: FakeAccountApi.Account): KeyBackupDto? =
+        a.keyBackup?.takeIf { a.keyBackupPassword == a.password && it.identityKey == a.identityKey }
+
+    override suspend fun status(): KeyBackupStatus = KeyBackupStatus(usable(accounts.signedInAccount()) != null, 1)
+
+    override suspend fun save(password: String, backup: KeyBackupDto): KeyBackupSaved {
+        val a = accounts.signedInAccount()
+        if (password != a.password) throw ApiException(401, "invalid_credentials", "No")
+        if (backup.identityKey != a.identityKey) throw ApiException(409, "identity_mismatch", "Not these keys")
+        a.keyBackup = backup
+        a.keyBackupPassword = password
+        return KeyBackupSaved(1)
+    }
+
+    override suspend fun remove() {
+        accounts.signedInAccount().keyBackup = null
+    }
+
+    override suspend fun startUnlock(): KeyUnlockStarted {
+        usable(accounts.signedInAccount()) ?: throw ApiException(404, "no_key_backup", "None")
+        pending = UNLOCK_CODE
+        return KeyUnlockStarted("a***e@example.com", 0)
+    }
+
+    override suspend fun unlock(code: String): KeyBackupDto {
+        if (code != pending) throw ApiException(400, "invalid_code", "No")
+        pending = null
+        return usable(accounts.signedInAccount()) ?: throw ApiException(404, "no_key_backup", "None")
+    }
+
+    companion object {
+        const val UNLOCK_CODE = "654321"
     }
 }

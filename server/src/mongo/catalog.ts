@@ -43,6 +43,9 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   // Recovery codes (round 6, docs/ACCOUNT_RECOVERY.md).
   account_recovery_codes: "accounts",
   account_recovery_tickets: "accounts",
+  // Keys backed up under the password (2026-10-21, docs/KEY_BACKUP.md).
+  account_key_backups: "accounts",
+  account_key_unlocks: "accounts",
   nav_preferences: "preferences",
   // Apps and connected accounts (2026-10-19, docs/INTEGRATIONS.md): async stores, so they can live in MongoDB.
   integration_installs: "integrations",

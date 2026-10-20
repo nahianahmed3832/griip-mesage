@@ -57,7 +57,7 @@
     <string name="acct_reset_submit">নতুন পাসওয়ার্ড সংরক্ষণ করুন</string>
     <string name="acct_password_changed">পাসওয়ার্ড বদলানো হয়েছে। নতুনটি দিয়ে সাইন ইন করুন।</string>
     <string name="acct_setup_title">আপনার বার্তা আনলক করুন</string>
-    <string name="acct_setup_subtitle">আপনি সাইন ইন করেছেন। বার্তাগুলো এন্ড-টু-এন্ড এনক্রিপ্টেড, তাই এই ফোনে আপনার অ্যাকাউন্টের কী লাগবে; পাসওয়ার্ড তার বিকল্প নয়।</string>
+    <string name="acct_setup_subtitle">আপনি সাইন ইন করেছেন। বার্তাগুলো এন্ড-টু-এন্ড এনক্রিপ্টেড, তাই এই ফোনে আপনার অ্যাকাউন্টের কী লাগবে।</string>
     <string name="acct_setup_link">অন্য ফোন থেকে অনুমোদন দিন</string>
     <string name="acct_setup_link_sub">আগে থেকে সাইন-ইন করা একটি ফোন এটি অনুমোদন করবে</string>
     <string name="acct_setup_key">আমার রিকভারি কী ব্যবহার করুন</string>
@@ -70,7 +70,7 @@
     <string name="acct_fresh_warning">আপনার অন্য ফোনগুলো সাইন আউট হবে, সার্ভারে রাখা এনক্রিপ্টেড ইতিহাস মুছে যাবে এবং পরিচিতরা দেখবেন আপনার সিকিউরিটি কোড বদলেছে। আপনার ওয়ার্কস্পেস, গ্রুপ ও পরিচিতি থাকবে।</string>
     <string name="acct_fresh_submit">নতুন করে শুরু করুন</string>
     <string name="acct_key_title">আপনার রিকভারি কী সংরক্ষণ করুন</string>
-    <string name="acct_key_subtitle">এটি থাকলে নতুন ফোনে আপনার বার্তা পড়তে পারবেন। পাসওয়ার্ড দিয়ে তা সম্ভব নয়।</string>
+    <string name="acct_key_subtitle">নতুন ফোনে সাধারণত শুধু আপনার পাসওয়ার্ড ও ইমেইলে পাঠানো কোড লাগে। সেই ইমেইল হারালে বা পাসওয়ার্ড রিসেট করলে, এই কী দিয়েই আবার বার্তা পড়া যাবে।</string>
     <string name="acct_key_copy">কপি করুন</string>
     <string name="acct_key_copied">কপি হয়েছে</string>
     <string name="acct_key_warning">এটি অফলাইনে রাখুন (কাগজে বা পাসওয়ার্ড ম্যানেজারে)। যার কাছে এটি থাকবে সে আপনার এনক্রিপ্টেড ইতিহাস পড়তে পারবে।</string>

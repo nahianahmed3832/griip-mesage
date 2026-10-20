@@ -22,7 +22,9 @@ enum class AccountStep {
     /** Lost the account's email: its address, a recovery code and the new address. */
     Recover,
     /** The code sent to the new address, and a new password. */
-    RecoverConfirm;
+    RecoverConfirm,
+    /** A new phone unlocks the key backup with an emailed code and the password (docs/KEY_BACKUP.md). */
+    EmailUnlock;
 
     val back: AccountStep?
         get() = when (this) {
@@ -31,7 +33,7 @@ enum class AccountStep {
             Forgot -> LogIn
             Reset -> Forgot
             DeviceSetup -> null
-            RestoreKey, Link, StartFresh -> DeviceSetup
+            RestoreKey, Link, StartFresh, EmailUnlock -> DeviceSetup
             LegacyCredentials -> LogIn
             LegacyDetails -> LegacyCredentials
             Recover -> LogIn
@@ -65,6 +67,11 @@ data class AccountFormState(
     val signedOutReason: String? = null,
     /** The code step needs the password again (the app was restarted since it was typed). */
     val verifyNeedsPassword: Boolean = false,
+    /** Device setup: whether the account has a key backup for its current password (null: not known yet). */
+    val keyBackup: Boolean? = null,
+    /** Where the unlock code went (masked), and whether the unlock step needs the password typed again. */
+    val unlockSentTo: String? = null,
+    val unlockNeedsPassword: Boolean = false,
 ) {
     val passwordIssue: AccountRules.PasswordIssue? get() = if (password.isEmpty()) null else AccountRules.passwordIssue(password, email)
     val newPasswordIssue: AccountRules.PasswordIssue? get() = if (newPassword.isEmpty()) null else AccountRules.passwordIssue(newPassword, email)
@@ -77,6 +84,7 @@ data class AccountFormState(
     val canReset get() = !submitting && AccountRules.isResetCode(code) && newPassword.isNotEmpty() && newPasswordIssue == null
     val canRestore get() = !submitting && recoveryKey.length >= MIN_RECOVERY_KEY
     val canStartFresh get() = !submitting && password.isNotEmpty()
+    val canUnlock get() = !submitting && AccountRules.isVerifyCode(code) && (!unlockNeedsPassword || password.isNotEmpty())
     val canLegacyVerify get() = !submitting && legacyUsername.length >= MIN_USERNAME && recoveryKey.length >= MIN_RECOVERY_KEY
     val canLegacyComplete get() = canSignUp
     val newEmailValid: Boolean get() = AccountRules.isEmail(newEmail) && AccountRules.normalizeEmail(newEmail) != AccountRules.normalizeEmail(email)
@@ -119,10 +127,16 @@ class AccountFlowViewModel(
     private fun follow(phase: AccountPhase) {
         when (phase) {
             is AccountPhase.AwaitingVerification -> _form.update { it.copy(step = AccountStep.Verify, email = phase.email, verifyNeedsPassword = pendingPassword == null) }
-            is AccountPhase.NeedsDeviceSetup -> _form.update {
-                if (it.step in setOf(AccountStep.RestoreKey, AccountStep.Link, AccountStep.StartFresh)) it else it.copy(step = AccountStep.DeviceSetup)
+            is AccountPhase.NeedsDeviceSetup -> {
+                _form.update {
+                    if (it.step in setOf(AccountStep.RestoreKey, AccountStep.Link, AccountStep.StartFresh, AccountStep.EmailUnlock)) it else it.copy(step = AccountStep.DeviceSetup)
+                }
+                if (_form.value.keyBackup == null) viewModelScope.launch {
+                    val available = accounts.devices.backupAvailable()
+                    _form.update { it.copy(keyBackup = available) }
+                }
             }
-            is AccountPhase.SignedOut -> _form.update { it.copy(step = AccountStep.LogIn, email = phase.email, signedOutReason = phase.reason) }
+            is AccountPhase.SignedOut -> _form.update { it.copy(step = AccountStep.LogIn, email = phase.email, signedOutReason = phase.reason, keyBackup = null) }
             AccountPhase.None, is AccountPhase.Ready -> Unit
         }
     }
@@ -256,6 +270,28 @@ class AccountFlowViewModel(
             _form.update {
                 it.copy(step = AccountStep.LogIn, email = res.email, newEmail = "", code = "", newPassword = "", password = "", notice = AccountNotice.AccountRecovered)
             }
+        }
+    }
+
+    /** Emails a code for unlocking the key backup on this phone (also "send a new one"). */
+    fun startEmailUnlock() = run {
+        val sent = accounts.devices.startEmailUnlock()
+        val again = _form.value.step == AccountStep.EmailUnlock
+        _form.update {
+            it.copy(
+                step = AccountStep.EmailUnlock, unlockSentTo = sent.email, unlockNeedsPassword = !accounts.devices.hasPassword,
+                code = if (again) it.code else "", notice = if (again) AccountNotice.CodeResent else null,
+            )
+        }
+    }
+
+    /** The emailed code and the password open the key backup; this phone is then set up with the keys. */
+    fun unlockWithEmail() {
+        val s = _form.value
+        if (!s.canUnlock) return
+        run {
+            accounts.devices.withEmailCode(s.code, s.password.takeIf { s.unlockNeedsPassword })
+            _form.update { it.copy(code = "", password = "") }
         }
     }
 

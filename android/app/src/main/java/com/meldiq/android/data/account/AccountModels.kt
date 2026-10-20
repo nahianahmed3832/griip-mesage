@@ -32,7 +32,8 @@ data class RefreshReq(val refreshToken: String)
 data class ResetPasswordReq(val email: String, val code: String, val newPassword: String)
 
 @Serializable
-data class ChangePasswordReq(val currentPassword: String, val newPassword: String)
+/** [keyBackup]: this phone's keys sealed under the new password, so the key backup keeps working (docs/KEY_BACKUP.md). */
+data class ChangePasswordReq(val currentPassword: String, val newPassword: String, val keyBackup: KeyBackupDto? = null)
 
 /** `DELETE /v2/account` (docs/ACCOUNT_DELETION.md): the password again and the account's email typed by the person. */
 @Serializable

@@ -73,6 +73,7 @@ internal fun AccountOnboarding(showServer: Boolean, inviteOnly: Boolean, onExit:
             AccountStep.LegacyDetails -> LegacyDetailsScreen(vm, state, onBack = back)
             AccountStep.Recover -> RecoverAccountScreen(vm, state, onBack = back)
             AccountStep.RecoverConfirm -> RecoverConfirmScreen(vm, state, onBack = back)
+            AccountStep.EmailUnlock -> EmailUnlockScreen(vm, state, onBack = back)
         }
     }
     if (confirmErase) {

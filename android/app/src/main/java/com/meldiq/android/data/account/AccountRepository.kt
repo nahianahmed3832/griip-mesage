@@ -1,10 +1,14 @@
 package com.meldiq.android.data.account
 
 import com.meldiq.android.crypto.Canonical
+import com.meldiq.android.crypto.KeyBackupCrypto
 import com.meldiq.android.crypto.LocalKeys
 import com.meldiq.android.crypto.SessionInfo
 import com.meldiq.android.crypto.b64
+import com.meldiq.android.crypto.unb64
 import com.meldiq.android.data.api.ApiException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -72,6 +76,7 @@ class AccountRepository(
     private val session: MessagingSession,
     private val deviceName: () -> String,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val keyBackups: KeyBackupApi? = null,
 ) {
     private val _phase = MutableStateFlow(initialPhase())
     val phase: StateFlow<AccountPhase> = _phase.asStateFlow()
@@ -86,7 +91,7 @@ class AccountRepository(
 
     private val refreshLock = Mutex()
     @Volatile private var renewedAt = 0L
-    val devices = DeviceSetup(api, vault, this, deviceName)
+    val devices = DeviceSetup(api, vault, this, deviceName, keyBackups)
 
     /** The current access token, also before this phone has keys (device setup, workspaces). */
     val accessToken: String? get() = vault.account()?.tokens?.accessToken
@@ -192,6 +197,7 @@ class AccountRepository(
         // A legacy installation signing in to the account it moved to: its own device key must prove it.
         val legacyDevice = session.current?.deviceId?.takeIf { here == null && keys != null }
         requireProfileFor(address, legacyOwner = legacyDevice != null)
+        devices.rememberPassword(password)
         val r = here?.takeIf { it.email == address && it.serverUrl == serverUrl }
         val deviceId = r?.deviceId ?: legacyDevice
         var deviceUnusable = false
@@ -236,7 +242,12 @@ class AccountRepository(
         )
         vault.saveAccount(record)
         val bound = res.session.deviceId
-        if (bound != null) bindMessaging(record, bound) else devices.afterSignIn(res.account, deviceStale = !keepDevice)
+        if (bound != null) {
+            bindMessaging(record, bound)
+            devices.afterBoundSignIn()
+        } else {
+            devices.afterSignIn(res.account, deviceStale = !keepDevice)
+        }
     }
 
     /** The session is bound to [deviceId]: the messaging app takes over with the access token. */
@@ -310,6 +321,7 @@ class AccountRepository(
     }
 
     private fun endSession(reason: String?) {
+        devices.rememberPassword(null)
         val r = vault.account() ?: return
         vault.saveAccount(r.copy(tokens = null))
         session.signOutKeepingData()
@@ -323,7 +335,29 @@ class AccountRepository(
     suspend fun resetPassword(serverUrl: String, email: String, code: String, newPassword: String) =
         api.resetPassword(serverUrl, ResetPasswordReq(AccountRules.normalizeEmail(email), AccountRules.cleanResetCode(code), newPassword))
 
-    suspend fun changePassword(current: String, next: String) = api.changePassword(ChangePasswordReq(current, next))
+    /**
+     * Changes the password. A phone with the account's keys seals them again under the new password in the same request,
+     * so the key backup survives the change (docs/KEY_BACKUP.md).
+     */
+    suspend fun changePassword(current: String, next: String) {
+        val keys = vault.keys()?.takeIf { session.current != null }
+        val accountId = vault.account()?.account?.id
+        val backup = if (keys != null && accountId != null) {
+            withContext(Dispatchers.Default) { KeyBackupCrypto.seal(next, accountId, keys.identitySeed.unb64()) }
+        } else {
+            null
+        }
+        api.changePassword(ChangePasswordReq(current, next, backup))
+    }
+
+    /** Settings › Key backup: seals this phone's keys under [password] and saves them; the server checks the password. */
+    suspend fun backUpKeys(password: String) {
+        val backups = keyBackups ?: throw ApiException(404, "no_key_backup", "This server doesn't keep key backups.")
+        val keys = vault.keys()?.takeIf { session.current != null } ?: throw ApiException(403, "device_required", "Set up this phone first.")
+        val accountId = vault.account()?.account?.id ?: throw ApiException(401, "session_expired", "Your session has ended. Sign in again.")
+        val backup = withContext(Dispatchers.Default) { KeyBackupCrypto.seal(password, accountId, keys.identitySeed.unb64()) }
+        backups.save(password, backup)
+    }
 
     suspend fun sessions(): List<SessionListItem> = api.sessions()
 

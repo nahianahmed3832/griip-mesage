@@ -259,6 +259,17 @@ export const mailTexts = {
       ],
       footnote: "Your encrypted messages need your encryption recovery key or another signed-in phone; your email and password can't replace it.",
     }),
+  keyUnlock: (code: string): Omit<MailMessage, "to"> =>
+    compose(`${code} is your code to set up Meldiq on a new device`, {
+      preview: "Enter this code on the new device to restore your encrypted messages. It expires in 15 minutes.",
+      heading: "Set up a new device",
+      paragraphs: [
+        "Someone signed in to your Meldiq account with your password on a new device and asked to restore your encrypted messages there.",
+        "If it was you, enter this code on that device.",
+      ],
+      code: { value: code, note: "This code expires in 15 minutes." },
+      footnote: "If this wasn't you, don't share this code with anyone, and change your password now: without this code your messages stay locked.",
+    }),
   alreadyRegistered: (): Omit<MailMessage, "to"> =>
     compose("Someone tried to create a Meldiq account with your email", {
       preview: "This address already has a Meldiq account.",

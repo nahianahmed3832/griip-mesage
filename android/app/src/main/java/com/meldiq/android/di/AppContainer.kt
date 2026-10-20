@@ -53,7 +53,9 @@ class AppContainer(
     val api = ApiClient({ session.serverUrl }, { session.token ?: identity.account()?.tokens?.accessToken }, { session.reauth() }).also { session.api = it }
     /** Orbit 2.0 accounts (docs/ORBIT_2_ARCHITECTURE_2026-10-18.md): sign-in, tokens, device setup, legacy move, workspaces. */
     private val accountApi = com.meldiq.android.data.account.HttpAccountApi(api)
-    val accounts = com.meldiq.android.data.account.AccountRepository(accountApi, identity, session, session::deviceName)
+    /** Keys backed up under the password, unlocked on a new phone by an emailed code (docs/KEY_BACKUP.md). */
+    val keyBackups = com.meldiq.android.data.account.HttpKeyBackupApi(api)
+    val accounts = com.meldiq.android.data.account.AccountRepository(accountApi, identity, session, session::deviceName, keyBackups = keyBackups)
     val legacyMigration = com.meldiq.android.data.account.LegacyMigration(accountApi, identity, session, accounts)
     val workspaces = com.meldiq.android.data.account.WorkspaceRepository(accountApi)
     /** Recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md). */

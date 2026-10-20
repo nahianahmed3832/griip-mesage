@@ -8,9 +8,11 @@ A way back into a Meldiq account for someone who lost access to the email addres
 |---|---|---|
 | **Recovery codes** (this document) | access to the **account**: its email address and password | hashed on the server |
 | **Encryption recovery key** (existing) | the **encryption identity**, so encrypted history can be read on a new phone | only with the person |
+| **Key backup** (docs/KEY_BACKUP.md, 2026-10-21) | the encryption identity, with the password and an emailed code | sealed under the password on the server |
 
-Recovery codes never decrypt anything. After recovering an account, a new phone still needs the encryption recovery
-key or another signed-in phone; without either, "Start fresh" makes new keys and old encrypted history stays unreadable.
+Recovery codes never decrypt anything. Recovering an account sets a new password, which makes the key backup stale, so
+a new phone still needs the encryption recovery key or another signed-in phone; without either, "Start fresh" makes new
+keys and old encrypted history stays unreadable.
 
 ## Making codes (Settings › Security › Recovery codes)
 
