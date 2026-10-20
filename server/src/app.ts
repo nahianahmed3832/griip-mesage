@@ -37,6 +37,7 @@ import workflowRoutes from "./routes/workflows.js";
 import documentRoutes from "./routes/documents.js";
 import aiRoutes from "./routes/ai.js";
 import inboxRoutes from "./routes/inbox.js";
+import experimentRoutes from "./experiments/routes.js";
 import { InboxService } from "./inbox/service.js";
 import { AiService } from "./ai/service.js";
 import { DocumentService } from "./documents/service.js";
@@ -324,6 +325,7 @@ export async function buildApp(
   await app.register(async (scope) => developerRoutes(scope, ctx));
   await app.register(async (scope) => aiRoutes(scope, ctx));
   await app.register(async (scope) => inboxRoutes(scope, ctx));
+  await app.register(async (scope) => experimentRoutes(scope, ctx));
   await app.register(async (scope) => accountRoutes(scope, ctx, ctx.accounts));
   const fed = ctx.federation;
   if (fed) {
@@ -345,6 +347,10 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     "org-delete",
     // Deleting your own account, DELETE /v2/account (docs/ACCOUNT_DELETION.md).
     "account-delete",
+    // Meldiq 2.0: communities as a kind of workspace, experiments and content-free analytics (docs/product/).
+    "communities",
+    "experiments",
+    "analytics-events",
     "accounts-v2",
     "workspaces-v2",
     "files-1g",

@@ -515,6 +515,29 @@ function comingSoon(list: Soon[]): ConnectorDef[] {
 
 const BY_ID = new Map(CONNECTORS.map((c) => [c.id, c]));
 
+/**
+ * Meldiq 2.0 curation (docs/product/MELDIQ_2_DECISIONS.md §5): the apps most teams and communities need are
+ * "essential" and shown first; the rest stay available as "optional". Planned apps (coming_soon) are listed only when
+ * asked for, so the directory shows what can actually be connected.
+ */
+const ESSENTIAL = new Set([
+  "google-drive",
+  "google-calendar",
+  "microsoft-onedrive",
+  "microsoft-outlook-calendar",
+  "github",
+  "jira",
+  "notion",
+  "linear",
+  "incoming-webhooks",
+]);
+export type ConnectorTier = "essential" | "optional" | "planned";
+
+export function connectorTier(def: ConnectorDef): ConnectorTier {
+  if (def.availability === "coming_soon") return "planned";
+  return ESSENTIAL.has(def.id) ? "essential" : "optional";
+}
+
 export function connectorDef(id: string): ConnectorDef | undefined {
   return BY_ID.get(id);
 }

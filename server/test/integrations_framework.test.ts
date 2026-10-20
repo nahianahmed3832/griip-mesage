@@ -30,17 +30,26 @@ afterAll(async () => h.close());
 
 describe("directory", () => {
   it("lists every connector with an honest state: needs configuration without credentials, coming soon for planned ones", async () => {
-    const list = (await member.req("GET", `/v1/orgs/${orgId}/integrations`)).apps as any[];
+    const list = (await member.req("GET", `/v1/orgs/${orgId}/integrations?planned=true`)).apps as any[];
     const state = (id: string) => list.find((a) => a.id === id)?.state;
     for (const id of ["google-drive", "google-calendar", "microsoft-onedrive", "microsoft-sharepoint", "microsoft-outlook-calendar", "github", "jira", "notion", "linear"]) expect([id, state(id)]).toEqual([id, "needs_configuration"]);
     for (const id of ["gmail", "outlook-mail", "microsoft-teams", "salesforce", "zapier"]) expect([id, state(id)]).toEqual([id, "coming_soon"]);
     expect(list.find((a) => a.id === "gmail").capabilities).toEqual([]);
+    expect(list.find((a) => a.id === "gmail").tier).toBe("planned");
     expect(state("meldiq-sandbox")).toBe("available");
     expect(list.find((a) => a.id === "meldiq-sandbox").actions).toEqual(["request"]);
     expect((await app(admin)).actions).toEqual(["install"]);
     await expectStatus(member.req("POST", `/v1/orgs/${orgId}/integrations/google-drive/install`), 403);
     expect((await expectStatus(owner.req("POST", `/v1/orgs/${orgId}/integrations/google-drive/install`), 409)).error.code).toBe("needs_configuration");
     await expectStatus(owner.req("POST", `/v1/orgs/${orgId}/integrations/gmail/install`), 409);
+  });
+
+  it("shows only apps that can be connected unless planned ones are asked for, essential ones marked", async () => {
+    const list = (await member.req("GET", `/v1/orgs/${orgId}/integrations`)).apps as any[];
+    expect(list.some((a) => a.availability === "coming_soon")).toBe(false);
+    const tier = (id: string) => list.find((a) => a.id === id)?.tier;
+    for (const id of ["google-drive", "google-calendar", "github", "jira", "notion", "linear", "incoming-webhooks"]) expect([id, tier(id)]).toEqual([id, "essential"]);
+    for (const id of ["gitlab", "asana", "zoom", "figma", "microsoft-sharepoint"]) expect([id, tier(id)]).toEqual([id, "optional"]);
   });
 
   it("is closed to guests by default and invisible to outsiders", async () => {

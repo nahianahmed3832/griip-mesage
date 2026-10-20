@@ -57,7 +57,8 @@ export default async function integrationRoutes(app: FastifyInstance, ctx: AppCo
   // ───────────── Directory, details, policy ─────────────
   app.get("/v1/orgs/:orgId/integrations", auth, async (req) => {
     const { orgId } = parse(z.object({ orgId: zId }), req.params);
-    return lifecycle.directory(k, orgId, me(req).userId);
+    const { planned } = parse(z.object({ planned: z.enum(["true", "false"]).optional() }), req.query);
+    return lifecycle.directory(k, orgId, me(req).userId, planned === "true");
   });
   app.get("/v1/orgs/:orgId/integrations/policy", auth, async (req) => {
     const { orgId } = parse(z.object({ orgId: zId }), req.params);

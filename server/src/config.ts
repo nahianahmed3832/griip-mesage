@@ -5,6 +5,7 @@ import { type IntegrationsConfig, integrationsConfig } from "./integrations/conf
 import { type EntitlementConfig, entitlementConfig } from "./entitlements.js";
 import { type AiConfig, aiConfig } from "./ai/provider.js";
 import { type InboxConfig, inboxConfig } from "./inbox/config.js";
+import { type ExperimentsConfig, experimentsConfig } from "./experiments/assign.js";
 import type { S3Config } from "./storage/s3.js";
 import { type FcmConfig, fcmConfig } from "./push/fcm.js";
 
@@ -101,6 +102,10 @@ export interface Config {
   ai: AiConfig;
   /** The Unified Inbox's provider settings (docs/UNIFIED_INBOX.md). */
   inbox: InboxConfig;
+  /** Product experiments (docs/product/EXPERIMENTS.md): off unless EXPERIMENTS_MODE says otherwise. */
+  experiments: ExperimentsConfig;
+  /** Content-free daily analytics counts (ANALYTICS_ENABLED=true); off by default. */
+  analyticsEnabled: boolean;
   /** "invite" (default): registering needs a registration or org invite code. "open": anyone may register. */
   registrationMode: "invite" | "open";
   sessionTtlSeconds: number;
@@ -365,6 +370,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     // Round 7: AI (docs/AI.md); off without AI_PROVIDERS.
     ai: aiConfig(env),
     inbox: inboxConfig(env),
+    experiments: experimentsConfig(env),
+    analyticsEnabled: (env.ANALYTICS_ENABLED ?? "").trim().toLowerCase() === "true",
     // No upload quotas by default (0: no limit; owner's decision 2026-10-18, UI-003).
     attachmentUserDailyBytes: Math.max(int("ATTACHMENT_USER_DAILY_BYTES", 0), 0),
     attachmentUserStoredBytes: Math.max(int("ATTACHMENT_USER_STORED_BYTES", 0), 0),

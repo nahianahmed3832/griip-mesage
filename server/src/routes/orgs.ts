@@ -11,6 +11,7 @@ import { photoBlobId, readJpegBody, storePhoto } from "../photos.js";
 import { evictRemovedMember } from "./calls.js";
 import { conversationView } from "./conversations.js";
 import { orgRoleChangeRefusal, removalAllowed, titleChangeAllowed } from "../roles.js";
+import { applyWorkspaceTemplate, COMMUNITY_TEMPLATE_ID } from "../workspace/templates.js";
 
 const zOptText = zText.nullable().optional();
 
@@ -34,6 +35,9 @@ export function inviteStatus(r: { revoked_at: number | null; expires_at: number;
   return "active";
 }
 
+/** What kind of workspace: a team (branches, teams and admin tools up front) or a community. */
+const zOrgKind = z.enum(["team", "community"]);
+
 export function orgSummary(ctx: AppContext, org: any, userId: string) {
   const role = ctx.authz.orgRole(org.id, userId);
   const memberCount = (ctx.db.prepare("SELECT COUNT(*) n FROM org_members WHERE org_id = ?").get(org.id) as { n: number }).n;
@@ -50,6 +54,8 @@ export function orgSummary(ctx: AppContext, org: any, userId: string) {
     // Round 7 guest policy (docs/WORKSPACE_C5.md).
     guestsAllowed: org.guests_allowed === undefined ? true : !!org.guests_allowed,
     guestMaxDays: org.guest_max_days ?? null,
+    // Meldiq 2.0: "team" (every workspace before it) or "community" (docs/product/MELDIQ_2_DECISIONS.md).
+    kind: org.kind === "community" ? "community" : "team",
   };
 }
 
@@ -122,7 +128,10 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   // ───────────── Organisations ─────────────
   app.post("/v1/orgs", auth, async (req) => {
     const { userId } = me(req);
-    const body = parse(z.object({ name: zName, description: zOptText, requestId: z.string().trim().min(8).max(64).optional() }), req.body);
+    const body = parse(
+      z.object({ name: zName, description: zOptText, requestId: z.string().trim().min(8).max(64).optional(), kind: zOrgKind.optional() }),
+      req.body,
+    );
     // Idempotent: the app sends one request id per create form, so a retry or a double tap returns the first result.
     if (body.requestId) {
       const prior = db.prepare("SELECT * FROM orgs WHERE created_by = ? AND create_request_id = ?").get(userId, body.requestId);
@@ -142,11 +151,14 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     if (db.prepare("SELECT 1 FROM orgs WHERE slug = ?").get(slug)) slug = `${slug}-${humanCode(4).toLowerCase()}`;
     db.transaction(() => {
       db.prepare(
-        "INSERT INTO orgs (id, name, slug, description, created_by, created_at, updated_at, create_request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      ).run(id, body.name, slug, body.description ?? null, userId, t, t, body.requestId ?? null);
+        "INSERT INTO orgs (id, name, slug, description, created_by, created_at, updated_at, create_request_id, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run(id, body.name, slug, body.description ?? null, userId, t, t, body.requestId ?? null, body.kind ?? "team");
       db.prepare("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, 'OWNER', ?)").run(id, userId, t);
     })();
-    ctx.audit({ actorId: userId, orgId: id, action: "org.create", target: id });
+    ctx.audit({ actorId: userId, orgId: id, action: "org.create", target: id, detail: `kind=${body.kind ?? "team"}` });
+    // A community starts with its welcome, announcements, general and lounge channels, so the first member who joins
+    // finds somewhere to go. A team workspace chooses its template itself (Workspace settings › Templates).
+    if (body.kind === "community") applyWorkspaceTemplate(ctx, id, userId, COMMUNITY_TEMPLATE_ID);
     return { org: orgSummary(ctx, db.prepare("SELECT * FROM orgs WHERE id = ?").get(id), userId) };
   });
 
@@ -242,15 +254,18 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const { userId } = me(req);
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
     authz.requirePermission(orgId, userId, "workspace.edit", "Only people who can edit the workspace can do that");
-    const body = parse(z.object({ name: zName.optional(), description: zOptText }), req.body);
+    const body = parse(z.object({ name: zName.optional(), description: zOptText, kind: zOrgKind.optional() }), req.body);
     const o = db.prepare("SELECT * FROM orgs WHERE id = ?").get(orgId) as any;
-    db.prepare("UPDATE orgs SET name = ?, description = ?, updated_at = ? WHERE id = ?").run(
+    // Switching between team and community changes only what the apps show first; nothing is added or removed.
+    if (body.kind && body.kind !== o.kind && authz.orgRole(orgId, userId) !== "OWNER") throw forbidden("Only owners can change what kind of workspace this is");
+    db.prepare("UPDATE orgs SET name = ?, description = ?, kind = ?, updated_at = ? WHERE id = ?").run(
       body.name ?? o.name,
       body.description === undefined ? o.description : body.description,
+      body.kind ?? o.kind,
       now(),
       orgId,
     );
-    ctx.audit({ actorId: userId, orgId, action: "org.update" });
+    ctx.audit({ actorId: userId, orgId, action: "org.update", detail: body.kind && body.kind !== o.kind ? `kind=${body.kind}` : undefined });
     notifyOrg(ctx, orgId);
     return { org: orgSummary(ctx, db.prepare("SELECT * FROM orgs WHERE id = ?").get(orgId), userId) };
   });

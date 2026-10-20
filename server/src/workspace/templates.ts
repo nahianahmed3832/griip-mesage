@@ -15,7 +15,22 @@ interface ChannelSpec {
   voice?: boolean;
 }
 
+/** Applied when a community is created (POST /v1/orgs with kind "community"). */
+export const COMMUNITY_TEMPLATE_ID = "community";
+
 export const WORKSPACE_TEMPLATES: readonly { id: string; name: string; description: string; channels: readonly ChannelSpec[] }[] = [
+  {
+    id: COMMUNITY_TEMPLATE_ID,
+    name: "Community",
+    description: "A welcome channel, announcements, general chat, introductions and a lounge to talk in.",
+    channels: [
+      { name: "welcome", topic: "Start here: what this community is about and how it works", kind: "ANNOUNCEMENT" },
+      { name: "announcements", topic: "News from the people who run the community", kind: "ANNOUNCEMENT" },
+      { name: "general", topic: "Everyday conversation", kind: "PUBLIC" },
+      { name: "introductions", topic: "Say hello and tell people what brings you here", kind: "PUBLIC" },
+      { name: "lounge", topic: "Drop in to talk", kind: "PUBLIC", voice: true },
+    ],
+  },
   {
     id: "business",
     name: "General business",

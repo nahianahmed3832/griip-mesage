@@ -92,6 +92,8 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   webhook_deliveries: "workspace",
   // Usage and per-workspace limits (round 7, docs/USAGE_AND_PLANS.md).
   usage_daily: "workspace",
+  // Content-free daily product counts (Meldiq 2.0, docs/product/EXPERIMENTS.md).
+  analytics_daily: "workspace",
   // Unified Inbox (round 8, docs/UNIFIED_INBOX.md).
   inbox_accounts: "workspace",
   inbox_queues: "workspace",

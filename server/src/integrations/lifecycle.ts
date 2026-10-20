@@ -1,5 +1,5 @@
 import { ApiError, conflict, forbidden, newId } from "../util.js";
-import { defaultCapabilities } from "./catalog.js";
+import { connectorTier, defaultCapabilities } from "./catalog.js";
 import type { Kernel } from "./kernel.js";
 import {
   allowedActions,
@@ -49,7 +49,7 @@ function capabilityViews(def: ConnectorDef, install: InstallRow | null) {
   return def.capabilities.map((c) => ({ ...c, granted: granted.has(c.key), requested: requested.has(c.key) }));
 }
 
-export async function directory(k: Kernel, orgId: string, userId: string) {
+export async function directory(k: Kernel, orgId: string, userId: string, includePlanned = false) {
   const { perms, roleIds } = k.member(orgId, userId);
   k.require(perms, "integrations.view", "Your role doesn't include the app directory");
   const [{ policy }, { policy: platformPolicy }, installs, mine] = await Promise.all([
@@ -62,6 +62,7 @@ export async function directory(k: Kernel, orgId: string, userId: string) {
   const myAccounts = new Map(mine.map((a) => [a.connector_id, a]));
   const apps = [];
   for (const def of k.visibleDefs()) {
+    if (!includePlanned && def.availability === "coming_soon") continue;
     const install = byConnector.get(def.id) ?? null;
     const account = myAccounts.get(def.id) ?? null;
     const viewer = { perms, roleIds, connected: account?.status === "active", accountError: !!account && account.status !== "active" };
@@ -75,6 +76,7 @@ export async function directory(k: Kernel, orgId: string, userId: string) {
       icon: def.icon,
       summary: def.summary,
       featured: def.featured,
+      tier: connectorTier(def),
       availability: def.availability,
       sensitivity: def.sensitivity,
       state,
