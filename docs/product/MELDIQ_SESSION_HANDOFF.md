@@ -40,7 +40,7 @@ also LiveKit (`adb reverse` 7880 and 7881) and two phones. Production still runs
 | B10 | `a093056` | Deafen, noise reduction, pre-call check, camera switch, reconnect | §6j |
 | B11 | `12e7c54` | Screen share modes, game sound | §6k |
 | B12 | `787042f` | Dates in your language, custom emoji reactions, pronouns, role groups | §6l |
-| B13 | (this commit) | Server fixes only: nothing new to try on the phone | §6m |
+| B13 | `1c0bf9c` | Server fixes only: nothing new to try on the phone | §6m |
 
 **Waiting on you:**
 - the phone tests above, as pass or fail per batch;
