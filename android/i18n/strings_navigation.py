@@ -102,4 +102,6 @@ S = {
 "nv_intro_roles_body": ("Give people roles, decide who sees and posts in each channel, and keep the community safe with bans.", "为成员分配角色，决定谁能查看每个频道、谁能发言，并用封禁维护社区安全。", "মানুষকে ভূমিকা দিন, কে কোন চ্যানেল দেখবে ও পোস্ট করবে ঠিক করুন, আর নিষেধাজ্ঞা দিয়ে কমিউনিটি নিরাপদ রাখুন।"),
 "nv_roles_cat_voice": ("Voice channels", "语音频道", "ভয়েস চ্যানেল"),
 "nv_member_one": ("1 member", "1 位成员", "১ জন সদস্য"),
+"nv_join_title": ("Join or create a community", "加入或创建社区", "কমিউনিটিতে যোগ দিন বা তৈরি করুন"),
+"nv_invite_help": ("Ask the community's owner, an admin or anyone who may invite for a code. You can paste the whole invite message.", "向社区所有者、管理员或可以邀请成员的人索取邀请码。可以直接粘贴整条邀请消息。", "কমিউনিটির মালিক, অ্যাডমিন বা আমন্ত্রণ জানাতে পারেন এমন কারো কাছে কোড চান। পুরো আমন্ত্রণ বার্তাটি পেস্ট করতে পারেন।"),
 }

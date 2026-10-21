@@ -92,4 +92,6 @@
     <string name="nv_intro_roles_body">মানুষকে ভূমিকা দিন, কে কোন চ্যানেল দেখবে ও পোস্ট করবে ঠিক করুন, আর নিষেধাজ্ঞা দিয়ে কমিউনিটি নিরাপদ রাখুন।</string>
     <string name="nv_roles_cat_voice">ভয়েস চ্যানেল</string>
     <string name="nv_member_one">১ জন সদস্য</string>
+    <string name="nv_join_title">কমিউনিটিতে যোগ দিন বা তৈরি করুন</string>
+    <string name="nv_invite_help">কমিউনিটির মালিক, অ্যাডমিন বা আমন্ত্রণ জানাতে পারেন এমন কারো কাছে কোড চান। পুরো আমন্ত্রণ বার্তাটি পেস্ট করতে পারেন।</string>
 </resources>

@@ -110,15 +110,13 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
 
     fun done(orgId: String) {
         scope.launch { container.orgs.select(orgId) }
-        // Leave this screen for good. switchTab() restored the Workspace tab's saved back stack, which still had this
-        // screen on top, so a successful join or create looked like nothing happened, and people tapped again
+        // Leave this screen for good and land on Home, where the new community is selected on the rail with its
+        // channels (2026-10-21; before, this opened the community screen, now Community settings). Popping to the start
+        // destination also drops this screen from any restored back stack, so a join can't look like it did nothing
         // (physical-device report: five identical workspaces).
-        if (!nav.popBackStack(Routes.WORKSPACE, inclusive = false)) {
-            nav.popBackStack()
-            nav.navigate(Routes.WORKSPACE) {
-                popUpTo(nav.graph.findStartDestination().id)
-                launchSingleTop = true
-            }
+        nav.navigate(Routes.HOME) {
+            popUpTo(nav.graph.findStartDestination().id) { inclusive = true }
+            launchSingleTop = true
         }
     }
 
@@ -129,7 +127,7 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
             error = null
             when (val r = QrImageImport.read(context, uri)) {
                 is QrImageImport.Result.Code -> code = r.code
-                QrImageImport.Result.NotInvite -> error = "That image has a QR code, but it isn't a Griip invite. Nothing was opened."
+                QrImageImport.Result.NotInvite -> error = "That image has a QR code, but it isn't a Meldiq invite. Nothing was opened."
                 QrImageImport.Result.NoCode -> error = "No QR code found in that image. Try a sharper screenshot of the invite, or type the code."
                 QrImageImport.Result.Unreadable -> error = "Couldn't open that image."
             }
@@ -142,7 +140,7 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        GriipTopBar("Your workspace", onBack = { nav.popBackStack() })
+        GriipTopBar(stringResource(R.string.nv_join_title), onBack = { nav.popBackStack() })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Space.gutter)) {
             Spacer(Modifier.height(8.dp))
             SegmentedPills(listOf("Join with invite", "Create new"), tab, { tab = it; error = null })
@@ -157,7 +155,7 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
                         code = (if (v.length > 24 || v.contains("://")) InviteCodes.extract(v) else null) ?: v.take(24)
                     },
                     "Invite code", placeholder = "XXXX-XXXX-XXXX", leadingIcon = Icons.Outlined.ConfirmationNumber,
-                    helper = if (checking) "Checking the code…" else "Ask an owner, admin, branch manager or team lead for a code. You can paste the whole invite message.",
+                    helper = if (checking) "Checking the code…" else stringResource(R.string.nv_invite_help),
                     error = (typed as? InviteCodes.Typed.Invalid)?.reason,
                     visualTransformation = { t -> TransformedText(AnnotatedString(t.text.uppercase()), OffsetMapping.Identity) },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),

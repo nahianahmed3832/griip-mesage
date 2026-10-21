@@ -92,4 +92,6 @@
     <string name="nv_intro_roles_body">为成员分配角色，决定谁能查看每个频道、谁能发言，并用封禁维护社区安全。</string>
     <string name="nv_roles_cat_voice">语音频道</string>
     <string name="nv_member_one">1 位成员</string>
+    <string name="nv_join_title">加入或创建社区</string>
+    <string name="nv_invite_help">向社区所有者、管理员或可以邀请成员的人索取邀请码。可以直接粘贴整条邀请消息。</string>
 </resources>

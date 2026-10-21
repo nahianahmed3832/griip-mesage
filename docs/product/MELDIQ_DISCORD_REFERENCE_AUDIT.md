@@ -159,16 +159,28 @@ strings; "1 members"; a forum channel's header showed "#" instead of its forum i
 LiveKit server and a second participant), uploads over a real mobile network, and touch feel. The owner offered to
 connect a phone for those (§5).
 
-## 5. Phone checks still to do
+## 5. On the owner's phone (HONOR ELI-AN00, 2026-10-21)
 
-With the phone on USB (the side-by-side test app, a local server on this Mac through `adb reverse`, the owner tapping
-install and permission prompts):
+The side-by-side test app (`com.meldiq.android.test`) updated in place from 0.2.3-beta to 0.5.0-beta: the local
+database migrated (versions up to 10) and the app opened without a crash. The owner's own Meldiq (0.3.1-beta) was not
+touched. The owner signed in to production in it; for voice, a second account was added in the same app on a local test
+server on the Mac (USB `adb reverse`), with the local LiveKit 1.13.10 (production's version) and the repository's
+headless bot as the test community's owner. The phone's error log was recorded throughout: no crash.
 
-1. Voice channel: join with the microphone allowed; a second participant (the bot) hears you. Then a role with
-   `voice.speak` denied on that channel: join again; the microphone, camera and share buttons are disabled and the
-   notice says you can only listen; the bot still hears nothing from you.
-2. A channel with `voice.connect` denied: the channel says you can't join; Join isn't offered.
-3. A large file (hundreds of MB, ideally 1 GiB) over Wi-Fi and over mobile data, in a channel, with the screen off
-   for part of it.
-4. Long-press feel on channel and category rows; scrolling the rail and the panel; system back through sheets.
-5. Large text (Android font size) on Home and the channel menus.
+| Check | Result |
+|---|---|
+| Home on a member account | rail, panel, the bot listed under the voice channel while it was in the call |
+| Voice: speak | in the call, end-to-end encrypted; the owner heard the bot's tone; the bot received the phone's microphone with audible frames while the owner spoke |
+| Voice: listen-only (`voice.speak` denied for everyone) | the channel said "You can listen here, but not speak." without reopening; in the call the microphone button read "Listening" and was disabled, as were Camera and Share; the bot saw the phone join and received no microphone track |
+| Voice: no join (`voice.connect` denied) | the channel said "You can't join this voice channel." and offered no Join |
+| 600 MB file through the app's picker | encrypted and sent in about 23 s over USB to the local server; the server stored 629,155,200 bytes (the file plus encryption overhead); no server errors |
+| Long-press a channel as a member | only personal items (favourite, mute, copy name) |
+| Leave a community, rejoin with a code | worked |
+
+Found on the phone and fixed in the same session: joining a community opened Community settings instead of Home (the
+old community screen's route now leads to settings); the join screen still said "Your workspace" and "Ask an owner,
+admin, branch manager or team lead"; Contacts › Community and channels opened settings. All three now lead to Home or
+say community; rechecked on the phone.
+
+Still open: a large file over a real network (Wi-Fi, then mobile data) to production, with the screen locked for part of
+it. That needs the owner's production account and network, and is theirs to run.

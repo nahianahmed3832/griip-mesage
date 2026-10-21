@@ -31,6 +31,7 @@ import com.meldiq.android.data.db.UserEntity
 import com.meldiq.android.data.repo.ConversationRepository
 import com.meldiq.android.ui.LocalContainer
 import com.meldiq.android.ui.Routes
+import com.meldiq.android.ui.switchTab
 import com.meldiq.android.ui.components.CircleIconButton
 import com.meldiq.android.ui.components.EmptyState
 import com.meldiq.android.ui.components.GlassCard
@@ -86,7 +87,7 @@ fun ContactsScreen(nav: NavHostController) {
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), contentPadding = PaddingValues(4.dp)) {
                 MenuRow(Icons.Outlined.PersonSearch, stringResource(R.string.contacts_find), subtitle = stringResource(R.string.contacts_find_sub), onClick = { nav.navigate(Routes.NEW_CHAT + "?mode=dm") })
-                MenuRow(Icons.Outlined.Workspaces, stringResource(R.string.contacts_workspace), subtitle = stringResource(R.string.contacts_workspace_sub), tint = c.lavender, tintBg = c.lavenderSoft, onClick = { nav.navigate(Routes.WORKSPACE) })
+                MenuRow(Icons.Outlined.Workspaces, stringResource(R.string.contacts_workspace), subtitle = stringResource(R.string.contacts_workspace_sub), tint = c.lavender, tintBg = c.lavenderSoft, onClick = { nav.switchTab(Routes.HOME) })
                 MenuRow(Icons.Outlined.QrCodeScanner, stringResource(R.string.contacts_invite), tint = c.peach, tintBg = c.peachSoft, onClick = { nav.navigate(Routes.JOIN + "?code=") })
             }
         }

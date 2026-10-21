@@ -92,4 +92,6 @@
     <string name="nv_intro_roles_body">Give people roles, decide who sees and posts in each channel, and keep the community safe with bans.</string>
     <string name="nv_roles_cat_voice">Voice channels</string>
     <string name="nv_member_one">1 member</string>
+    <string name="nv_join_title">Join or create a community</string>
+    <string name="nv_invite_help">Ask the community\'s owner, an admin or anyone who may invite for a code. You can paste the whole invite message.</string>
 </resources>
