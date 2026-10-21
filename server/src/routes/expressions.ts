@@ -96,18 +96,31 @@ export default async function expressionRoutes(app: FastifyInstance, ctx: AppCon
     const q = parse(z.object({ kind: z.enum(["emoji", "sticker"]).default("emoji"), name: z.string().trim().toLowerCase() }), req.query);
     requireManager(orgId, userId);
     if (!EXPRESSION_NAME.test(q.name)) throw badRequest("Names are 2–32 letters, digits or _ (lowercase)");
-    const count = (db.prepare("SELECT COUNT(*) n FROM community_expressions WHERE org_id = ? AND kind = ?").get(orgId, q.kind) as { n: number }).n;
-    if (count >= EXPRESSION_LIMITS[q.kind]) throw new ApiError(409, "limit_reached", `A community has room for ${EXPRESSION_LIMITS[q.kind]} ${q.kind === "emoji" ? "emoji" : "stickers"}`);
-    if (db.prepare("SELECT 1 FROM community_expressions WHERE org_id = ? AND kind = ? AND name = ?").get(orgId, q.kind, q.name)) throw conflict("That name is taken in this community");
+    // Checked before the upload (a quick answer) and again just before the row is written (B13: two uploads at once
+    // both passed the first check across the awaits below, giving two emoji the same name).
+    const roomFor = () => {
+      const count = (db.prepare("SELECT COUNT(*) n FROM community_expressions WHERE org_id = ? AND kind = ?").get(orgId, q.kind) as { n: number }).n;
+      if (count >= EXPRESSION_LIMITS[q.kind]) throw new ApiError(409, "limit_reached", `A community has room for ${EXPRESSION_LIMITS[q.kind]} ${q.kind === "emoji" ? "emoji" : "stickers"}`);
+      if (db.prepare("SELECT 1 FROM community_expressions WHERE org_id = ? AND kind = ? AND name = ?").get(orgId, q.kind, q.name)) throw conflict("That name is taken in this community");
+    };
+    roomFor();
     const buf = await readImage(req);
     const kind = imageKind(buf);
     if (!kind) throw badRequest("Use a PNG, GIF or WebP image");
     const id = newId(q.kind === "emoji" ? "emj" : "stk");
     const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
     await storePhoto(ctx, id, buf);
-    db.prepare(
-      "INSERT INTO community_expressions (id, org_id, kind, name, mime, animated, sha256, size, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run(id, orgId, q.kind, q.name, kind.mime, kind.animated ? 1 : 0, sha256, buf.length, userId, now());
+    try {
+      db.transaction(() => {
+        roomFor();
+        db.prepare(
+          "INSERT INTO community_expressions (id, org_id, kind, name, mime, animated, sha256, size, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ).run(id, orgId, q.kind, q.name, kind.mime, kind.animated ? 1 : 0, sha256, buf.length, userId, now());
+      })();
+    } catch (e) {
+      await deleteBlobNow(ctx, "profile-photos", id);
+      throw e;
+    }
     ctx.audit({ actorId: userId, orgId, action: `expression.add`, target: id, detail: `${q.kind} :${q.name}:` });
     notifyOrg(ctx, orgId);
     return { expression: view(load(id)!) };

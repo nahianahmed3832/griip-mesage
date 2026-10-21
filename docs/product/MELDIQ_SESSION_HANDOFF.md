@@ -9,6 +9,48 @@ batch plan and its approval gate are in `MELDIQ_IMPLEMENTATION_PLAN.md`; the sta
 > end. Each batch is committed on its own with its own APK and checklist below, so a defect can be traced to its batch.
 > **Nothing from B4 onwards has been tested on a real phone yet**; emulator checks are listed per batch.
 
+## 0. Start here (morning of 2026-10-22)
+
+Overnight, B4b to B13 were built one after another, as asked. Every batch is committed separately on `internal-beta`.
+**None of it has been tested on a real phone.** Emulator checks are listed per batch (§6b–6m). Nothing was pushed or
+deployed, and no AWS or production setting was touched.
+
+**What to install:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b12-debug.apk`.
+It contains every batch from B4 to B13 (B13 changed only the server). It's a side-by-side debug build ("Meldiq Test")
+for the local server.
+
+**What to run:** the local test server over USB, as for B2 and B3 (`http://localhost:8080`, `adb reverse tcp:8080
+tcp:8080`), now at **API 0.24.0** from this repository (`cd server && npx tsx src/index.ts`). For calls (B10, B11),
+also LiveKit (`adb reverse` 7880 and 7881) and two phones. Production still runs 0.13.0; deploying is your decision
+(§7.3 lists every migration).
+
+**Test order** (each batch's checklist is in its own section):
+
+| Batch | Commit | What to try | Section |
+|---|---|---|---|
+| B4 | `a4d251e` | Reports, security actions, audit filters, invite choices | §6 |
+| B4b | `7f1a190` | Join applications, activity alerts, https invite links, invite from a profile | §6b |
+| B5 | `e21d639` | Thread list, message links, Unreads, translated menus | §6c |
+| B6 | `71d488a` | Connections, message requests, who may message you | §6d |
+| B6b | `5e460fb` | Group photo, presence (idle, do not disturb, invisible) | §6e |
+| B7 | `064c5c2` | 1 GiB file over Wi-Fi and mobile data (no code change) | §6f |
+| B8 | `29d9fca` | Forum guidelines, tag matching, follow posts, poll duration and answer emoji | §6g |
+| B8b | `8090514` | Repeating events, community guide, onboarding questions | §6h |
+| B9 | `2bf5e91` | Community emoji and stickers | §6i |
+| B10 | `a093056` | Deafen, noise reduction, pre-call check, camera switch, reconnect | §6j |
+| B11 | `12e7c54` | Screen share modes, game sound | §6k |
+| B12 | `787042f` | Dates in your language, custom emoji reactions, pronouns, role groups | §6l |
+| B13 | (this commit) | Server fixes only: nothing new to try on the phone | §6m |
+
+**Waiting on you:**
+- the phone tests above, as pass or fail per batch;
+- the decisions in §7 and in `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions";
+- two-step sign-in's design (§6l);
+- when to move the files domain to MongoDB (§6m).
+
+**After that:** B14 (minimal DM screen), then B16 (transitions), then B15 (final quality gate), each after your
+approval of the one before (`MELDIQ_BACKLOG_B14_B16_B15.md`).
+
 ## 1. Repositories and branches
 
 | Repository | Folder | Branch | State at hand-off |
@@ -832,6 +874,73 @@ way.
    **Expected:** Members lists that role's people under its name first.
 6. **Report back:** pass or fail per step, with screenshots.
 
+## 6m. Batch B13: integration and stability (2026-10-22, server only, not phone-tested)
+
+B13 checked how B4b–B12 fit together and fixed what the checks found. It added no feature, so there's no new APK:
+the B12 APK is the one to install.
+
+### Security pass over the routes added since B4b
+
+Every route was read for who may call it, what it checks, and what it reveals. Fixed:
+
+| Finding | Effect before | Fix |
+|---|---|---|
+| Two moderators answering the same join application at once | Both passed the "still pending" check: approved twice, or approved and denied | The answer is claimed with a conditional update inside the transaction; the second gets "already answered" (`applications.ts`) |
+| Two uploads of a community emoji with the same name at once | Both passed the name and limit checks across the upload's awaits: two `:twin:` emoji, which makes `:name:` reactions ambiguous. **Reproduced by a new test against the old code** | Checked again inside a transaction just before the row is written; the losing upload's stored image is deleted (`expressions.ts`) |
+| Community guide items pointing to a private channel | Every member received that channel's id, even without access | Members see only the guide items whose channel they can open; people who edit the guide still see all, so saving it drops nothing (`guide.ts`) |
+
+Checked and found right:
+- **Connections and message requests:** blocked, unknown and disabled people get the same answer; there is a request
+  budget; a decline isn't revealed.
+- **Onboarding:** roles and channels are re-checked when someone answers; guests can't answer; only roles onboarding
+  gave are taken back.
+- **Group photos:** only the group's admins change them; only members see them.
+- **Emoji images:** members only; the type comes from the image, not the client.
+- **Pronouns and role groups (B12):** pronouns follow the bio's privacy setting; editing role groups needs the right
+  to edit that role.
+
+**Noted, not fixed:** two group-photo changes at the same moment can leave the earlier image unused in storage
+(nobody can see it; a storage sweep would catch it).
+
+### MongoDB
+
+- **Both stores:** the full server suite runs on SQLite and with every MongoDB-capable domain in MongoDB (accounts,
+  preferences, history, reports, relationships). Results are in "How it was checked".
+- **The files domain stays in SQLite for now, on purpose.** Moving it touches:
+  - the upload quotas, which join users and conversations;
+  - the 1 GiB multipart path checked in B7;
+  - the delete cascades for conversations, communities and accounts: 57 SQL statements in about 20 files.
+
+  Doing that overnight, on top of ten batches not yet tested on a phone, would add risk exactly where the file path
+  was just verified. It's ready to be its own batch once you've phone-tested B4–B12. The recipe and order are in
+  `MELDIQ_MONGODB_MIGRATION.md` §3–4: files, federation, relay, then conversations and workspace together, then
+  identity.
+
+### Web parity (W1)
+
+- The web app's own suite: **262 passed**, type check clean.
+- These aren't in the web app yet:
+  - connections and message requests;
+  - group photos and presence choices;
+  - forum guidelines and follow;
+  - repeating events, the guide and onboarding;
+  - community emoji (shown as `:name:`) and `:name:` reactions (ignored by the web app's reaction check);
+  - pronouns and role groups;
+  - the B10 and B11 call controls.
+
+  They belong to the web community rebuild (matrix NAV-01, PLAT-06).
+- Poll end times and answer emoji (B8) and the invitation page (B4b) are already in the web app.
+
+### How it was checked
+
+- **Server, SQLite:** **710 passed**, 10 skipped, exit 0; TypeScript check clean.
+- **Server, MongoDB domains** (`MELDIQ_TEST_MONGO_DOMAINS=accounts,preferences,history,reports,relationships`): **710 passed**, 10 skipped, exit 0.
+- **New tests:**
+  - simultaneous emoji uploads (`community_expressions.test.ts`);
+  - private channels in the guide (`events_onboarding_guide.test.ts`);
+  - the application race, covered by the existing suite plus the new conditional update.
+- **Android:** unchanged since B12 (641 tests, 0 failures; lint 0 errors).
+
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
@@ -849,8 +958,7 @@ way.
 
 ## 8. Next, exactly
 
-1. **Engineering (in progress overnight):** B13 (integration and stability), the last overnight batch, each committed with
-   its own APK and checklist in this file.
+1. **Engineering:** B4b–B13 are done. **Stopped here** for your phone test, as the overnight rule ends at B13.
 2. **Backlog added by the owner 2026-10-22** (`MELDIQ_BACKLOG_B14_B16_B15.md`): **B14** minimal DM screen and
    conversation details, then **B16** transitions and interaction polish, then **B15** the final quality gate (always
    last). The overnight rule ends at B13: B14 starts only after the owner approves B13, and each of the three stops

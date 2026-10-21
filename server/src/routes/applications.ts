@@ -116,17 +116,20 @@ export default async function applicationRoutes(app: FastifyInstance, ctx: AppCo
     if (!r || !authz.can(r.org_id, actor, "members.approve")) throw notFound("Application not found");
     if (r.status !== "pending") throw conflict("This application was already answered");
     const t = now();
+    // B13: the answer is claimed with a conditional update inside the transaction, so two moderators answering at once
+    // can't both approve (or approve and deny) the same application.
+    const claim = db.prepare("UPDATE join_applications SET status = ?, handled_by = ?, handled_at = ?, note = ? WHERE id = ? AND status = 'pending'");
     if (body.status === "approved") {
       if (authz.isBanned(r.org_id, r.user_id)) throw new ApiError(409, "banned", "This person is banned from the community");
       db.transaction(() => {
+        if (claim.run("approved", actor, t, body.note ?? null, id).changes === 0) throw conflict("This application was already answered");
         ctx.entitlements.check("members", (db.prepare("SELECT COUNT(*) n FROM org_members WHERE org_id = ?").get(r.org_id) as { n: number }).n, r.org_id);
         db.prepare("INSERT OR IGNORE INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, 'MEMBER', ?)").run(r.org_id, r.user_id, t);
         authz.autoJoinScope(r.org_id, r.user_id, t);
-        db.prepare("UPDATE join_applications SET status = 'approved', handled_by = ?, handled_at = ?, note = ? WHERE id = ?").run(actor, t, body.note ?? null, id);
       })();
       noteJoin(ctx, r.org_id, t);
-    } else {
-      db.prepare("UPDATE join_applications SET status = 'denied', handled_by = ?, handled_at = ?, note = ? WHERE id = ?").run(actor, t, body.note ?? null, id);
+    } else if (claim.run("denied", actor, t, body.note ?? null, id).changes === 0) {
+      throw conflict("This application was already answered");
     }
     ctx.audit({ actorId: actor, orgId: r.org_id, action: `application.${body.status}`, target: r.user_id });
     notifyOrg(ctx, r.org_id);

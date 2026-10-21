@@ -126,6 +126,9 @@ describe("community guide", () => {
     const g = (await owner.req("PUT", `/v1/orgs/${orgId}/guide`, { welcome: "Welcome to the club!", tasks: [{ title: "Show your work", channelId: pub }], resources: [{ title: "Club board", channelId: secret }] })).guide;
     expect(g.tasks[0]).toMatchObject({ title: "Show your work", channelId: pub, id: expect.any(String) });
     expect((await member.req("GET", `/v1/orgs/${orgId}`)).org.guide).toMatchObject({ welcome: "Welcome to the club!", tasks: [{ channelId: pub }] });
+    // B13: a private channel the member can't see isn't listed for them; the editor still sees it.
+    expect((await member.req("GET", `/v1/orgs/${orgId}`)).org.guide.resources).toEqual([]);
+    expect((await owner.req("GET", `/v1/orgs/${orgId}`)).org.guide.resources).toMatchObject([{ channelId: secret }]);
     await owner.req("PATCH", `/v1/conversations/${pub}`, { archived: true });
     expect((await member.req("GET", `/v1/orgs/${orgId}`)).org.guide.tasks).toEqual([]);
     expect((await owner.req("PUT", `/v1/orgs/${orgId}/guide`, null)).guide).toBeNull();

@@ -77,7 +77,7 @@ export function orgSummary(ctx: AppContext, org: any, userId: string) {
     // Batch B4b: join applications (the questions, or null), activity alerts (on/off), and a recent alert (moderators).
     joinQuestions: joinQuestions(org),
     // Batch B8b: the community guide (members only), and whether onboarding questions are on.
-    guide: ctx.authz.orgRole(org.id, userId) ? guideOf(ctx, org) : null,
+    guide: ctx.authz.orgRole(org.id, userId) ? guideOf(ctx, org, userId) : null,
     onboarding: onboardingOn(ctx, org.id),
     activityAlerts: org.activity_alerts === undefined ? true : !!org.activity_alerts,
     activityAlert: activityAlert(ctx, org, userId, Date.now()),

@@ -22,14 +22,19 @@ export interface Guide {
   resources: GuideItem[];
 }
 
-/** A community's guide, or null without one; items whose channel is gone are left out. */
-export function guideOf(ctx: AppContext, org: { id: string; guide?: string | null }): Guide | null {
+/**
+ * A community's guide as [viewerId] sees it, or null without one. Items whose channel is gone are left out, and so are
+ * channels the viewer can't see (B13: a private channel's id reached every member), except for people who edit the
+ * guide, so saving it never drops what they can't open.
+ */
+export function guideOf(ctx: AppContext, org: { id: string; guide?: string | null }, viewerId: string): Guide | null {
   if (!org.guide) return null;
   try {
     const g = JSON.parse(org.guide) as Guide;
+    const editor = ctx.authz.can(org.id, viewerId, "workspace.edit");
     const live = (i: GuideItem) => {
       const c = ctx.authz.conversation(i.channelId);
-      return !!c && c.org_id === org.id && !c.archived_at;
+      return !!c && c.org_id === org.id && !c.archived_at && (editor || ctx.authz.canViewChannel(c, viewerId));
     };
     return { welcome: g.welcome ?? null, tasks: (g.tasks ?? []).filter(live), resources: (g.resources ?? []).filter(live) };
   } catch {

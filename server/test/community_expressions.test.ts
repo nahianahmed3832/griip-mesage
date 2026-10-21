@@ -80,3 +80,16 @@ describe("community emoji and stickers", () => {
     expect((await expectStatus(manager.req("POST", `/v1/orgs/${orgId}/expressions?name=one_more`, undefined, png), 409)).error.code).toBe("limit_reached");
   });
 });
+
+describe("uploads at the same moment", () => {
+  it("can't give two emoji the same name (batch B13)", async () => {
+    // A fresh community: the tests above fill the first one's emoji limit.
+    const fresh = (await owner.req("POST", "/v1/orgs", { name: "Twin Lab" })).org.id;
+    const tries = await Promise.allSettled(
+      [0, 1, 2].map(() => owner.req("POST", `/v1/orgs/${fresh}/expressions?kind=emoji&name=twin`, undefined, png)),
+    );
+    expect(tries.filter((t) => t.status === "fulfilled")).toHaveLength(1);
+    const list = (await owner.req("GET", `/v1/orgs/${fresh}/expressions`)).expressions as { name: string }[];
+    expect(list.filter((e) => e.name === "twin")).toHaveLength(1);
+  });
+});

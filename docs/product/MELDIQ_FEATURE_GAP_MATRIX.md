@@ -196,7 +196,7 @@ Meldiq differs from Discord by design in two ways:
 
 | ID | Item | Status | Notes / next |
 |---|---|---|---|
-| PLAT-01 | MongoDB as the only server database | I (2 of 9 live domains) | accounts (with key backups and recovery codes) and preferences can run on MongoDB; the other 7 domains can only be copied and verified. Production runs SQLite only. `MELDIQ_MONGODB_MIGRATION.md` |
+| PLAT-01 | MongoDB as the only server database | I (5 of 11 domains can run on MongoDB) | accounts, preferences, history, reports and relationships can run on MongoDB (both stores tested in B13, 2026-10-22); the other domains can only be copied and verified. Production runs SQLite only. Next: the files domain, as its own batch after the owner's phone test (`MELDIQ_SESSION_HANDOFF.md` §6m, `MELDIQ_MONGODB_MIGRATION.md`) |
 | PLAT-02 | MongoDB hosting (Atlas on AWS) | B | Owner: create the cluster and credentials (`MELDIQ_AWS_ARCHITECTURE.md`) |
 | PLAT-03 | S3 for file bytes | IT | Production bucket in ap-southeast-1; CORS fix confirmed on production (web) |
 | PLAT-04 | Infrastructure as code | S | `MELDIQ_AWS_ARCHITECTURE.md` |
