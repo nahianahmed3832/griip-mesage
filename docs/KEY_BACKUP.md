@@ -95,4 +95,5 @@ Then a new device needs the recovery key or another device again.
 - Web `test/keyBackup.test.ts` (4 tests, shared vector) and `test/live-key-backup.test.ts` (3 tests against the real
   server).
 
-Not done: a phone test on a real device.
+Deployed as API 0.11.0 and Meldiq Web 7d48f85 on 2026-10-21 (docs/DEPLOYMENT.md). Not done: a phone test on a real
+device, and a new Android build (the owner builds and signs it).

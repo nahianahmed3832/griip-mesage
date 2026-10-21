@@ -7,7 +7,7 @@
 | VPS | Hostinger VM 1245833, `srv1245833.hstgr.cloud`, **72.60.107.88** (Ubuntu 24.04, 2 vCPU, 8 GB) |
 | Compose project | **`griip-internal-messaging`** |
 | Directory | **`/opt/griip-internal-messaging`** (root, 0750; `.env` 0600) |
-| Services | `api` (`griip-internal-messaging-api:0.10.0` since 2026-10-20 18:09 UTC, built on the VPS; `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
+| Services | `api` (`griip-internal-messaging-api:0.11.0` since 2026-10-21 02:55 UTC, built on the VPS; `0.10.0-rollback`, `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
 | Volume / network | `griip-internal-messaging_api-data`, `griip-internal-messaging_default` |
 | Public URLs | `https://msg.griipbuddy.cloud` (API + WebSocket), `wss://rtc.griipbuddy.cloud` (LiveKit signalling) |
 | TLS | host nginx (`/etc/nginx/sites-available/griip-message.conf`) with certbot certificate `griip-message`, which renews automatically |
@@ -114,6 +114,30 @@ Branch `api-0.8.1-web-return`. No migrations (schema stays 28).
 Not verifiable on production yet: no one can connect an app there (`integrations-status`: no `INTEGRATIONS_TOKEN_KEY`, no
 provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
 `up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
+
+### API 0.11.0 and Meldiq Web 7d48f85 (2026-10-21, 02:55 UTC, owner's go-ahead)
+
+Key backup under the password (`internal-beta` at `61b63d7`, docs/KEY_BACKUP.md): a new device needs email, password and
+an emailed code; the recovery key is for when the email can't work or the password was reset (migration 031).
+
+| Step | Result |
+|---|---|
+| Checks before | server 764 passed / 10 skipped in SQLite and MongoDB modes; web 255 unit + 154 integration passed; Android 559 passed, lint ok; CI: server job and web passed |
+| Pre-flight | running 0.10.0, healthy; VPS `server/` sources identical to `d6a8d08` (checksum); 52 GB free |
+| Backup | `backups/pre-0.11.0-20261021T025230Z`: integrity ok, schema 30, 33 users, `.env` + `compose.yaml` copies; image tagged `0.10.0-rollback`; sources kept as `server.pre-0.11.0` |
+| Sources | VPS `server/` identical to `61b63d7` (checksum) |
+| Rehearsal | 0.11.0 on a copy of the snapshot, `--network none`: migration 31 applied, `account_key_backups` and `account_key_unlocks` present, `verify-backup` ok (schema 31, 33 users) |
+| Switch | `validate-env.sh` 0 errors (the 2 usual warnings), `config -q`, `up -d --no-deps --no-build api`; healthy; LiveKit and ntfy not restarted |
+| Checks after | `/healthz` 0.11.0; restarts 0; no warnings or errors in the log; schema 31, 33 users, 0 backups; server-info lists `key-backup`; the new routes answer 401 without a session |
+| Web | release `0.2.4-beta-7d48f85` (contains `d870db2`); `verify.sh https://web.meldiq.app` all passed; API 0.11.0 through it |
+
+Not checked on production: an actual unlock email (needs a real account's inbox). The whole flow was checked against a
+local server in the browser and by the integration tests.
+
+Rollback:
+- API: `image: griip-internal-messaging-api:0.10.0-rollback`, then `up -d --no-deps --no-build api`. 0.10.0 ignores the
+  two new tables.
+- Web: `bash /root/meldiq-web-0.2.4-beta-7d48f85/rollback.sh`.
 
 ### API 0.10.0 and Meldiq Web d870db2 (2026-10-20, 18:09 UTC, owner's go-ahead)
 
