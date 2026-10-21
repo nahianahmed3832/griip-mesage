@@ -11,7 +11,7 @@ import { photoBlobId, readJpegBody, storePhoto } from "../photos.js";
 import { evictRemovedMember } from "./calls.js";
 import { conversationView } from "./conversations.js";
 import { orgRoleChangeRefusal, removalAllowed, titleChangeAllowed } from "../roles.js";
-import { createCommunityStart } from "../workspace/communityStart.js";
+import { createCommunityStart, TEMPLATE_IDS, templateList } from "../workspace/communityStart.js";
 import { roleAssignmentRefusal } from "../permissions/rules.js";
 import { categoryViews } from "./community.js";
 
@@ -131,6 +131,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
         visibility: zVisibility.optional(),
         joinPolicy: zJoinPolicy.optional(),
         rules: zRules,
+        /** The starter channels (batch B2); "starter" when left out. */
+        template: z.enum(TEMPLATE_IDS).optional(),
       }),
       req.body,
     );
@@ -161,9 +163,12 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     ctx.audit({ actorId: userId, orgId: id, action: "org.create", target: id, detail: `visibility=${body.visibility ?? "private"}` });
     // A community starts with its welcome, announcements, general, introductions and lounge channels in two
     // categories, so the first member who joins finds somewhere to go.
-    createCommunityStart(ctx, id, userId);
+    createCommunityStart(ctx, id, userId, body.template);
     return { org: orgSummary(ctx, db.prepare("SELECT * FROM orgs WHERE id = ?").get(id), userId) };
   });
+
+  // The starter templates a new community can begin with (batch B2): categories and channel names, for the create form.
+  app.get("/v1/community-templates", auth, async () => ({ templates: templateList() }));
 
   app.get("/v1/orgs", auth, async (req) => {
     const { userId } = me(req);

@@ -45,8 +45,15 @@ export default async function preferenceRoutes(app: FastifyInstance, ctx: AppCon
     );
     // A client that doesn't know saved messages leaves the field out: keep the stored list. If the document changed
     // since that copy was read, the revision check below refuses the write, so nothing stale is kept.
-    const saved = body.prefs.saved ?? (await ctx.prefs.get(userId, workspaceId))?.prefs.saved ?? [];
-    const prefs = normalizePrefs({ ...body.prefs, saved }, (id) => mine.has(id));
+    const stored = (await ctx.prefs.get(userId, workspaceId))?.prefs;
+    const saved = body.prefs.saved ?? stored?.saved ?? [];
+    // The same for a community's own notification settings and the rail order (batch B2). Each lives in one kind of
+    // document only: community settings in a community's, the rail order in the personal one.
+    const personal = workspaceId === PERSONAL_WORKSPACE_ID;
+    const community = personal ? undefined : (body.prefs.community ?? stored?.community);
+    const myOrgs = new Set((ctx.db.prepare("SELECT org_id FROM org_members WHERE user_id = ?").all(userId) as { org_id: string }[]).map((r) => r.org_id));
+    const railOrder = personal ? (body.prefs.railOrder ?? stored?.railOrder)?.filter((id) => myOrgs.has(id)) : undefined;
+    const prefs = normalizePrefs({ ...body.prefs, saved, community, railOrder }, (id) => mine.has(id));
     const result = await ctx.prefs.put(userId, workspaceId, prefs, body.baseRev, now());
     if (!result.ok) {
       throw new ApiError(409, "stale_preferences", "These preferences changed on another device. Apply your change to this copy and try again.", {

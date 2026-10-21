@@ -50,19 +50,19 @@ Meldiq differs from Discord by design in two ways:
 | NAV-02 | DM list | E2E | I | I | — | — | |
 | NAV-03 | Tabs: Home, DMs, Activity, You | E2E | I | D | — | P1 (web) | |
 | NAV-04 | Activity (mentions, replies) | E2E | I | I | I | — | |
-| NAV-05 | Unread and mention signals, New line | E2E | I | I | — | — | |
+| NAV-05 | Unread and mention signals, New line | E2E | I | I | — | — | Rechecked on the emulator 2026-10-21 (B2): rail bar and mention count, Home and Activity badges |
 | NAV-06 | Search | I | I | I | I | P2 | Metadata search on the server; message text searched on the device (encrypted) |
 | NAV-07 | Profiles | I | I | I | I | P3 | No banner or pronouns yet |
 | NAV-08 | Presence, custom status | I | I | I | I | — | |
 | NAV-09 | Settings | I | I | I | — | — | |
 | NAV-10 | Back behaviour | E2E | I | — | — | — | |
-| NAV-11 | Reorder communities in the rail | R | — | — | — | P3 (B2) | Discord: rail menu › Move to › First / Last (NAV-CTRL-002) |
+| NAV-11 | Reorder communities in the rail | E2E (emulator) | I | — | I | — | B2 2026-10-21: long-press the rail or community sheet › Arrange communities; `railOrder` in the personal document (`community_navigation.test.ts`, `CommunityNavigationRulesTest`). Phone test pending. Web: not yet |
 
 ## C. Communities and discovery
 
 | ID | Feature | Status | A | W | S | Pri | Notes / next |
 |---|---|---|---|---|---|---|---|
-| COM-01 | Create (starter channels) | E2E | I | I | I | — | |
+| COM-01 | Create (starter channels) | E2E | I | I | I | — | B2 2026-10-21: starter templates (Starter, Friends, Gaming, Study group, Club) with forum and voice channels, `GET /v1/community-templates`; emulator-checked (Gaming). Phone test pending. Web: starter set only |
 | COM-02 | Name, icon, description | I | I | I | I | P3 | Banner: deferred |
 | COM-03 | Visibility and join policy | IT | I | I | I | — | Invite only / public with invites / public and open |
 | COM-04 | Discover and preview | E2E | I | D | I | P1 (web) | |
@@ -74,7 +74,7 @@ Meldiq differs from Discord by design in two ways:
 | COM-10 | Leave | E2E | I | I | I | — | Phone 2026-10-21 |
 | COM-11 | Delete | I | I | I | I | — | |
 | COM-12 | Ownership transfer | I | I | I | I | — | `POST /v1/orgs/:id/ownership` |
-| COM-13 | Community notifications | I | I | I | I | — | Mute all, per-channel levels |
+| COM-13 | Community notifications | E2E (emulator) | I | I | I | — | Mute all, per-channel levels. B2 2026-10-21: community level, Ignore @everyone, channel override list (sheet `CommunityNotificationsSheet.kt`); emulator-checked with two real clients (suppressed @everyone didn't notify or count; unsuppressed did; "Mentions only" silenced plain messages; an "All" override notified). Phone test pending. Web: levels only |
 | COM-14 | Verification level | R | — | — | — | P3 | Email is always verified in Meldiq; "account age" levels: P3 |
 | COM-15 | System messages | D | — | — | — | P3 | |
 | COM-16 | Hide channels without leaving, channel browser | R | — | — | — | P2 (B3) | Discord Browse Channels and Remove from Channel List (COMM-CTRL-007, CHAN-CTRL-005) |

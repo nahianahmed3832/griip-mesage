@@ -4,9 +4,9 @@ For the next session: where everything is, what was done and verified, what isn'
 batch plan and its approval gate are in `MELDIQ_IMPLEMENTATION_PLAN.md`; the status of every feature is in
 `MELDIQ_FEATURE_GAP_MATRIX.md`.
 
-> **Gate in force:** batch B1 is built and its APK is waiting for the owner's phone test. **Don't start B2, or make
-> other UI or backend changes, until the owner approves B1 or reports defects in it.** Answer questions and fix
-> reported B1 defects only.
+> **Gate in force:** B1 was phone-tested and approved by the owner (every checklist step passed, 2026-10-21). B2 is
+> built and its APK is waiting for the owner's phone test. **Don't start B3, or make other UI or backend changes,
+> until the owner approves B2 or reports defects in it.** Answer questions and fix reported B2 defects only.
 
 ## 1. Repositories and branches
 
@@ -63,94 +63,131 @@ To finish the blocked flows, the owner provides a Discord test server and spare 
   are still unverified on a phone.
 - **New feature IDs:** NAV-11, COM-16–18, CH-17–18, MSG-19–21, DM-07–09, MOD-13, CALL-11.
 
-## 5. Batch B1: what it contains and how it was checked
+## 5. Batch B1: approved
 
-**Scope:** sign-in shows only email, password and Sign in, plus one "Having trouble signing in?" link. That opens a
-sheet with forgot password, recovery code and moving an old account. The unlock screen shows "Get a code by email"
-first, with the other ways behind "Can't access your email?". Built on 2026-10-21 (commit `377d83c`, Android; web
-`0f462ed`). See `MELDIQ_AUTH_FLOW_AUDIT.md`.
+Sign-in and unlock polish (`MELDIQ_AUTH_FLOW_AUDIT.md`). The owner tested `meldiq-test-b1-debug.apk` on their phone
+against production and reported that every checklist step passed (2026-10-21). Status: **physically verified**.
 
-**Automated:**
-- **Android:** 572 unit tests passed this round (including 61 account tests). Lint was clean at commit `377d83c`.
-- **Web:** type check, lint, Vitest, Playwright `accounts` and `cross-device`, on 2026-10-21.
+## 6. Batch B2: community navigation and home (built 2026-10-21, waiting for the phone test)
 
-**Emulator:** the walk-through on 2026-10-21 covered:
-- sign up → verify → new phone → sign in;
-- help sheet → recovery keeps the email;
-- unlock screen → other ways → emailed code unlock.
+### What's in it
 
-Screenshots `docs/product/screens-2026-10-21/auth-1..4`. Session restore after an app restart was **not re-checked in
-this round**: it's on the phone checklist.
+| Feature | What the person sees | Code |
+|---|---|---|
+| Community notification settings (COM-13, Discord COMM-CTRL-002) | Community sheet › **Notification settings**: <ul><li>Mute the community;</li><li>"Channels notify me about" All new messages / Mentions only / Off;</li><li>**Ignore @everyone**;</li><li>"Channels with their own setting" list with "Add a channel"; each channel can follow the community again</li></ul> | Android `CommunityNotificationsSheet.kt`, `NavPrefsRules.kt` (community level, overrides, `countsEveryone`), `NavPreferences.kt`, `MessageRepository.kt` + `Mentions.kt` (`MentionNotify.isMention`). Server `preferences/schema.ts`, `preferences/routes.ts` (`community` in community documents) |
+| Rail order (NAV-11, Discord NAV-CTRL-002) | Long-press any community in the rail, or community sheet › **Arrange communities**: Move to the top, Move up, Move down; kept on every device | Android `CommunityRail.kt` (`ArrangeCommunitiesSheet`), `CommunityHomeScreen.kt`; server `railOrder` in the personal document |
+| Starter templates (COM-01, Discord CREATE-CTRL-001) | Create a community › **Start with** Starter / Friends / Gaming / Study group / Club, with the channel list of the chosen one; Gaming, Study group and Club add a forum, all add voice channels | Server `workspace/communityStart.ts` (`COMMUNITY_TEMPLATES`), `GET /v1/community-templates`, `POST /v1/orgs {template}`; Android `JoinWorkspace.kt` (`CommunityTemplates`) |
+| Unread and mention signals (NAV-05) | Rechecked: the rail bar and mention count, Home and Activity badges | No change needed |
 
-**Physical phone:** **not yet tested.**
+**Server and API:**
+- API **0.15.0**, with new features `community-preferences` and `community-templates`.
+- No database migration (the new fields live in the preferences documents, SQLite or MongoDB).
+- Older apps and the web keep working: they leave the new fields out and the server keeps the stored values.
 
-## 6. B1 APK and the owner's phone checklist
+**New Android strings** in English, Chinese and Bengali: `cn_*`, `rail_*`, `ctpl_*`.
 
-Built on 2026-10-21 at 18:41 with:
+**New script:** `server/scripts/phone-test-server.sh` runs a local test server for a phone over USB and prints the
+newest emailed code.
 
-```bash
-./gradlew assembleDebug -Pmeldiq.sideBySide=true -Pmeldiq.environment=production
-```
+### How it was checked
 
-The build succeeded. `testDebugUnitTest` before it: **572 tests, 0 failures**.
+- **Server:**
+  - `community_navigation.test.ts` (11): levels, overrides, older-client writes, refusals, privacy, rail order, the
+    template list and creation;
+  - full suite **638 passed**, 10 skipped (SQLite);
+  - the B2 and preferences tests also pass with preferences in MongoDB.
+- **Android:** `CommunityNavigationRulesTest` (8), full unit suite **580 passed**, lint clean.
+- **Emulator** (local server 0.15.0, two real Meldiq clients: the main app and "Meldiq Test" as a second account), each
+  confirmed with `dumpsys notification` and screenshots `docs/product/screens-2026-10-21/b2-*.png`:
+  - Arrange moved Mod Lab to the top; the order was saved on the server and held after reopening.
+  - Mentions only + Ignore @everyone + "introductions: All new messages" were saved to the community document.
+  - A real @everyone with Ignore on: delivered and decrypted, **no notification**, no mention badge.
+  - With Ignore off: **notified** ("#general: …").
+  - A plain message in a "Mentions only" channel: no notification. A plain message in the channel set to "All new
+    messages": notified.
+  - Created "Squad Night" from Gaming: Start here, Play (general, looking-for-group, clips forum), Voice (lobby,
+    squad).
+  - Found and fixed during the walk: the old "It starts with #welcome…" card contradicted the chosen template. It now
+    shows only when the server has no templates.
+- **Physical phone:** **not yet tested.**
 
-- **APK:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b1-debug.apk`
-  (147 MB, git-ignored).
-  - SHA-256: `f90d185460c66897c1c5060cd269df12c459cd81cc3bb5cf44e5d89553ca993c`.
-  - Built from commit `46e5873` plus this round's docs; no app code changed since.
-- **Variant:** debug, side by side: package `com.meldiq.android.test`, label "Meldiq Test". It installs beside the
-  owner's Meldiq and never replaces it.
-- **Server:** production relay `https://msg.griipbuddy.cloud` (the environment flag `meldiq.environment=production`),
-  because sign-in and unlock need real emails.
-- **Version:** versionCode 19, `0.5.0-beta` (committed values; the owner's uncommitted 20 / `0.4.0-beta` isn't in
-  this build).
+### B2 APK
 
-**Phone checklist (B1):**
-1. Install: `adb install -r meldiq-test-b1-debug.apk`, or open the file on the phone. It appears as "Meldiq Test".
-2. Sign in with your account.
-   - **Expected:** only email, password, Sign in, and the link "Having trouble signing in?". No recovery options are
-     listed on the form.
-3. Tap "Having trouble signing in?".
-   - **Expected:** a sheet with three choices: "I forgot my password", "I can't get into my email", "Move an existing
-     account".
-   - Close it with "Back to sign in" and with the back gesture: the form keeps what you typed.
-4. Sign in.
-   - **Expected:** because this is a new device, the unlock screen shows one main button "Get a code by email" and the
-     link "Can't access your email?".
-   - If your account has no key backup yet (for example after a password reset), the screen says so and lists the
-     other ways directly. That's correct too: note which one you saw.
-5. Tap "Can't access your email?".
-   - **Expected:** "Other ways to unlock" lists another phone, recovery key and start fresh, with "Back to the email
-     code".
-   - **Don't choose "Start fresh" with your real account:** it replaces your encryption keys.
-   - Go back.
-6. Tap "Get a code by email", enter the emailed code.
-   - **Expected:** your messages unlock and history appears.
-7. Swipe the app away and reopen it.
-   - **Expected:** you're still signed in and unlocked, with no sign-in screen.
-8. Turn on airplane mode and open the app.
-   - **Expected:** it opens to your chats with an offline banner, no crash.
-   - Turn airplane mode off: it reconnects.
-9. Optional: in Settings › Language, switch to 中文 and বাংলা and repeat step 3. The help sheet is translated.
-10. Report back: pass/fail per step, a screenshot of anything wrong, and the phone model.
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b2-debug.apk`
+  (148 MB, git-ignored).
+- **SHA-256:** `e32183b554aaf75ae888286c2fe627e1b9d3d012c2329e2ed153daef2f301de9`.
+- **Variant:** debug, side by side: `com.meldiq.android.test`, "Meldiq Test", versionCode 19 / `0.5.0-beta`.
+- **Server:** `http://localhost:8080`, the local test server on the Mac, reached over USB. The live server runs API
+  0.13.0 without B2's server parts, and the brief says phone tests use a safe test server, not production data.
 
-Afterwards you can remove "Meldiq Test" from the phone, and sign out of it first so the server forgets that device.
+### Owner's phone checklist (B2)
+
+**Before you start:**
+1. **Remove the B1 build:** in "Meldiq Test", sign out (You › Settings › "Sign out of this account"), then uninstall it. Otherwise it keeps pointing
+   at production.
+2. **Start the test server:** on the Mac, from `/Volumes/code_files/meldiq_android`, run
+   `server/scripts/phone-test-server.sh` and leave it running. Plug the phone in by USB with USB debugging on. The
+   script runs `adb reverse tcp:8080 tcp:8080`; run that again if you plug in later.
+3. **Install:** `adb install -r android/app/build/outputs/apk/debug/meldiq-test-b2-debug.apk`.
+4. **Create an account:** open "Meldiq Test" and sign up with any address. Get the code with
+   `server/scripts/phone-test-server.sh code`.
+
+**Checks:**
+1. **Templates:**
+   - After sign-up, at "How do you want to start?" choose **Just me**. Then tap **+** in the left rail › **Create
+     new**. (The first-run "Start a community" screen still creates the starter set; templates are on this screen.)
+   - Under "Start with", tap each template.
+   - **Expected:** the "Channels:" line changes for each.
+   - Pick **Gaming**, name it, create.
+   - **Expected:** categories Start here, Play (general, looking-for-group, a **clips** forum), Voice (**lobby**,
+     **squad**).
+2. **Second community:** create another, e.g. **Study group**.
+   - **Expected:** a resources forum and a study-room voice channel.
+3. **Rail order:**
+   - Long-press a community in the left rail.
+   - **Expected:** "Arrange communities" with Move to the top, up and down. Arrows are dimmed at the ends.
+   - Move the second community to the top and close.
+   - **Expected:** the rail shows the new order.
+   - Swipe the app away and reopen: the order is kept.
+4. **Notification settings:**
+   - Tap the community name at the top, then **Notification settings**.
+   - Choose "Mentions only", turn on **Ignore @everyone**, then "Add a channel" › #general › "All new messages".
+   - **Expected:** #general is listed under "Channels with their own setting" with "All new messages".
+   - Close and reopen the sheet: everything is as you left it.
+5. **Follow the community again:**
+   - Tap #general in that list › "Follow the community (Mentions only)".
+   - **Expected:** it leaves the list.
+6. **Mute:**
+   - Turn on "Mute \<community\>".
+   - **Expected:** the channels show as muted in the panel.
+   - Turn it off again.
+7. **Optional, needs a second account on another phone or the emulator:**
+   - Post @everyone with Ignore on: no notification.
+   - With it off: a notification.
+   - (Already verified on the emulator.)
+8. **Languages:** in Settings › Language, switch to 中文 or বাংলা and open Notification settings and Arrange: the text
+   is translated.
+9. **Report back:** pass or fail per step, a screenshot of anything wrong, and the phone model.
 
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
    call).
 2. **The AWS tools use the root user's access key:** move them off it (`MELDIQ_AWS_ARCHITECTURE.md` §5).
-3. **Server 0.14.0 isn't deployed:** migration 034 (timeouts).
+3. **Server 0.15.0 isn't deployed** (production runs 0.13.0): 0.14.0 added migration 034 (timeouts); 0.15.0 adds B2's preferences fields and templates (no migration).
 4. **Android database version 11:** a forward migration.
 
 ## 8. Next, exactly
 
-1. **Owner:** the B1 phone test (§6), then approve or report.
+1. **Owner:** the B2 phone test (§6), then approve or report.
 2. **Owner:** decisions listed in `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions" (connections model, fingerprints,
    test accounts).
-3. **Engineering, only after B1 approval:** B2 (community navigation and home) as scoped in the plan. Its first step
-   is a short Discord re-check of the notification dialog and rail order, then Meldiq's `CommunityMenus.kt`,
-   `CommunitySettingsScreen.kt` and the server's preferences domain.
-4. **Don't change before B1 feedback:** the sign-in and unlock screens (`AccountScreens.kt`,
-   `DeviceSetupScreens.kt`, `AccountHelpSheets.kt`, `AccountFlowViewModel.kt`) except to fix reported defects.
+3. **Engineering, only after B2 approval:** B3 (channels and categories: timed mute, category default level, hide
+   channels and channel browser, slowmode), as scoped in the plan.
+4. **Don't change before B2 feedback:**
+   - `CommunityNotificationsSheet.kt`, `CommunityRail.kt`, `CommunityMenus.kt`, `CommunityHomeScreen.kt`;
+   - `JoinWorkspace.kt`'s create tab;
+   - `NavPrefsRules.kt`, `NavPreferences.kt`;
+   - the server's `preferences/` and `communityStart.ts`.
+
+   Only reported defects get fixed there.

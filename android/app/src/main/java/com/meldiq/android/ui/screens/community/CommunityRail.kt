@@ -4,11 +4,13 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,6 +21,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.VerticalAlignTop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -61,6 +66,8 @@ fun CommunityRail(
     onAdd: () -> Unit,
     onDiscover: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    /** Long-press on a community: arrange the rail (batch B2); null when the server can't keep the order. */
+    onArrange: (() -> Unit)? = null,
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     val c = Griip.colors
@@ -70,7 +77,7 @@ fun CommunityRail(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         items(orgs, key = { it.id }) { o ->
-            RailTile(o, o.id == selectedId, badges[o.id], onClick = { onSelect(o.id) })
+            RailTile(o, o.id == selectedId, badges[o.id], onClick = { onSelect(o.id) }, onLongClick = onArrange)
         }
         item(key = "divider") {
             Box(Modifier.padding(vertical = 6.dp).width(32.dp).height(2.dp).clip(Shapes.pill).background(c.border))
@@ -81,7 +88,7 @@ fun CommunityRail(
 }
 
 @Composable
-private fun RailTile(o: OrgDto, selected: Boolean, badge: RailBadge?, onClick: () -> Unit) {
+private fun RailTile(o: OrgDto, selected: Boolean, badge: RailBadge?, onClick: () -> Unit, onLongClick: (() -> Unit)?) {
     val c = Griip.colors
     val ring by animateColorAsState(if (selected) c.primary else androidx.compose.ui.graphics.Color.Transparent, label = "railRing")
     // Selected: a tall bar; unread: a short one; nothing new: none (the reference's pill, in Meldiq's accent).
@@ -107,7 +114,12 @@ private fun RailTile(o: OrgDto, selected: Boolean, badge: RailBadge?, onClick: (
         Box(
             Modifier.size(TileSize + 6.dp).border(2.dp, ring, RoundedCornerShape(16.dp)).padding(3.dp)
                 .clip(TileShape)
-                .pressable(onClick, onClickLabel = stringResource(R.string.m2_rail_switch, o.name))
+                .combinedClickable(
+                    onClick = onClick,
+                    onClickLabel = stringResource(R.string.m2_rail_switch, o.name),
+                    onLongClick = onLongClick,
+                    onLongClickLabel = if (onLongClick != null) stringResource(R.string.rail_arrange) else null,
+                )
                 .semantics { this.selected = selected; contentDescription = described },
         ) {
             OrgMark(o.id, o.name, WorkspaceList.colorSeed(o), o.photoRev, size = TileSize)
@@ -135,4 +147,40 @@ private fun RailAction(icon: ImageVector, label: String, onClick: () -> Unit) {
         ) { Icon(icon, null, tint = c.success) }
     }
     Spacer(Modifier.height(0.dp))
+}
+
+/**
+ * Arrange communities (batch B2, NAV-11): the rail's order with Move up, Move down and Move to the top on each row.
+ * Every move saves the whole order, kept for all the person's devices in the personal preferences document.
+ */
+@Composable
+fun ArrangeCommunitiesSheet(orgs: List<OrgDto>, onOrder: (List<String>) -> Unit, onDismiss: () -> Unit) {
+    val c = Griip.colors
+    val ids = orgs.map { it.id }
+    com.meldiq.android.ui.components.GlassSheet(onDismiss, title = stringResource(R.string.rail_arrange)) {
+        Text(stringResource(R.string.rail_arrange_body), style = Griip.type.bodySmall, color = c.textSecondary, modifier = Modifier.padding(bottom = 8.dp))
+        LazyColumn(Modifier.heightIn(max = 480.dp)) {
+            items(orgs, key = { it.id }) { o ->
+                val i = ids.indexOf(o.id)
+                androidx.compose.foundation.layout.Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OrgMark(o.id, o.name, WorkspaceList.colorSeed(o), o.photoRev, size = 36.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Text(o.name, style = Griip.type.bodyMedium, color = c.textPrimary, maxLines = 1, modifier = Modifier.weight(1f))
+                    com.meldiq.android.ui.components.CircleIconButton(
+                        Icons.Rounded.VerticalAlignTop, stringResource(R.string.rail_move_top, o.name),
+                        { onOrder(com.meldiq.android.data.model.NavPrefsRules.moved(ids, o.id, 0, toTop = true)) }, enabled = i > 0,
+                    )
+                    com.meldiq.android.ui.components.CircleIconButton(
+                        Icons.Rounded.KeyboardArrowUp, stringResource(R.string.rail_move_up, o.name),
+                        { onOrder(com.meldiq.android.data.model.NavPrefsRules.moved(ids, o.id, -1)) }, enabled = i > 0,
+                    )
+                    com.meldiq.android.ui.components.CircleIconButton(
+                        Icons.Rounded.KeyboardArrowDown, stringResource(R.string.rail_move_down, o.name),
+                        { onOrder(com.meldiq.android.data.model.NavPrefsRules.moved(ids, o.id, 1)) }, enabled = i < ids.size - 1,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
 }

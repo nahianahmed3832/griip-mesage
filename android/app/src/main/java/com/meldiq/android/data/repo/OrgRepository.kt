@@ -94,8 +94,11 @@ class OrgRepository(
     suspend fun cachedDetail(orgId: String): OrgDetailRes? =
         db.kv().get("cache.org.$orgId")?.let { runCatching { GriipJson.decodeFromString(OrgDetailRes.serializer(), it) }.getOrNull() }
 
-    suspend fun create(name: String, description: String?, requestId: String? = null, visibility: String? = null, joinPolicy: String? = null) =
-        api.post<CreateOrgReq, OrgRes>("/v1/orgs", CreateOrgReq(name, description, requestId, visibility, joinPolicy)).org
+    suspend fun create(name: String, description: String?, requestId: String? = null, visibility: String? = null, joinPolicy: String? = null, template: String? = null) =
+        api.post<CreateOrgReq, OrgRes>("/v1/orgs", CreateOrgReq(name, description, requestId, visibility, joinPolicy, template = template)).org
+
+    /** The starter templates (batch B2), on servers with `community-templates`. */
+    suspend fun templates() = api.get<com.meldiq.android.data.api.CommunityTemplatesRes>("/v1/community-templates").templates
     /**
      * Name, description and rules (owners and admins), visibility and joining (owners only; the server checks). A blank
      * description or rules clears it.

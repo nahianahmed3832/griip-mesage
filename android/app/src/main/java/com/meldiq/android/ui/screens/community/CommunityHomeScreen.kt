@@ -87,6 +87,9 @@ private sealed interface PanelSheet {
     data class DeleteChannel(val id: String) : PanelSheet
     data class MoveTo(val id: String) : PanelSheet
     data object Leave : PanelSheet
+    /** Batch B2. */
+    data object Notifications : PanelSheet
+    data object Arrange : PanelSheet
 }
 
 /**
@@ -126,14 +129,17 @@ fun CommunityHomeScreen(nav: NavHostController) {
     var discovery by remember { mutableStateOf(false) }
     var canDeleteChannels by remember { mutableStateOf(false) }
     var tagsAvailable by remember { mutableStateOf(false) }
+    var communityPrefs by remember { mutableStateOf(false) }
+    val railOrder by container.navPrefs.railOrder.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) {
+        communityPrefs = container.features.has(ServerFeatures.COMMUNITY_PREFERENCES) == true
         discovery = container.features.has(ServerFeatures.COMMUNITY_DISCOVERY) == true
         canDeleteChannels = container.features.has(ServerFeatures.CHANNEL_DELETE) == true
         tagsAvailable = container.features.has(ServerFeatures.FORUM_TAGS) == true
     }
     fun toast(text: String) = Toast.makeText(ctx, text, Toast.LENGTH_SHORT).show()
 
-    val list = WorkspaceList.normalize(orgs.orEmpty())
+    val list = NavPrefsRules.railOrdered(WorkspaceList.normalize(orgs.orEmpty()), railOrder) { it.id }
     val org = list.firstOrNull { it.id == selectedId }
     val d = detail?.takeIf { it.org.id == org?.id }
     val orgId = org?.id
@@ -185,6 +191,7 @@ fun CommunityHomeScreen(nav: NavHostController) {
             onAdd = { nav.navigate(Routes.JOIN + "?code=") },
             onDiscover = if (discovery) ({ nav.navigate(Routes.DISCOVER) }) else null,
             contentPadding = PaddingValues(bottom = barPadding),
+            onArrange = if (communityPrefs && list.size > 1) ({ sheet = PanelSheet.Arrange }) else null,
         )
         Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(topStart = 16.dp)).background(c.surface)) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = barPadding + 16.dp)) {
@@ -295,6 +302,8 @@ fun CommunityHomeScreen(nav: NavHostController) {
                 onUnreadOnly = { container.communityView.setUnreadOnly(org.id, it) },
                 onCopyName = { copy(org.name) },
                 onLeave = if (org.myRole != "OWNER") ({ sheet = PanelSheet.Leave }) else null,
+                onNotifications = if (communityPrefs) ({ sheet = PanelSheet.Notifications }) else null,
+                onArrange = if (communityPrefs && list.size > 1) ({ sheet = PanelSheet.Arrange }) else null,
             ),
             onDismiss = { if (sheet == s) sheet = null },
         )
@@ -398,6 +407,20 @@ fun CommunityHomeScreen(nav: NavHostController) {
             },
             onDismiss = { sheet = null }, destructive = true,
         )
+        PanelSheet.Notifications -> CommunityNotificationsSheet(
+            org.name, CommunityPanelRules.allMuted(channels), orgPrefs, channels,
+            CommunityNotifyActions(
+                onToggleMute = if (channels.any { it.joined }) ({ val mute = !CommunityPanelRules.allMuted(channels); setMuted(CommunityPanelRules.muteTargets(channels, mute), mute) }) else null,
+                onLevel = { level -> container.navPrefs.setCommunityNotify(org.id, level = level) },
+                onSuppressEveryone = { on -> container.navPrefs.setCommunityNotify(org.id, suppressEveryone = on) },
+                onChannelLevel = { ch, level ->
+                    val conv = ch.conv
+                    if (conv != null) scope.launch { if (level == null) container.navPrefs.resetLevel(conv) else container.navPrefs.setLevel(conv, level) }
+                },
+            ),
+            onDismiss = { if (sheet == s) sheet = null },
+        )
+        PanelSheet.Arrange -> ArrangeCommunitiesSheet(list, onOrder = { container.navPrefs.setRailOrder(it) }, onDismiss = { if (sheet == s) sheet = null })
     }
     editingSection?.let { section -> SectionEditSheet(section, onDismiss = { editingSection = null }) }
 }

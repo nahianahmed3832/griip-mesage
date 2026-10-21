@@ -102,6 +102,8 @@ class MessageRepository(
 ) {
     /** Round 3: the person's notification level for a conversation (set by the container from NavPreferences). */
     var notifyLevelOf: (ConversationEntity) -> String = { com.meldiq.android.data.model.NotifyLevel.ALL }
+    /** Batch B2: whether @everyone counts as a mention in the conversation's community (set by the container). */
+    var countsEveryoneOf: (ConversationEntity) -> Boolean = { true }
 
     private val json = GriipJson
     private val files = AttachmentFiles(attachmentsDir)
@@ -950,7 +952,7 @@ class MessageRepository(
                 if (db.messages().insertIgnore(m) == -1L) return
                 replayPending(item.conversationId, item.messageId, conv, me)
                 val viewing = appState.foreground.value && appState.viewingConversation.value == item.conversationId
-                val mention = !mine && (me in received.ids || received.all)
+                val mention = MentionNotify.isMention(mine, me in received.ids, received.all, conv?.let { countsEveryoneOf(it) } ?: true)
                 // A muted conversation still notifies when someone mentions you by name; @everyone respects the mute.
                 val personalMention = !mine && me in received.ids
                 val unread = if (!mine && !viewing) 1 else 0

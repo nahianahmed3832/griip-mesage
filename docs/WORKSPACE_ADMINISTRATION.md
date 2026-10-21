@@ -67,6 +67,16 @@ Each person arranges Home for themselves, on every device (`/v1/me/preferences/:
   client that doesn't know the field leaves it out of its write and the server keeps the stored list
   (`preferences/routes.ts`), so the web app and older phones can't empty it. Reminders are scheduled on each of the
   person's phones (WorkManager) and shown once; done or removed items cancel them everywhere.
+- **A community's own notification settings** (batch B2, 2026-10-21, server feature `community-preferences`):
+  community sheet › Notification settings. Stored in that community's document as `community: {level, suppressEveryone}`.
+  - `level` (all / mentions / none) is what channels follow when they have no level of their own in `notify`. An
+    explicit "all" in `notify` is kept only while the community's level is quieter.
+  - `suppressEveryone`: @everyone doesn't notify or count as a mention in that community.
+  - Decided on the phone (wake-ups carry nothing).
+  - Left out of a write, the stored settings are kept, as for `saved`. The field is dropped from the personal document.
+- **Rail order** (same feature): long-press a community in the rail, or community sheet › Arrange communities. Stored in
+  the personal document as `railOrder` (community ids, at most 200), kept only for communities the person belongs to;
+  new communities go at the end. Left out of a write, the stored order is kept.
 
 One document per person and workspace ("personal" for DMs and groups, an organisation id for its channels), with a
 revision: a write names the revision it was based on, and a stale write gets the current copy back (409). The phone

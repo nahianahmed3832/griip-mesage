@@ -304,7 +304,14 @@ object CommunityAccess {
 @Serializable data class CreateOrgReq(
     val name: String, val description: String? = null, val requestId: String? = null,
     val visibility: String? = null, val joinPolicy: String? = null, val rules: String? = null,
+    /** Batch B2: the starter channels ("starter" when left out; servers with `community-templates`). */
+    val template: String? = null,
 )
+/** A starter template as the server lists it: categories and their channels (names are the server's). */
+@Serializable data class TemplateChannelDto(val name: String, val voice: Boolean = false, val format: String = "text", val kind: String = "PUBLIC")
+@Serializable data class TemplateCategoryDto(val name: String, val channels: List<TemplateChannelDto> = emptyList())
+@Serializable data class CommunityTemplateDto(val id: String, val categories: List<TemplateCategoryDto> = emptyList())
+@Serializable data class CommunityTemplatesRes(val templates: List<CommunityTemplateDto> = emptyList())
 @Serializable data class CreateChannelReq(
     val name: String, val topic: String? = null, val kind: String,
     val autoJoin: Boolean? = null, val memberIds: List<String> = emptyList(),
@@ -403,7 +410,16 @@ object CommunityAccess {
      * out of the request) everywhere else, so a server without the feature never sees the field.
      */
     val saved: List<SavedItemDto>? = null,
+    /**
+     * A community's own notification settings (batch B2, server feature `community-preferences`): only in a
+     * community's document, and null (left out of the request) unless the person changed them.
+     */
+    val community: CommunityNotifyDto? = null,
+    /** The person's communities in rail order (personal document only, same feature); null when never arranged. */
+    val railOrder: List<String>? = null,
 )
+/** The level a community's channels follow unless a channel has its own, and whether @everyone counts as a mention. */
+@Serializable data class CommunityNotifyDto(val level: String = "all", val suppressEveryone: Boolean = false)
 /** A message saved for later: ids and times only (the message itself stays end-to-end encrypted on the devices). */
 @Serializable data class SavedItemDto(
     val conversationId: String, val messageId: String, val savedAt: Long, val remindAt: Long? = null, val done: Boolean = false,

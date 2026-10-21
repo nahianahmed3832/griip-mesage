@@ -10,13 +10,27 @@ export const zConversationId = z.string().min(3).max(64).regex(/^[A-Za-z0-9_-]+$
 /** Home's built-in groups ("dms", "channels", "branch:<id>", "team:<id>", …): a short opaque key chosen by the app. */
 const zGroupKey = z.string().min(1).max(80).regex(/^[A-Za-z0-9_:.-]+$/);
 const zSectionId = z.string().min(3).max(40).regex(/^[A-Za-z0-9_-]+$/);
+/** Organisation (community) ids as the server assigns them. */
+export const zOrgId = z.string().min(3).max(64).regex(/^o_[A-Za-z0-9_-]+$/);
 /** Message ids as the server assigns them. */
 const zMessageId = z.string().min(3).max(64).regex(/^[A-Za-z0-9_-]+$/);
 
 export const NOTIFY_LEVELS = ["all", "mentions", "none"] as const;
 export type NotifyLevel = (typeof NOTIFY_LEVELS)[number];
 
-export const LIMITS = { starred: 200, sections: 30, itemsPerSection: 200, collapsed: 200, notify: 1000, saved: 500 } as const;
+export const LIMITS = { starred: 200, sections: 30, itemsPerSection: 200, collapsed: 200, notify: 1000, saved: 500, railOrder: 200 } as const;
+
+/**
+ * A community's own notification settings (batch B2, Discord reference COMM-CTRL-002), in that community's document:
+ * the level its channels follow unless a channel has its own ([NavPrefs.notify]), and whether @everyone counts as a
+ * mention. Decided on the person's devices (wake-ups carry nothing); kept here so every device agrees.
+ */
+export const zCommunityNotify = z
+  .object({
+    level: z.enum(NOTIFY_LEVELS).default("all"),
+    suppressEveryone: z.boolean().default(false),
+  })
+  .strict();
 
 export const zSection = z.object({
   id: zSectionId,
@@ -53,11 +67,16 @@ export const zNavPrefs = z
      * out, and the stored list is kept (routes.ts) instead of being emptied.
      */
     saved: z.array(zSavedItem).max(LIMITS.saved).optional(),
+    /** Community documents only. Optional on the wire like [saved]: left out, the stored settings are kept. */
+    community: zCommunityNotify.optional(),
+    /** Personal document only: the person's communities in rail order (B2, NAV-11). Left out, the stored order is kept. */
+    railOrder: z.array(zOrgId).max(LIMITS.railOrder).optional(),
   })
   .strict();
 
 export type NavSection = z.infer<typeof zSection>;
 export type SavedItem = z.infer<typeof zSavedItem>;
+export type CommunityNotify = z.infer<typeof zCommunityNotify>;
 export type NavPrefs = z.infer<typeof zNavPrefs>;
 
 export const EMPTY_PREFS: NavPrefs = { starred: [], sections: [], collapsed: [], notify: {}, saved: [] };
@@ -73,7 +92,8 @@ export interface StoredPrefs {
 
 /**
  * The canonical form of a document: each conversation listed once across Starred and every section (the first place
- * wins), section ids unique, duplicate group keys dropped, and "all" (the default level) left out of [notify]. [keep]
+ * wins), section ids unique, duplicate group keys dropped, and "all" left out of [notify] when the community's own
+ * level is "all" too (otherwise "all" is a real override of a quieter community default). [keep]
  * says which conversation ids may stay (the person's own conversations); the rest are dropped rather than refused, so a
  * conversation left on another device never makes a write fail.
  */
@@ -92,12 +112,20 @@ export function normalizePrefs(p: NavPrefs, keep: (conversationId: string) => bo
     .map((s) => ({ ...s, items: take(s.items) }));
   const notify = Object.fromEntries(
     Object.entries(p.notify)
-      .filter(([id, level]) => level !== "all" && keep(id))
+      .filter(([id, level]) => (level !== "all" || (p.community?.level ?? "all") !== "all") && keep(id))
       .sort(([a], [b]) => a.localeCompare(b)),
   ) as Record<string, NotifyLevel>;
   const savedIds = new Set<string>();
   const saved = (p.saved ?? []).filter((item) => keep(item.conversationId) && !savedIds.has(item.messageId) && (savedIds.add(item.messageId), true));
-  return { starred, sections, collapsed: [...new Set(p.collapsed)], notify, saved };
+  return {
+    starred,
+    sections,
+    collapsed: [...new Set(p.collapsed)],
+    notify,
+    saved,
+    ...(p.community ? { community: p.community } : {}),
+    ...(p.railOrder ? { railOrder: [...new Set(p.railOrder)] } : {}),
+  };
 }
 
 /** Every conversation id a document mentions. */

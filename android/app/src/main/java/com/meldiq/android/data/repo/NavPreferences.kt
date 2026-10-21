@@ -120,6 +120,34 @@ class NavPreferences(
 
     fun levelOf(conv: ConversationEntity): String = NavPrefsRules.level(prefs.value[workspaceOf(conv)] ?: NavPrefsDto(), conv.id)
 
+    /** Batch B2: whether @everyone counts as a mention in [conv]'s community (the person can turn that off). */
+    fun countsEveryone(conv: ConversationEntity): Boolean = NavPrefsRules.countsEveryone(prefs.value[workspaceOf(conv)] ?: NavPrefsDto())
+
+    /** Batch B2: the person's communities in rail order, or null when never arranged (personal document). */
+    val railOrder: StateFlow<List<String>?> = prefs.map { it[PERSONAL]?.railOrder }.stateIn(scope, SharingStarted.Eagerly, null)
+
+    /** Batch B2: a community's own level and @everyone setting; channels without their own level follow it at once. */
+    fun setCommunityNotify(orgId: String, level: String? = null, suppressEveryone: Boolean? = null) =
+        changeAndApplyMutes(orgId, NavOp.CommunityNotify(level, suppressEveryone))
+
+    /** Batch B2: [conv] follows its community's level again. */
+    fun resetLevel(conv: ConversationEntity) = changeAndApplyMutes(workspaceOf(conv), NavOp.NotifyReset(conv.id))
+
+    /** Batch B2: the rail order, the whole list at once. */
+    fun setRailOrder(orgIds: List<String>) = change(PERSONAL, NavOp.RailOrder(orgIds))
+
+    /** [change], then this phone's mute switches follow the new levels straight away (offline too). */
+    private fun changeAndApplyMutes(workspaceId: String, op: NavOp) {
+        scope.launch {
+            lock.withLock {
+                val doc = docs.value[workspaceId] ?: LocalDoc()
+                save(workspaceId, doc.copy(pending = doc.pending + op))
+            }
+            docs.value[workspaceId]?.let { applyMutes(workspaceId, it.effective) }
+            sync(workspaceId)
+        }
+    }
+
     suspend fun setMuted(conv: ConversationEntity, muted: Boolean) {
         db.conversations().setMuted(conv.id, muted)
         // Muted is "none" (only a mention of you by name), as on the web; "mentions" also lets @everyone through.

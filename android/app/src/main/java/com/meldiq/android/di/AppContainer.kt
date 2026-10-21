@@ -81,6 +81,7 @@ class AppContainer(
     val roles = com.meldiq.android.data.repo.RoleRepository(api)
     /** Starred, sections, collapsed groups and mutes, kept on the server for every device (docs/WORKSPACE_ADMINISTRATION.md). */
     val navPrefs = com.meldiq.android.data.repo.NavPreferences(api, db, features, scope).also { np ->
+        messages.countsEveryoneOf = { conv -> np.countsEveryone(conv) }
         messages.notifyLevelOf = { conv ->
             com.meldiq.android.data.model.NavPrefsRules.level(
                 np.prefs.value[com.meldiq.android.data.repo.NavPreferences.workspaceOf(conv)] ?: com.meldiq.android.data.api.NavPrefsDto(), conv.id,

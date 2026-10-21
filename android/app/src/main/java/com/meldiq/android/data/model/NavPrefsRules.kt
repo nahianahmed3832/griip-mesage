@@ -40,6 +40,12 @@ sealed interface NavOp {
     @Serializable @SerialName("savedDone") data class SavedDone(val messageId: String, val done: Boolean) : NavOp
     /** Sets or clears ([remindAt] null) a saved message's reminder. */
     @Serializable @SerialName("remind") data class Remind(val messageId: String, val remindAt: Long?) : NavOp
+    /** Batch B2: a community's own level and @everyone setting (community documents). Null fields stay as they were. */
+    @Serializable @SerialName("community") data class CommunityNotify(val level: String? = null, val suppressEveryone: Boolean? = null) : NavOp
+    /** Batch B2: a channel goes back to following its community's level (no override). */
+    @Serializable @SerialName("notifyReset") data class NotifyReset(val conversationId: String) : NavOp
+    /** Batch B2: the whole rail order (personal document); the last arrangement wins. */
+    @Serializable @SerialName("railOrder") data class RailOrder(val orgIds: List<String>) : NavOp
 }
 
 /** Pure rules for personal navigation preferences (docs/WORKSPACE_ADMINISTRATION.md › Personal sections). */
@@ -54,7 +60,36 @@ object NavPrefsRules {
         else -> p.sections.firstOrNull { conversationId in it.items }?.let { NavPlace.Section(it.id) } ?: NavPlace.Default
     }
 
-    fun level(p: NavPrefsDto, conversationId: String): String = p.notify[conversationId] ?: NotifyLevel.ALL
+    /** A channel's own level if it has one, else its community's (batch B2), else "all". */
+    fun level(p: NavPrefsDto, conversationId: String): String = p.notify[conversationId] ?: communityLevel(p)
+
+    /** The level a community's channels follow unless they have their own. */
+    fun communityLevel(p: NavPrefsDto): String = p.community?.level ?: NotifyLevel.ALL
+
+    /** Whether @everyone counts as a mention in this community (off: it notifies like an ordinary message). */
+    fun countsEveryone(p: NavPrefsDto): Boolean = p.community?.suppressEveryone != true
+
+    /** Channels with a level of their own, as the community notification settings list them. */
+    fun overrides(p: NavPrefsDto): Map<String, String> = p.notify
+
+    /**
+     * [orgs] in the person's rail order: arranged ones first in that order, then the rest as they came (new
+     * communities at the end). Ids that aren't in [orgs] any more are ignored.
+     */
+    fun <T> railOrdered(orgs: List<T>, order: List<String>?, id: (T) -> String): List<T> {
+        if (order.isNullOrEmpty()) return orgs
+        val rank = order.withIndex().associate { it.value to it.index }
+        return orgs.withIndex().sortedWith(compareBy({ rank[id(it.value)] ?: Int.MAX_VALUE }, { it.index })).map { it.value }
+    }
+
+    /** [ids] with [id] moved by [delta] places (negative: up), or to the top when [toTop]; the ends stay put. */
+    fun moved(ids: List<String>, id: String, delta: Int, toTop: Boolean = false): List<String> {
+        val i = ids.indexOf(id)
+        if (i < 0) return ids
+        val j = if (toTop) 0 else (i + delta).coerceIn(0, ids.size - 1)
+        if (i == j) return ids
+        return ids.toMutableList().apply { removeAt(i); add(j, id) }
+    }
 
     /** Every conversation that sits in Starred or a custom section, so it isn't listed again in its default group. */
     fun placed(p: NavPrefsDto): Set<String> = (p.starred + p.sections.flatMap { it.items }).toSet()
@@ -62,9 +97,19 @@ object NavPrefsRules {
     fun apply(p: NavPrefsDto, op: NavOp): NavPrefsDto = when (op) {
         is NavOp.Place -> place(p, op)
         is NavOp.Move -> move(p, op.conversationId, op.delta)
+        // "All" is only stored when the community's own level is quieter; otherwise it's the default and isn't kept.
         is NavOp.Notify -> p.copy(
-            notify = if (op.level == NotifyLevel.ALL) p.notify - op.conversationId else p.notify + (op.conversationId to op.level),
+            notify = if (op.level == NotifyLevel.ALL && communityLevel(p) == NotifyLevel.ALL) p.notify - op.conversationId
+            else p.notify + (op.conversationId to op.level),
         )
+        is NavOp.NotifyReset -> p.copy(notify = p.notify - op.conversationId)
+        is NavOp.CommunityNotify -> {
+            val current = p.community ?: com.meldiq.android.data.api.CommunityNotifyDto()
+            val next = current.copy(level = op.level ?: current.level, suppressEveryone = op.suppressEveryone ?: current.suppressEveryone)
+            // Back to "all": an "all" override says nothing any more (the server drops it too).
+            p.copy(community = next, notify = if (next.level == NotifyLevel.ALL) p.notify.filterValues { it != NotifyLevel.ALL } else p.notify)
+        }
+        is NavOp.RailOrder -> p.copy(railOrder = op.orgIds.distinct())
         is NavOp.AddSection -> {
             val name = op.name.trim().take(SECTION_NAME_MAX)
             if (name.isEmpty() || p.sections.size >= MAX_SECTIONS || p.sections.any { it.id == op.id }) p

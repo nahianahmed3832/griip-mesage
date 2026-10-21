@@ -49,7 +49,7 @@ import { Metrics } from "./ops/metrics.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
-export const VERSION = "0.14.0";
+export const VERSION = "0.15.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
@@ -339,6 +339,10 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     "forum-tags",
     "channel-delete",
     "voice-permissions",
+    // Batch B2 (docs/product/MELDIQ_IMPLEMENTATION_PLAN.md): a community's own notification settings and the rail order
+    // in the preferences documents; starter templates for new communities (GET /v1/community-templates).
+    "community-preferences",
+    "community-templates",
     // Round 7: end dates for guests and a community's guest policy (routes/community.ts).
     "guest-expiry",
     // Round 6: recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md).

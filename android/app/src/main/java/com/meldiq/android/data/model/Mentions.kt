@@ -150,6 +150,13 @@ object MentionRules {
 /** Notification rule for a received message (unit-tested): the app switch first, then mute, then mentions. */
 object MentionNotify {
     /**
+     * Whether a received message counts as a mention of you: your name ([personal]), or @everyone ([all]) unless the
+     * community has @everyone suppressed ([countsEveryone] false, batch B2). Your own messages never do.
+     */
+    fun isMention(mine: Boolean, personal: Boolean, all: Boolean, countsEveryone: Boolean): Boolean =
+        !mine && (personal || (all && countsEveryone))
+
+    /**
      * [notifications]: the app's message notifications setting. A muted conversation stays quiet except for a mention
      * of you by name ([personal]); @everyone ([mention] without [personal]) respects the mute.
      */

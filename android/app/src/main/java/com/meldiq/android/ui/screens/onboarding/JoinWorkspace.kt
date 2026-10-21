@@ -86,6 +86,14 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
     var orgDesc by rememberSaveable { mutableStateOf("") }
     // Listed in Discover and open to anyone, or invitation only (the default; owners change it later in settings).
     var listPublicly by rememberSaveable { mutableStateOf(false) }
+    // Batch B2: starter templates, on servers that offer them.
+    var templates by remember { mutableStateOf<List<com.meldiq.android.data.api.CommunityTemplateDto>>(emptyList()) }
+    var template by rememberSaveable { mutableStateOf(CommunityTemplates.STARTER) }
+    LaunchedEffect(Unit) {
+        if (container.features.has(com.meldiq.android.data.repo.ServerFeatures.COMMUNITY_TEMPLATES) == true) {
+            templates = runCatching { container.orgs.templates() }.getOrDefault(emptyList()).filter { it.id in CommunityTemplates.KNOWN }
+        }
+    }
     // One id per create form: a retry or a second tap returns the workspace the first one made (server dedupes).
     var createRequestId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
     var existingOrg by remember { mutableStateOf<String?>(null) }
@@ -187,20 +195,33 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
                     }
                 }
             } else {
-                GlassCard(Modifier.fillMaxWidth()) {
-                    Row {
-                        IconTile(Icons.Outlined.Groups, c.lavender, c.lavenderSoft, size = 40.dp)
-                        Spacer(Modifier.width(12.dp))
-                        Text(stringResource(R.string.m2_community_help), style = Griip.type.bodySmall, color = c.textSecondary)
+                // The starter set's description; with templates, the chosen template's channel list says it instead.
+                if (templates.isEmpty()) {
+                    GlassCard(Modifier.fillMaxWidth()) {
+                        Row {
+                            IconTile(Icons.Outlined.Groups, c.lavender, c.lavenderSoft, size = 40.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Text(stringResource(R.string.m2_community_help), style = Griip.type.bodySmall, color = c.textSecondary)
+                        }
                     }
+                    Spacer(Modifier.height(12.dp))
                 }
-                Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(stringResource(R.string.cs_public), style = Griip.type.bodyMedium, color = c.textPrimary)
                         Text(stringResource(R.string.cs_open), style = Griip.type.caption, color = c.textSecondary)
                     }
                     androidx.compose.material3.Switch(listPublicly, { listPublicly = it })
+                }
+                if (templates.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(stringResource(R.string.ctpl_title), style = Griip.type.label, color = c.textSecondary)
+                    com.meldiq.android.ui.components.ChipRow(Modifier.padding(horizontal = 0.dp)) {
+                        templates.forEach { t -> com.meldiq.android.ui.components.PillChip(stringResource(CommunityTemplates.title(t.id)), template == t.id, { template = t.id }) }
+                    }
+                    templates.firstOrNull { it.id == template }?.let { t ->
+                        Text(stringResource(R.string.ctpl_channels, CommunityTemplates.channelSummary(t)), style = Griip.type.caption, color = c.textSecondary)
+                    }
                 }
                 Spacer(Modifier.height(16.dp))
                 GriipTextField(orgName, { orgName = it.take(80) }, stringResource(R.string.m2_community_name), placeholder = "Night Sky Club", leadingIcon = Icons.Outlined.Groups,
@@ -232,7 +253,7 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
                             .onFailure { error = InviteOutcome.message(it) }
                     } else {
                         val (visibility, joinPolicy) = if (listPublicly) com.meldiq.android.data.api.CommunityAccess.PUBLIC to com.meldiq.android.data.api.CommunityAccess.OPEN else null to null
-                        runCatching { container.orgs.create(orgName.trim(), orgDesc.trim().ifEmpty { null }, createRequestId, visibility, joinPolicy) }
+                        runCatching { container.orgs.create(orgName.trim(), orgDesc.trim().ifEmpty { null }, createRequestId, visibility, joinPolicy, template.takeIf { templates.isNotEmpty() }) }
                             .onSuccess {
                                 container.analytics.track("community.created")
                                 createRequestId = UUID.randomUUID().toString(); done(it.id)
@@ -253,3 +274,21 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
 
 @Suppress("unused")
 private val spacing = Arrangement.spacedBy(8.dp)
+
+/** Starter templates (batch B2, CREATE-CTRL-001): their names in the app's languages and a one-line summary. */
+object CommunityTemplates {
+    const val STARTER = "starter"
+    val KNOWN = setOf(STARTER, "friends", "gaming", "study", "club")
+
+    fun title(id: String): Int = when (id) {
+        "friends" -> R.string.ctpl_friends
+        "gaming" -> R.string.ctpl_gaming
+        "study" -> R.string.ctpl_study
+        "club" -> R.string.ctpl_club
+        else -> R.string.ctpl_starter
+    }
+
+    /** "#general, #photos, 🔊 hangout": text and forum channels with #, voice channels with a speaker. */
+    fun channelSummary(t: com.meldiq.android.data.api.CommunityTemplateDto): String =
+        t.categories.flatMap { it.channels }.joinToString(", ") { ch -> if (ch.voice) "\uD83D\uDD0A " + ch.name else "#" + ch.name }
+}

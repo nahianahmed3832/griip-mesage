@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.PersonAddAlt
 import androidx.compose.material.icons.outlined.PostAdd
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -83,7 +84,7 @@ fun SheetItem(icon: ImageVector, label: String, onClick: () -> Unit, danger: Boo
 
 /** A switch line inside a menu sheet (Hide muted channels, Unread only). */
 @Composable
-private fun SheetSwitch(icon: ImageVector, label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun SheetSwitch(icon: ImageVector, label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     val c = Griip.colors
     Row(
         Modifier.fillMaxWidth().clip(Shapes.small).pressable({ onChange(!checked) }, role = Role.Switch).heightIn(min = 48.dp).padding(horizontal = 8.dp, vertical = 4.dp),
@@ -97,7 +98,7 @@ private fun SheetSwitch(icon: ImageVector, label: String, checked: Boolean, onCh
 }
 
 @Composable
-private fun SheetDivider() = HorizontalDivider(Modifier.padding(vertical = 6.dp), thickness = 1.dp, color = Griip.colors.border)
+internal fun SheetDivider() = HorizontalDivider(Modifier.padding(vertical = 6.dp), thickness = 1.dp, color = Griip.colors.border)
 
 /** The big buttons at the top of the community sheet (Invite, Notifications, Settings). */
 @Composable
@@ -127,6 +128,10 @@ class CommunityMenuActions(
     val onUnreadOnly: (Boolean) -> Unit,
     val onCopyName: () -> Unit,
     val onLeave: (() -> Unit)?,
+    /** Batch B2: the community's notification settings; null on servers that can't keep them. */
+    val onNotifications: (() -> Unit)? = null,
+    /** Batch B2: arrange the rail. */
+    val onArrange: (() -> Unit)? = null,
 )
 
 /**
@@ -159,6 +164,7 @@ fun CommunityMenuSheet(org: OrgDto, memberCount: Int, allMuted: Boolean, hideMut
                 SheetButton(Icons.Outlined.Settings, stringResource(R.string.settings_title), run(actions.onSettings), Modifier.weight(1f))
             }
             actions.onMarkRead?.let { SheetItem(Icons.Outlined.MarkChatRead, stringResource(R.string.nv_mark_read), run(it)) }
+            actions.onNotifications?.let { SheetItem(Icons.Outlined.Notifications, stringResource(R.string.cn_title), run(it)) }
             actions.onNewChannel?.let { SheetItem(Icons.Outlined.PostAdd, stringResource(R.string.cm_new_channel), run(it)) }
             actions.onNewCategory?.let { SheetItem(Icons.Outlined.CreateNewFolder, stringResource(R.string.cm_new_category), run(it)) }
             SheetItem(Icons.Outlined.Event, stringResource(R.string.cm_events), run(actions.onEvents))
@@ -167,6 +173,7 @@ fun CommunityMenuSheet(org: OrgDto, memberCount: Int, allMuted: Boolean, hideMut
             SheetSwitch(Icons.Outlined.VisibilityOff, stringResource(R.string.nv_hide_muted), hideMuted, actions.onHideMuted)
             SheetSwitch(Icons.Outlined.MarkChatUnread, stringResource(R.string.home_unread_only), unreadOnly, actions.onUnreadOnly)
             SheetItem(Icons.Outlined.ContentCopy, stringResource(R.string.nv_copy_name), run(actions.onCopyName))
+            actions.onArrange?.let { SheetItem(Icons.Outlined.SwapVert, stringResource(R.string.rail_arrange), run(it)) }
             actions.onLeave?.let {
                 SheetDivider()
                 SheetItem(Icons.AutoMirrored.Outlined.Logout, stringResource(R.string.nv_leave_community), run(it), danger = true)
