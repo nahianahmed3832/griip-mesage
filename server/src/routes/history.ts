@@ -17,18 +17,10 @@ const TAG = /^[A-Za-z0-9_-]{16,64}$/;
 const MAX_BATCH = 200;
 const MAX_BATCH_BYTES = 4 * 1024 * 1024;
 
-interface ItemRow {
-  tag: string;
-  conv_tag: string;
-  seq: number;
-  ts: number;
-  body: Buffer | null;
-}
-
 export default async function historyRoutes(app: FastifyInstance, ctx: AppContext) {
   const auth = { preHandler: requireAuth(ctx) };
   const cfg = ctx.config.history;
-  const { db } = ctx;
+  const { db, history } = ctx;
 
   const requireEnabled = () => {
     if (!cfg.enabled) throw new ApiError(403, "history_off", "This server doesn't keep message history.");
@@ -37,14 +29,9 @@ export default async function historyRoutes(app: FastifyInstance, ctx: AppContex
   /** The account's allowance: smaller while it's under new-account limits (docs/ABUSE_CONTROLS.md). */
   const maxBytesFor = (userId: string) =>
     newAccountBytes > 0 && hasNewAccountLimits(db, userId) ? Math.min(newAccountBytes, cfg.maxBytesPerUser) : cfg.maxBytesPerUser;
-  const account = (userId: string) =>
-    db.prepare("SELECT next_seq, items, bytes FROM history_accounts WHERE user_id = ?").get(userId) as
-      | { next_seq: number; items: number; bytes: number }
-      | undefined;
-
   app.get("/v1/history/summary", auth, async (req) => {
     const { userId } = me(req);
-    const a = account(userId);
+    const a = await history.account(userId);
     return {
       enabled: cfg.enabled,
       items: a?.items ?? 0,
@@ -83,47 +70,9 @@ export default async function historyRoutes(app: FastifyInstance, ctx: AppContex
       return { ...i, body };
     });
     if (decoded.reduce((n, i) => n + (i.body?.length ?? 0), 0) > MAX_BATCH_BYTES) throw new ApiError(413, "too_large", "Send fewer history items at once");
-    const t = now();
-    const result = db
-      .transaction(() => {
-        const a = account(userId) ?? { next_seq: 1, items: 0, bytes: 0 };
-        let items = a.items;
-        let bytes = a.bytes;
-        let seq = a.next_seq;
-        // A tag sent twice in one batch: the last copy counts.
-        const plan = [...new Map(decoded.map((i) => [i.tag, i] as const)).values()];
-        const get = db.prepare("SELECT size, body IS NULL AS gone FROM history_items WHERE user_id = ? AND tag = ?");
-        for (const i of plan) {
-          const old = get.get(userId, i.tag) as { size: number; gone: number } | undefined;
-          if (old && !old.gone) {
-            items--;
-            bytes -= old.size;
-          }
-          if (i.body) {
-            items++;
-            bytes += i.body.length;
-          }
-        }
-        if (items > cfg.maxItemsPerUser || bytes > maxBytesFor(userId)) return "account" as const;
-        // Every account's history shares the server's disk: growth stops at the server-wide cap (changes that free
-        // space always go through).
-        if (cfg.maxTotalBytes > 0 && bytes > a.bytes) {
-          const total = (db.prepare("SELECT SUM(bytes) n FROM history_accounts").get() as { n: number | null }).n ?? 0;
-          if (total - a.bytes + bytes > cfg.maxTotalBytes) return "server" as const;
-        }
-        const upsert = db.prepare(
-          `INSERT INTO history_items (user_id, tag, conv_tag, seq, ts, body, size, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(user_id, tag) DO UPDATE SET conv_tag = excluded.conv_tag, seq = excluded.seq, ts = excluded.ts,
-             body = excluded.body, size = excluded.size, updated_at = excluded.updated_at`,
-        );
-        for (const p of plan) upsert.run(userId, p.tag, p.conv, seq++, p.ts, p.body, p.body?.length ?? 0, t);
-        db.prepare(
-          `INSERT INTO history_accounts (user_id, next_seq, items, bytes) VALUES (?, ?, ?, ?)
-           ON CONFLICT(user_id) DO UPDATE SET next_seq = excluded.next_seq, items = excluded.items, bytes = excluded.bytes`,
-        ).run(userId, seq, items, bytes);
-        return { seq: seq - 1, items, bytes };
-      })
-      .immediate();
+    // A tag sent twice in one batch: the last copy counts.
+    const plan = [...new Map(decoded.map((i) => [i.tag, i] as const)).values()];
+    const result = await history.put(userId, plan, { maxItems: cfg.maxItemsPerUser, maxBytes: maxBytesFor(userId), maxTotalBytes: cfg.maxTotalBytes }, now());
     if (result === "account") throw new ApiError(429, "quota_exceeded", "Your message history on this server is full.");
     if (result === "server") throw new ApiError(507, "history_full", "This server's message history storage is full. Try again later.");
     return result;
@@ -138,9 +87,7 @@ export default async function historyRoutes(app: FastifyInstance, ctx: AppContex
       z.object({ after: z.coerce.number().int().min(0).default(0), limit: z.coerce.number().int().min(1).max(1000).default(500) }),
       req.query,
     );
-    const rows = db
-      .prepare("SELECT tag, conv_tag, seq, ts, body FROM history_items WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT ?")
-      .all(userId, q.after, q.limit + 1) as ItemRow[];
+    const rows = await history.items(userId, q.after, q.limit + 1);
     const more = rows.length > q.limit;
     const page = rows.slice(0, q.limit);
     return {
@@ -153,19 +100,39 @@ export default async function historyRoutes(app: FastifyInstance, ctx: AppContex
   // Deletes this account's whole history from the server (the person's choice in Settings). Devices keep their copies.
   app.delete("/v1/history", auth, async (req) => {
     const { userId } = me(req);
-    const deleted = db
-      .transaction(() => {
-        const n = db.prepare("DELETE FROM history_items WHERE user_id = ?").run(userId).changes;
-        db.prepare("DELETE FROM history_accounts WHERE user_id = ?").run(userId);
-        return n;
-      })
-      .immediate();
+    const deleted = await history.deleteForUser(userId);
     ctx.audit({ actorId: userId, action: "history.deleted", target: userId, detail: String(deleted) });
     return { deleted };
   });
 }
 
-/** Deletion markers only need to live until every device has caught up; then they go. */
-export function purgeHistoryTombstones(ctx: AppContext, t: number): number {
-  return ctx.db.prepare("DELETE FROM history_items WHERE body IS NULL AND updated_at <= ?").run(t - ctx.config.history.tombstoneDays * 86_400_000).changes;
+/**
+ * History retention: deletion markers only need to live until every device has caught up; then they go. With history
+ * in MongoDB, an account deletion or encryption reset that couldn't delete its history (MongoDB unreachable at that
+ * moment) leaves it for this job: history whose user is gone is deleted here.
+ */
+export async function purgeHistory(ctx: AppContext, t: number): Promise<number> {
+  const store = ctx.history;
+  let n = await store.purgeTombstones(t - ctx.config.history.tombstoneDays * 86_400_000);
+  const orphans = await store.orphanUserIds((ids) => {
+    const rows = ctx.db.prepare(`SELECT id FROM users WHERE deleted_at IS NULL AND id IN (${ids.map(() => "?").join(",")})`).all(...ids) as { id: string }[];
+    return new Set(rows.map((r) => r.id));
+  });
+  for (const userId of orphans) n += await store.deleteForUser(userId);
+  if (orphans.length) ctx.log.warn({ accounts: orphans.length }, "history retention: removed history left by deleted accounts");
+  return n;
+}
+
+/**
+ * After an account deletion or encryption reset already committed in SQLite: deletes the history kept in MongoDB
+ * (SQLite's copy went in the same transaction). A failure is logged and left for [purgeHistory]; for a reset, the old
+ * items can't be read with the new keys anyway.
+ */
+export async function deleteHistoryAfterCommit(ctx: AppContext, userId: string, why: string): Promise<void> {
+  if (ctx.history.backend !== "mongodb") return;
+  try {
+    await ctx.history.deleteForUser(userId);
+  } catch (e) {
+    ctx.log.error({ errorType: (e as Error).name, why }, "history delete failed: left for the retention job");
+  }
 }

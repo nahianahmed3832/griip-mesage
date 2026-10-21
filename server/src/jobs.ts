@@ -1,7 +1,7 @@
 import type { AppContext } from "./context.js";
 import { expireDirectUploads, processAbandonedUploads, processBlobDeletes, purgeExpiredAttachments } from "./routes/attachments.js";
 import { purgeRevokedPushEndpoints } from "./push/service.js";
-import { purgeHistoryTombstones } from "./routes/history.js";
+import { purgeHistory } from "./routes/history.js";
 import { broadcastCall, type CallRow, endCallRow, evictFromCall, loadCall, scheduleLost } from "./routes/calls.js";
 import { removeFromWorkspace } from "./routes/orgs.js";
 import { now } from "./util.js";
@@ -74,7 +74,11 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     blobsDeleted: 0,
     uploadsExpired: expireDirectUploads(ctx),
     uploadsCleaned: 0,
-    historyTombstones: purgeHistoryTombstones(ctx, t),
+    // History may live in MongoDB: an unreachable store mustn't stop the rest of retention.
+    historyTombstones: await purgeHistory(ctx, t).catch((e) => {
+      ctx.log.error({ err: e }, "history retention failed");
+      return 0;
+    }),
     federation: ctx.federation ? Object.values(ctx.federation.cleanup(t)).reduce((a, b) => a + b, 0) : 0,
     pushEndpoints: purgeRevokedPushEndpoints(db),
     // An unreachable account store (MongoDB) mustn't stop the rest of retention.

@@ -40,7 +40,7 @@ state that could split a domain between the stores (`src/mongo/index.ts`):
 | conversations | conversations, conversation_members, mention_all_events | SQLite | Copy and verify only |
 | relay | delivery_queue, submitted_messages, calls, call_participants | SQLite | Copy and verify only |
 | files | attachments, attachment_uploads, abandoned_uploads, pending_blob_deletes | SQLite | Copy and verify only |
-| history | history_accounts, history_items | SQLite | Copy and verify only |
+| history | history_accounts, history_items | SQLite (prod default) | **Yes** (`MongoHistoryStore`, 2026-10-21; `docs/product/MELDIQ_MONGODB_MIGRATION.md` §5) |
 | federation | federation_blocks, federation_domains, federation_inbox, federation_outbox, federation_peers | SQLite | Copy and verify only |
 
 **Never copied** (`EXCLUDED_TABLES`): `auth_challenges` (2-minute nonces), `pairing_requests` (10 minutes, carries the

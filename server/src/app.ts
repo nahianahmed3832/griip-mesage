@@ -16,6 +16,7 @@ import { Hub } from "./hub.js";
 import { LiveKitService } from "./livekit.js";
 import type { MeldiqMongo } from "./mongo/client.js";
 import { openMongo } from "./mongo/index.js";
+import { MongoHistoryStore } from "./mongo/history.js";
 import { MongoPreferenceStore } from "./mongo/preferences.js";
 import { type PushDeps, PushService } from "./push/service.js";
 import { createBlobStore } from "./storage/index.js";
@@ -41,6 +42,7 @@ import reminderRoutes from "./reminders/routes.js";
 import { ReminderService } from "./reminders/service.js";
 import { FcmService } from "./push/fcm.js";
 import { SqlitePreferenceStore } from "./preferences/store.js";
+import { SqliteHistoryStore } from "./history/store.js";
 import pushRoutes from "./routes/push.js";
 import userRoutes from "./routes/users.js";
 import { Metrics } from "./ops/metrics.js";
@@ -125,6 +127,7 @@ export async function buildApp(
   }
   ctx.accounts = new Accounts(ctx, { mailer: opts.mailer });
   ctx.prefs = ctx.mongo?.owns("preferences") ? new MongoPreferenceStore(ctx.mongo) : new SqlitePreferenceStore(db);
+  ctx.history = ctx.mongo?.owns("history") ? new MongoHistoryStore(ctx.mongo) : new SqliteHistoryStore(db);
   ctx.entitlements = new Entitlements(config.entitlements, db);
   ctx.usage = new UsageMeter(db);
   ctx.reminders = new ReminderService(ctx);

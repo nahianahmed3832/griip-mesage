@@ -5,6 +5,7 @@ import { photoBlobId } from "../photos.js";
 import { processBlobDeletes, queueBlobDelete } from "../routes/attachments.js";
 import { revokeDeviceRows } from "../routes/auth.js";
 import { evictUserDevicesFromCalls } from "../routes/calls.js";
+import { deleteHistoryAfterCommit } from "../routes/history.js";
 import { notifyConversation, notifyOrg, removeFromWorkspace } from "../routes/orgs.js";
 import { ApiError, now } from "../util.js";
 import type { Accounts } from "./index.js";
@@ -147,6 +148,7 @@ async function eraseIdentity(ctx: AppContext, userId: string, actorId: string | 
 
   // Stores that may live outside SQLite (MongoDB domains).
   await ctx.prefs.deleteForUser(userId);
+  await deleteHistoryAfterCommit(ctx, userId, "account deleted");
 
   ctx.hub.disconnectUser(userId, "account deleted");
   ctx.hub.sendToUsers(peers, { t: "devices.changed", userId });

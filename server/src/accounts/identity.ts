@@ -6,6 +6,7 @@ import { canonical, isValidPublicKey, verifyEd25519 } from "../crypto.js";
 import { joinOrgByInvite, type OrgInviteRow } from "../invites.js";
 import { notifyKeyChange, revokeDeviceRows, zUsername } from "../routes/auth.js";
 import { evictUserDevicesFromCalls } from "../routes/calls.js";
+import { deleteHistoryAfterCommit } from "../routes/history.js";
 import { ApiError, badRequest, newId, now } from "../util.js";
 import type { enrollDeviceBody, resetIdentityBody } from "./schemas.js";
 import { consumeChallenge, type AccountService } from "./service.js";
@@ -208,6 +209,8 @@ export class IdentityService {
       throw uniqueConflict(e);
     }
     await this.accounts.revokeSessions(a.id, "identity_reset", s.id);
+    // History is encrypted under the old identity: unreadable now, so it goes (SQLite's copy went with the reset).
+    await deleteHistoryAfterCommit(this.ctx, userId, "identity reset");
     for (const d of others) this.ctx.hub.disconnectDevice(d, "encryption reset");
     this.ctx.audit({ actorId: userId, action: "identity.reset", target: userId, detail: `devices:${others.length}` });
     notifyKeyChange(this.ctx, userId);

@@ -188,7 +188,8 @@ switch (cmd) {
           maxDevices: cfg.abuse.maxDevicesPerUser || null,
           filesUploadedLast24h: one("SELECT COALESCE(SUM(size), 0) n FROM attachments WHERE uploader_user_id = ? AND created_at > ?", u.id, t - 86_400_000),
           filesStored: one("SELECT COALESCE(SUM(size), 0) n FROM attachments WHERE uploader_user_id = ? AND expires_at > ?", u.id, t),
-          historyBytes: one("SELECT COALESCE(SUM(bytes), 0) n FROM history_accounts WHERE user_id = ?", u.id),
+          // With MONGODB_DOMAINS history, SQLite only keeps the copy from before the migration.
+          historyBytes: cfg.mongo?.domains.has("history") ? "in MongoDB" : one("SELECT COALESCE(SUM(bytes), 0) n FROM history_accounts WHERE user_id = ?", u.id),
         },
         null,
         2,
