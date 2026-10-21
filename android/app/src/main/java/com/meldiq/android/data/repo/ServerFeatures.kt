@@ -91,6 +91,8 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val EVENT_REPEAT = "event-repeat"
         const val ONBOARDING = "onboarding"
         const val COMMUNITY_GUIDE = "community-guide"
+        /** Batch B9: a community's own emoji and stickers. */
+        const val COMMUNITY_EXPRESSIONS = "community-expressions"
         /** Meldiq 2.0: experiments and content-free analytics counts (docs/product/EXPERIMENTS.md). */
         const val EXPERIMENTS = "experiments"
         const val ANALYTICS_EVENTS = "analytics-events"

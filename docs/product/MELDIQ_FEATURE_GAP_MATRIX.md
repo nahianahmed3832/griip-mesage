@@ -185,8 +185,8 @@ Meldiq differs from Discord by design in two ways:
 | EXP-01 | Emoji picker (search, categories, recent) | E2E | I | IT | — | — | 2026-10-21 |
 | EXP-02 | Reaction picker | E2E | I | IT | — | — | |
 | EXP-03 | Skin tone | E2E | I | IT | — | — | |
-| EXP-04 | Custom community emoji | S | — | — | — | P2 | `community_emoji` (name, S3 object, sha256, animated, creator); permission `expressions.manage`; 128×128, ≤ 256 KiB, PNG/GIF/WebP; message carries `:name:` plus the emoji id and hash, so clients verify the image |
-| EXP-05 | Community stickers | S | — | — | — | P3 | Same store as EXP-04 |
+| EXP-04 | Custom community emoji | E2E (emulator) | I | — | I | — | B9 2026-10-22 (EXPR-CTRL-002): Community settings › **Emoji & stickers** (new permission `expressions.manage`, in the Community Manager template): upload (PNG, GIF or WebP up to 256 KB; other pictures are shrunk to 128 px PNG), rename, remove; 50 per community. Emoji sheet › **Community** tab inserts `:name:`; the message carries the emoji's id and SHA-256 inside the encryption and is drawn inline after the phone checks the downloaded image's hash; people outside the community, older apps and notifications see `:name:`. Not yet: custom emoji as reactions, animation (shown still), web |
+| EXP-05 | Community stickers | I | I | — | I | — | B9 2026-10-22: same store (20 per community, shrunk to 320 px); Community tab › tap sends it; drawn at 140 dp, text `:name:` as fallback. Not checked on the emulator (same path as emoji) |
 | EXP-06 | GIF search | — | | | | | Would send typing to a third party (Tenor); not without an opt-in. P3 |
 | EXP-07 | Built-in stickers and animated emoji | I | I | I | — | — | Meldiq's own |
 

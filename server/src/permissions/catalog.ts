@@ -38,6 +38,8 @@ export const PERMISSION_KEYS = [
   "messages.attach",
   "messages.announce",
   "messages.bypass_slowmode",
+  // Expressions (batch B9)
+  "expressions.manage",
   // Voice channels
   "voice.connect",
   "voice.speak",
@@ -96,6 +98,7 @@ const DEFS: Record<Permission, Def> = {
   "messages.attach": { category: "messaging", label: "Share files", description: "Send photos, videos, voice messages and files in channels.", restrictable: true, guestAllowed: true },
   "messages.announce": { category: "messaging", label: "Post announcements", description: "Post in announcement channels, where only managers can post." },
   "messages.bypass_slowmode": { category: "messaging", label: "Skip slowmode", description: "Post without waiting in channels with slowmode on." },
+  "expressions.manage": { category: "messaging", label: "Manage emoji and stickers", description: "Upload, rename and remove the community's own emoji and stickers." },
   "voice.connect": { category: "voice", label: "Join voice channels", description: "Join the calls in voice channels.", restrictable: true, guestAllowed: true },
   "voice.speak": { category: "voice", label: "Speak in voice channels", description: "Talk, share video and share the screen in voice channels. Without it, people listen only.", restrictable: true, guestAllowed: true },
   "audit.view": { category: "security", label: "View the audit log", description: "See every administrative change in the community.", admin: true },
@@ -175,7 +178,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     description: "Grows the community: invites people, sets up channels and categories, keeps titles right.",
     color: "#C9A27A",
     icon: "star",
-    permissions: ["members.invite", "members.invites.manage", "members.approve", "members.titles", "channels.create", "channels.manage"],
+    permissions: ["members.invite", "members.invites.manage", "members.approve", "members.titles", "channels.create", "channels.manage", "expressions.manage"],
     denies: [],
   },
   {

@@ -533,4 +533,19 @@
     <string name="b8b_gives_roles">给予这些角色</string>
     <string name="b8b_opens_channels">打开这些频道</string>
     <string name="b8b_add_answer">添加选项</string>
+    <string name="b9_community_tab">社区</string>
+    <string name="b9_emoji">表情</string>
+    <string name="b9_title">表情和贴纸</string>
+    <string name="b9_sub">社区专属，所有成员可用</string>
+    <string name="b9_intro">成员可在这里的消息中使用。社区外的人会看到它们的 :名称:。</string>
+    <string name="b9_upload">上传</string>
+    <string name="b9_none">还没有。</string>
+    <string name="b9_by">由 %1$s 添加</string>
+    <string name="b9_remove">移除</string>
+    <string name="b9_rename">重命名</string>
+    <string name="b9_new_emoji">新表情</string>
+    <string name="b9_new_sticker">新贴纸</string>
+    <string name="b9_name">名称</string>
+    <string name="b9_name_help">2–32 个小写字母、数字或 _</string>
+    <string name="b9_bad_image">无法使用这张图片。请选择 PNG、GIF、WebP 或照片。</string>
 </resources>

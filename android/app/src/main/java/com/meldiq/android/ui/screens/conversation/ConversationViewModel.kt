@@ -231,7 +231,8 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     /** Text to put back in the composer after a send that failed before the message was stored (nothing is lost). */
     val restoreText = MutableStateFlow<String?>(null)
 
-    fun send(text: String) {
+    /** [community]: the community's emoji, so each `:name:` in the text goes with its image reference (batch B9). */
+    fun send(text: String, community: List<com.meldiq.android.data.model.CustomEmojiRef> = emptyList()) {
         val t = text.trim()
         if (t.isEmpty()) return
         // Captured at the tap: a swipe to another message while this one is being stored can't change what it replies to.
@@ -245,7 +246,9 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
                 else {
                     // A preview fetched for a link still in the text goes with it (inside the encrypted message).
                     val preview = linkPreview.value?.takeIf { p -> com.meldiq.android.data.model.LinkRules.find(t).any { it.url == p.url } }
-                    c.messages.sendText(conversationId, t, replyTo = replyId, threadRoot = threadRoot, mentions = resolved, rich = preview?.let { com.meldiq.android.data.model.RichContent(link = it) })
+                    val emoji = com.meldiq.android.data.model.ExpressionRules.forSending(t, community).ifEmpty { null }
+                    val rich = if (preview != null || emoji != null) com.meldiq.android.data.model.RichContent(link = preview, customEmoji = emoji) else null
+                    c.messages.sendText(conversationId, t, replyTo = replyId, threadRoot = threadRoot, mentions = resolved, rich = rich)
                 }
             }.onFailure { error.value = it.friendly(); restoreText.value = t }.isSuccess
             // The message is stored with its reply (retries resend it from there), so the composer's target can go.
@@ -416,6 +419,14 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
                 rich = com.meldiq.android.data.model.RichContent(title = clean, tags = com.meldiq.android.data.model.ForumRules.cleanTags(tags).ifEmpty { null }),
             )
         }.onSuccess { c.analytics.track("message.sent", mapOf("surface" to "channel")) }.onFailure { error.value = it.friendly() }
+    }
+
+    /** A message whose text is its readable fallback, with [rich] (batch B9: a community sticker). */
+    fun sendTextRich(text: String, rich: com.meldiq.android.data.model.RichContent) = viewModelScope.launch {
+        val replyId = replyTo.value?.id
+        runCatching { c.messages.sendText(conversationId, text, replyTo = replyId, threadRoot = threadRoot, rich = rich) }
+            .onSuccess { replyTo.value = ReplyTarget.afterSend(replyTo.value, replyId, success = true) }
+            .onFailure { error.value = it.friendly() }
     }
 
     fun sendRich(rich: com.meldiq.android.data.model.RichContent) = viewModelScope.launch {

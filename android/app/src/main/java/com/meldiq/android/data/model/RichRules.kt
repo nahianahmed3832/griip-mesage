@@ -57,8 +57,13 @@ object RichRules {
             clean(p.contact), clean(p.location), cleanEmoji(p.animoji), clean(p.link, p.text.orEmpty()),
             poll = PollRules.clean(p.poll), sticker = cleanSticker(p.sticker), title = ForumRules.cleanTitle(p.title),
             tags = ForumRules.cleanTags(p.tags).takeIf { it.isNotEmpty() && p.title != null },
+            customEmoji = ExpressionRules.cleanRefs(p.customEmoji, p.text.orEmpty()).takeIf { it.isNotEmpty() },
+            customSticker = ExpressionRules.cleanRef(p.customSticker),
         )
-        return r.takeIf { it.contact != null || it.location != null || it.animoji != null || it.link != null || it.poll != null || it.sticker != null || it.title != null }
+        return r.takeIf {
+            it.contact != null || it.location != null || it.animoji != null || it.link != null || it.poll != null || it.sticker != null || it.title != null ||
+                it.customEmoji != null || it.customSticker != null
+        }
     }
 
     private val STICKER_KEY = Regex("^[a-z0-9-]{1,32}$")

@@ -59,6 +59,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -193,7 +194,7 @@ fun MessageBubble(
 
 /** Drawn without a bubble or card: an animated emoji or a sticker on its own. */
 private fun BubbleModel.standalone(): Boolean =
-    (rich?.animoji != null || rich?.sticker != null) && attachments.isEmpty() && !m.deleted && m.kind == "text" && reply == null
+    (rich?.animoji != null || rich?.sticker != null || rich?.customSticker != null) && attachments.isEmpty() && !m.deleted && m.kind == "text" && reply == null
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -375,10 +376,17 @@ private fun MessageBody(b: BubbleModel, me: String?, tinted: Boolean, transfer: 
                 rich?.location != null -> LocationCardView(rich.location, tinted)
                 rich?.poll != null -> PollCard(rich, me, b.canVote, cb.onVote)
                 rich?.sticker != null -> StickerView(com.meldiq.android.data.model.StickerCatalog.find(rich.sticker), m.text, animate = b.animateEmoji)
+                rich?.customSticker != null -> com.meldiq.android.ui.components.CustomStickerView(rich.customSticker, m.text)
                 rich?.animoji != null -> AnimojiView(rich.animoji, b.animateEmoji, size = 110)
                 m.text.isNotEmpty() -> {
                     val body = Griip.type.body
-                    Text(richText(m.text, tinted, b.mentions, me, cb.onMentionClick, cb.onOpenLink), style = body.copy(fontSize = body.fontSize * b.textScale, lineHeight = body.lineHeight * b.textScale), color = fg)
+                    // Batch B9: a community's own emoji drawn inside the text (their `:name:` while loading or if they can't be shown).
+                    val emoji = rich?.customEmoji.orEmpty()
+                    Text(
+                        richText(m.text, tinted, b.mentions, me, cb.onMentionClick, cb.onOpenLink, emoji),
+                        style = body.copy(fontSize = body.fontSize * b.textScale, lineHeight = body.lineHeight * b.textScale), color = fg,
+                        inlineContent = com.meldiq.android.ui.components.customEmojiInline(emoji),
+                    )
                 }
             }
             val mediaLink = if (b.mediaCards && rich?.structured != true) com.meldiq.android.data.model.MediaLinks.find(m.text) else null
@@ -473,16 +481,21 @@ private fun StatusIcon(status: String, tint: Color) {
  * plain). A mention of you is highlighted; tapping a person's mention opens their profile.
  */
 @Composable
-private fun richText(text: String, out: Boolean, spans: List<MentionSpan>, me: String?, onMentionClick: (String) -> Unit, onOpenLink: (String) -> Unit): AnnotatedString {
+private fun richText(
+    text: String, out: Boolean, spans: List<MentionSpan>, me: String?, onMentionClick: (String) -> Unit, onOpenLink: (String) -> Unit,
+    emoji: List<com.meldiq.android.data.model.CustomEmojiRef> = emptyList(),
+): AnnotatedString {
     val c = Griip.colors
     // Web links (http/https only, docs/LINKS.md) are tappable; the text itself is shown exactly as sent.
     val links = com.meldiq.android.data.model.LinkRules.find(text)
-    if (spans.isEmpty() && links.isEmpty()) return AnnotatedString(text)
+    val tokens = com.meldiq.android.data.model.ExpressionRules.tokens(text, emoji)
+    if (spans.isEmpty() && links.isEmpty() && tokens.isEmpty()) return AnnotatedString(text)
     val base = SpanStyle(fontWeight = FontWeight.SemiBold, color = if (out) c.onBubbleOutgoing else c.primaryDeep)
     val mine = base.copy(background = c.primary.copy(alpha = if (out) 0.18f else 0.16f))
     val linkStyle = SpanStyle(color = if (out) c.onBubbleOutgoing else c.primaryDeep, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
-    data class Piece(val start: Int, val end: Int, val mention: MentionSpan?, val url: String?)
-    val pieces = (spans.map { Piece(it.start, it.end, it, null) } + links.map { Piece(it.start, it.end, null, it.url) }).sortedBy { it.start }
+    data class Piece(val start: Int, val end: Int, val mention: MentionSpan?, val url: String?, val emoji: com.meldiq.android.data.model.CustomEmojiRef? = null)
+    val pieces = (spans.map { Piece(it.start, it.end, it, null) } + links.map { Piece(it.start, it.end, null, it.url) } + tokens.map { Piece(it.start, it.end, null, null, it.ref) })
+        .sortedBy { it.start }
     return buildAnnotatedString {
         var last = 0
         for (p in pieces) {
@@ -491,6 +504,7 @@ private fun richText(text: String, out: Boolean, spans: List<MentionSpan>, me: S
             val sp = p.mention
             val url = p.url
             when {
+                p.emoji != null -> appendInlineContent(com.meldiq.android.ui.components.customEmojiKey(p.emoji), text.substring(p.start, p.end))
                 url != null -> withLink(LinkAnnotation.Clickable("url:$url", TextLinkStyles(linkStyle)) { onOpenLink(url) }) { append(text.substring(p.start, p.end)) }
                 sp?.userId != null -> {
                     val id = sp.userId

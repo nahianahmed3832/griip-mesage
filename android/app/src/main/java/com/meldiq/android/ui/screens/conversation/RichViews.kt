@@ -236,6 +236,9 @@ fun EmojiPickerSheet(
     stickers: com.meldiq.android.data.repo.StickerPrefs? = null,
     onSendSticker: (com.meldiq.android.data.model.Sticker) -> Unit = {},
     emoji: com.meldiq.android.data.repo.EmojiPrefs,
+    /** Batch B9: the community's own emoji (tap inserts `:name:`) and stickers (tap sends). */
+    community: List<com.meldiq.android.data.api.ExpressionDto> = emptyList(),
+    onSendCommunitySticker: (com.meldiq.android.data.api.ExpressionDto) -> Unit = {},
 ) {
     val c = Griip.colors
     val hasStickers = stickers != null && com.meldiq.android.data.model.StickerCatalog.packs.isNotEmpty()
@@ -245,6 +248,7 @@ fun EmojiPickerSheet(
             if (hasStickers) com.meldiq.android.ui.components.PillChip(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.stickers_tab), tab == 0, { tab = 0 })
             com.meldiq.android.ui.components.PillChip(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.animated_tab), tab == 1, { tab = 1 })
             com.meldiq.android.ui.components.PillChip(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.emoji_tab), tab == 2, { tab = 2 })
+            if (community.isNotEmpty()) com.meldiq.android.ui.components.PillChip(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.b9_community_tab), tab == 3, { tab = 3 })
         }
         Spacer(Modifier.height(10.dp))
         // The full picker scrolls by itself (a lazy grid), so it isn't put in the scrolling column below.
@@ -271,6 +275,7 @@ fun EmojiPickerSheet(
                     }
                 }
             }
+            tab == 3 -> CommunityExpressionsPicker(community, onInsert = { e -> onInsert(":${e.name}:") }, onSendSticker = onSendCommunitySticker)
             else -> Unit
         }
         }
@@ -294,6 +299,44 @@ fun ForwardSheet(conversations: List<ConversationEntity>, me: String?, onPick: (
             items(shown, key = { it.id }) { conv ->
                 val title = ConversationRepository.title(conv, me).let { if (conv.type == "CHANNEL") "#$it" else it }
                 ListCard(title, Modifier.padding(vertical = 1.dp), leading = { ConversationAvatar(conv, me, size = 40.dp) }, onClick = { onPick(conv) })
+            }
+        }
+    }
+}
+
+
+/** Batch B9: the community's own emoji (tap to insert) and stickers (tap to send), each with its `:name:`. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun CommunityExpressionsPicker(
+    all: List<com.meldiq.android.data.api.ExpressionDto>,
+    onInsert: (com.meldiq.android.data.api.ExpressionDto) -> Unit,
+    onSendSticker: (com.meldiq.android.data.api.ExpressionDto) -> Unit,
+) {
+    val c = Griip.colors
+    val container = com.meldiq.android.ui.LocalContainer.current
+    val emoji = all.filter { it.kind == "emoji" }
+    val stickers = all.filter { it.kind == "sticker" }
+    if (emoji.isNotEmpty()) {
+        Text(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.b9_emoji), style = Griip.type.label, color = c.textSecondary)
+        Spacer(Modifier.height(6.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            emoji.forEach { e ->
+                Box(Modifier.size(52.dp).clip(Shapes.tile).background(c.surfaceVariant).pressable({ onInsert(e) }, onClickLabel = ":${e.name}:"), contentAlignment = Alignment.Center) {
+                    com.meldiq.android.ui.components.CustomEmojiImage(container.expressions.ref(e), 32.dp)
+                }
+            }
+        }
+    }
+    if (stickers.isNotEmpty()) {
+        Spacer(Modifier.height(12.dp))
+        Text(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.stickers_tab), style = Griip.type.label, color = c.textSecondary)
+        Spacer(Modifier.height(6.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            stickers.forEach { s ->
+                Box(Modifier.size(92.dp).clip(Shapes.tile).background(c.surfaceVariant).pressable({ onSendSticker(s) }, onClickLabel = ":${s.name}:"), contentAlignment = Alignment.Center) {
+                    com.meldiq.android.ui.components.CustomEmojiImage(container.expressions.ref(s), 80.dp)
+                }
             }
         }
     }

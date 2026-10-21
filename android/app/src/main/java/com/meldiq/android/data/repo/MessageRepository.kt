@@ -235,6 +235,7 @@ class MessageRepository(
             mentionAll = if (m.all) true else null, attachments = attachments.ifEmpty { null },
             contact = rich?.contact, location = rich?.location, animoji = rich?.animoji, forwarded = if (forwarded) true else null,
             link = rich?.link, poll = rich?.poll, sticker = rich?.sticker, title = rich?.title, tags = rich?.tags?.ifEmpty { null },
+            customEmoji = rich?.customEmoji?.ifEmpty { null }, customSticker = rich?.customSticker,
         )
         val existing = db.messages().get(id)
         val msg = MessageEntity(

@@ -533,4 +533,19 @@
     <string name="b8b_gives_roles">Gives these roles</string>
     <string name="b8b_opens_channels">Opens these channels</string>
     <string name="b8b_add_answer">Add answer</string>
+    <string name="b9_community_tab">Community</string>
+    <string name="b9_emoji">Emoji</string>
+    <string name="b9_title">Emoji &amp; stickers</string>
+    <string name="b9_sub">The community\'s own, for everyone in it</string>
+    <string name="b9_intro">Members can use them in messages here. People outside the community see their :name:.</string>
+    <string name="b9_upload">Upload</string>
+    <string name="b9_none">None yet.</string>
+    <string name="b9_by">Added by %1$s</string>
+    <string name="b9_remove">Remove</string>
+    <string name="b9_rename">Rename</string>
+    <string name="b9_new_emoji">New emoji</string>
+    <string name="b9_new_sticker">New sticker</string>
+    <string name="b9_name">Name</string>
+    <string name="b9_name_help">2–32 lowercase letters, digits or _</string>
+    <string name="b9_bad_image">That picture can\'t be used. Pick a PNG, GIF, WebP or photo.</string>
 </resources>

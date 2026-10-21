@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.History
@@ -101,6 +102,7 @@ fun CommunitySettingsScreen(nav: NavHostController) {
     // Batch B8b: the community guide and onboarding questions.
     var guideAvailable by remember { mutableStateOf(false) }
     var onboardingAvailable by remember { mutableStateOf(false) }
+    var expressionsAvailable by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         vm.refresh()
         reportsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.REPORTS) == true
@@ -109,6 +111,7 @@ fun CommunitySettingsScreen(nav: NavHostController) {
         alertsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.ACTIVITY_ALERTS) == true
         guideAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.COMMUNITY_GUIDE) == true
         onboardingAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.ONBOARDING) == true
+        expressionsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.COMMUNITY_EXPRESSIONS) == true
     }
     val d = detail
 
@@ -168,6 +171,9 @@ fun CommunitySettingsScreen(nav: NavHostController) {
             if (onboardingAvailable && canEditCommunity) MenuRow(
                 Icons.Outlined.HowToReg, stringResource(R.string.b8b_onboarding_title),
                 subtitle = stringResource(if (d.org.onboarding) R.string.b8b_onboarding_is_on else R.string.b8b_onboarding_is_off), onClick = { sheet = SettingsSheet.OnboardingEdit },
+            )
+            if (expressionsAvailable && (p.isOwner || "expressions.manage" in p.effective)) MenuRow(
+                Icons.Outlined.EmojiEmotions, stringResource(R.string.b9_title), subtitle = stringResource(R.string.b9_sub), onClick = { nav.navigate(Routes.expressions(d.org.id)) },
             )
             if (onboardingAvailable && d.org.onboarding && d.org.myRole != "GUEST") MenuRow(
                 Icons.Outlined.HowToReg, stringResource(R.string.b8b_my_answers), onClick = { sheet = SettingsSheet.OnboardingAnswer },

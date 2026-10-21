@@ -292,6 +292,13 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     var remindFor by remember { mutableStateOf<MessageEntity?>(null) }
     val stickerPrefs = remember { com.meldiq.android.data.repo.StickerPrefs(ctx) }
     val emojiPrefs = remember { com.meldiq.android.data.repo.EmojiPrefs(ctx) }
+    // Batch B9: the community's own emoji and stickers (servers with `community-expressions`).
+    val expressionLists by vm.c.expressions.lists.collectAsStateWithLifecycle()
+    val convOrg = conv?.orgId
+    val communityExpressions = convOrg?.let { expressionLists[it] }.orEmpty()
+    LaunchedEffect(convOrg) {
+        if (convOrg != null && vm.c.features.has(com.meldiq.android.data.repo.ServerFeatures.COMMUNITY_EXPRESSIONS) == true) runCatching { vm.c.expressions.refresh(convOrg) }
+    }
     /** The message getting a reaction from the full picker ("More reactions"). */
     var reactFor by remember { mutableStateOf<MessageEntity?>(null) }
     // Saved for later (Home › Later): which messages here are saved, and whether this server keeps them.
@@ -886,7 +893,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 onCancelContext = { vm.replyTo.value = null; vm.editing.value = null; if (editing != null) setText("") },
                 onAttach = { attachSheet = true },
                 onEmoji = { emojiSheet = true },
-                onSend = { vm.send(text); setText("") },
+                onSend = { vm.send(text, communityExpressions.filter { it.kind == "emoji" }.map(vm.c.expressions::ref)); setText("") },
                 placeholder = if (threadRoot != null) stringResource(R.string.b5_reply_thread_ph) else if (conv?.type == "CHANNEL") stringResource(R.string.b5_message_channel, title) else stringResource(R.string.b5_message_ph),
                 voice = VoiceComposerState(
                     draft = voiceDraft,
@@ -1084,6 +1091,11 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             stickers = stickerPrefs,
             onSendSticker = { s -> vm.sendSticker(s); emojiSheet = false },
             emoji = emojiPrefs,
+            community = communityExpressions,
+            onSendCommunitySticker = { e ->
+                vm.c.expressions.ref(e).let { ref -> vm.sendTextRich(":${e.name}:", com.meldiq.android.data.model.RichContent(customSticker = ref)) }
+                emojiSheet = false
+            },
         )
     }
     reactFor?.let { m ->

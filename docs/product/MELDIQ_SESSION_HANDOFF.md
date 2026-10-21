@@ -583,13 +583,59 @@ channels. Answering again takes back only roles that onboarding gave (`assigned_
 4. **Repeating event:** Events › New event › Repeats › Weekly … › Save. **Expected:** the list says "Weekly on …".
 5. **Report back:** pass or fail per step, with screenshots.
 
+## 6i. Batch B9: community emoji and stickers (built 2026-10-22, not phone-tested)
+
+### What's in it
+
+| Feature | What the person sees | Code |
+|---|---|---|
+| Managing them (EXP-04/05, EXPR-CTRL-002) | Community settings › **Emoji & stickers** (people with the new permission **Manage emoji and stickers**, in the Community Manager template; owners and admins): Emoji · n/50 and Stickers · n/20, each with **Upload** (pick a picture, name it `:like_this:`), tap to rename, bin to remove. PNG, GIF and WebP up to 256 KB are kept as they are; other pictures are shrunk (128 px emoji, 320 px stickers) | Server `routes/expressions.ts`, migration 043, permission `expressions.manage`. Android `community/ExpressionsScreen.kt`, `ExpressionRepository` |
+| Using them | In a community's channels, the emoji sheet has a **Community** tab: tapping an emoji puts `:name:` in the message; tapping a sticker sends it. Messages draw the emoji inside the text and stickers at 140 dp | `RichViews.kt` (`CommunityExpressionsPicker`), `MessageBubble.kt` (inline content), `ui/components/CustomEmoji.kt` |
+| How it travels | The text keeps `:name:`; inside the encrypted message go the emoji's id, community and **SHA-256**. A phone downloads the image (members only), keeps it only if the hash matches, and caches it. People outside the community, older apps, the web app and notifications show `:name:` | `ExpressionRules`, `CustomEmojiRef`, `RichRules.fromPayload` |
+
+**Not built:** custom emoji as reactions; animation (GIF/APNG/animated WebP are shown still); the web app draws them
+as `:name:` (W1).
+
+**Server and API:** API **0.23.0**, feature `community-expressions`, **migration 043** (`community_expressions`,
+workspace domain; images are profile-photos blobs, removed with the emoji or the community).
+
+### How it was checked
+
+- **Server:** full suite **707 passed**, 10 skipped; `community_expressions.test.ts` (5 tests: PNG/APNG/GIF/WebP
+  detection, only managers upload, name and image checks, 256 KB limit, duplicate names, members only see and fetch
+  them and the image is the uploaded one, rename and remove with audit entries, the 50-emoji limit).
+- **Android:** `ExpressionRulesTest` (5 tests) and the full suite: **630 tests, 0 failures**; lint 0 errors.
+- **Emulator** (Ada): Apply Lab › Settings › Emoji & stickers › Upload › picked a 64 px PNG › named `party` › listed as
+  `:party:` "Added by Ada"; in #general typed "Hello", emoji sheet › Community › `:party:` › sent: the message shows
+  "Hello" with the image inline; Erin's phone notified "Ada: Hello:party:" (the text fallback).
+- **Found and fixed during the check:** the Upload buttons were squeezed off the screen by the section heading.
+
+### B9 APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b9-debug.apk`
+  (147 MB, git-ignored). **SHA-256:** `f30b760948cb0af2f2a429ce80077465df1ff670faafc3bc12c1c0a8af22e414`.
+- **Variant:** debug, side by side, server `http://localhost:8080` (API 0.23.0). It contains everything since B4: **the
+  one APK to install for testing B4 to B9 together.**
+
+### Owner's phone checklist (B9)
+
+1. **Upload:** Community settings › **Emoji & stickers** › Emoji › Upload › pick a picture › name it › Upload.
+   **Expected:** listed as `:name:`.
+2. **Use it:** in a channel, emoji button › **Community** › tap it › send. **Expected:** the picture inside your text,
+   on both accounts.
+3. **Sticker:** upload a sticker the same way, then Community › tap it. **Expected:** it's sent and shown large.
+4. **Outside the community:** forward the message to a DM with someone who isn't in it. **Expected:** they see
+   `:name:`.
+5. **Permissions:** with a member account, Community settings has no Emoji & stickers row.
+6. **Report back:** pass or fail per step, with screenshots.
+
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
    call).
 2. **The AWS tools use the root user's access key:** move them off it (`MELDIQ_AWS_ARCHITECTURE.md` §5).
-3. **Server 0.22.0 isn't deployed** (production runs 0.13.0): 0.22.0 adds migrations 041 and 042 (event repeats,
-   onboarding, the guide); 0.21.0 adds migration 040 (forum guidelines); 0.20.0
+3. **Server 0.23.0 isn't deployed** (production runs 0.13.0): 0.23.0 adds migration 043 (community emoji);
+   0.22.0 adds migrations 041 and 042 (event repeats, onboarding, the guide); 0.21.0 adds migration 040 (forum guidelines); 0.20.0
    adds migration 039 (group photo, presence);
    0.19.0 adds migration 038 (connections, requests) and `DEFAULT_DM_POLICY`; 0.18.0 adds migration 037 (applications, alerts); 0.14.0 migration 034 (timeouts); 0.15.0 B2's preference fields and templates; 0.16.0 migration 035 (slowmode) and B3's fields; 0.17.0 migration 036 (reports, pauses). For deployment, set `REPORTS_KEY` (or back up `reports.key` with the database).
 4. **Android database version 13:** forward migrations (v12 in B6, v13 in B6b).
@@ -600,8 +646,8 @@ channels. Answering again takes back only roles that onboarding gave (`assigned_
 
 ## 8. Next, exactly
 
-1. **Engineering (in progress overnight):** B9 (custom emoji and stickers), then B10 to B13 in order, each committed
-   with its own APK and checklist in this file.
+1. **Engineering (in progress overnight):** B10 (voice, video, camera), then B11 to B13 in order, each committed with
+   its own APK and checklist in this file.
 2. **Owner, when back:** phone-test the batches together using the per-batch checklists (B4, B4b, then later ones),
    and report pass or fail per batch.
 3. **Owner decisions:** `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions" (fingerprint and meldiq.app hosting for invite

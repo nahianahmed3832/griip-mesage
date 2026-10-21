@@ -43,6 +43,9 @@ data class Payload(
     val title: String? = null,
     /** A forum post's tags: ids from the forum's tag list (Discord reference round, 2026-10-21); omitted elsewhere. */
     val tags: List<String>? = null,
+    /** Batch B9: a community's own emoji used in [text] as `:name:`, and a community sticker (text: its `:name:`). */
+    val customEmoji: List<CustomEmojiRef>? = null,
+    val customSticker: CustomEmojiRef? = null,
 )
 
 /**
@@ -103,10 +106,20 @@ data class RichContent(
     val title: String? = null,
     /** A forum post's tag ids (the forum's tags name them). */
     val tags: List<String>? = null,
+    /** Batch B9: community emoji shown inside the text, and a community sticker. */
+    val customEmoji: List<CustomEmojiRef>? = null,
+    val customSticker: CustomEmojiRef? = null,
 ) {
     /** Replaces the text (a card, a poll, a sticker or an animated emoji) rather than accompanying it (a link preview). */
-    val structured: Boolean get() = contact != null || location != null || animoji != null || poll != null || sticker != null
+    val structured: Boolean get() = contact != null || location != null || animoji != null || poll != null || sticker != null || customSticker != null
 }
+
+/**
+ * Batch B9: a community's emoji or sticker as a message names it: which one ([id] in community [orgId]), its name, and
+ * the image's SHA-256, so a phone shows the image only if the one it downloaded is the one the sender meant.
+ */
+@Serializable
+data class CustomEmojiRef(val id: String, val orgId: String, val name: String, val sha256: String, val animated: Boolean = false)
 
 @Serializable
 data class AttachmentRef(

@@ -100,6 +100,8 @@ class AppContainer(
     val followedThreads = com.meldiq.android.data.repo.FollowedThreads(db)
     /** Batch B8b: the community guide and onboarding questions. */
     val guide = com.meldiq.android.data.repo.CommunityGuideRepository(api, db)
+    /** Batch B9: a community's own emoji and stickers. */
+    val expressions = com.meldiq.android.data.repo.ExpressionRepository(app, api, profile.id)
     val federation = com.meldiq.android.data.repo.FederationRepository(api)
     /** Encrypted message history on the server (docs/MESSAGE_HISTORY.md). */
     val history = com.meldiq.android.data.repo.HistorySync(api, db, session, features, conversations, scope)

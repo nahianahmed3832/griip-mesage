@@ -533,4 +533,19 @@
     <string name="b8b_gives_roles">এই ভূমিকাগুলো দেয়</string>
     <string name="b8b_opens_channels">এই চ্যানেলগুলো খোলে</string>
     <string name="b8b_add_answer">উত্তর যোগ করুন</string>
+    <string name="b9_community_tab">কমিউনিটি</string>
+    <string name="b9_emoji">ইমোজি</string>
+    <string name="b9_title">ইমোজি ও স্টিকার</string>
+    <string name="b9_sub">কমিউনিটির নিজস্ব, সবার জন্য</string>
+    <string name="b9_intro">সদস্যরা এখানের মেসেজে ব্যবহার করতে পারবেন। কমিউনিটির বাইরের লোকেরা :নাম: দেখবেন।</string>
+    <string name="b9_upload">আপলোড</string>
+    <string name="b9_none">এখনও নেই।</string>
+    <string name="b9_by">%1$s যোগ করেছেন</string>
+    <string name="b9_remove">সরান</string>
+    <string name="b9_rename">নাম বদলান</string>
+    <string name="b9_new_emoji">নতুন ইমোজি</string>
+    <string name="b9_new_sticker">নতুন স্টিকার</string>
+    <string name="b9_name">নাম</string>
+    <string name="b9_name_help">২–৩২টি ছোট হাতের অক্ষর, সংখ্যা বা _</string>
+    <string name="b9_bad_image">ছবিটি ব্যবহার করা যাবে না। PNG, GIF, WebP বা ফটো বেছে নিন।</string>
 </resources>

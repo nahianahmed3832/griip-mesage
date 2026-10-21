@@ -299,6 +299,15 @@ object ChannelFormat {
     val guide: GuideDto? = null,
     val onboarding: Boolean = false,
 )
+/** Batch B9: one of a community's own emoji or stickers. */
+@Serializable data class ExpressionDto(
+    val id: String, val orgId: String, val kind: String = "emoji", val name: String, val animated: Boolean = false, val sha256: String,
+    val size: Long = 0, val createdBy: String? = null, val createdAt: Long = 0,
+)
+@Serializable data class ExpressionLimitsDto(val emoji: Int = 50, val sticker: Int = 20)
+@Serializable data class ExpressionsRes(val expressions: List<ExpressionDto> = emptyList(), val limits: ExpressionLimitsDto = ExpressionLimitsDto())
+@Serializable data class ExpressionRes(val expression: ExpressionDto)
+@Serializable data class RenameExpressionReq(val name: String)
 /** Batch B8b: the community guide: a welcome line, "Get started" tasks and resources, each opening a channel. */
 @Serializable data class GuideDto(val welcome: String? = null, val tasks: List<GuideItemDto> = emptyList(), val resources: List<GuideItemDto> = emptyList())
 @Serializable data class GuideItemDto(val id: String? = null, val title: String, val channelId: String)

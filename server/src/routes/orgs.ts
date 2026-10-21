@@ -365,6 +365,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
         for (const f of files) queueBlobDelete(ctx, "attachments", f);
         const photoRev = (db.prepare("SELECT photo_rev FROM orgs WHERE id = ?").get(orgId) as { photo_rev: number | null }).photo_rev;
         if (photoRev) queueBlobDelete(ctx, "profile-photos", photoBlobId(orgId, photoRev));
+        // Batch B9: the community's own emoji and stickers.
+        for (const e of db.prepare("SELECT id FROM community_expressions WHERE org_id = ?").all(orgId) as { id: string }[]) queueBlobDelete(ctx, "profile-photos", e.id);
         // Direct uploads still open in its channels: their objects or parts are removed by the retention job.
         for (const c of channels) {
           db.prepare(

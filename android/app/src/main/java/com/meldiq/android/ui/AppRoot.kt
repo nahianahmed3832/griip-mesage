@@ -150,6 +150,7 @@ object Routes {
     fun audit(orgId: String) = "audit/$orgId"
     fun reports(orgId: String) = "reports/$orgId"
     fun applications(orgId: String) = "applications/$orgId"
+    fun expressions(orgId: String) = "expressions/$orgId"
     fun usage(orgId: String) = "usage/$orgId"
     fun user(id: String) = "user/$id"
     /**
@@ -314,6 +315,7 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             }
             composable("audit/{orgId}") { com.meldiq.android.ui.screens.workspace.AuditScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
             composable("reports/{orgId}") { com.meldiq.android.ui.screens.moderation.ReportsScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
+            composable("expressions/{orgId}") { com.meldiq.android.ui.screens.community.ExpressionsScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
             composable("applications/{orgId}") { com.meldiq.android.ui.screens.moderation.ApplicationsScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
             composable("usage/{orgId}") { com.meldiq.android.ui.screens.workspace.UsageScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
             composable("user/{id}") { UserProfileScreen(nav, it.arguments!!.getString("id")!!) }
