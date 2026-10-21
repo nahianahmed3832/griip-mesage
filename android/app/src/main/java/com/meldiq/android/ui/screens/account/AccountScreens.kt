@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
@@ -158,7 +159,10 @@ internal fun SignUpEmailScreen(vm: AccountFlowViewModel, state: AccountFormState
     }
 }
 
-/** Email and password. Moving a legacy account is a separate, clearly marked way in, never the default. */
+/**
+ * Email and password, and one quiet "Having trouble signing in?" link. The ways back in (password reset, a recovery
+ * code for a lost email, moving a legacy account) open only from that link, in a sheet (docs/product/MELDIQ_AUTH_FLOW_AUDIT.md).
+ */
 @Composable
 internal fun LogInEmailScreen(
     vm: AccountFlowViewModel,
@@ -174,6 +178,7 @@ internal fun LogInEmailScreen(
     allowRecovery: Boolean = true,
 ) {
     val focus = LocalFocusManager.current
+    var help by rememberSaveable { mutableStateOf(false) }
     AuthScaffold(
         title = stringResource(R.string.acct_login_title), subtitle = stringResource(R.string.acct_login_subtitle),
         onBack = onBack, backEnabled = canGoBack && !state.submitting,
@@ -191,15 +196,8 @@ internal fun LogInEmailScreen(
         Spacer(Modifier.height(Space.lg))
         PasswordField(state.password, { v -> vm.edit { it.copy(password = v) } }, stringResource(R.string.acct_password), !state.submitting, onDone = { if (state.canLogIn) vm.logIn() })
         Spacer(Modifier.height(Space.sm))
-        AuthSwitchLink(stringResource(R.string.acct_forgot_q), stringResource(R.string.acct_forgot_action), { vm.goTo(AccountStep.Forgot) })
-        if (allowRecovery) AuthSwitchLink(stringResource(R.string.recover_q), stringResource(R.string.recover_action), { vm.goTo(AccountStep.Recover) })
+        AuthHelpLink(stringResource(R.string.auth_help_signin_link), { help = true }, Modifier.align(Alignment.End))
         FormProblems(state)
-        if (allowLegacyEntry) {
-            Spacer(Modifier.height(Space.xl))
-            com.meldiq.android.ui.components.ChoiceCard(
-                Icons.Rounded.Key, stringResource(R.string.acct_legacy_entry), stringResource(R.string.acct_legacy_entry_sub), { vm.goTo(AccountStep.LegacyCredentials) },
-            )
-        }
         if (onOtherAccount != null) {
             Spacer(Modifier.height(Space.md))
             AuthSwitchLink(stringResource(R.string.acct_other_q), stringResource(R.string.acct_other_action), onOtherAccount)
@@ -208,6 +206,13 @@ internal fun LogInEmailScreen(
             Spacer(Modifier.height(Space.md))
             AuthSwitchLink(stringResource(R.string.acct_wrong_email_q), stringResource(R.string.acct_start_over), onStartOver)
         }
+    }
+    if (help) {
+        AccountHelpSheet(
+            title = stringResource(R.string.auth_help_signin_title), body = stringResource(R.string.auth_help_signin_body),
+            options = signInHelpOptions(allowRecovery, allowLegacyEntry), backLabel = stringResource(R.string.auth_help_back_signin),
+            onChoose = vm::goTo, onDismiss = { help = false },
+        )
     }
 }
 

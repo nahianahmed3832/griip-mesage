@@ -18,4 +18,19 @@
     <string name="kb_settings_password">输入密码以开启</string>
     <string name="kb_settings_saved">密钥备份已开启</string>
     <string name="kb_settings_removed">密钥备份已关闭</string>
+    <string name="auth_help_signin_link">登录遇到问题？</string>
+    <string name="auth_help_signin_title">登录遇到问题？</string>
+    <string name="auth_help_signin_body">选择你遇到的情况。返回时，你输入的内容仍会保留。</string>
+    <string name="auth_help_forgot">我忘记了密码</string>
+    <string name="auth_help_forgot_sub">我们会通过邮件发送验证码，用于设置新密码</string>
+    <string name="auth_help_lost_email">我无法访问我的邮箱</string>
+    <string name="auth_help_lost_email_sub">使用你保存的恢复码之一，将账号转到新邮箱</string>
+    <string name="auth_help_back_signin">返回登录</string>
+    <string name="auth_help_unlock_link">无法访问你的邮箱？</string>
+    <string name="auth_help_unlock_title">其他解锁方式</string>
+    <string name="auth_help_unlock_body">你的消息经过端到端加密，所以这台手机需要你账号的密钥。如果收不到邮件验证码，请使用以下方式之一。</string>
+    <string name="auth_help_back_unlock">返回邮件验证码</string>
+    <string name="kb_setup_checking">正在检查你的密钥备份…</string>
+    <string name="kb_setup_check_failed">无法检查你的密钥是否已备份。请重试，或使用下面的其他方式。</string>
+    <string name="kb_setup_retry">重试</string>
 </resources>

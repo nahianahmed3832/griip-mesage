@@ -18,4 +18,19 @@
     <string name="kb_settings_password">Enter your password to turn it on</string>
     <string name="kb_settings_saved">Key backup is on</string>
     <string name="kb_settings_removed">Key backup is off</string>
+    <string name="auth_help_signin_link">Having trouble signing in?</string>
+    <string name="auth_help_signin_title">Having trouble signing in?</string>
+    <string name="auth_help_signin_body">Choose what happened. What you typed stays here if you come back.</string>
+    <string name="auth_help_forgot">I forgot my password</string>
+    <string name="auth_help_forgot_sub">We\'ll email you a code to set a new one</string>
+    <string name="auth_help_lost_email">I can\'t get into my email</string>
+    <string name="auth_help_lost_email_sub">Use one of your saved recovery codes to move the account to a new address</string>
+    <string name="auth_help_back_signin">Back to sign in</string>
+    <string name="auth_help_unlock_link">Can\'t access your email?</string>
+    <string name="auth_help_unlock_title">Other ways to unlock</string>
+    <string name="auth_help_unlock_body">Your messages are end-to-end encrypted, so this phone needs your account\'s keys. If the email code can\'t reach you, use one of these.</string>
+    <string name="auth_help_back_unlock">Back to the email code</string>
+    <string name="kb_setup_checking">Checking for a backup of your keys…</string>
+    <string name="kb_setup_check_failed">Couldn\'t check whether your keys are backed up. Try again, or use another way below.</string>
+    <string name="kb_setup_retry">Try again</string>
 </resources>

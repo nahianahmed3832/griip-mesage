@@ -69,6 +69,8 @@ data class AccountFormState(
     val verifyNeedsPassword: Boolean = false,
     /** Device setup: whether the account has a key backup for its current password (null: not known yet). */
     val keyBackup: Boolean? = null,
+    /** Device setup: the server is being asked about the key backup (null [keyBackup] after it: couldn't say). */
+    val keyBackupChecking: Boolean = false,
     /** Where the unlock code went (masked), and whether the unlock step needs the password typed again. */
     val unlockSentTo: String? = null,
     val unlockNeedsPassword: Boolean = false,
@@ -131,13 +133,20 @@ class AccountFlowViewModel(
                 _form.update {
                     if (it.step in setOf(AccountStep.RestoreKey, AccountStep.Link, AccountStep.StartFresh, AccountStep.EmailUnlock)) it else it.copy(step = AccountStep.DeviceSetup)
                 }
-                if (_form.value.keyBackup == null) viewModelScope.launch {
-                    val available = accounts.devices.backupAvailable()
-                    _form.update { it.copy(keyBackup = available) }
-                }
+                if (_form.value.keyBackup == null) checkKeyBackup()
             }
             is AccountPhase.SignedOut -> _form.update { it.copy(step = AccountStep.LogIn, email = phase.email, signedOutReason = phase.reason, keyBackup = null) }
             AccountPhase.None, is AccountPhase.Ready -> Unit
+        }
+    }
+
+    /** Asks whether this account has a key backup to unlock with an emailed code; also "Try again" after a failure. */
+    fun checkKeyBackup() {
+        if (_form.value.keyBackupChecking) return
+        _form.update { it.copy(keyBackupChecking = true) }
+        viewModelScope.launch {
+            val available = accounts.devices.backupAvailable()
+            _form.update { it.copy(keyBackup = available, keyBackupChecking = false) }
         }
     }
 

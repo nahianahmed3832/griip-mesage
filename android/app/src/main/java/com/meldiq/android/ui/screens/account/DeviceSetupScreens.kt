@@ -1,20 +1,30 @@
 package com.meldiq.android.ui.screens.account
 
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.MarkEmailRead
-import androidx.compose.material.icons.outlined.PhonelinkSetup
-import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Pin
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -28,9 +38,7 @@ import com.meldiq.android.data.api.UsernameAvailableRes
 import com.meldiq.android.data.repo.PendingPairing
 import com.meldiq.android.data.repo.SessionRepository
 import com.meldiq.android.ui.components.BannerKind
-import com.meldiq.android.ui.components.ChoiceCard
 import com.meldiq.android.ui.components.GriipTextField
-import com.meldiq.android.ui.components.SectionHeader
 import com.meldiq.android.ui.components.StatusBanner
 import com.meldiq.android.ui.screens.onboarding.AuthGateway
 import com.meldiq.android.ui.screens.onboarding.AuthScaffold
@@ -40,31 +48,58 @@ import com.meldiq.android.ui.theme.Shapes
 import com.meldiq.android.ui.theme.Space
 
 /**
- * Signed in on a phone without this account's encryption keys: the ways to get them (docs/ORBIT_2_ARCHITECTURE §3).
- * With a key backup for the current password, an emailed code comes first (docs/KEY_BACKUP.md); another phone, the
- * recovery key and starting fresh are for when the email can't work.
+ * Signed in on a phone without this account's encryption keys (docs/ORBIT_2_ARCHITECTURE §3). With a key backup for the
+ * current password the emailed code is the one way shown (docs/KEY_BACKUP.md); another phone, the recovery key and
+ * starting fresh open only from "Can't access your email?". Without a backup those three are the only ways, so they are
+ * listed here. docs/product/MELDIQ_AUTH_FLOW_AUDIT.md.
  */
 @Composable
 internal fun DeviceSetupScreen(vm: AccountFlowViewModel, state: AccountFormState, onSignOut: () -> Unit) {
-    AuthScaffold(title = stringResource(R.string.acct_setup_title), subtitle = stringResource(R.string.acct_setup_subtitle), onBack = onSignOut) {
-        when (state.keyBackup) {
-            true -> {
-                ChoiceCard(Icons.Outlined.MarkEmailRead, stringResource(R.string.kb_setup_email), stringResource(R.string.kb_setup_email_sub), { if (!state.submitting) vm.startEmailUnlock() })
-                Spacer(Modifier.height(Space.lg))
-                SectionHeader(stringResource(R.string.kb_setup_other_ways))
+    var help by rememberSaveable { mutableStateOf(false) }
+    val emailWay = state.keyBackup == true
+    AuthScaffold(
+        title = stringResource(R.string.acct_setup_title), subtitle = stringResource(R.string.acct_setup_subtitle), onBack = onSignOut,
+        bottomBar = if (!emailWay) null else {
+            {
+                StepButton(stringResource(R.string.kb_setup_email), stringResource(R.string.acct_working), state, enabled = true, onClick = vm::startEmailUnlock)
+                AuthHelpLink(stringResource(R.string.auth_help_unlock_link), { help = true })
             }
-            false -> {
+        },
+    ) {
+        when {
+            emailWay -> StatusBanner(stringResource(R.string.kb_setup_email_sub), BannerKind.Info, icon = Icons.Outlined.MarkEmailRead)
+            state.keyBackupChecking -> CheckingBackup()
+            state.keyBackup == false -> {
                 StatusBanner(stringResource(R.string.kb_setup_no_backup), BannerKind.Info, icon = Icons.Rounded.Info)
-                Spacer(Modifier.height(Space.md))
+                Spacer(Modifier.height(Space.lg))
+                HelpOptionList(deviceUnlockOptions, vm::goTo)
             }
-            null -> Unit
+            else -> {
+                StatusBanner(
+                    stringResource(R.string.kb_setup_check_failed), BannerKind.Warning, icon = Icons.Rounded.Warning,
+                    action = stringResource(R.string.kb_setup_retry), onAction = vm::checkKeyBackup,
+                )
+                Spacer(Modifier.height(Space.lg))
+                HelpOptionList(deviceUnlockOptions, vm::goTo)
+            }
         }
-        ChoiceCard(Icons.Outlined.PhonelinkSetup, stringResource(R.string.acct_setup_link), stringResource(R.string.acct_setup_link_sub), { vm.goTo(AccountStep.Link) })
-        Spacer(Modifier.height(Space.md))
-        ChoiceCard(Icons.Outlined.Key, stringResource(R.string.acct_setup_key), stringResource(R.string.acct_setup_key_sub), { vm.goTo(AccountStep.RestoreKey) })
-        Spacer(Modifier.height(Space.md))
-        ChoiceCard(Icons.Outlined.RestartAlt, stringResource(R.string.acct_setup_fresh), stringResource(R.string.acct_setup_fresh_sub), { vm.goTo(AccountStep.StartFresh) })
         FormProblems(state)
+    }
+    if (help) {
+        AccountHelpSheet(
+            title = stringResource(R.string.auth_help_unlock_title), body = stringResource(R.string.auth_help_unlock_body),
+            options = deviceUnlockOptions, backLabel = stringResource(R.string.auth_help_back_unlock),
+            onChoose = vm::goTo, onDismiss = { help = false },
+        )
+    }
+}
+
+@Composable
+private fun CheckingBackup() {
+    Row(Modifier.fillMaxWidth().padding(vertical = Space.lg), verticalAlignment = Alignment.CenterVertically) {
+        CircularProgressIndicator(Modifier.size(20.dp), color = Griip.colors.primary, strokeWidth = 2.dp)
+        Spacer(Modifier.width(Space.md))
+        Text(stringResource(R.string.kb_setup_checking), style = Griip.type.bodySmall, color = Griip.colors.textSecondary)
     }
 }
 

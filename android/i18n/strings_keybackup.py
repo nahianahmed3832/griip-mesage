@@ -18,4 +18,21 @@ S = {
 "kb_settings_password": ("Enter your password to turn it on", "输入密码以开启", "চালু করতে পাসওয়ার্ড দিন"),
 "kb_settings_saved": ("Key backup is on", "密钥备份已开启", "কী ব্যাকআপ চালু হয়েছে"),
 "kb_settings_removed": ("Key backup is off", "密钥备份已关闭", "কী ব্যাকআপ বন্ধ হয়েছে"),
+# Help behind one link (docs/product/MELDIQ_AUTH_FLOW_AUDIT.md, 2026-10-21): sign-in and unlocking show only the normal
+# way; the recovery choices open from "Having trouble signing in?" / "Can't access your email?".
+"auth_help_signin_link": ("Having trouble signing in?", "登录遇到问题？", "সাইন ইন করতে সমস্যা হচ্ছে?"),
+"auth_help_signin_title": ("Having trouble signing in?", "登录遇到问题？", "সাইন ইন করতে সমস্যা হচ্ছে?"),
+"auth_help_signin_body": ("Choose what happened. What you typed stays here if you come back.", "选择你遇到的情况。返回时，你输入的内容仍会保留。", "কী হয়েছে বেছে নিন। ফিরে এলে আপনার লেখা তথ্য থেকে যাবে।"),
+"auth_help_forgot": ("I forgot my password", "我忘记了密码", "আমি পাসওয়ার্ড ভুলে গেছি"),
+"auth_help_forgot_sub": ("We'll email you a code to set a new one", "我们会通过邮件发送验证码，用于设置新密码", "নতুন পাসওয়ার্ড দিতে আমরা ইমেইলে একটি কোড পাঠাব"),
+"auth_help_lost_email": ("I can't get into my email", "我无法访问我的邮箱", "আমি ইমেইলে ঢুকতে পারছি না"),
+"auth_help_lost_email_sub": ("Use one of your saved recovery codes to move the account to a new address", "使用你保存的恢复码之一，将账号转到新邮箱", "সংরক্ষিত একটি রিকভারি কোড দিয়ে অ্যাকাউন্টটি নতুন ঠিকানায় সরান"),
+"auth_help_back_signin": ("Back to sign in", "返回登录", "সাইন ইনে ফিরে যান"),
+"auth_help_unlock_link": ("Can't access your email?", "无法访问你的邮箱？", "ইমেইলে ঢুকতে পারছেন না?"),
+"auth_help_unlock_title": ("Other ways to unlock", "其他解锁方式", "আনলক করার অন্য উপায়"),
+"auth_help_unlock_body": ("Your messages are end-to-end encrypted, so this phone needs your account's keys. If the email code can't reach you, use one of these.", "你的消息经过端到端加密，所以这台手机需要你账号的密钥。如果收不到邮件验证码，请使用以下方式之一。", "আপনার বার্তা এন্ড-টু-এন্ড এনক্রিপ্টেড, তাই এই ফোনে অ্যাকাউন্টের কী লাগবে। ইমেইলের কোড না পেলে এর একটি ব্যবহার করুন।"),
+"auth_help_back_unlock": ("Back to the email code", "返回邮件验证码", "ইমেইল কোডে ফিরে যান"),
+"kb_setup_checking": ("Checking for a backup of your keys…", "正在检查你的密钥备份…", "আপনার কী-এর ব্যাকআপ খোঁজা হচ্ছে…"),
+"kb_setup_check_failed": ("Couldn't check whether your keys are backed up. Try again, or use another way below.", "无法检查你的密钥是否已备份。请重试，或使用下面的其他方式。", "আপনার কী ব্যাকআপ আছে কি না দেখা যায়নি। আবার চেষ্টা করুন, বা নিচের অন্য উপায় ব্যবহার করুন।"),
+"kb_setup_retry": ("Try again", "重试", "আবার চেষ্টা করুন"),
 }
