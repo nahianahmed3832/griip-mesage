@@ -1,9 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { BranchRow, ConversationRow, TeamRow } from "../authz.js";
+import { type ConversationRow, parsePermissionList } from "../authz.js";
 import { type AppContext, me, parse, requireAuth, zName, zText } from "../context.js";
 import { memberView } from "../profile.js";
-import { ApiError, badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex } from "../util.js";
+import { ApiError, badRequest, conflict, forbidden, humanCode, newId, notFound, now, sha256Hex } from "../util.js";
 import { INVITE_PROBLEMS, inviteAlreadySatisfied, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../invites.js";
 import { userSummary } from "./auth.js";
 import { deleteBlobNow, processBlobDeletes, queueBlobDelete } from "./attachments.js";
@@ -11,7 +11,9 @@ import { photoBlobId, readJpegBody, storePhoto } from "../photos.js";
 import { evictRemovedMember } from "./calls.js";
 import { conversationView } from "./conversations.js";
 import { orgRoleChangeRefusal, removalAllowed, titleChangeAllowed } from "../roles.js";
-import { applyWorkspaceTemplate, COMMUNITY_TEMPLATE_ID } from "../workspace/templates.js";
+import { createCommunityStart } from "../workspace/communityStart.js";
+import { roleAssignmentRefusal } from "../permissions/rules.js";
+import { categoryViews } from "./community.js";
 
 const zOptText = zText.nullable().optional();
 
@@ -35,8 +37,14 @@ export function inviteStatus(r: { revoked_at: number | null; expires_at: number;
   return "active";
 }
 
-/** What kind of workspace: a team (branches, teams and admin tools up front) or a community. */
+/** Accepted from older apps and ignored: every workspace is a community since the rebuild. */
 const zOrgKind = z.enum(["team", "community"]);
+/** Listed in discovery or not, and how people get in (docs/COMMUNITY_REBUILD_2026-10-21.md §5). */
+export const zVisibility = z.enum(["private", "public"]);
+export const zJoinPolicy = z.enum(["invite", "open"]);
+const zRules = z.string().trim().max(4000).nullable().optional();
+/** At most this many channels in one community and in one category (Discord's documented 50 per category). */
+export const CHANNEL_LIMITS = { perCommunity: 500, perCategory: 50 } as const;
 
 export function orgSummary(ctx: AppContext, org: any, userId: string) {
   const role = ctx.authz.orgRole(org.id, userId);
@@ -54,36 +62,34 @@ export function orgSummary(ctx: AppContext, org: any, userId: string) {
     // Round 7 guest policy (docs/WORKSPACE_C5.md).
     guestsAllowed: org.guests_allowed === undefined ? true : !!org.guests_allowed,
     guestMaxDays: org.guest_max_days ?? null,
-    // Meldiq 2.0: "team" (every workspace before it) or "community" (docs/product/MELDIQ_2_DECISIONS.md).
-    kind: org.kind === "community" ? "community" : "team",
+    // Every workspace is a community since the rebuild; the field stays for apps that read it.
+    kind: "community",
+    visibility: org.visibility === "public" ? "public" : "private",
+    joinPolicy: org.join_policy === "open" ? "open" : "invite",
+    rules: org.rules ?? null,
   };
 }
 
 /**
- * Takes someone out of a workspace with everything that hangs off the membership (branches, teams, channels, groups,
- * meeting invitations, personal arrangement and app connections), tells everyone concerned and records why:
- * "left", "removed" by [actorId], or "expired" (a guest's end date, actorId null). Callers check permissions first.
+ * Takes someone out of a community with everything that hangs off the membership (roles, channels, member overwrites,
+ * meeting invitations, personal arrangement), tells everyone concerned and records why: "left", "removed" or "banned"
+ * by [actorId], or "expired" (a guest's end date, actorId null). Callers check permissions first.
  */
-export async function removeFromWorkspace(ctx: AppContext, orgId: string, userId: string, actorId: string | null, reason: "left" | "removed" | "expired") {
+export async function removeFromWorkspace(ctx: AppContext, orgId: string, userId: string, actorId: string | null, reason: "left" | "removed" | "expired" | "banned") {
   const { db, authz } = ctx;
   const role = authz.orgRole(orgId, userId);
   if (!role) return;
   const affected: string[] = [];
   db.transaction(() => {
-    db.prepare("DELETE FROM branch_members WHERE user_id = ? AND branch_id IN (SELECT id FROM branches WHERE org_id = ?)").run(userId, orgId);
-    db.prepare("DELETE FROM team_members WHERE user_id = ? AND team_id IN (SELECT id FROM teams WHERE org_id = ?)").run(userId, orgId);
-    db.prepare("DELETE FROM user_group_members WHERE user_id = ? AND group_id IN (SELECT id FROM user_groups WHERE org_id = ?)").run(userId, orgId);
+    db.prepare("DELETE FROM channel_overwrites WHERE org_id = ? AND subject = ?").run(orgId, `user:${userId}`);
     db.prepare("DELETE FROM meeting_participants WHERE user_id = ? AND meeting_id IN (SELECT id FROM meetings WHERE org_id = ?)").run(userId, orgId);
     db.prepare("DELETE FROM org_members WHERE org_id = ? AND user_id = ?").run(orgId, userId);
     affected.push(...authz.revalidateChannelMemberships(orgId, userId));
   })();
-  // Their arrangement of this workspace (starred, sections) goes with them.
+  // Their arrangement of this community (starred, sections) goes with them.
   await ctx.prefs.deleteForMember(userId, orgId);
-  // And their personal app connections in this workspace (revoked, deleted).
-  await ctx.integrations.forgetMember(orgId, userId);
-  ctx.audit({ actorId, orgId, action: reason === "left" ? "member.leave" : reason === "removed" ? "member.remove" : "member.expire", target: userId });
-  const name = (db.prepare("SELECT display_name FROM users WHERE id = ?").get(userId) as { display_name: string } | undefined)?.display_name ?? "";
-  ctx.workflows?.emit({ type: "member.left", key: `left:${userId}:${now()}`, orgId, depth: 0, member: { id: userId, name, role, leaveReason: reason === "left" ? "left" : "removed" } });
+  const action = { left: "member.leave", removed: "member.remove", expired: "member.expire", banned: "member.ban" }[reason];
+  ctx.audit({ actorId, orgId, action, target: userId });
   notifyOrg(ctx, orgId);
   for (const c of affected) notifyConversation(ctx, c, [userId]);
   ctx.hub.sendToUser(userId, { t: "org.updated", orgId });
@@ -110,26 +116,22 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   const auth = { preHandler: requireAuth(ctx) };
   const { authz, db } = ctx;
 
-  const loadBranch = (id: string, userId: string): BranchRow => {
-    const b = authz.branch(id);
-    if (!b) throw notFound("Branch not found");
-    authz.requireOrgMember(b.org_id, userId);
-    return b;
-  };
   const ownerCount = (orgId: string): number =>
     (db.prepare("SELECT COUNT(*) n FROM org_members WHERE org_id = ? AND role = 'OWNER'").get(orgId) as { n: number }).n;
-  const loadTeam = (id: string, userId: string): TeamRow => {
-    const t = authz.team(id);
-    if (!t) throw notFound("Team not found");
-    authz.requireOrgMember(t.org_id, userId);
-    return t;
-  };
 
   // ───────────── Organisations ─────────────
   app.post("/v1/orgs", auth, async (req) => {
     const { userId } = me(req);
     const body = parse(
-      z.object({ name: zName, description: zOptText, requestId: z.string().trim().min(8).max(64).optional(), kind: zOrgKind.optional() }),
+      z.object({
+        name: zName,
+        description: zOptText,
+        requestId: z.string().trim().min(8).max(64).optional(),
+        kind: zOrgKind.optional(),
+        visibility: zVisibility.optional(),
+        joinPolicy: zJoinPolicy.optional(),
+        rules: zRules,
+      }),
       req.body,
     );
     // Idempotent: the app sends one request id per create form, so a retry or a double tap returns the first result.
@@ -144,21 +146,22 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
           WHERE lower(trim(o.name)) = lower(trim(?)) LIMIT 1`,
       )
       .get(userId, body.name) as { id: string } | undefined;
-    if (sameName) throw new ApiError(409, "org_name_taken", `You already own a workspace called "${body.name.trim()}". Open it, or choose another name.`, { orgId: sameName.id });
+    if (sameName) throw new ApiError(409, "org_name_taken", `You already own a community called "${body.name.trim()}". Open it, or choose another name.`, { orgId: sameName.id });
     const id = newId("o");
     const t = now();
     let slug = slugify(body.name);
     if (db.prepare("SELECT 1 FROM orgs WHERE slug = ?").get(slug)) slug = `${slug}-${humanCode(4).toLowerCase()}`;
     db.transaction(() => {
       db.prepare(
-        "INSERT INTO orgs (id, name, slug, description, created_by, created_at, updated_at, create_request_id, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      ).run(id, body.name, slug, body.description ?? null, userId, t, t, body.requestId ?? null, body.kind ?? "team");
+        `INSERT INTO orgs (id, name, slug, description, created_by, created_at, updated_at, create_request_id, kind, visibility, join_policy, rules)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'community', ?, ?, ?)`,
+      ).run(id, body.name, slug, body.description ?? null, userId, t, t, body.requestId ?? null, body.visibility ?? "private", body.joinPolicy ?? "invite", body.rules ?? null);
       db.prepare("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, 'OWNER', ?)").run(id, userId, t);
     })();
-    ctx.audit({ actorId: userId, orgId: id, action: "org.create", target: id, detail: `kind=${body.kind ?? "team"}` });
-    // A community starts with its welcome, announcements, general and lounge channels, so the first member who joins
-    // finds somewhere to go. A team workspace chooses its template itself (Workspace settings › Templates).
-    if (body.kind === "community") applyWorkspaceTemplate(ctx, id, userId, COMMUNITY_TEMPLATE_ID);
+    ctx.audit({ actorId: userId, orgId: id, action: "org.create", target: id, detail: `visibility=${body.visibility ?? "private"}` });
+    // A community starts with its welcome, announcements, general, introductions and lounge channels in two
+    // categories, so the first member who joins finds somewhere to go.
+    createCommunityStart(ctx, id, userId);
     return { org: orgSummary(ctx, db.prepare("SELECT * FROM orgs WHERE id = ?").get(id), userId) };
   });
 
@@ -176,72 +179,45 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
     const role = authz.requireOrgMember(orgId, userId);
     const org = db.prepare("SELECT * FROM orgs WHERE id = ?").get(orgId);
-    const isAdmin = role === "OWNER" || role === "ADMIN";
     const perms = authz.permissions(orgId, userId);
-    const branches = (db.prepare("SELECT * FROM branches WHERE org_id = ? AND archived_at IS NULL ORDER BY name").all(orgId) as BranchRow[]).map(
-      (b) => ({
-        id: b.id,
-        name: b.name,
-        description: b.description,
-        location: b.location,
-        myRole: authz.branchRole(b.id, userId),
-        canAccess: authz.canAccessBranch(b, userId),
-        canManage: authz.canManageBranch(b, userId),
-        memberCount: (db.prepare("SELECT COUNT(*) n FROM branch_members WHERE branch_id = ?").get(b.id) as { n: number }).n,
-      }),
-    );
-    const departments = (db.prepare("SELECT * FROM departments WHERE org_id = ? ORDER BY name").all(orgId) as any[])
-      .filter((d) => {
-        const b = authz.branch(d.branch_id);
-        return b && authz.canAccessBranch(b, userId);
-      })
-      .map((d) => ({ id: d.id, branchId: d.branch_id, name: d.name, description: d.description }));
-    const teams = (db.prepare("SELECT * FROM teams WHERE org_id = ? AND archived_at IS NULL ORDER BY name").all(orgId) as TeamRow[])
-      .filter((t) => role !== "GUEST" && (isAdmin || authz.canAccessTeam(t, userId) || (t.branch_id && authz.branchRole(t.branch_id, userId))))
-      .map((t) => ({
-        id: t.id,
-        name: t.name,
-        description: t.description,
-        branchId: t.branch_id,
-        departmentId: t.department_id,
-        crossBranch: t.branch_id === null,
-        myRole: authz.teamRole(t.id, userId),
-        canAccess: authz.canAccessTeam(t, userId),
-        canManage: authz.canManageTeam(t, userId),
-        memberCount: (db.prepare("SELECT COUNT(*) n FROM team_members WHERE team_id = ?").get(t.id) as { n: number }).n,
-      }));
     const channelCount = (
       db.prepare("SELECT COUNT(*) n FROM conversations WHERE org_id = ? AND type = 'CHANNEL' AND archived_at IS NULL").get(orgId) as { n: number }
     ).n;
+    const categories = categoryViews(ctx, orgId, userId);
     return {
       org: orgSummary(ctx, org, userId),
-      branches,
-      departments,
-      teams,
-      stats: { members: orgSummary(ctx, org, userId).memberCount, teams: teams.length, channels: channelCount, branches: branches.length },
+      // Branches, departments and teams became roles and categories (docs/COMMUNITY_REBUILD_2026-10-21.md). Empty lists
+      // stay because Android 0.3.0 and older require these fields.
+      branches: [],
+      departments: [],
+      teams: [],
+      categories,
+      stats: { members: orgSummary(ctx, org, userId).memberCount, teams: 0, channels: channelCount, branches: 0, categories: categories.length },
       permissions: {
         canManageOrg: perms.has("workspace.edit"),
-        canInvite: perms.has("members.invite") || branches.some((b) => b.canManage) || teams.some((t) => t.canManage),
-        canCreateChannels: perms.has("channels.create") || branches.some((b) => b.canManage) || teams.some((t) => t.canManage),
+        canInvite: perms.has("members.invite"),
+        canCreateChannels: perms.has("channels.create") || categories.some((c) => c.canCreateChannels),
+        canManageChannels: perms.has("channels.manage"),
+        canBan: perms.has("members.ban"),
         canViewDirectory: perms.has("members.view"),
         isOwner: role === "OWNER",
         // Everyone may leave except the last owner, who must make someone else an owner first.
         canLeave: role !== "OWNER" || ownerCount(orgId) > 1,
-        // Owners and admins see archived branches and teams (GET /v1/orgs/:id/archived); branch managers see their teams.
-        canRestore: perms.has("teams.manage") || branches.some((b) => b.canManage),
-        // Custom roles and apps (2026-10-19, docs/WORKSPACE_ROLES.md, docs/INTEGRATIONS.md). Additive: older apps ignore them.
+        // Archived branches and teams are gone with them; false for apps that still ask.
+        canRestore: false,
+        // Custom roles (2026-10-19, docs/WORKSPACE_ROLES.md). Additive: older apps ignore them.
         canViewRoles: perms.has("roles.view"),
         canManageRoles: perms.has("roles.manage"),
         canAssignRoles: perms.has("roles.assign"),
         canViewAudit: perms.has("audit.view"),
         canViewUsage: perms.has("workspace.usage.view"),
-        canViewApps: perms.has("integrations.view"),
-        // Round 7: workspace workflows (docs/WORKFLOWS.md).
-        canManageWorkflows: perms.has("workflows.manage"),
-        canManageGroups: perms.has("groups.manage"),
-        canManageDevelopers: perms.has("developers.manage"),
-        canManageApps: perms.has("integrations.install") || perms.has("integrations.configure"),
-        canManagePolicies: perms.has("policies.manage"),
+        // Apps, workflows, groups, developer keys and policies were removed; false for apps that still ask.
+        canViewApps: false,
+        canManageWorkflows: false,
+        canManageGroups: false,
+        canManageDevelopers: false,
+        canManageApps: false,
+        canManagePolicies: false,
         canTransferOwnership: perms.has("workspace.transfer"),
         effective: [...perms].sort(),
       },
@@ -254,18 +230,24 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const { userId } = me(req);
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
     authz.requirePermission(orgId, userId, "workspace.edit", "Only people who can edit the workspace can do that");
-    const body = parse(z.object({ name: zName.optional(), description: zOptText, kind: zOrgKind.optional() }), req.body);
+    const body = parse(
+      z.object({ name: zName.optional(), description: zOptText, kind: zOrgKind.optional(), visibility: zVisibility.optional(), joinPolicy: zJoinPolicy.optional(), rules: zRules }),
+      req.body,
+    );
     const o = db.prepare("SELECT * FROM orgs WHERE id = ?").get(orgId) as any;
-    // Switching between team and community changes only what the apps show first; nothing is added or removed.
-    if (body.kind && body.kind !== o.kind && authz.orgRole(orgId, userId) !== "OWNER") throw forbidden("Only owners can change what kind of workspace this is");
-    db.prepare("UPDATE orgs SET name = ?, description = ?, kind = ?, updated_at = ? WHERE id = ?").run(
+    // Listing a community publicly or opening it to anyone changes who can find and enter it: owners decide that.
+    const opening = (body.visibility && body.visibility !== o.visibility) || (body.joinPolicy && body.joinPolicy !== o.join_policy);
+    if (opening && authz.orgRole(orgId, userId) !== "OWNER") throw forbidden("Only owners can change who can find and join this community");
+    db.prepare("UPDATE orgs SET name = ?, description = ?, visibility = ?, join_policy = ?, rules = ?, updated_at = ? WHERE id = ?").run(
       body.name ?? o.name,
       body.description === undefined ? o.description : body.description,
-      body.kind ?? o.kind,
+      body.visibility ?? o.visibility,
+      body.joinPolicy ?? o.join_policy,
+      body.rules === undefined ? o.rules : body.rules,
       now(),
       orgId,
     );
-    ctx.audit({ actorId: userId, orgId, action: "org.update", detail: body.kind && body.kind !== o.kind ? `kind=${body.kind}` : undefined });
+    ctx.audit({ actorId: userId, orgId, action: "org.update", detail: opening ? `visibility=${body.visibility ?? o.visibility} join=${body.joinPolicy ?? o.join_policy}` : undefined });
     notifyOrg(ctx, orgId);
     return { org: orgSummary(ctx, db.prepare("SELECT * FROM orgs WHERE id = ?").get(orgId), userId) };
   });
@@ -370,8 +352,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
             "INSERT OR IGNORE INTO abandoned_uploads (id, multipart_id, attempts, next_at) SELECT id, multipart_id, 0, 0 FROM attachment_uploads WHERE conversation_id = ?",
           ).run(c);
         }
-        // Cascades to org_members, branches (and their members), departments, teams (and members), invitations and
-        // the organization's conversations (members, attachment rows, calls and call participants).
+        // Cascades to org_members, roles, categories, overwrites, bans, invitations, the old branch and team rows, and
+        // the community's conversations (members, attachment rows, calls and call participants).
         db.prepare("DELETE FROM orgs WHERE id = ?").run(orgId);
         db.prepare(
           "INSERT INTO org_deletions (org_id, name_sha256, deleted_by, deleted_at, request_id, members, channels, files) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -381,8 +363,6 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       .immediate();
     if (!result) return replay();
     await ctx.prefs.deleteForWorkspace(orgId);
-    // Its apps: every connection revoked at the provider (best effort) and every record removed.
-    await ctx.integrations.forgetWorkspace(orgId);
 
     ctx.audit({
       actorId: actor,
@@ -401,240 +381,11 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     return { deleted: true, orgId, members: result.members.length, channels: result.channelMembers.size, files: result.files.length };
   });
 
-  // ───────────── Branches & departments ─────────────
-  app.post("/v1/orgs/:orgId/branches", auth, async (req) => {
-    const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
-    authz.requirePermission(orgId, userId, "teams.create", "Only organization owners and admins can create branches");
-    const body = parse(z.object({ name: zName, description: zOptText, location: zOptText }), req.body);
-    const id = newId("b");
-    const t = now();
-    db.prepare("INSERT INTO branches (id, org_id, name, description, location, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
-      id,
-      orgId,
-      body.name,
-      body.description ?? null,
-      body.location ?? null,
-      t,
-      t,
-    );
-    ctx.audit({ actorId: userId, orgId, action: "branch.create", target: id, detail: body.name });
-    notifyOrg(ctx, orgId);
-    return { branch: { id, orgId, name: body.name, description: body.description ?? null, location: body.location ?? null } };
-  });
-
-  app.patch("/v1/branches/:id", auth, async (req) => {
-    const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const b = loadBranch(id, userId);
-    if (!authz.canManageBranch(b, userId)) throw forbidden();
-    const body = parse(z.object({ name: zName.optional(), description: zOptText, location: zOptText, archived: z.boolean().optional() }), req.body);
-    if (body.archived !== undefined && !authz.can(b.org_id, userId, "teams.manage")) throw forbidden("Only org admins can archive branches");
-    db.prepare("UPDATE branches SET name = ?, description = ?, location = ?, archived_at = ?, updated_at = ? WHERE id = ?").run(
-      body.name ?? b.name,
-      body.description === undefined ? b.description : body.description,
-      body.location === undefined ? b.location : body.location,
-      body.archived === undefined ? b.archived_at : body.archived ? now() : null,
-      now(),
-      id,
-    );
-    const archiveChange = body.archived !== undefined && body.archived !== !!b.archived_at;
-    ctx.audit({
-      actorId: userId,
-      orgId: b.org_id,
-      action: archiveChange ? (body.archived ? "branch.archive" : "branch.restore") : "branch.update",
-      target: id,
-      detail: body.name ?? b.name,
-    });
-    notifyOrg(ctx, b.org_id);
-    return { ok: true };
-  });
-
-  app.post("/v1/branches/:id/departments", auth, async (req) => {
-    const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const b = loadBranch(id, userId);
-    if (!authz.canManageBranch(b, userId)) throw forbidden();
-    const body = parse(z.object({ name: zName, description: zOptText }), req.body);
-    const did = newId("dp");
-    const t = now();
-    db.prepare("INSERT INTO departments (id, org_id, branch_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
-      did,
-      b.org_id,
-      b.id,
-      body.name,
-      body.description ?? null,
-      t,
-      t,
-    );
-    ctx.audit({ actorId: userId, orgId: b.org_id, action: "department.create", target: did, detail: body.name });
-    notifyOrg(ctx, b.org_id);
-    return { department: { id: did, branchId: b.id, name: body.name, description: body.description ?? null } };
-  });
-
-  app.patch("/v1/departments/:id", auth, async (req) => {
-    const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const d = db.prepare("SELECT * FROM departments WHERE id = ?").get(id) as any;
-    if (!d) throw notFound("Department not found");
-    const b = loadBranch(d.branch_id, userId);
-    if (!authz.canManageBranch(b, userId)) throw forbidden();
-    if (b.archived_at) throw conflict("This branch is archived"); // D-14
-    const body = parse(z.object({ name: zName.optional(), description: zOptText }), req.body);
-    db.prepare("UPDATE departments SET name = ?, description = ?, updated_at = ? WHERE id = ?").run(
-      body.name ?? d.name,
-      body.description === undefined ? d.description : body.description,
-      now(),
-      id,
-    );
-    ctx.audit({ actorId: userId, orgId: b.org_id, action: "department.update", target: id, detail: body.name ?? d.name });
-    notifyOrg(ctx, b.org_id);
-    return { ok: true };
-  });
-
-  /** Deletes a department. Its teams stay in the branch, ungrouped: a department grants no access (D-15). */
-  app.delete("/v1/departments/:id", auth, async (req) => {
-    const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const d = db.prepare("SELECT * FROM departments WHERE id = ?").get(id) as any;
-    if (!d) throw notFound("Department not found");
-    const b = loadBranch(d.branch_id, userId);
-    if (!authz.canManageBranch(b, userId)) throw forbidden();
-    if (b.archived_at) throw conflict("This branch is archived"); // D-14
-    db.transaction(() => {
-      db.prepare("UPDATE teams SET department_id = NULL, updated_at = ? WHERE department_id = ?").run(now(), id);
-      db.prepare("DELETE FROM departments WHERE id = ?").run(id);
-    })();
-    ctx.audit({ actorId: userId, orgId: b.org_id, action: "department.delete", target: id, detail: d.name });
-    notifyOrg(ctx, b.org_id);
-    return { ok: true };
-  });
-
-  // ───────────── Teams ─────────────
-  app.post("/v1/orgs/:orgId/teams", auth, async (req) => {
-    const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
-    authz.requireOrgMember(orgId, userId);
-    const body = parse(
-      z.object({ name: zName, description: zOptText, branchId: z.string().max(64).nullable().optional(), departmentId: z.string().max(64).nullable().optional() }),
-      req.body,
-    );
-    let branchId = body.branchId ?? null;
-    if (body.departmentId) {
-      const d = db.prepare("SELECT * FROM departments WHERE id = ? AND org_id = ?").get(body.departmentId, orgId) as any;
-      if (!d) throw badRequest("Unknown department");
-      if (branchId && branchId !== d.branch_id) throw badRequest("Department belongs to a different branch");
-      branchId = d.branch_id;
-    }
-    if (branchId) {
-      const b = authz.branch(branchId);
-      if (!b || b.org_id !== orgId) throw badRequest("Unknown branch");
-      if (!authz.canManageBranch(b, userId) && !authz.can(orgId, userId, "teams.create")) {
-        throw forbidden("Only org admins or this branch's managers can create teams here");
-      }
-    } else if (!authz.can(orgId, userId, "teams.create")) {
-      throw forbidden("Only org admins can create cross-branch teams");
-    }
-    const id = newId("t");
-    const t = now();
-    db.transaction(() => {
-      db.prepare(
-        "INSERT INTO teams (id, org_id, branch_id, department_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      ).run(id, orgId, branchId, body.departmentId ?? null, body.name, body.description ?? null, t, t);
-    })();
-    ctx.audit({ actorId: userId, orgId, action: "team.create", target: id, detail: body.name });
-    notifyOrg(ctx, orgId);
-    return { team: { id, orgId, branchId, departmentId: body.departmentId ?? null, name: body.name, crossBranch: branchId === null } };
-  });
-
-  app.patch("/v1/teams/:id", auth, async (req) => {
-    const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const team = loadTeam(id, userId);
-    if (!authz.canManageTeam(team, userId)) throw forbidden();
-    const body = parse(
-      z.object({ name: zName.optional(), description: zOptText, archived: z.boolean().optional(), departmentId: z.string().max(64).nullable().optional() }),
-      req.body,
-    );
-    if (body.archived !== undefined && body.archived !== !!team.archived_at && !authz.canArchiveTeam(team, userId)) {
-      throw forbidden("Only org admins or this branch's managers can archive or restore a team");
-    }
-    if (authz.scopeArchived(team.branch_id, null)) throw conflict("This team's branch is archived"); // D-14: unarchive the branch first
-    if (body.departmentId) {
-      // A department groups one branch's teams (D-15): cross-branch teams have none.
-      const dep = db.prepare("SELECT branch_id FROM departments WHERE id = ?").get(body.departmentId) as { branch_id: string } | undefined;
-      if (!dep || !team.branch_id || dep.branch_id !== team.branch_id) throw badRequest("That department isn't in this team's branch");
-    }
-    db.prepare("UPDATE teams SET name = ?, description = ?, archived_at = ?, department_id = ?, updated_at = ? WHERE id = ?").run(
-      body.name ?? team.name,
-      body.description === undefined ? team.description : body.description,
-      body.archived === undefined ? team.archived_at : body.archived ? now() : null,
-      body.departmentId === undefined ? team.department_id : body.departmentId,
-      now(),
-      id,
-    );
-    const archiveChange = body.archived !== undefined && body.archived !== !!team.archived_at;
-    ctx.audit({
-      actorId: userId,
-      orgId: team.org_id,
-      action: archiveChange ? (body.archived ? "team.archive" : "team.restore") : "team.update",
-      target: id,
-      detail: body.name ?? team.name,
-    });
-    notifyOrg(ctx, team.org_id);
-    return { ok: true };
-  });
-
-  app.get("/v1/teams/:id/members", auth, async (req) => {
-    const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const team = loadTeam(id, userId);
-    if (!authz.canAccessTeam(team, userId) && !(team.branch_id && authz.branchRole(team.branch_id, userId))) throw notFound("Team not found");
-    const rows = db
-      .prepare("SELECT u.*, tm.role AS team_role FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.team_id = ? ORDER BY tm.role, u.display_name")
-      .all(id) as any[];
-    return { members: rows.map((u) => memberView(ctx, me(req).userId, u, { ...userSummary(u), role: u.team_role })) };
-  });
-
-  app.get("/v1/branches/:id/members", auth, async (req) => {
-    const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const b = loadBranch(id, userId);
-    if (!authz.canAccessBranch(b, userId)) throw notFound("Branch not found");
-    const rows = db
-      .prepare("SELECT u.*, bm.role AS branch_role FROM branch_members bm JOIN users u ON u.id = bm.user_id WHERE bm.branch_id = ? ORDER BY bm.role, u.display_name")
-      .all(id) as any[];
-    return { members: rows.map((u) => memberView(ctx, me(req).userId, u, { ...userSummary(u), role: u.branch_role })) };
-  });
-
-  /**
-   * Archived branches and teams the caller may restore (docs/WORKSPACE_ADMINISTRATION.md): every archived branch and
-   * team for owners and admins; a branch manager's archived teams in their branch. Others get empty lists. Archived
-   * channels are listed by GET /v1/orgs/:id/channels?includeArchived=true.
-   */
+  /** Archived branches and teams went with them (docs/COMMUNITY_REBUILD_2026-10-21.md); empty for apps that still ask. */
   app.get("/v1/orgs/:orgId/archived", auth, async (req) => {
-    const { userId } = me(req);
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
-    authz.requireOrgMember(orgId, userId);
-    const branches = authz.can(orgId, userId, "teams.manage")
-      ? (db.prepare("SELECT * FROM branches WHERE org_id = ? AND archived_at IS NOT NULL ORDER BY name").all(orgId) as BranchRow[])
-      : [];
-    const teams = (db.prepare("SELECT * FROM teams WHERE org_id = ? AND archived_at IS NOT NULL ORDER BY name").all(orgId) as TeamRow[]).filter((t) =>
-      authz.canArchiveTeam(t, userId),
-    );
-    return {
-      branches: branches.map((b) => ({ id: b.id, name: b.name, description: b.description, location: b.location, archivedAt: b.archived_at })),
-      teams: teams.map((t) => ({
-        id: t.id,
-        name: t.name,
-        description: t.description,
-        branchId: t.branch_id,
-        crossBranch: t.branch_id === null,
-        archivedAt: t.archived_at,
-        // A team in an archived branch comes back with its branch (D-14).
-        branchArchived: authz.scopeArchived(t.branch_id, null),
-      })),
-    };
+    authz.requireOrgMember(orgId, me(req).userId);
+    return { branches: [], teams: [] };
   });
 
   // ───────────── Membership & roles ─────────────
@@ -642,7 +393,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const { userId } = me(req);
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
     const role = authz.requireOrgMember(orgId, userId);
-    if (role === "GUEST") throw forbidden("Guests cannot browse the organization directory");
+    if (role === "GUEST") throw forbidden("Guests cannot browse the member list");
     if (!authz.can(orgId, userId, "members.view")) throw forbidden("Your role doesn't include the member directory");
     const { q } = parse(z.object({ q: z.string().trim().max(40).optional() }), req.query);
     const like = q ? `%${q.toLowerCase().replace(/[%_\\]/g, (c) => "\\" + c)}%` : "%";
@@ -653,12 +404,6 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
          ORDER BY CASE m.role WHEN 'OWNER' THEN 0 WHEN 'ADMIN' THEN 1 WHEN 'MEMBER' THEN 2 ELSE 3 END, u.display_name LIMIT 500`,
       )
       .all(orgId, like, like) as any[];
-    const branchRows = db
-      .prepare("SELECT bm.user_id, bm.branch_id, bm.role FROM branch_members bm JOIN branches b ON b.id = bm.branch_id WHERE b.org_id = ?")
-      .all(orgId) as any[];
-    const teamRows = db
-      .prepare("SELECT tm.user_id, tm.team_id, tm.role FROM team_members tm JOIN teams t ON t.id = tm.team_id WHERE t.org_id = ?")
-      .all(orgId) as any[];
     // Custom roles (docs/WORKSPACE_ROLES.md): names and colours only; what each grants is on GET /v1/orgs/:id/roles.
     const roleRows = db
       .prepare(
@@ -674,8 +419,9 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
           title: u.title,
           // Round 7: a guest's membership end date (docs/WORKSPACE_C5.md), null without one.
           expiresAt: u.expires_at ?? null,
-          branches: branchRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.branch_id, role: r.role })),
-          teams: teamRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.team_id, role: r.role })),
+          // Empty since branches and teams became roles; kept for apps that read them.
+          branches: [],
+          teams: [],
           customRoles: roleRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.id, name: r.name, color: r.color })),
         }),
       ),
@@ -715,13 +461,6 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       }
     })();
     if (body.role) ctx.audit({ actorId: actor, orgId: p.orgId, action: "member.role", target: p.userId, detail: `${targetRole}→${body.role}` });
-    if (body.role && body.role !== targetRole) {
-      const name = (ctx.db.prepare("SELECT display_name FROM users WHERE id = ?").get(p.userId) as { display_name: string } | undefined)?.display_name ?? "";
-      ctx.workflows?.emit({
-        type: "member.role_changed", key: `role:${p.userId}:${now()}`, orgId: p.orgId, depth: 0,
-        member: { id: p.userId, name, role: targetRole, newRole: body.role },
-      });
-    }
     notifyOrg(ctx, p.orgId);
     // The person's devices drop the channels; members refresh them. Envelopes still addressed to
     // the person's devices are refused by the recipient-set check (409 device_mismatch).
@@ -751,110 +490,6 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     return { ok: true };
   });
 
-  const setScopedMember = async (
-    kind: "branch" | "team",
-    scopeId: string,
-    actor: string,
-    target: string,
-    role: string | null,
-  ) => {
-    let orgId: string;
-    if (kind === "branch") {
-      const b = loadBranch(scopeId, actor);
-      orgId = b.org_id;
-      if (!authz.canManageBranch(b, actor)) throw forbidden();
-      // Only org admins may appoint/remove branch managers.
-      const current = authz.branchRole(b.id, target);
-      if ((role === "MANAGER" || current === "MANAGER") && !authz.can(orgId, actor, "teams.manage")) throw forbidden("Only org admins can change branch managers");
-    } else {
-      const t = loadTeam(scopeId, actor);
-      orgId = t.org_id;
-      if (!authz.canManageTeam(t, actor)) throw forbidden();
-      const current = authz.teamRole(t.id, target);
-      const isLeadOnly = !authz.can(orgId, actor, "teams.manage") && !(t.branch_id && authz.branchRole(t.branch_id, actor) === "MANAGER");
-      if (isLeadOnly && (role === "LEAD" || current === "LEAD")) throw forbidden("Only managers can change team leads");
-      // Cross-branch control: a branch team may only contain members of that branch.
-      if (role && t.branch_id && authz.branchRole(t.branch_id, target) === null) {
-        const targetOrgRole = authz.orgRole(orgId, target);
-        if (targetOrgRole !== "OWNER" && targetOrgRole !== "ADMIN") {
-          throw conflict("This person is not a member of the team's branch. Add them to the branch first.");
-        }
-      }
-    }
-    const targetOrgRole = authz.orgRole(orgId, target);
-    if (!targetOrgRole) throw notFound("That person is not a member of this organization");
-    if (role && authz.scopeArchived(kind === "branch" ? scopeId : null, kind === "team" ? scopeId : null)) {
-      throw conflict(`This ${kind} is archived. Unarchive it before adding people.`);
-    }
-    if (role && targetOrgRole === "GUEST") throw conflict("Guests cannot join branches or teams; add them to specific channels instead");
-    const t = now();
-    const removedFrom: string[] = [];
-    db.transaction(() => {
-      if (kind === "branch") {
-        if (role)
-          db.prepare("INSERT INTO branch_members (branch_id, user_id, role, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT(branch_id, user_id) DO UPDATE SET role = excluded.role").run(
-            scopeId,
-            target,
-            role,
-            t,
-          );
-        else {
-          db.prepare("DELETE FROM branch_members WHERE branch_id = ? AND user_id = ?").run(scopeId, target);
-          // Leaving a branch also removes the person from that branch's teams.
-          db.prepare("DELETE FROM team_members WHERE user_id = ? AND team_id IN (SELECT id FROM teams WHERE branch_id = ?)").run(target, scopeId);
-        }
-      } else if (role)
-        db.prepare("INSERT INTO team_members (team_id, user_id, role, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT(team_id, user_id) DO UPDATE SET role = excluded.role").run(
-          scopeId,
-          target,
-          role,
-          t,
-        );
-      else db.prepare("DELETE FROM team_members WHERE team_id = ? AND user_id = ?").run(scopeId, target);
-      removedFrom.push(...authz.revalidateChannelMemberships(orgId, target));
-      authz.autoJoinScope(orgId, target, t);
-    })();
-    ctx.audit({ actorId: actor, orgId, action: `${kind}.member.${role ? "set" : "remove"}`, target: `${scopeId}:${target}`, detail: role });
-    notifyOrg(ctx, orgId);
-    for (const c of removedFrom) notifyConversation(ctx, c, [target]);
-    await evictRemovedMember(ctx, target, removedFrom);
-    return { ok: true };
-  };
-
-  app.put("/v1/branches/:id/members/:userId", auth, async (req) => {
-    const p = parse(z.object({ id: z.string().max(64), userId: z.string().max(64) }), req.params);
-    const { role } = parse(z.object({ role: z.enum(["MANAGER", "MEMBER"]).default("MEMBER") }), req.body ?? {});
-    return setScopedMember("branch", p.id, me(req).userId, p.userId, role);
-  });
-  app.delete("/v1/branches/:id/members/:userId", auth, async (req) => {
-    const p = parse(z.object({ id: z.string().max(64), userId: z.string().max(64) }), req.params);
-    return setScopedMember("branch", p.id, me(req).userId, p.userId, null);
-  });
-  app.put("/v1/teams/:id/members/:userId", auth, async (req) => {
-    const p = parse(z.object({ id: z.string().max(64), userId: z.string().max(64) }), req.params);
-    const { role } = parse(z.object({ role: z.enum(["LEAD", "MEMBER"]).default("MEMBER") }), req.body ?? {});
-    return setScopedMember("team", p.id, me(req).userId, p.userId, role);
-  });
-  app.delete("/v1/teams/:id/members/:userId", auth, async (req) => {
-    const p = parse(z.object({ id: z.string().max(64), userId: z.string().max(64) }), req.params);
-    return setScopedMember("team", p.id, me(req).userId, p.userId, null);
-  });
-
-  /** Move a member between two teams; requires management rights on both. */
-  app.post("/v1/teams/:id/members/:userId/move", auth, async (req) => {
-    const actor = me(req).userId;
-    const p = parse(z.object({ id: z.string().max(64), userId: z.string().max(64) }), req.params);
-    const { toTeamId } = parse(z.object({ toTeamId: z.string().max(64) }), req.body);
-    const from = loadTeam(p.id, actor);
-    const to = loadTeam(toTeamId, actor);
-    if (from.org_id !== to.org_id) throw badRequest("Teams belong to different organizations");
-    if (!authz.canManageTeam(from, actor) || !authz.canManageTeam(to, actor)) throw forbidden("You need to manage both teams to move members");
-    if (!authz.teamRole(from.id, p.userId)) throw notFound("That person is not in the source team");
-    await setScopedMember("team", to.id, actor, p.userId, "MEMBER");
-    await setScopedMember("team", from.id, actor, p.userId, null);
-    return { ok: true };
-  });
-
   // ───────────── Invitations ─────────────
   app.post("/v1/orgs/:orgId/invites", auth, async (req) => {
     const actor = me(req).userId;
@@ -862,8 +497,11 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const body = parse(
       z.object({
         role: z.enum(["ADMIN", "MEMBER", "GUEST"]).default("MEMBER"),
+        // Branches and teams became roles: older apps send null here, anything else is refused below.
         branchId: z.string().max(64).nullable().optional(),
         teamId: z.string().max(64).nullable().optional(),
+        /** A custom role the invitation gives on joining (the inviter must be able to assign it). */
+        roleId: z.string().max(64).nullable().optional(),
         maxUses: z.number().int().min(1).max(500).default(1),
         expiresInHours: z.number().int().min(1).max(24 * 30).default(72),
         // Round 7: how long a guest's membership lasts once they join (docs/WORKSPACE_C5.md).
@@ -873,34 +511,37 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     );
     const actorRole = authz.requireOrgMember(orgId, actor);
     const policy = db.prepare("SELECT guests_allowed, guest_max_days FROM orgs WHERE id = ?").get(orgId) as { guests_allowed: number; guest_max_days: number | null } | undefined;
-    if (body.role === "GUEST" && policy && !policy.guests_allowed) throw conflict("This workspace doesn't allow guests");
+    if (body.role === "GUEST" && policy && !policy.guests_allowed) throw conflict("This community doesn't allow guests");
     if (body.role !== "GUEST" && body.guestDays) throw badRequest("Only guest invitations have an end date");
     const guestDays = body.role === "GUEST" ? (policy?.guest_max_days ? Math.min(body.guestDays ?? policy.guest_max_days, policy.guest_max_days) : (body.guestDays ?? null)) : null;
-    let branchId = body.branchId ?? null;
-    if (body.teamId) {
-      const team = authz.team(body.teamId);
-      if (!team || team.org_id !== orgId) throw badRequest("Unknown team");
-      if (branchId && team.branch_id && branchId !== team.branch_id) throw badRequest("Team is not in that branch");
-      branchId = team.branch_id ?? branchId;
-    }
-    const branch = branchId ? authz.branch(branchId) : undefined;
-    if (branchId && (!branch || branch.org_id !== orgId)) throw badRequest("Unknown branch");
+    if (body.branchId || body.teamId) throw badRequest("Branches and teams are now roles: invite with a role instead");
     if (body.role === "ADMIN" && actorRole !== "OWNER") throw forbidden("Only owners can invite admins");
-    if (authz.scopeArchived(branchId, body.teamId ?? null)) throw conflict("You can't invite people into an archived branch or team");
-    if (!authz.canIssueInvite(orgId, actor, body.role, branchId, body.teamId ?? null)) {
-      throw forbidden("You can only invite people into branches or teams you manage");
+    if (!authz.canIssueInvite(orgId, actor, body.role)) throw forbidden("Your role doesn't include inviting people");
+    const grantRoleId = body.roleId ?? null;
+    if (grantRoleId) {
+      if (body.role === "GUEST") throw badRequest("Guest invitations can't give a role");
+      const r = db.prepare("SELECT permissions, denies FROM org_roles WHERE id = ? AND org_id = ? AND archived_at IS NULL").get(grantRoleId, orgId) as
+        | { permissions: string; denies: string }
+        | undefined;
+      if (!r) throw badRequest("Unknown role");
+      // The same rule as assigning it to someone by hand.
+      const refusal = roleAssignmentRefusal(authz.actor(orgId, actor)!, { base: "MEMBER", perms: new Set(), self: false }, {
+        permissions: parsePermissionList(r.permissions),
+        denies: parsePermissionList(r.denies),
+      });
+      if (refusal) throw new ApiError(refusal.status, refusal.code, refusal.message);
     }
     const code = humanCode(12);
     const id = newId("inv");
     const t = now();
     const expiresAt = t + body.expiresInHours * 3600_000;
     db.prepare(
-      `INSERT INTO invitations (id, org_id, code_hash, code_hint, role, branch_id, team_id, max_uses, created_by, created_at, expires_at, guest_days)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, orgId, sha256Hex(code), code.slice(-4), body.role, branchId, body.teamId ?? null, body.maxUses, actor, t, expiresAt, guestDays);
+      `INSERT INTO invitations (id, org_id, code_hash, code_hint, role, branch_id, team_id, max_uses, created_by, created_at, expires_at, guest_days, grant_role_id)
+       VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, orgId, sha256Hex(code), code.slice(-4), body.role, body.maxUses, actor, t, expiresAt, guestDays, grantRoleId);
     ctx.audit({ actorId: actor, orgId, action: "invite.create", target: id, detail: body.role });
     return {
-      invite: { id, code: `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}`, role: body.role, branchId, teamId: body.teamId ?? null, maxUses: body.maxUses, uses: 0, expiresAt, guestDays },
+      invite: { id, code: `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}`, role: body.role, branchId: null, teamId: null, roleId: grantRoleId, maxUses: body.maxUses, uses: 0, expiresAt, guestDays },
     };
   });
 
@@ -920,8 +561,9 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
           id: r.id,
           hint: r.code_hint,
           role: r.role,
-          branchId: r.branch_id,
-          teamId: r.team_id,
+          branchId: null,
+          teamId: null,
+          roleId: r.grant_role_id ?? null,
           maxUses: r.max_uses,
           uses: r.uses,
           createdAt: r.created_at,
@@ -964,11 +606,13 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const org = db.prepare("SELECT * FROM orgs WHERE id = ?").get(inv.org_id) as any;
     return {
       // Same org shape as everywhere else (the app decodes it with the same model; without the slug it refused the response).
-      org: { id: org.id, name: org.name, slug: org.slug, description: org.description },
+      org: { id: org.id, name: org.name, slug: org.slug, description: org.description, rules: org.rules ?? null, memberCount: (db.prepare("SELECT COUNT(*) n FROM org_members WHERE org_id = ?").get(org.id) as { n: number }).n },
       role: inv.role,
-      branch: inv.branch_id ? (db.prepare("SELECT id, name FROM branches WHERE id = ?").get(inv.branch_id) as any) : null,
-      team: inv.team_id ? (db.prepare("SELECT id, name FROM teams WHERE id = ?").get(inv.team_id) as any) : null,
+      branch: null,
+      team: null,
+      grantRole: inv.grant_role_id ? ((db.prepare("SELECT id, name, color FROM org_roles WHERE id = ? AND archived_at IS NULL").get(inv.grant_role_id) as { id: string; name: string; color: string | null } | undefined) ?? null) : null,
       alreadyMember: !!authz.orgRole(inv.org_id, me(req).userId),
+      banned: authz.isBanned(inv.org_id, me(req).userId),
     };
   });
 
@@ -999,45 +643,47 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       z.object({
         name: z.string().trim().min(1).max(60),
         topic: zOptText,
-        scope: z.enum(["ORG", "BRANCH", "TEAM"]),
+        // Older apps always send a scope; only the whole community remains.
+        scope: z.enum(["ORG", "BRANCH", "TEAM"]).default("ORG"),
         scopeId: z.string().max(64).nullable().optional(),
         kind: z.enum(["PUBLIC", "PRIVATE", "ANNOUNCEMENT"]).default("PUBLIC"),
         autoJoin: z.boolean().optional(),
         memberIds: z.array(z.string().max(64)).max(200).default([]),
-        /** A voice room (docs/VOICE_ROOMS.md): a channel whose call anyone in it can join, without ringing. */
+        /** A voice channel (docs/VOICE_ROOMS.md): a channel whose call anyone in it can join, without ringing. */
         voice: z.boolean().default(false),
+        /** The category it goes into (null: none), and text or forum (posts with titles and their replies). */
+        categoryId: z.string().max(64).nullable().optional(),
+        format: z.enum(["text", "forum"]).default("text"),
       }),
       req.body,
     );
     authz.requireOrgMember(orgId, actor);
-    if (body.voice && body.kind === "ANNOUNCEMENT") throw badRequest("A voice room can be public or private, not an announcement channel");
-    let scopeId: string | null = null;
-    if (body.scope === "ORG") {
-      if (!authz.can(orgId, actor, "channels.create")) throw forbidden("Only org admins can create organization-wide channels");
-    } else if (body.scope === "BRANCH") {
-      const b = body.scopeId ? authz.branch(body.scopeId) : undefined;
-      if (!b || b.org_id !== orgId) throw badRequest("Unknown branch");
-      if (!authz.canManageBranch(b, actor)) throw forbidden("Only this branch's managers can create its channels");
-      if (authz.scopeArchived(b.id, null)) throw conflict("This branch is archived");
-      scopeId = b.id;
-    } else {
-      const tm = body.scopeId ? authz.team(body.scopeId) : undefined;
-      if (!tm || tm.org_id !== orgId) throw badRequest("Unknown team");
-      if (!authz.canManageTeam(tm, actor)) throw forbidden("Only this team's leads and managers can create its channels");
-      if (authz.scopeArchived(null, tm.id)) throw conflict("This team is archived");
-      scopeId = tm.id;
+    if (body.scope !== "ORG") throw badRequest("Branches and teams are now roles and categories: create the channel in a category");
+    if (body.voice && body.kind === "ANNOUNCEMENT") throw badRequest("A voice channel can be public or private, not an announcement channel");
+    if (body.voice && body.format === "forum") throw badRequest("A voice channel can't be a forum");
+    const categoryId = body.categoryId ?? null;
+    if (categoryId) {
+      if (!db.prepare("SELECT 1 FROM channel_categories WHERE id = ? AND org_id = ?").get(categoryId, orgId)) throw badRequest("Unknown category");
+      if (!authz.can(orgId, actor, "channels.create") && !authz.categoryPermissions(orgId, categoryId, actor).has("channels.create")) {
+        throw forbidden("You can't create channels in this category");
+      }
+      const inCategory = (db.prepare("SELECT COUNT(*) n FROM conversations WHERE category_id = ?").get(categoryId) as { n: number }).n;
+      if (inCategory >= CHANNEL_LIMITS.perCategory) throw conflict(`A category holds at most ${CHANNEL_LIMITS.perCategory} channels`);
+    } else if (!authz.can(orgId, actor, "channels.create")) {
+      throw forbidden("Your role doesn't include creating channels");
     }
+    const total = (db.prepare("SELECT COUNT(*) n FROM conversations WHERE org_id = ? AND type = 'CHANNEL'").get(orgId) as { n: number }).n;
+    if (total >= CHANNEL_LIMITS.perCommunity) throw conflict(`A community has at most ${CHANNEL_LIMITS.perCommunity} channels`);
     const id = newId("c");
     const t = now();
-    // Public channels are joined by everyone who may see them unless the creator opts out (autoJoin: false). Until
-    // round 7 org-wide public channels defaulted to opt-in, and neither app sends autoJoin, so people added to a
-    // workspace weren't in its channels and couldn't read or post there (bug 6).
+    // Public channels are joined by everyone who may see them unless the creator opts out (autoJoin: false).
     const autoJoin = body.kind === "ANNOUNCEMENT" ? true : body.kind === "PRIVATE" ? false : body.autoJoin ?? true;
+    const position = ((db.prepare("SELECT MAX(position) p FROM conversations WHERE org_id = ? AND type = 'CHANNEL' AND category_id IS ?").get(orgId, categoryId) as { p: number | null }).p ?? -1) + 1;
     db.transaction(() => {
       db.prepare(
-        `INSERT INTO conversations (id, type, org_id, scope, scope_id, kind, name, topic, auto_join, created_by, created_at, updated_at, voice)
-         VALUES (?, 'CHANNEL', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(id, orgId, body.scope, scopeId, body.kind, body.name, body.topic ?? null, autoJoin ? 1 : 0, actor, t, t, body.voice ? 1 : 0);
+        `INSERT INTO conversations (id, type, org_id, scope, scope_id, kind, name, topic, auto_join, created_by, created_at, updated_at, voice, category_id, position, format)
+         VALUES (?, 'CHANNEL', ?, 'ORG', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(id, orgId, body.kind, body.name, body.topic ?? null, autoJoin ? 1 : 0, actor, t, t, body.voice ? 1 : 0, categoryId, position, body.format);
       db.prepare("INSERT INTO conversation_members (conversation_id, user_id, role, joined_at) VALUES (?, ?, 'ADMIN', ?)").run(id, actor, t);
       const conv = authz.conversation(id)!;
       const addIds = new Set(body.memberIds);
@@ -1048,17 +694,19 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
         if (uid === actor) continue;
         const explicit = body.memberIds.includes(uid);
         const role = authz.orgRole(orgId, uid);
-        // Explicitly listed guests may be added; everyone else must be scope-eligible.
-        if (authz.scopeEligible(conv, uid) || (explicit && role === "GUEST")) {
+        // Explicitly listed people may be added to a private channel (and guests anywhere); everyone else must be able
+        // to see the channel through its permissions.
+        const eligible = authz.scopeEligible(conv, uid) || (explicit && (role === "GUEST" || (body.kind === "PRIVATE" && role !== null && authz.channelPermissions(conv, uid).has("channels.view"))));
+        if (eligible) {
           db.prepare("INSERT OR IGNORE INTO conversation_members (conversation_id, user_id, role, joined_at) VALUES (?, ?, 'MEMBER', ?)").run(id, uid, t);
         } else if (explicit) {
-          throw conflict(`Cannot add a member who has no access to this ${body.scope.toLowerCase()}`, { userId: uid });
+          throw conflict("Cannot add someone who can't see this channel", { userId: uid });
         }
       }
     })();
-    ctx.audit({ actorId: actor, orgId, action: body.voice ? "voice_room.create" : "channel.create", target: id, detail: `${body.kind} ${body.name}` });
-    ctx.workflows?.emit({ type: "channel.created", key: `channel:${id}`, orgId, depth: 0, channel: { id, name: body.name, kind: body.kind, scope: body.scope } });
+    ctx.audit({ actorId: actor, orgId, action: body.voice ? "voice_room.create" : "channel.create", target: id, detail: `${body.kind} ${body.format} ${body.name}` });
     notifyConversation(ctx, id);
+    notifyOrg(ctx, orgId);
     return { channel: conversationView(ctx, authz.conversation(id)!, actor) };
   });
 
@@ -1086,21 +734,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   const activityVisibleTo = (r: { action: string; target: string | null }, viewer: string): boolean => {
     const target = r.target ?? "";
     switch (r.action) {
-      case "branch.create":
-      case "branch.archive":
-      case "branch.restore":
-        return true; // every branch name is listed for org members
-      case "department.create": {
-        const d = db.prepare("SELECT branch_id FROM departments WHERE id = ?").get(target) as { branch_id: string } | undefined;
-        const b = d && authz.branch(d.branch_id);
-        return !!b && authz.canAccessBranch(b, viewer);
-      }
-      case "team.create":
-      case "team.archive":
-      case "team.restore": {
-        const t = authz.team(target);
-        return !!t && (authz.canAccessTeam(t, viewer) || (!!t.branch_id && !!authz.branchRole(t.branch_id, viewer)));
-      }
+      case "category.create":
+        return true; // categories are listed for every member who can see a channel in them
       case "channel.create":
       case "channel.access":
       case "voice_room.create": {
@@ -1111,8 +746,9 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       case "voice_room.open":
         return authz.isMember(target, viewer);
       case "invite.accept":
+      case "community.join":
       case "member.leave":
-        return true; // joining and leaving are org-level, like the member directory
+        return true; // joining and leaving are community-level, like the member list
       default:
         return false;
     }

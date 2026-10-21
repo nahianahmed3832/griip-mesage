@@ -10,7 +10,7 @@ let admin: GriipClient, member: GriipClient;
 beforeAll(async () => {
   h = await startServer();
   [admin, member] = await Promise.all(["connadmin", "connmember"].map((n) => h.client(n)));
-  (h.ctx.config.integrations.platformAdmins as Set<string>).add(admin.userId);
+  (h.ctx.config.platformAdmins as Set<string>).add(admin.userId);
 });
 afterAll(async () => h.close());
 
@@ -27,16 +27,11 @@ describe("connector register", () => {
     await expectStatus(member.req("POST", "/v1/admin/connectors/storage/check"), 403);
   });
 
-  it("lists platform services, inbox channels and catalog apps with names of missing settings only", async () => {
+  it("lists only the infrastructure Meldiq runs on, with names of missing settings only", async () => {
     const list = await report();
-    const ids = list.map((c) => c.id);
-    for (const id of ["email", "storage", "push-fcm", "ai-anthropic", "ai-openai", "ai-gemini", "inbox-whatsapp", "inbox-tiktok", "google-drive", "github", "gmail"]) expect(ids).toContain(id);
-    expect(ids).not.toContain("ai-assistants"); // replaced by the real AI providers
-    expect(byId(list, "inbox-tiktok").state).toBe("awaiting_provider");
-    expect(byId(list, "gmail").state).toBe("planned");
-    expect(byId(list, "ai-openai")).toMatchObject({ state: "needs_configuration" });
-    expect(byId(list, "ai-openai").missing).toContain("AI_OPENAI_API_KEY");
-    expect(byId(list, "google-drive").missing).toEqual(expect.arrayContaining(["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET"]));
+    expect(list.map((c) => c.id).sort()).toEqual(["calls", "email", "mongodb", "push-fcm", "push-unifiedpush", "storage"]);
+    // Optional product connectors (apps, inbox channels, AI providers, webhooks) were removed in the community rebuild.
+    expect(byId(list, "push-fcm").missing).toEqual(["FCM_PROJECT_ID", "FCM_SERVICE_ACCOUNT_FILE"]);
     expect(byId(list, "push-fcm").ownerAction).toMatch(/Firebase project/);
   });
 
@@ -51,8 +46,8 @@ describe("connector register", () => {
   });
 
   it("refuses checks that would send something or cost money", async () => {
-    await expectStatus(admin.req("POST", "/v1/admin/connectors/ai-anthropic/check"), 400);
-    await expectStatus(admin.req("POST", "/v1/admin/connectors/inbox-whatsapp/check"), 400);
+    await expectStatus(admin.req("POST", "/v1/admin/connectors/calls/check"), 400);
+    await expectStatus(admin.req("POST", "/v1/admin/connectors/github/check"), 400);
     const r = await admin.req("POST", "/v1/admin/connectors/push-fcm/check");
     expect(r.result).toEqual({ ok: false, errorKind: "not_configured" });
   });

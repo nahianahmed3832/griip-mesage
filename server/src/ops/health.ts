@@ -25,6 +25,7 @@ export interface HealthReport {
   queues: {
     delivery: { items: number; oldestAgeSeconds: number | null };
     reminders: { overdueUndelivered: number; retrying: number };
+    /** Always unavailable since the community rebuild removed apps; kept because Android 0.3.0 and older require it. */
     integrations: Measured<{ jobsQueued: number; jobsDead: number; deliveriesFailed24h: number }>;
   };
   metrics: MetricsSnapshot;
@@ -80,7 +81,6 @@ export async function healthReport(ctx: AppContext, version: string): Promise<He
   const pageCount = (db.prepare("PRAGMA page_count").get() as { page_count: number }).page_count;
   const pageSize = (db.prepare("PRAGMA page_size").get() as { page_size: number }).page_size;
   const oldest = (db.prepare("SELECT MIN(created_at) AS t FROM delivery_queue").get() as { t: number | null }).t;
-  const integrationsInMongo = ctx.mongo?.owns("integrations") === true;
   const mem = process.memoryUsage();
   const p99 = loop.count > 0 ? Math.round(loop.percentile(99) / 1e6) : null;
   const report: HealthReport = {
@@ -101,14 +101,7 @@ export async function healthReport(ctx: AppContext, version: string): Promise<He
         overdueUndelivered: count(ctx, "SELECT COUNT(*) AS n FROM reminders WHERE state IN ('scheduled','fired') AND due_at < ? AND delivered_at IS NULL", t - THRESHOLDS.reminderLateMs),
         retrying: count(ctx, "SELECT COUNT(*) AS n FROM reminders WHERE attempts > 0 AND state IN ('scheduled','fired')"),
       },
-      integrations: integrationsInMongo
-        ? { available: false, reason: "kept in MongoDB; not counted here yet" }
-        : {
-            available: true,
-            jobsQueued: count(ctx, "SELECT COUNT(*) AS n FROM integration_jobs WHERE state IN ('queued','running')"),
-            jobsDead: count(ctx, "SELECT COUNT(*) AS n FROM integration_jobs WHERE state = 'dead'"),
-            deliveriesFailed24h: count(ctx, "SELECT COUNT(*) AS n FROM integration_deliveries WHERE status = 'failed' AND received_at > ?", t - 86_400_000),
-          },
+      integrations: { available: false, reason: "apps were removed from this server" },
     },
     metrics: ctx.metrics.snapshot(),
     warnings: [],
@@ -120,7 +113,7 @@ export async function healthReport(ctx: AppContext, version: string): Promise<He
 export function warningsFor(r: HealthReport, t: number): string[] {
   const w: string[] = [];
   const c = r.checks;
-  if (c.mongodb.available && !c.mongodb.ok) w.push("MongoDB isn't answering: accounts, preferences or apps kept there can't be served.");
+  if (c.mongodb.available && !c.mongodb.ok) w.push("MongoDB isn't answering: accounts or preferences kept there can't be served.");
   if (c.storage.available && !c.storage.reachable) w.push(`File storage (${c.storage.backend}) isn't reachable (${c.storage.errorKind}): uploads and downloads fail.`);
   if (!c.livekit.available || !c.livekit.configured) w.push("Calling isn't configured on this server.");
   const win = r.metrics.window;
@@ -134,7 +127,6 @@ export function warningsFor(r: HealthReport, t: number): string[] {
     w.push(`The oldest undelivered item has waited ${Math.round(r.queues.delivery.oldestAgeSeconds / 3600)} h (a device offline that long, or a stuck backlog).`);
   }
   if (r.queues.reminders.overdueUndelivered > 0) w.push(`${r.queues.reminders.overdueUndelivered} reminders are more than 5 minutes late and not delivered.`);
-  if (r.queues.integrations.available && r.queues.integrations.jobsDead > 0) w.push(`${r.queues.integrations.jobsDead} app jobs gave up after retries.`);
   for (const p of r.metrics.providers) {
     if (p.lastFailureAt !== null && t - p.lastFailureAt < THRESHOLDS.recentFailureMs && (p.lastOkAt === null || p.lastFailureAt > p.lastOkAt)) {
       w.push(`${p.name} is failing (${p.lastErrorKind ?? "error"}); last success ${p.lastOkAt === null ? "never since start" : `${Math.round((t - p.lastOkAt) / 60_000)} min ago`}.`);

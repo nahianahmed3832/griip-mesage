@@ -11,7 +11,7 @@ let dm: string;
 beforeAll(async () => {
   h = await startServer();
   [admin, member] = await Promise.all(["opsadmin", "opsmember"].map((n) => h.client(n)));
-  (h.ctx.config.integrations.platformAdmins as Set<string>).add(admin.userId);
+  (h.ctx.config.platformAdmins as Set<string>).add(admin.userId);
   dm = (await member.req("POST", "/v1/conversations/dm", { userId: admin.userId })).conversation.id;
   await member.req("GET", `/v1/conversations/${dm}`);
 });

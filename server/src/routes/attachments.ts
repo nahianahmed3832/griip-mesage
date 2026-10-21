@@ -139,6 +139,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     const { conversationId } = parse(z.object({ conversationId: z.string().max(64) }), req.query);
     const conv = ctx.authz.requireMember(conversationId, userId);
     if (!ctx.authz.canPost(conv, userId)) throw new ApiError(403, "forbidden", "You can't post in this conversation");
+    if (!ctx.authz.canAttach(conv, userId)) throw new ApiError(403, "forbidden", "You can't share files in this channel");
     const body = req.body as Readable | undefined;
     if (!body || typeof (body as Readable).pipe !== "function") throw badRequest("Expected application/octet-stream body");
     const lengthHeader = req.headers["content-length"];
@@ -314,6 +315,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     const body = parse(z.object({ conversationId: z.string().max(64), size: z.number().int().positive(), sha256: sha256B64 }), req.body);
     const conv = ctx.authz.requireMember(body.conversationId, userId);
     if (!ctx.authz.canPost(conv, userId)) throw new ApiError(403, "forbidden", "You can't post in this conversation");
+    if (!ctx.authz.canAttach(conv, userId)) throw new ApiError(403, "forbidden", "You can't share files in this channel");
     if (body.size > cfg.attachmentMaxBytes) throw new ApiError(413, "too_large", "Attachment is too large");
     const open = sum("SELECT COUNT(*) n FROM attachment_uploads WHERE user_id = ? AND expires_at > ?", userId, now());
     if (open >= cfg.directUploads.maxPendingPerUser) throw new ApiError(429, "too_many_uploads", "Too many uploads at once. Try again in a moment.");
@@ -391,7 +393,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     const body = parse(z.object({ parts: z.array(z.object({ n: z.number().int().min(1), etag: z.string().max(200), sha256: sha256B64 })).max(10_000).optional() }), req.body ?? {});
     // Membership is checked again: someone removed while uploading can't add a file afterwards.
     const conv = ctx.authz.conversation(u.conversation_id);
-    if (!conv || !ctx.authz.isMember(conv.id, userId) || !ctx.authz.canPost(conv, userId)) {
+    if (!conv || !ctx.authz.isMember(conv.id, userId) || !ctx.authz.canAttach(conv, userId)) {
       ctx.db.prepare("DELETE FROM attachment_uploads WHERE id = ?").run(u.id);
       abandon(u);
       throw new ApiError(403, "forbidden", "You can't post in this conversation any more");

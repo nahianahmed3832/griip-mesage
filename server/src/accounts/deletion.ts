@@ -20,7 +20,7 @@ import type { AccountRow } from "./store.js";
  * membership except direct conversations. What stays: an anonymous users row with the identity's id and public identity
  * key, so a direct conversation stays one conversation for the other person and shows "Deleted account"; files already
  * sent into conversations, which belong to them and expire under the normal rules; workspace content that belongs to the
- * workspace (documents, workflows, audit entries), now attributed to "Deleted account". Messages already delivered are
+ * community (audit entries), now attributed to "Deleted account". Messages already delivered are
  * on the recipients' devices.
  *
  * Retry-safe: the steps can be repeated after a failure part-way (the account row goes last).
@@ -117,7 +117,7 @@ export async function eraseAccount(ctx: AppContext, accounts: Accounts, account:
 async function eraseIdentity(ctx: AppContext, userId: string, actorId: string | null, t: number): Promise<AccountDeletionResult> {
   const { db } = ctx;
   const orgs = ids(db, "SELECT org_id AS id FROM org_members WHERE user_id = ?", userId);
-  // Each workspace exactly as if the person left it: branches, teams, groups, meetings, channels, arrangement, apps.
+  // Each community exactly as if the person left it: roles, meetings, channels, arrangement.
   for (const orgId of orgs) await removeFromWorkspace(ctx, orgId, userId, actorId ?? userId, "left");
 
   const peers = ids(
@@ -147,7 +147,6 @@ async function eraseIdentity(ctx: AppContext, userId: string, actorId: string | 
 
   // Stores that may live outside SQLite (MongoDB domains).
   await ctx.prefs.deleteForUser(userId);
-  await ctx.integrations.forgetUser(userId);
 
   ctx.hub.disconnectUser(userId, "account deleted");
   ctx.hub.sendToUsers(peers, { t: "devices.changed", userId });
@@ -160,7 +159,7 @@ async function eraseIdentity(ctx: AppContext, userId: string, actorId: string | 
   return { deletedAt: t, identity: true, devices: devices.length, conversations: kept.length, workspaces: orgs.length };
 }
 
-/** Everything held only for this identity: queues both ways, history, blocks, approvals, uploads, reminders, inbox work. */
+/** Everything held only for this identity: queues both ways, history, blocks, approvals, uploads, reminders. */
 function deletePersonalRecords(db: DB, userId: string): void {
   for (const sql of [
     "DELETE FROM sessions WHERE user_id = ?",
@@ -177,9 +176,6 @@ function deletePersonalRecords(db: DB, userId: string): void {
     "DELETE FROM attachment_uploads WHERE user_id = ?",
     "DELETE FROM reminders WHERE user_id = ?",
     "DELETE FROM call_hands WHERE user_id = ?",
-    "DELETE FROM document_members WHERE user_id = ?",
-    // Customer conversations they were handling go back to their queue.
-    "UPDATE inbox_conversations SET assignee_id = NULL, rev = rev + 1 WHERE assignee_id = ?",
   ]) {
     db.prepare(sql).run(userId);
   }

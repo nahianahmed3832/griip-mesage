@@ -12,6 +12,7 @@ import {
 } from "../permissions/catalog.js";
 import { type Actor, canActOn, type RoleGrant, roleAssignmentRefusal, roleDefinitionRefusal, roleRemovalRefusal, type Refusal } from "../permissions/rules.js";
 import { ApiError, conflict, forbidden, newId, notFound, now } from "../util.js";
+import { reconcileAccess } from "./community.js";
 import { notifyOrg } from "./orgs.js";
 
 /**
@@ -62,21 +63,13 @@ function throwRefusal(r: Refusal): never {
 }
 
 /** What a workspace uses of each limited capability (round 7 adds members, storage, workflows and more). */
-export function planUsage(ctx: AppContext, orgId: string, apps: { installed: number; webhooks: number; notifications: number }, customRoles: number) {
+export function planUsage(ctx: AppContext, orgId: string, customRoles: number) {
   const n = (sql: string, ...p: unknown[]) => (ctx.db.prepare(sql).get(...p) as { n: number | null }).n ?? 0;
   const t = now();
   return {
-    "integrations.installed": apps.installed,
-    "integrations.webhooks": apps.webhooks,
-    "integrations.notifications": apps.notifications,
     "roles.custom": customRoles,
     members: n("SELECT COUNT(*) n FROM org_members WHERE org_id = ?", orgId),
     "storage.bytes": n("SELECT SUM(a.size) n FROM attachments a JOIN conversations c ON c.id = a.conversation_id WHERE c.org_id = ? AND a.expires_at > ?", orgId, t),
-    workflows: n("SELECT COUNT(*) n FROM workflows WHERE org_id = ?", orgId),
-    documents: n("SELECT COUNT(*) n FROM documents WHERE org_id = ?", orgId),
-    groups: n("SELECT COUNT(*) n FROM user_groups WHERE org_id = ?", orgId),
-    api_keys: n("SELECT COUNT(*) n FROM api_keys WHERE org_id = ? AND revoked_at IS NULL AND expires_at > ?", orgId, t),
-    "webhooks.outgoing": n("SELECT COUNT(*) n FROM webhooks WHERE org_id = ?", orgId),
   };
 }
 
@@ -86,6 +79,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
 
   const roleRow = (id: string) => db.prepare("SELECT * FROM org_roles WHERE id = ?").get(id) as RoleRow | undefined;
   const memberCount = (roleId: string) => (db.prepare("SELECT COUNT(*) n FROM org_role_members WHERE role_id = ?").get(roleId) as { n: number }).n;
+  const holders = (roleId: string) => (db.prepare("SELECT user_id FROM org_role_members WHERE role_id = ?").all(roleId) as { user_id: string }[]).map((r) => r.user_id);
 
   /**
    * Changing what a role does (its powers, its limits, or whether it counts) changes the access of everyone holding it,
@@ -232,7 +226,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
       const taken = nameTaken(orgId, name);
       if (taken) refuseTaken(taken, name);
       if (activeCount(orgId) >= MAX_ACTIVE_ROLES) throw conflict(`A workspace can have at most ${MAX_ACTIVE_ROLES} active roles. Archive one first.`);
-      ctx.entitlements.check("roles.custom", activeCount(orgId));
+      ctx.entitlements.check("roles.custom", activeCount(orgId), orgId);
       const position = ((db.prepare("SELECT MAX(position) p FROM org_roles WHERE org_id = ?").get(orgId) as { p: number | null }).p ?? 0) + 1;
       db.prepare(
         `INSERT INTO org_roles (id, org_id, name, description, color, icon, permissions, denies, template, position, rev, created_by, created_at, updated_at)
@@ -318,7 +312,8 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
     }
     const action = result.archiveChange ? (result.archiving ? "role.archive" : "role.restore") : "role.update";
     ctx.audit({ actorId: userId, orgId: role.org_id, action, target: roleId, detail: body.name ?? role.name });
-    notifyOrg(ctx, role.org_id);
+    // A role's restrictions and archiving change channel access (categories it opens, `channels.view` it restricts).
+    await reconcileAccess(ctx, role.org_id, holders(roleId));
     return { role: view(roleRow(roleId)!, actor) };
   });
 
@@ -331,7 +326,10 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
     if (refusal) throwRefusal(refusal);
     if (!role.archived_at) throw new ApiError(409, "not_archived", "Archive the role before deleting it");
     const removed = memberCount(roleId);
-    db.prepare("DELETE FROM org_roles WHERE id = ? AND archived_at IS NOT NULL").run(roleId);
+    db.transaction(() => {
+      db.prepare("DELETE FROM channel_overwrites WHERE org_id = ? AND subject = ?").run(role.org_id, roleId);
+      db.prepare("DELETE FROM org_roles WHERE id = ? AND archived_at IS NOT NULL").run(roleId);
+    })();
     ctx.audit({ actorId: userId, orgId: role.org_id, action: "role.delete", target: roleId, detail: `${role.name} (${removed} assignment(s))` });
     notifyOrg(ctx, role.org_id);
     return { ok: true };
@@ -379,7 +377,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
     // Assigning twice is harmless (a retry or a double tap): the same answer, no second audit entry.
     if (added) {
       ctx.audit({ actorId, orgId: role.org_id, action: "role.assign", target: `${role.id}:${p.userId}`, detail: role.name });
-      notifyOrg(ctx, role.org_id);
+      await reconcileAccess(ctx, role.org_id, [p.userId]);
     }
     return { ok: true, permissions: [...authz.permissions(role.org_id, p.userId)].sort() };
   });
@@ -394,7 +392,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
     const removed = db.prepare("DELETE FROM org_role_members WHERE role_id = ? AND user_id = ?").run(role.id, p.userId).changes > 0;
     if (removed) {
       ctx.audit({ actorId, orgId: role.org_id, action: "role.unassign", target: `${role.id}:${p.userId}`, detail: role.name });
-      notifyOrg(ctx, role.org_id);
+      await reconcileAccess(ctx, role.org_id, [p.userId]);
     }
     return { ok: true, permissions: [...authz.permissions(role.org_id, p.userId)].sort() };
   });
@@ -469,7 +467,6 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
          WHERE c.org_id = ? AND a.expires_at > ?`,
       )
       .get(orgId, t) as { n: number; bytes: number };
-    const apps = await ctx.integrations.usage(orgId);
     return {
       members: {
         total: [...byRole.values()].reduce((a, b) => a + b, 0),
@@ -479,9 +476,11 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
         guests: byRole.get("GUEST") ?? 0,
       },
       structure: {
-        branches: count("SELECT COUNT(*) n FROM branches WHERE org_id = ? AND archived_at IS NULL", orgId),
-        departments: count("SELECT COUNT(*) n FROM departments WHERE org_id = ?", orgId),
-        teams: count("SELECT COUNT(*) n FROM teams WHERE org_id = ? AND archived_at IS NULL", orgId),
+        // Zero since branches and teams became roles and categories; kept for apps that read them.
+        branches: 0,
+        departments: 0,
+        teams: 0,
+        categories: count("SELECT COUNT(*) n FROM channel_categories WHERE org_id = ?", orgId),
         channels: count("SELECT COUNT(*) n FROM conversations WHERE org_id = ? AND type = 'CHANNEL' AND archived_at IS NULL", orgId),
         archivedChannels: count("SELECT COUNT(*) n FROM conversations WHERE org_id = ? AND type = 'CHANNEL' AND archived_at IS NOT NULL", orgId),
       },
@@ -489,7 +488,6 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
       files: { count: files.n, bytes: files.bytes },
       invitations: { active: count("SELECT COUNT(*) n FROM invitations WHERE org_id = ? AND revoked_at IS NULL AND expires_at > ? AND uses < max_uses", orgId, t) },
       roles: { custom: count("SELECT COUNT(*) n FROM org_roles WHERE org_id = ? AND archived_at IS NULL", orgId) },
-      apps,
       limits: { fileMaxBytes: ctx.config.fileMaxBytes, orgStoredBytes: ctx.config.abuse.orgStoredBytes || null },
       // Round 7: measured usage over the last 30 days, per day (docs/USAGE_AND_PLANS.md). Counts and sizes only.
       metered: (() => {
@@ -505,9 +503,8 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
     const { userId } = me(req);
     const { orgId } = parse(z.object({ orgId: zId }), req.params);
     authz.requireOrgMember(orgId, userId);
-    const apps = await ctx.integrations.usage(orgId);
     const customRoles = (db.prepare("SELECT COUNT(*) n FROM org_roles WHERE org_id = ? AND archived_at IS NULL").get(orgId) as { n: number }).n;
-    return ctx.entitlements.plan(planUsage(ctx, orgId, apps, customRoles), orgId);
+    return ctx.entitlements.plan(planUsage(ctx, orgId, customRoles), orgId);
   });
 
   // ───────────── The full audit log ─────────────

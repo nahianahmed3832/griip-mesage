@@ -47,7 +47,7 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   account_key_backups: "accounts",
   account_key_unlocks: "accounts",
   nav_preferences: "preferences",
-  // Apps and connected accounts (2026-10-19, docs/INTEGRATIONS.md): async stores, so they can live in MongoDB.
+  // Apps and connected accounts (2026-10-19): removed with the community rebuild; the tables stay (src/retiredData.ts).
   integration_installs: "integrations",
   integration_accounts: "integrations",
   integration_credentials: "integrations",
@@ -69,6 +69,11 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   registration_invites: "identity",
   orgs: "workspace",
   org_members: "workspace",
+  // Community rebuild (2026-10-21, docs/COMMUNITY_REBUILD_2026-10-21.md).
+  channel_categories: "workspace",
+  channel_overwrites: "workspace",
+  org_bans: "workspace",
+  community_migration_runs: "workspace",
   branches: "workspace",
   branch_members: "workspace",
   departments: "workspace",

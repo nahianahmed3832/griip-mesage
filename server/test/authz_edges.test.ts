@@ -4,28 +4,28 @@ import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 
 let h: Harness;
-let owner: GriipClient, manager: GriipClient;
-let org: string, branch: string;
+let owner: GriipClient, inviter: GriipClient;
+let org: string, inviterRole: string;
 
 beforeAll(async () => {
   h = await startServer();
   owner = await h.client("edgeowner");
-  manager = await h.client("edgemanager");
+  inviter = await h.client("edgemanager");
   org = (await owner.req("POST", "/v1/orgs", { name: "Edge Co" })).org.id;
-  branch = (await owner.req("POST", `/v1/orgs/${org}/branches`, { name: "Dhaka" })).branch.id;
-  const code = (await owner.req("POST", `/v1/orgs/${org}/invites`, { role: "MEMBER", branchId: branch })).invite.code;
-  await manager.req("POST", "/v1/invites/accept", { code });
-  await owner.req("PUT", `/v1/branches/${branch}/members/${manager.userId}`, { role: "MANAGER" });
+  inviterRole = (await owner.req("POST", `/v1/orgs/${org}/roles`, { name: "Greeter", permissions: ["members.invite"], denies: [] })).role.id;
+  const code = (await owner.req("POST", `/v1/orgs/${org}/invites`, { role: "MEMBER" })).invite.code;
+  await inviter.req("POST", "/v1/invites/accept", { code });
+  await owner.req("PUT", `/v1/roles/${inviterRole}/members/${inviter.userId}`);
 });
 afterAll(async () => h.close());
 
 describe("invites are re-checked against their creator's current rights (T3.1)", () => {
-  it("an invite from a branch manager stops working once they're no longer a manager", async () => {
-    const code = (await manager.req("POST", `/v1/orgs/${org}/invites`, { role: "MEMBER", branchId: branch, maxUses: 5 })).invite.code;
+  it("an invite from someone whose role let them invite stops working once the role is taken away", async () => {
+    const code = (await inviter.req("POST", `/v1/orgs/${org}/invites`, { role: "MEMBER", maxUses: 5 })).invite.code;
     const early = await h.client("edgeearly");
-    await early.req("POST", "/v1/invites/accept", { code }); // works while the manager still manages the branch
+    await early.req("POST", "/v1/invites/accept", { code }); // works while they may still invite
 
-    await owner.req("PUT", `/v1/branches/${branch}/members/${manager.userId}`, { role: "MEMBER" });
+    await owner.req("DELETE", `/v1/roles/${inviterRole}/members/${inviter.userId}`);
     const late = await h.client("edgelate");
     await expectStatus(late.req("POST", "/v1/invites/preview", { code }), 404);
     await expectStatus(late.req("POST", "/v1/invites/accept", { code }), 404);
@@ -63,35 +63,20 @@ describe("accounts disabled from the admin CLI are disconnected (T3.3)", () => {
   });
 });
 
-describe("archived branches and teams are read-only (T3.2, D-14)", () => {
-  it("blocks posts, calls, new members, invites and channels until unarchived", async () => {
+describe("archived channels are read-only (T3.2)", () => {
+  it("blocks posts and calls until restored, and members keep reading", async () => {
     const o = await h.client("archowner");
     const m = await h.client("archmember");
-    const extra = await h.client("archextra");
     const orgId = (await o.req("POST", "/v1/orgs", { name: "Archive Co" })).org.id;
-    const br = (await o.req("POST", `/v1/orgs/${orgId}/branches`, { name: "Old site" })).branch.id;
-    const team = (await o.req("POST", `/v1/orgs/${orgId}/teams`, { name: "Wind-down", branchId: br })).team.id;
-    for (const c of [m, extra]) {
-      const code = (await o.req("POST", `/v1/orgs/${orgId}/invites`, { role: "MEMBER", branchId: br })).invite.code;
-      await c.req("POST", "/v1/invites/accept", { code });
-    }
-    await o.req("PUT", `/v1/teams/${team}/members/${m.userId}`, {});
-    const ch = (await o.req("POST", `/v1/orgs/${orgId}/channels`, { name: "wind-down", scope: "TEAM", scopeId: team, kind: "PUBLIC", memberIds: [m.userId] })).channel.id;
-    const pendingInvite = (await o.req("POST", `/v1/orgs/${orgId}/invites`, { role: "MEMBER", teamId: team })).invite.code;
+    const code = (await o.req("POST", `/v1/orgs/${orgId}/invites`, { role: "MEMBER" })).invite.code;
+    await m.req("POST", "/v1/invites/accept", { code });
+    const ch = (await o.req("POST", `/v1/orgs/${orgId}/channels`, { name: "wind-down", voice: true })).channel.id;
     await m.send(ch, { type: "text", text: "before archiving" });
-
-    await o.req("PATCH", `/v1/branches/${br}`, { archived: true }); // archiving the branch archives its teams too
+    await o.req("PATCH", `/v1/conversations/${ch}`, { archived: true });
     await expectStatus(m.send(ch, { type: "text", text: "after" }), 403);
     await expectStatus(m.req("POST", "/v1/calls", { conversationId: ch }), 409);
-    await expectStatus(o.req("PUT", `/v1/teams/${team}/members/${extra.userId}`, {}), 409);
-    await expectStatus(o.req("POST", `/v1/orgs/${orgId}/invites`, { role: "MEMBER", teamId: team }), 409);
-    await expectStatus(o.req("POST", `/v1/orgs/${orgId}/channels`, { name: "new", scope: "TEAM", scopeId: team, kind: "PUBLIC" }), 409);
-    await expectStatus(extra.req("POST", "/v1/invites/accept", { code: pendingInvite }), 404);
-    // Existing members keep access to the (read-only) channel.
     expect((await m.req("GET", `/v1/conversations/${ch}`)).conversation.canPost).toBe(false);
-
-    await o.req("PATCH", `/v1/branches/${br}`, { archived: false });
+    await o.req("PATCH", `/v1/conversations/${ch}`, { archived: false });
     await m.send(ch, { type: "text", text: "back" });
-    await o.req("PUT", `/v1/teams/${team}/members/${extra.userId}`, {});
   });
 });

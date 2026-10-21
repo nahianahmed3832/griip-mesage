@@ -17,7 +17,6 @@ const props = {
   kind: z.object({ kind }).strict(),
   search: z.object({ results: bucket, scope: z.enum(["all", "messages", "people", "channels", "files", "apps"]) }).strict(),
   // Connector ids come from the server's own catalogue, so they name a product, never a person.
-  connector: z.object({ connector: z.string().regex(/^[a-z0-9-]{2,40}$/) }).strict(),
   call: z.object({ type: z.enum(["voice", "video", "room"]) }).strict(),
   error: z.object({ code: z.string().regex(/^[a-z0-9_]{2,40}$/) }).strict(),
   exposure: z.object({ experiment: z.string().regex(/^[a-z0-9-]{2,40}$/), variant: z.string().regex(/^[a-z0-9-]{2,40}$/) }).strict(),
@@ -42,8 +41,6 @@ export const ANALYTICS_EVENTS: Record<string, EventDef> = {
   "channel.joined": { props: props.kind, value: null, description: "Joined a channel." },
   "search.performed": { props: props.search, value: null, description: "A search ran; results: how many came back, bucketed." },
   "search.result_opened": { props: props.search, value: null, description: "A search result opened." },
-  "integration.viewed": { props: props.connector, value: null, description: "An app's page in the directory opened." },
-  "integration.connected": { props: props.connector, value: null, description: "An app connected or installed." },
   "call.joined": { props: props.call, value: null, description: "Joined a call or voice room." },
   "error.shown": { props: props.error, value: null, description: "An error message shown; code: the server's error code." },
   "experiment.exposed": { props: props.exposure, value: null, description: "The person saw an experiment's variant (counted once per app start)." },

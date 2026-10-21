@@ -36,7 +36,6 @@ export interface CleanupResult {
   callRecordsPruned: number;
   auditPruned: number;
   /** Expired sign-in flows, webhook delivery ids, channel notifications from apps and old finished jobs. */
-  integrations: number;
   /** Old reminder occurrence records and reminders finished more than 30 days ago. */
   reminders: number;
   /** Guests whose membership end date passed, taken out of the workspace (round 7, docs/WORKSPACE_C5.md). */
@@ -97,7 +96,6 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     disabledDisconnected,
     callRecordsPruned: 0,
     auditPruned: 0,
-    integrations: 0,
     guestsExpired: 0,
   };
   // Usage gauges (seats, stored bytes, call minutes), at most every ten minutes (docs/USAGE_AND_PLANS.md).
@@ -132,7 +130,6 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     r.callRecordsPruned = oldCalls.length;
   }
   r.auditPruned = db.prepare("DELETE FROM audit_log WHERE at <= ?").run(t - ctx.config.auditRetentionDays * 86_400_000).changes;
-  r.integrations = await ctx.integrations.purge(t);
   r.blobsDeleted = await processBlobDeletes(ctx);
   r.uploadsCleaned = await processAbandonedUploads(ctx);
   // Call membership: anyone no longer admitted (removed from the conversation, revoked device,

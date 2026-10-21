@@ -14,8 +14,11 @@ import { healthReport } from "./health.js";
 export default async function opsRoutes(app: FastifyInstance, ctx: AppContext, version: string) {
   const auth = { preHandler: requireAuth(ctx) };
   const requirePlatformAdmin = (userId: string) => {
-    if (!ctx.config.integrations.platformAdmins.has(userId)) throw forbidden("Only platform administrators can do that");
+    if (!ctx.config.platformAdmins.has(userId)) throw forbidden("Only platform administrators can do that");
   };
+
+  /** Whether the caller is a platform admin (the app shows Service health then). Moved here from the removed apps API. */
+  app.get("/v1/platform/me", auth, async (req) => ({ platformAdmin: ctx.config.platformAdmins.has(me(req).userId) }));
 
   app.get("/v1/admin/health", auth, async (req) => {
     requirePlatformAdmin(me(req).userId);

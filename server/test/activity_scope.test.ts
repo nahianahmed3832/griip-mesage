@@ -2,10 +2,20 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { GriipClient } from "./support/griipClient.js";
 import { type Harness, startServer } from "./support/harness.js";
 
+/**
+ * The activity feed only shows members what they could see themselves (T1.8): channels gated to a role by their
+ * category's permissions, private channels and calls stay hidden from everyone else.
+ */
 let h: Harness;
 let owner: GriipClient, inA: GriipClient, inB: GriipClient;
-let org: string, branchA: string, branchB: string;
-let teamA: string, teamB: string, deptA: string, channelA: string, privateB: string;
+let org: string, roleA: string, roleB: string, channelA: string, channelB: string, privateB: string;
+
+async function gatedCategory(name: string, role: string) {
+  const id = (await owner.req("POST", `/v1/orgs/${org}/categories`, { name })).category.id;
+  await owner.req("PUT", `/v1/categories/${id}/overwrites`, { subject: "everyone", deny: ["channels.view"] });
+  await owner.req("PUT", `/v1/categories/${id}/overwrites`, { subject: role, allow: ["channels.view"] });
+  return id;
+}
 
 beforeAll(async () => {
   h = await startServer();
@@ -13,21 +23,20 @@ beforeAll(async () => {
   inA = await h.client("actina");
   inB = await h.client("actinb");
   org = (await owner.req("POST", "/v1/orgs", { name: "Scope Co" })).org.id;
-  branchA = (await owner.req("POST", `/v1/orgs/${org}/branches`, { name: "Dhaka" })).branch.id;
-  branchB = (await owner.req("POST", `/v1/orgs/${org}/branches`, { name: "London" })).branch.id;
-  deptA = (await owner.req("POST", `/v1/branches/${branchA}/departments`, { name: "Restructuring" })).department.id;
-  teamA = (await owner.req("POST", `/v1/orgs/${org}/teams`, { name: "Confidential Layoff Planning", branchId: branchA })).team.id;
-  teamB = (await owner.req("POST", `/v1/orgs/${org}/teams`, { name: "London Sales", branchId: branchB })).team.id;
-  for (const [c, branch] of [
-    [inA, branchA],
-    [inB, branchB],
+  roleA = (await owner.req("POST", `/v1/orgs/${org}/roles`, { name: "Dhaka", permissions: [], denies: [] })).role.id;
+  roleB = (await owner.req("POST", `/v1/orgs/${org}/roles`, { name: "London", permissions: [], denies: [] })).role.id;
+  for (const [c, role] of [
+    [inA, roleA],
+    [inB, roleB],
   ] as const) {
-    const code = (await owner.req("POST", `/v1/orgs/${org}/invites`, { role: "MEMBER", branchId: branch })).invite.code;
+    const code = (await owner.req("POST", `/v1/orgs/${org}/invites`, { role: "MEMBER", roleId: role })).invite.code;
     await c.req("POST", "/v1/invites/accept", { code });
   }
-  channelA = (await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "dhaka-general", scope: "BRANCH", scopeId: branchA, kind: "PUBLIC", voice: true })).channel.id;
-  privateB = (await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "london-board", scope: "BRANCH", scopeId: branchB, kind: "PRIVATE" })).channel.id;
-  // A voice room (round 7: text channels have no calls).
+  const catA = await gatedCategory("Dhaka", roleA);
+  const catB = await gatedCategory("London", roleB);
+  channelA = (await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "dhaka-layoff-planning", categoryId: catA, voice: true })).channel.id;
+  channelB = (await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "london-sales", categoryId: catB })).channel.id;
+  privateB = (await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "london-board", categoryId: catB, kind: "PRIVATE" })).channel.id;
   await owner.req("POST", "/v1/calls", { conversationId: channelA });
 });
 afterAll(async () => h.close());
@@ -36,44 +45,36 @@ const feed = async (who: GriipClient) => (await who.req("GET", `/v1/orgs/${org}/
 const targets = (items: { target: string }[]) => items.map((a) => a.target);
 const text = (items: unknown[]) => JSON.stringify(items);
 
-describe("activity feed respects branch isolation (T1.8)", () => {
-  it("a branch-B member sees nothing about branch A's teams, departments, channels or calls", async () => {
+describe("activity feed respects channel visibility (T1.8)", () => {
+  it("a member without the role sees nothing about the gated channels or their calls", async () => {
     const mine = await feed(inB);
-    expect(text(mine)).not.toContain("Confidential Layoff Planning");
-    expect(text(mine)).not.toContain("Restructuring");
-    expect(text(mine)).not.toContain("dhaka-general");
-    expect(targets(mine)).not.toContain(teamA);
-    expect(targets(mine)).not.toContain(deptA);
+    expect(text(mine)).not.toContain("dhaka-layoff-planning");
     expect(targets(mine)).not.toContain(channelA);
     expect(mine.some((a) => a.action === "voice_room.open")).toBe(false);
-    // Their own branch's structure, and org-level events, are still shown.
-    expect(targets(mine)).toContain(teamB);
-    expect(mine.filter((a) => a.action === "branch.create").map((a) => a.detail).sort()).toEqual(["Dhaka", "London"]);
+    // Their own channels and community-level events are still shown.
+    expect(targets(mine)).toContain(channelB);
     expect(mine.some((a) => a.action === "invite.accept")).toBe(true);
-    // A private channel in their own branch they aren't in stays hidden too.
+    // A private channel in their own category they aren't in stays hidden too.
     expect(targets(mine)).not.toContain(privateB);
   });
 
-  it("a branch-A member sees branch A's events and the call in a channel they belong to", async () => {
-    await inA.req("POST", `/v1/conversations/${channelA}/join`).catch(() => {});
+  it("a member with the role sees its channel and the call in it", async () => {
     const mine = await feed(inA);
-    expect(targets(mine)).toEqual(expect.arrayContaining([teamA, deptA, channelA]));
+    expect(targets(mine)).toContain(channelA);
     expect(mine.some((a) => a.action === "voice_room.open" && a.target === channelA)).toBe(true);
-    expect(targets(mine)).not.toContain(teamB);
+    expect(targets(mine)).not.toContain(channelB);
   });
 
-  it("org admins still see everything", async () => {
-    const all = await feed(owner);
-    expect(targets(all)).toEqual(expect.arrayContaining([teamA, teamB, deptA, channelA, privateB]));
+  it("owners still see everything", async () => {
+    expect(targets(await feed(owner))).toEqual(expect.arrayContaining([channelA, channelB, privateB]));
   });
 
-  it("filters older audit rows by looking up their target, and hides rows whose target is gone", async () => {
+  it("hides older branch and team rows, and rows whose target is gone", async () => {
     const insert = h.ctx.db.prepare("INSERT INTO audit_log (at, actor_id, org_id, action, target, detail) VALUES (?, ?, ?, ?, ?, ?)");
-    insert.run(Date.now(), owner.userId, org, "team.create", teamA, "Old Row Team A");
-    insert.run(Date.now(), owner.userId, org, "team.create", "t_deleted", "Deleted Team");
-    const mine = await feed(inB);
-    expect(text(mine)).not.toContain("Old Row Team A");
-    expect(text(mine)).not.toContain("Deleted Team");
-    expect(text(await feed(inA))).toContain("Old Row Team A");
+    insert.run(Date.now(), owner.userId, org, "team.create", "t_old", "Old Row Team");
+    insert.run(Date.now(), owner.userId, org, "channel.create", "c_deleted", "PUBLIC Deleted Channel");
+    const mine = await feed(inA);
+    expect(text(mine)).not.toContain("Old Row Team");
+    expect(text(mine)).not.toContain("Deleted Channel");
   });
 });

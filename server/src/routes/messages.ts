@@ -41,7 +41,7 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
     const conv = authz.requireMember(e.conversationId, userId);
     if (!authz.canPost(conv, userId)) {
       throw forbidden(
-        conv.archived_at || authz.conversationScopeArchived(conv) ? "This channel is archived" : "Only managers can post in announcement channels",
+        conv.archived_at ? "This channel is archived" : conv.kind === "ANNOUNCEMENT" ? "Only managers can post in announcement channels" : "You can't post in this channel",
       );
     }
     // Clock sanity: sentAt is signed by the client; reject wildly wrong clocks (±1 day).

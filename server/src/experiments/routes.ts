@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { type AppContext, me, parse, requireAuth } from "../context.js";
-import { connectorDef } from "../integrations/catalog.js";
 import { forbidden } from "../util.js";
 import { type Assignment, assignments, effectiveStatus } from "./assign.js";
 import { EXPERIMENTS } from "./definitions.js";
@@ -20,7 +19,7 @@ const MAX_REPORT_DAYS = 400;
 export default async function experimentRoutes(app: FastifyInstance, ctx: AppContext) {
   const auth = { preHandler: requireAuth(ctx) };
   const cfg = ctx.config.experiments;
-  const isPlatformAdmin = (userId: string) => ctx.config.integrations.platformAdmins.has(userId);
+  const isPlatformAdmin = (userId: string) => ctx.config.platformAdmins.has(userId);
   const assignmentsFor = (userId: string): Assignment[] => assignments(cfg, userId, isPlatformAdmin(userId));
 
   app.get("/v1/experiments", auth, async (req) => {
@@ -45,11 +44,7 @@ export default async function experimentRoutes(app: FastifyInstance, ctx: AppCon
   app.post("/v1/analytics/events", { ...auth, config: { rateLimit: ANALYTICS_RATE_LIMIT } }, async (req, reply) => {
     if (!ctx.config.analyticsEnabled) return reply.code(202).send({ accepted: 0, enabled: false });
     const batch = parse(zAnalyticsBatch, req.body);
-    // Connector properties must name an app in the catalogue, so nothing else can ride along in that field.
-    const events = cleanEvents(batch).filter((e) => {
-      const connector = (JSON.parse(e.dims) as { connector?: string }).connector;
-      return connector === undefined || connectorDef(connector) !== undefined;
-    });
+    const events = cleanEvents(batch);
     const day = new Date().toISOString().slice(0, 10);
     record(events, batch.platform, assignmentsFor(me(req).userId), day);
     return reply.code(202).send({ accepted: events.length, enabled: true });

@@ -27,27 +27,15 @@ import historyRoutes from "./routes/history.js";
 import messageRoutes from "./routes/messages.js";
 import orgRoutes from "./routes/orgs.js";
 import roleRoutes from "./routes/roles.js";
-import type { FetchLike } from "./integrations/http.js";
-import { Integrations } from "./integrations/index.js";
 import { Entitlements } from "./entitlements.js";
-import integrationRoutes from "./integrations/routes.js";
 import opsRoutes from "./ops/routes.js";
 import searchRoutes from "./routes/search.js";
-import workflowRoutes from "./routes/workflows.js";
-import documentRoutes from "./routes/documents.js";
-import aiRoutes from "./routes/ai.js";
-import inboxRoutes from "./routes/inbox.js";
 import experimentRoutes from "./experiments/routes.js";
-import { InboxService } from "./inbox/service.js";
-import { AiService } from "./ai/service.js";
-import { DocumentService } from "./documents/service.js";
-import workspaceC5Routes from "./routes/workspaceC5.js";
-import developerRoutes from "./routes/developer.js";
-import { DeveloperService } from "./developer/service.js";
 import { UsageMeter } from "./usage/meter.js";
-import { GroupService } from "./workspace/groups.js";
 import { MeetingService } from "./workspace/meetings.js";
-import { WorkflowService } from "./workflows/service.js";
+import meetingRoutes from "./routes/meetings.js";
+import communityRoutes from "./routes/community.js";
+import { runCommunityMigration } from "./communityMigration.js";
 import preferenceRoutes from "./preferences/routes.js";
 import reminderRoutes from "./reminders/routes.js";
 import { ReminderService } from "./reminders/service.js";
@@ -82,8 +70,6 @@ export async function buildApp(
     push?: PushDeps;
     mailer?: Mailer;
     mongo?: MeldiqMongo;
-    /** Replaces the network for provider calls (tests: test/support/fakeProviders.ts). */
-    integrationsFetch?: FetchLike;
   } = {},
 ): Promise<BuiltApp> {
   const app = Fastify({
@@ -95,11 +81,10 @@ export async function buildApp(
             // Never log credentials. Request bodies are not logged at all (default), so
             // message ciphertext and keys never reach the logs either.
             redact: { paths: ["req.headers.authorization", "req.headers.cookie"], remove: true },
-            // App sign-in pages carry one-time codes in the query (OAuth code and state, begin tokens): logged without it.
             serializers: {
               req: (r: { method: string; url: string; hostname?: string; ip?: string; socket?: { remotePort?: number } }) => ({
                 method: r.method,
-                url: r.url.startsWith("/v1/integrations/") ? r.url.split("?")[0] : r.url,
+                url: r.url,
                 hostname: r.hostname,
                 remoteAddress: r.ip,
                 remotePort: r.socket?.remotePort,
@@ -142,38 +127,15 @@ export async function buildApp(
   ctx.prefs = ctx.mongo?.owns("preferences") ? new MongoPreferenceStore(ctx.mongo) : new SqlitePreferenceStore(db);
   ctx.entitlements = new Entitlements(config.entitlements, db);
   ctx.usage = new UsageMeter(db);
-  ctx.integrations = new Integrations({
-    entitlements: ctx.entitlements,
-    db,
-    authz: ctx.authz,
-    hub: ctx.hub,
-    log: app.log,
-    audit: ctx.audit,
-    config: config.integrations,
-    mongo: ctx.mongo,
-    fetch: opts.integrationsFetch,
-  });
-  ctx.integrations.metrics = ctx.metrics;
-  ctx.integrations.start();
-  app.addHook("onClose", async () => ctx.integrations.stop());
   ctx.reminders = new ReminderService(ctx);
   ctx.reminders.start(config.reminderTickMs);
   app.addHook("onClose", async () => ctx.reminders.stop());
-  ctx.developer = new DeveloperService(ctx);
-  ctx.developer.start(config.workflowTickMs);
-  app.addHook("onClose", async () => ctx.developer.stop());
-  ctx.documents = new DocumentService(ctx);
-  ctx.groups = new GroupService(ctx);
   ctx.meetings = new MeetingService(ctx);
   ctx.meetings.start(config.workflowTickMs > 0 ? 30_000 : 0);
   app.addHook("onClose", async () => ctx.meetings.stop());
-  ctx.workflows = new WorkflowService(ctx);
-  ctx.workflows.start(config.workflowTickMs);
-  ctx.ai = new AiService(ctx);
-  ctx.inbox = new InboxService(ctx, opts.integrationsFetch);
-  ctx.inbox.worker.start(config.inbox.tickMs);
-  app.addHook("onClose", async () => ctx.inbox.worker.stop());
-  app.addHook("onClose", async () => ctx.workflows.stop());
+  // Branches and teams become roles and categories once (docs/COMMUNITY_REBUILD_2026-10-21.md §6); idempotent.
+  const migrated = runCommunityMigration(ctx);
+  if (migrated.converted > 0) app.log.info({ ...migrated }, "community migration converted branches and teams");
 
   if (config.fcm && !config.push) ctx.hub.onQueuedOffline = (deviceId) => ctx.fcm?.queued(deviceId);
   if (config.trustProxy === true) {
@@ -316,15 +278,10 @@ export async function buildApp(
   for (const r of [authRoutes, userRoutes, orgRoutes, roleRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, preferenceRoutes, reminderRoutes, wsRoutes]) {
     await app.register(async (scope) => r(scope, ctx));
   }
-  await app.register(async (scope) => integrationRoutes(scope, ctx, ctx.integrations));
   await app.register(async (scope) => opsRoutes(scope, ctx, VERSION));
   await app.register(async (scope) => searchRoutes(scope, ctx));
-  await app.register(async (scope) => workflowRoutes(scope, ctx));
-  await app.register(async (scope) => documentRoutes(scope, ctx));
-  await app.register(async (scope) => workspaceC5Routes(scope, ctx));
-  await app.register(async (scope) => developerRoutes(scope, ctx));
-  await app.register(async (scope) => aiRoutes(scope, ctx));
-  await app.register(async (scope) => inboxRoutes(scope, ctx));
+  await app.register(async (scope) => meetingRoutes(scope, ctx));
+  await app.register(async (scope) => communityRoutes(scope, ctx));
   await app.register(async (scope) => experimentRoutes(scope, ctx));
   await app.register(async (scope) => accountRoutes(scope, ctx, ctx.accounts));
   const fed = ctx.federation;
@@ -363,26 +320,17 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     // Saved messages (Later) in the personal preferences document (2026-10-19).
     "saved-items",
     "org-photos",
-    // 2026-10-19: custom workspace roles (docs/WORKSPACE_ROLES.md) and the app directory (docs/INTEGRATIONS.md).
+    // 2026-10-19: custom workspace roles (docs/WORKSPACE_ROLES.md).
     "custom-roles",
-    "integrations",
     // Round 7: universal search over server-readable content (docs/SEARCH.md).
     "search",
-    // Round 7: workspace workflows (docs/WORKFLOWS.md).
-    "workflows",
-    // Round 7: workspace documents (docs/DOCUMENTS.md).
-    "documents",
-    // Round 7: workspace templates, user groups, guest end dates, scheduled meetings (docs/WORKSPACE_C5.md).
-    "workspace-templates",
-    "groups",
-    "guest-expiry",
+    // Round 7: scheduled meetings in voice rooms, shown as community events (docs/WORKSPACE_C5.md).
     "meetings",
-    // Round 7: API keys, the external API and outgoing webhooks (docs/DEVELOPER_API.md).
-    "developer-api",
-    // Round 7: AI features, off until configured and turned on per workspace (docs/AI.md).
-    "ai",
-    // Round 8: the Unified Inbox for business messaging (docs/UNIFIED_INBOX.md).
-    "unified-inbox",
+    // 2026-10-21 community rebuild (docs/COMMUNITY_REBUILD_2026-10-21.md): categories, channel order, forum channels and
+    // per-role channel permissions; public discovery and open joining; bans.
+    "community-channels",
+    "community-discovery",
+    "community-moderation",
     // Round 6: recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md).
     "recovery-codes",
     // 2026-10-21: keys backed up under the password, unlocked on a new device by an emailed code (docs/KEY_BACKUP.md).

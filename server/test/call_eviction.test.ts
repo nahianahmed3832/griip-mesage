@@ -93,45 +93,45 @@ describe("removing a member evicts them from live calls (T1.3)", () => {
     await b.disconnect();
   });
 
-  it("covers every org removal path: team, branch, demotion to Guest and leaving the org", async () => {
+  it("covers every community removal path: a role taken away, a ban, demotion to Guest and leaving", async () => {
     const owner = await h.client("orgevowner");
     const org = (await owner.req("POST", "/v1/orgs", { name: "Evict Co" })).org.id;
-    const branch = (await owner.req("POST", `/v1/orgs/${org}/branches`, { name: "Dhaka" })).branch.id;
-    const team = (await owner.req("POST", `/v1/orgs/${org}/teams`, { name: "Ops", branchId: branch })).team.id;
+    const role = (await owner.req("POST", `/v1/orgs/${org}/roles`, { name: "Ops", permissions: [], denies: [] })).role.id;
+    const cat = (await owner.req("POST", `/v1/orgs/${org}/categories`, { name: "Ops" })).category.id;
+    await owner.req("PUT", `/v1/categories/${cat}/overwrites`, { subject: "everyone", deny: ["channels.view"] });
+    await owner.req("PUT", `/v1/categories/${cat}/overwrites`, { subject: role, allow: ["channels.view"] });
     const join = async (name: string) => {
       const c = await h.client(name);
-      const code = (await owner.req("POST", `/v1/orgs/${org}/invites`, { role: "MEMBER", teamId: team })).invite.code;
+      const code = (await owner.req("POST", `/v1/orgs/${org}/invites`, { role: "MEMBER", roleId: role })).invite.code;
       await c.req("POST", "/v1/invites/accept", { code });
       return c;
     };
     const stays = await join("staysin");
-    const viaTeam = await join("viateam");
-    const viaBranch = await join("viabranch");
+    const viaRole = await join("viarole");
+    const viaBan = await join("viaban");
     const viaGuest = await join("viaguest");
     const viaLeave = await join("vialeave");
-    const all = [stays, viaTeam, viaBranch, viaGuest, viaLeave];
-    const teamChannel = (
-      await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "ops-private", scope: "TEAM", scopeId: team, kind: "PRIVATE", voice: true, memberIds: all.map((c) => c.userId) })
-    ).channel.id;
-    const lobby = (await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "lobby", scope: "ORG", kind: "PUBLIC", voice: true })).channel.id;
-    for (const c of all) await c.req("POST", `/v1/conversations/${lobby}/join`);
+    const all = [stays, viaRole, viaBan, viaGuest, viaLeave];
+    const opsRoom = (await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "ops-room", categoryId: cat, voice: true })).channel.id;
+    const lobby = (await owner.req("POST", `/v1/orgs/${org}/channels`, { name: "lobby", kind: "PUBLIC", voice: true })).channel.id;
+    for (const c of all) expect((await c.req("GET", "/v1/conversations")).conversations.map((x: any) => x.id)).toEqual(expect.arrayContaining([opsRoom, lobby]));
 
-    const teamCall = await callWith(teamChannel, owner, ...all);
-    const lobbyCall = await callWith(lobby, owner, viaTeam);
+    const opsCall = await callWith(opsRoom, owner, ...all);
+    const lobbyCall = await callWith(lobby, owner, viaRole);
 
-    await owner.req("DELETE", `/v1/teams/${team}/members/${viaTeam.userId}`);
-    await owner.req("DELETE", `/v1/branches/${branch}/members/${viaBranch.userId}`);
+    await owner.req("DELETE", `/v1/roles/${role}/members/${viaRole.userId}`);
+    await owner.req("POST", `/v1/orgs/${org}/bans`, { userId: viaBan.userId });
     await owner.req("PATCH", `/v1/orgs/${org}/members/${viaGuest.userId}`, { role: "GUEST" });
     await viaLeave.req("DELETE", `/v1/orgs/${org}/members/${viaLeave.userId}`);
 
-    for (const c of [viaTeam, viaBranch, viaGuest, viaLeave]) expect(lk.inRoom(teamCall.room, c)).toBe(false);
-    const left = await participantIds(owner, teamCall.id);
+    for (const c of [viaRole, viaBan, viaGuest, viaLeave]) expect(lk.inRoom(opsCall.room, c)).toBe(false);
+    const left = await participantIds(owner, opsCall.id);
     expect(left.sort()).toEqual([owner.userId, stays.userId].sort());
-    expect(lk.inRoom(teamCall.room, stays)).toBe(true);
-    // viaTeam is still in the org-wide lobby, so its lobby call is untouched.
-    expect(lk.inRoom(lobbyCall.room, viaTeam)).toBe(true);
-    expect(await participantIds(owner, lobbyCall.id)).toContain(viaTeam.userId);
-    expect(lk.removed.every((r) => r.room === teamCall.room)).toBe(true);
+    expect(lk.inRoom(opsCall.room, stays)).toBe(true);
+    // viaRole is still in the community-wide lobby, so its lobby call is untouched.
+    expect(lk.inRoom(lobbyCall.room, viaRole)).toBe(true);
+    expect(await participantIds(owner, lobbyCall.id)).toContain(viaRole.userId);
+    expect(lk.removed.every((r) => r.room === opsCall.room)).toBe(true);
   });
 
   it("changes that remove nobody leave calls alone", async () => {

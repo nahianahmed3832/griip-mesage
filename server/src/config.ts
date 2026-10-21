@@ -1,10 +1,7 @@
 import path from "node:path";
 import { type MongoConfig, mongoConfig } from "./mongo/config.js";
 import { type AccountsConfig, accountsConfig } from "./accounts/config.js";
-import { type IntegrationsConfig, integrationsConfig } from "./integrations/config.js";
 import { type EntitlementConfig, entitlementConfig } from "./entitlements.js";
-import { type AiConfig, aiConfig } from "./ai/provider.js";
-import { type InboxConfig, inboxConfig } from "./inbox/config.js";
 import { type ExperimentsConfig, experimentsConfig } from "./experiments/assign.js";
 import type { S3Config } from "./storage/s3.js";
 import { type FcmConfig, fcmConfig } from "./push/fcm.js";
@@ -50,7 +47,7 @@ export interface Config {
   queueTtlSeconds: number;
   /** How often due reminders are fired (docs/REMINDERS.md); 0 turns the loop off (tests fire them by hand). */
   reminderTickMs: number;
-  /** How often the workflow engine looks for due schedules and runs (docs/WORKFLOWS.md); 0 stops it. */
+  /** How often background schedules (meeting "starting soon" notices) are checked; 0 stops them (tests drive them). */
   workflowTickMs: number;
   attachmentTtlSeconds: number;
   attachmentMaxBytes: number;
@@ -94,14 +91,13 @@ export interface Config {
   accounts: AccountsConfig;
   /** MongoDB, for the data domains listed in MONGODB_DOMAINS (docs/MONGODB.md); null: everything stays in SQLite. */
   mongo: MongoConfig | null;
-  /** Apps and connected accounts (docs/INTEGRATIONS.md); each provider needs its own credentials to be usable. */
-  integrations: IntegrationsConfig;
+  /**
+   * Platform administrators (PLATFORM_ADMIN_USER_IDS, user ids): the service health, usage and experiments views. Never
+   * grants anything inside a community.
+   */
+  platformAdmins: ReadonlySet<string>;
   /** Server-wide limits for future plans (docs/PLANS.md); none by default. */
   entitlements: EntitlementConfig;
-  /** AI providers and limits (docs/AI.md); no providers by default, so AI is off. */
-  ai: AiConfig;
-  /** The Unified Inbox's provider settings (docs/UNIFIED_INBOX.md). */
-  inbox: InboxConfig;
   /** Product experiments (docs/product/EXPERIMENTS.md): off unless EXPERIMENTS_MODE says otherwise. */
   experiments: ExperimentsConfig;
   /** Content-free daily analytics counts (ANALYTICS_ENABLED=true); off by default. */
@@ -365,11 +361,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     fileMaxBytes,
     accounts: accountsConfig(env, dataDir, int),
     mongo: mongoConfig(env, env.APP_ENV?.trim() || "development", int),
-    integrations: integrationsConfig(env, env.APP_ENV?.trim() || "development", int),
+    platformAdmins: new Set((env.PLATFORM_ADMIN_USER_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean)),
     entitlements: entitlementConfig(env),
-    // Round 7: AI (docs/AI.md); off without AI_PROVIDERS.
-    ai: aiConfig(env),
-    inbox: inboxConfig(env),
     experiments: experimentsConfig(env),
     analyticsEnabled: (env.ANALYTICS_ENABLED ?? "").trim().toLowerCase() === "true",
     // No upload quotas by default (0: no limit; owner's decision 2026-10-18, UI-003).

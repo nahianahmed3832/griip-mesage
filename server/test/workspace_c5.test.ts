@@ -1,10 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runCleanup } from "../src/jobs.js";
-import { handleFor } from "../src/workspace/groups.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 
-/** Round 7 slice C5 (docs/WORKSPACE_C5.md): templates, groups, guest end dates and policy, meetings. */
+/** Round 7 slice C5 (docs/WORKSPACE_C5.md): guest end dates and policy, and meetings (community events in the app). */
 let h: Harness;
 let owner: GriipClient, member: GriipClient, member2: GriipClient, guest: GriipClient, outsider: GriipClient;
 let orgId: string;
@@ -22,55 +21,9 @@ beforeAll(async () => {
   orgId = (await owner.req("POST", "/v1/orgs", { name: "Five Co" })).org.id;
   await join(member);
   await join(member2);
+  await join(guest, "GUEST");
 });
 afterAll(async () => h.close());
-
-describe("workspace templates", () => {
-  it("adds the missing channels and a welcome document once, for people who may", async () => {
-    await expectStatus(member.req("POST", `/v1/orgs/${orgId}/apply-template`, { templateId: "software" }), 403);
-    const first = (await owner.req("POST", `/v1/orgs/${orgId}/apply-template`, { templateId: "software" })).applied;
-    expect(first.channels.length).toBe(6);
-    expect(first.document).toBeTruthy();
-    const names = (await myChannels(member)).map((c) => c.name);
-    expect(names).toEqual(expect.arrayContaining(["engineering", "code-review", "standup", "announcements"]));
-    const again = (await owner.req("POST", `/v1/orgs/${orgId}/apply-template`, { templateId: "software" })).applied;
-    expect(again).toEqual({ channels: [], document: null });
-    expect((await owner.req("GET", "/v1/workspace-templates")).templates.map((t: { id: string }) => t.id)).toContain("agency");
-  });
-});
-
-describe("user groups", () => {
-  let groupId: string;
-  it("admins manage groups; members see them; guests don't", async () => {
-    await expectStatus(member.req("POST", `/v1/orgs/${orgId}/groups`, { name: "Marketing", memberIds: [] }), 403);
-    const g = (await owner.req("POST", `/v1/orgs/${orgId}/groups`, { name: "Marketing & Sales", memberIds: [member.userId, member2.userId] })).group;
-    groupId = g.id;
-    expect(g.handle).toBe("marketing-sales");
-    await expectStatus(owner.req("POST", `/v1/orgs/${orgId}/groups`, { name: "marketing sales", memberIds: [] }), 409);
-    await expectStatus(owner.req("POST", `/v1/orgs/${orgId}/groups`, { name: "X", memberIds: [outsider.userId] }), 400);
-    expect((await member.req("GET", `/v1/orgs/${orgId}/groups`)).groups[0].members).toHaveLength(2);
-    await join(guest, "GUEST");
-    await expectStatus(guest.req("GET", `/v1/orgs/${orgId}/groups`), 403);
-    expect(handleFor("  Ünïcode Team!! ")).toBe("unicode-team");
-  });
-
-  it("adding a group to a channel adds its current members, only by the channel's managers", async () => {
-    const priv = (await owner.req("POST", `/v1/orgs/${orgId}/channels`, { name: "campaign-x", scope: "ORG", kind: "PRIVATE" })).channel.id;
-    await expectStatus(member.req("POST", `/v1/conversations/${priv}/add-group`, { groupId }), 404);
-    const r = await owner.req("POST", `/v1/conversations/${priv}/add-group`, { groupId });
-    expect(r).toEqual({ added: 2, skipped: 0 });
-    expect((await myChannels(member2)).map((c) => c.id)).toContain(priv);
-  });
-
-  it("someone who leaves the workspace leaves its groups", async () => {
-    const leaver = await h.client("c5leaver");
-    await join(leaver);
-    const g = (await owner.req("POST", `/v1/orgs/${orgId}/groups`, { name: "Ops", memberIds: [leaver.userId] })).group;
-    await leaver.req("DELETE", `/v1/orgs/${orgId}/members/${leaver.userId}`);
-    const after = (await owner.req("GET", `/v1/orgs/${orgId}/groups`)).groups.find((x: { id: string }) => x.id === g.id);
-    expect(after.members).toEqual([]);
-  });
-});
 
 describe("guests", () => {
   it("a guest invitation's end date applies when they join; admins can change it within the policy", async () => {
@@ -127,6 +80,7 @@ describe("meetings", () => {
     expect(String(refused)).toContain("can't open that voice room");
     await expectStatus(owner.req("POST", `/v1/orgs/${orgId}/meetings`, body({ startsAt: at(-60), endsAt: at(-30) })), 400);
     await expectStatus(owner.req("POST", `/v1/orgs/${orgId}/meetings`, body({ endsAt: at(30) })), 400);
+    await expectStatus(owner.req("POST", `/v1/orgs/${orgId}/meetings`, body({ groupIds: ["g_old"] })), 400);
     await expectStatus(guest.req("POST", `/v1/orgs/${orgId}/meetings`, body()), 403);
     meetingId = (await owner.req("POST", `/v1/orgs/${orgId}/meetings`, body())).meeting.id;
   });
@@ -156,6 +110,9 @@ describe("meetings", () => {
     expect(h.ctx.meetings.notifySoon()).toBe(1);
     expect(h.ctx.meetings.notifySoon()).toBe(0);
     expect((h.ctx.db.prepare("SELECT notified_at FROM meetings WHERE id = ?").get(soon) as { notified_at: number | null }).notified_at).not.toBeNull();
-    expect((await owner.req("GET", "/v1/server-info")).features).toEqual(expect.arrayContaining(["meetings", "groups", "guest-expiry", "workspace-templates"]));
+    const features = (await owner.req("GET", "/v1/server-info")).features as string[];
+    expect(features).toContain("meetings");
+    // Removed with the community rebuild: older apps hide them when the server stops advertising them.
+    for (const gone of ["groups", "workspace-templates", "integrations", "workflows", "documents", "developer-api", "ai", "unified-inbox"]) expect(features).not.toContain(gone);
   });
 });

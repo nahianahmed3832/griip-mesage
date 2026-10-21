@@ -141,8 +141,10 @@ export class IdentityService {
     const inviteId = a.admitted_via?.startsWith("org-invite:") ? a.admitted_via.slice("org-invite:".length) : null;
     if (!inviteId) return;
     const inv = this.ctx.db.prepare("SELECT * FROM invitations WHERE id = ?").get(inviteId) as OrgInviteRow | undefined;
-    if (!inv || inv.revoked_at || this.ctx.authz.scopeArchived(inv.branch_id, inv.team_id)) return;
-    if (!this.ctx.authz.canIssueInvite(inv.org_id, inv.created_by, inv.role, inv.branch_id, inv.team_id)) return;
+    if (!inv || inv.revoked_at) return;
+    if (!this.ctx.authz.canIssueInvite(inv.org_id, inv.created_by, inv.role)) return;
+    // A ban placed while the account was being set up keeps them out.
+    if (this.ctx.authz.isBanned(inv.org_id, userId)) return;
     const joined = joinOrgByInvite(this.ctx, inv, userId, t, false);
     this.ctx.audit({ actorId: userId, orgId: joined.orgId, action: "invite.accept", target: joined.inviteId, detail: joined.role });
   }

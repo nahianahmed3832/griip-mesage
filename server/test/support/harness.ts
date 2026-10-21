@@ -5,7 +5,6 @@ import { buildApp, type BuiltApp } from "../../src/app.js";
 import { loadConfig } from "../../src/config.js";
 import type { Mailer } from "../../src/accounts/mailer.js";
 import type { PushDeps } from "../../src/push/service.js";
-import type { FetchLike } from "../../src/integrations/http.js";
 import { GriipClient } from "./griipClient.js";
 import { dropTestDatabase, testMongoEnv } from "./mongo.js";
 
@@ -22,7 +21,7 @@ let counter = 0;
  * [push]: replaces DNS and the network for push wake-ups (test/push_wakeup.test.ts). [mailer]: receives account emails
  * (test/support/accounts.ts MemoryMailer); without one, MAIL_TRANSPORT decides (none by default).
  */
-export async function startServer(env: Record<string, string> = {}, opts: { push?: PushDeps; mailer?: Mailer; integrationsFetch?: FetchLike } = {}): Promise<Harness> {
+export async function startServer(env: Record<string, string> = {}, opts: { push?: PushDeps; mailer?: Mailer } = {}): Promise<Harness> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "griip-test-"));
   const config = loadConfig({
     DATA_DIR: dir,
@@ -47,7 +46,7 @@ export async function startServer(env: Record<string, string> = {}, opts: { push
     ...testMongoEnv(env),
     ...env,
   } as NodeJS.ProcessEnv);
-  const built = await buildApp(config, { logger: false, push: opts.push, mailer: opts.mailer, integrationsFetch: opts.integrationsFetch });
+  const built = await buildApp(config, { logger: false, push: opts.push, mailer: opts.mailer });
   await built.app.listen({ host: "127.0.0.1", port: 0 });
   const addr = built.app.server.address();
   const port = typeof addr === "object" && addr ? addr.port : 0;

@@ -13,13 +13,12 @@ import { conversationView } from "../routes/conversations.js";
  * - channels: in every workspace you belong to, those you could open (`Authz.canViewChannel`): joined ones, and public
  *   ones in your scope; a private channel only if you're in it;
  * - workspaces: the ones you belong to;
- * - groups: group conversations you're in, by name;
- * - documents: workspace documents you may read, by title or text (server-readable by design, docs/DOCUMENTS.md).
+ * - groups: group conversations you're in, by name.
  *
  * Messages, files, pins and reminders are end-to-end encrypted: the server can't search them, and the apps search the
  * device's own history instead. No content is stored for search; queries are never logged or kept.
  */
-export const SEARCH_KINDS = ["people", "channels", "workspaces", "groups", "documents"] as const;
+export const SEARCH_KINDS = ["people", "channels", "workspaces", "groups"] as const;
 export type SearchKind = (typeof SEARCH_KINDS)[number];
 
 /** Most candidates ranked per kind; a page is cut from them. */
@@ -160,8 +159,6 @@ export function search(ctx: AppContext, userId: string, q: string, kinds: readon
     channels: () => searchChannels(ctx, userId, q, opts.orgId),
     workspaces: () => (opts.orgId ? [] : searchWorkspaces(ctx, userId, q)),
     groups: () => (opts.orgId ? [] : searchGroups(ctx, userId, q)),
-    // Documents the searcher may read (DocumentService.roleOf), title matches first (docs/DOCUMENTS.md).
-    documents: () => [...ctx.documents.search(userId, q, opts.orgId)].sort((a, b) => a.rank - b.rank).map((r) => r.item),
   };
   return Object.fromEntries(kinds.map((k) => [k, page(run[k](), kinds.length === 1 ? opts.cursor : undefined, opts.limit)])) as Partial<Record<SearchKind, SearchPage<unknown>>>;
 }

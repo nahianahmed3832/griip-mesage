@@ -30,8 +30,10 @@
  *   table-counts                   rows in every table, as JSON (no content; backup manifests and migration checks)
  *   mongo-status | mongo-migrate | mongo-verify | mongo-rollback | mongo-dryrun
  *                                  MongoDB domains and migration (src/mongo/admin.ts, docs/MONGODB.md)
- *   integrations-status | integrations-reseal [--yes]
- *                                  apps: configuration by name, counts; re-seal after a token-key rotation (docs/INTEGRATIONS.md)
+ *   retired-data [--purge --yes]   rows left in the tables of modules the community rebuild removed (apps, inbox,
+ *                                  workflows, documents, developer keys, AI, groups); --purge --yes deletes them (back up first)
+ *   community-migration [--verify] convert branches and teams into roles and categories (also runs at start-up);
+ *                                  --verify compares everyone's visible channels with the old structure
  */
 import { Accounts } from "./accounts/index.js";
 import { Authz } from "./authz.js";
@@ -49,7 +51,7 @@ import { deleteEmptyOrg, findDuplicateOrgs, keepReason, orgFootprint } from "./o
 import { humanCode, newId, now, sha256Hex } from "./util.js";
 import { createBlobStore } from "./storage/index.js";
 import { MONGO_COMMANDS, runMongoCommand } from "./mongo/admin.js";
-import { INTEGRATION_COMMANDS, runIntegrationCommand } from "./integrations/admin.js";
+import { RETIRED_COMMANDS, runRetiredCommand } from "./retiredData.js";
 import { openMongo } from "./mongo/index.js";
 
 const [cmd, ...rest] = process.argv.slice(2);
@@ -65,9 +67,9 @@ if (cmd === "verify-backup") {
 }
 const cfg = loadConfig();
 const db = openDatabase(cfg.databasePath);
-if (INTEGRATION_COMMANDS.includes(cmd)) {
+if (RETIRED_COMMANDS.includes(cmd)) {
   try {
-    process.exitCode = await runIntegrationCommand(cmd, rest, cfg, db);
+    process.exitCode = runRetiredCommand(cmd, rest, db);
   } catch (e) {
     console.error((e as Error).message);
     process.exitCode = 1;

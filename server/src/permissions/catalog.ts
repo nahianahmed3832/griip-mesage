@@ -8,7 +8,7 @@ import type { OrgRole } from "../authz.js";
  * The app shows the same catalog, read from GET /v1/orgs/:id/roles, so labels live here once.
  */
 export const PERMISSION_KEYS = [
-  // Workspace
+  // Community
   "workspace.edit",
   "workspace.usage.view",
   "workspace.delete",
@@ -20,48 +20,28 @@ export const PERMISSION_KEYS = [
   "members.roles",
   "members.titles",
   "members.remove",
+  "members.ban",
   // Roles
   "roles.view",
   "roles.manage",
   "roles.assign",
   "roles.delegate",
-  // Teams and branches
-  "teams.create",
-  "teams.manage",
-  // Channels
+  // Channels and categories
+  "channels.view",
   "channels.create",
   "channels.manage",
   "channels.visibility",
   // Messaging
   "messages.post",
+  "messages.attach",
   "messages.announce",
-  // Integrations
-  "integrations.view",
-  "integrations.request",
-  "integrations.install",
-  "integrations.configure",
-  "integrations.connect",
-  "integrations.connect_workspace",
-  "integrations.uninstall",
-  "integrations.activity",
-  // Automation (round 7, docs/WORKFLOWS.md)
-  "workflows.manage",
-  // User groups (round 7, docs/WORKSPACE_C5.md)
-  "groups.manage",
-  // Developer access (round 7, docs/DEVELOPER_API.md)
-  "developers.manage",
-  // Unified Inbox (round 8, docs/UNIFIED_INBOX.md)
-  "inbox.view",
-  "inbox.reply",
-  "inbox.manage",
   // Security and administration
   "audit.view",
-  "policies.manage",
 ] as const;
 
 export type Permission = (typeof PERMISSION_KEYS)[number];
 
-export type PermissionCategory = "workspace" | "members" | "roles" | "teams" | "channels" | "messaging" | "integrations" | "security";
+export type PermissionCategory = "workspace" | "members" | "roles" | "channels" | "messaging" | "security";
 
 export interface PermissionDef {
   key: Permission;
@@ -84,43 +64,29 @@ export interface PermissionDef {
 type Def = Omit<PermissionDef, "key" | "admin" | "ownerOnly" | "guestAllowed" | "restrictable"> & Partial<PermissionDef>;
 
 const DEFS: Record<Permission, Def> = {
-  "workspace.edit": { category: "workspace", label: "Edit workspace profile", description: "Change the workspace's name, description and avatar.", admin: true },
-  "workspace.usage.view": { category: "workspace", label: "View usage and storage", description: "See member, channel, file storage and app usage figures.", admin: true },
-  "workspace.delete": { category: "workspace", label: "Delete the workspace", description: "Permanently delete the workspace and its channels.", admin: true, ownerOnly: true },
-  "workspace.transfer": { category: "workspace", label: "Transfer ownership", description: "Hand ownership of the workspace to another member.", admin: true, ownerOnly: true },
-  "members.view": { category: "members", label: "View the member directory", description: "Browse and search everyone in the workspace.", restrictable: true },
-  "members.invite": { category: "members", label: "Invite people", description: "Create invitations for members and guests anywhere in the workspace.", admin: true },
+  "workspace.edit": { category: "workspace", label: "Edit the community", description: "Change the community's name, description, photo, rules, visibility and who may join.", admin: true },
+  "workspace.usage.view": { category: "workspace", label: "View usage and storage", description: "See member, channel and file storage figures.", admin: true },
+  "workspace.delete": { category: "workspace", label: "Delete the community", description: "Permanently delete the community and its channels.", admin: true, ownerOnly: true },
+  "workspace.transfer": { category: "workspace", label: "Transfer ownership", description: "Hand ownership of the community to another member.", admin: true, ownerOnly: true },
+  "members.view": { category: "members", label: "View the member list", description: "Browse and search everyone in the community.", restrictable: true },
+  "members.invite": { category: "members", label: "Invite people", description: "Create invitations for members and guests.", admin: true },
   "members.invites.manage": { category: "members", label: "Manage all invitations", description: "See and revoke invitations created by anyone.", admin: true },
   "members.roles": { category: "members", label: "Change member access", description: "Switch people between Member and Guest.", admin: true },
-  "members.titles": { category: "members", label: "Edit titles", description: "Change members' and guests' job titles.", admin: true },
-  "members.remove": { category: "members", label: "Remove people", description: "Remove members and guests from the workspace.", admin: true },
-  "roles.view": { category: "roles", label: "View roles", description: "See the workspace's roles and what each one allows." },
+  "members.titles": { category: "members", label: "Edit titles", description: "Change the short title shown next to members' names.", admin: true },
+  "members.remove": { category: "members", label: "Remove people", description: "Remove members and guests from the community (they can come back with an invitation).", admin: true },
+  "members.ban": { category: "members", label: "Ban people", description: "Remove people and keep them out until the ban is lifted, and see the ban list.", admin: true },
+  "roles.view": { category: "roles", label: "View roles", description: "See the community's roles and what each one allows." },
   "roles.manage": { category: "roles", label: "Create and edit roles", description: "Create, edit, clone and archive custom roles (only with powers you hold).", admin: true },
   "roles.assign": { category: "roles", label: "Assign roles", description: "Give custom roles to people and take them away (only roles within your own powers).", admin: true },
   "roles.delegate": { category: "roles", label: "Delegate admin powers", description: "Put administrative powers into roles and assign such roles.", admin: true },
-  "teams.create": { category: "teams", label: "Create branches and teams", description: "Create branches, departments and teams anywhere in the workspace.", admin: true },
-  "teams.manage": { category: "teams", label: "Manage branches and teams", description: "Edit, archive and restore any branch or team, and manage who is in it.", admin: true },
-  "channels.create": { category: "channels", label: "Create workspace channels", description: "Create channels for the whole workspace.", admin: true },
-  "channels.manage": { category: "channels", label: "Manage channels", description: "Rename, archive and manage the members of any channel in the workspace.", admin: true },
+  "channels.view": { category: "channels", label: "See channels", description: "See the community's public channels and be in them. Channel and category permissions can take it away.", restrictable: true },
+  "channels.create": { category: "channels", label: "Create channels and categories", description: "Create channels, voice channels, forums and categories.", admin: true },
+  "channels.manage": { category: "channels", label: "Manage channels", description: "Rename, reorder, move, archive and manage the members and permissions of channels and categories.", admin: true },
   "channels.visibility": { category: "channels", label: "Change channel access", description: "Make any channel public, private or announcement-only.", admin: true },
-  "messages.post": { category: "messaging", label: "Post in channels", description: "Send messages and files in the workspace's channels.", restrictable: true, guestAllowed: true },
+  "messages.post": { category: "messaging", label: "Post in channels", description: "Send messages in the community's channels.", restrictable: true, guestAllowed: true },
+  "messages.attach": { category: "messaging", label: "Share files", description: "Send photos, videos, voice messages and files in channels.", restrictable: true, guestAllowed: true },
   "messages.announce": { category: "messaging", label: "Post announcements", description: "Post in announcement channels, where only managers can post." },
-  "integrations.view": { category: "integrations", label: "View apps", description: "See the app directory and the apps installed in this workspace.", guestAllowed: true },
-  "integrations.request": { category: "integrations", label: "Request apps", description: "Ask an admin to install an app.", restrictable: true },
-  "integrations.install": { category: "integrations", label: "Install and approve apps", description: "Install apps, and approve or decline install requests.", admin: true },
-  "integrations.configure": { category: "integrations", label: "Configure apps", description: "Change an installed app's settings, access and channel notifications.", admin: true },
-  "integrations.connect": { category: "integrations", label: "Connect personal accounts", description: "Connect your own account of an installed app (for example your Google Drive).", restrictable: true, guestAllowed: true },
-  "integrations.connect_workspace": { category: "integrations", label: "Connect workspace accounts", description: "Connect a shared account the whole workspace's app uses (for example a GitHub organisation).", admin: true },
-  "integrations.uninstall": { category: "integrations", label: "Disconnect and uninstall apps", description: "Disconnect shared accounts and uninstall apps.", admin: true },
-  "integrations.activity": { category: "integrations", label: "View app activity", description: "See apps' recent events, errors and health.", admin: true },
-  "developers.manage": { category: "integrations", label: "Manage API keys and webhooks", description: "Create and revoke the workspace's API keys and outgoing webhooks (they never reach messages or private channels).", admin: true },
-  "groups.manage": { category: "members", label: "Manage user groups", description: "Create groups such as Marketing or Engineering, choose their members, and remove groups.", admin: true },
-  "workflows.manage": { category: "integrations", label: "Manage workflows", description: "Create, change, test and switch off the workspace's workflows (they run with their owner's rights).", admin: true },
-  "inbox.view": { category: "messaging", label: "Work in the customer inbox", description: "See customer conversations from connected business accounts, write internal notes, and assign conversations.", restrictable: true },
-  "inbox.reply": { category: "messaging", label: "Reply to customers", description: "Send replies to customers on Messenger, Instagram and WhatsApp from the inbox.", restrictable: true },
-  "inbox.manage": { category: "messaging", label: "Manage the customer inbox", description: "Connect and disconnect business accounts, set up queues, AI and automation, see reports, and erase a customer's data.", admin: true },
-  "audit.view": { category: "security", label: "View the audit log", description: "See every administrative change in the workspace.", admin: true },
-  "policies.manage": { category: "security", label: "Manage policies", description: "Change the workspace's app policy (approval, blocked apps).", admin: true },
+  "audit.view": { category: "security", label: "View the audit log", description: "See every administrative change in the community.", admin: true },
 };
 
 export const PERMISSIONS: readonly PermissionDef[] = PERMISSION_KEYS.map((key) => {
@@ -150,8 +116,8 @@ export function isPermission(key: string): key is Permission {
 }
 
 /** What the protected base roles hold. Owners hold everything; admins everything but owner-only powers and delegation. */
-const MEMBER_BASE: readonly Permission[] = ["members.view", "roles.view", "messages.post", "integrations.view", "integrations.request", "integrations.connect"];
-const GUEST_BASE: readonly Permission[] = ["messages.post"];
+const MEMBER_BASE: readonly Permission[] = ["members.view", "roles.view", "channels.view", "messages.post", "messages.attach"];
+const GUEST_BASE: readonly Permission[] = ["messages.post", "messages.attach"];
 
 export const BASE_ROLE_PERMISSIONS: Readonly<Record<OrgRole, ReadonlySet<Permission>>> = {
   OWNER: new Set(PERMISSION_KEYS),
@@ -184,64 +150,46 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   {
     key: "moderator",
     name: "Moderator",
-    description: "Keeps channels tidy: manages channels, their access and announcements.",
+    description: "Keeps conversations healthy: manages channels and their access, posts announcements, removes and bans people.",
     color: "#E39B7B",
     icon: "shield",
-    permissions: ["channels.manage", "channels.visibility", "messages.announce"],
+    permissions: ["channels.manage", "channels.visibility", "messages.announce", "members.remove", "members.ban"],
     denies: [],
   },
   {
-    key: "hr_manager",
-    name: "HR Manager",
-    description: "Brings people in and keeps the directory right.",
-    color: "#D98BA7",
-    icon: "people",
-    permissions: ["members.invite", "members.invites.manage", "members.titles", "members.roles", "members.remove"],
-    denies: [],
-  },
-  {
-    key: "project_manager",
-    name: "Project Manager",
-    description: "Sets up teams and their channels.",
+    key: "community_manager",
+    name: "Community Manager",
+    description: "Grows the community: invites people, sets up channels and categories, keeps titles right.",
     color: "#C9A27A",
-    icon: "briefcase",
-    permissions: ["teams.create", "teams.manage", "channels.create", "members.invite"],
+    icon: "star",
+    permissions: ["members.invite", "members.invites.manage", "members.titles", "channels.create", "channels.manage"],
     denies: [],
   },
   {
-    key: "app_manager",
-    name: "App Manager",
-    description: "Looks after the workspace's apps and their access.",
-    color: "#B58FD1",
-    icon: "code",
-    permissions: ["integrations.install", "integrations.configure", "integrations.connect_workspace", "integrations.activity"],
-    denies: [],
-  },
-  {
-    key: "finance",
-    name: "Finance",
-    description: "Sees usage and storage figures.",
-    color: "#8FB59A",
-    icon: "finance",
-    permissions: ["workspace.usage.view"],
-    denies: [],
-  },
-  {
-    key: "support_agent",
-    name: "Support Agent",
-    description: "Answers customers in the Unified Inbox.",
+    key: "announcer",
+    name: "Announcer",
+    description: "Posts in announcement channels.",
     color: "#7FA7D9",
+    icon: "megaphone",
+    permissions: ["messages.announce"],
+    denies: [],
+  },
+  {
+    key: "helper",
+    name: "Helper",
+    description: "A recognised helper: invites newcomers.",
+    color: "#8FB59A",
     icon: "support",
-    permissions: ["inbox.view", "inbox.reply"],
+    permissions: ["members.invite"],
     denies: [],
   },
   {
     key: "read_only",
     name: "Read-Only Member",
-    description: "Reads channels but can't post in them, and can't connect or request apps.",
+    description: "Reads channels but can't post or share files in them.",
     color: "#9A9A9A",
     icon: "eye",
     permissions: [],
-    denies: ["messages.post", "integrations.connect", "integrations.request"],
+    denies: ["messages.post", "messages.attach"],
   },
 ];

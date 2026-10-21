@@ -6,46 +6,41 @@ import { ApiError } from "./util.js";
  * routes never hard-code what a plan allows. No plans, prices or limits have been decided, so by default every
  * capability is available and nothing is limited. Two layers, both shown honestly:
  *
- * - server-wide limits set by the operator (ENTITLEMENT_LIMITS, for example "integrations.installed=10,members=50");
+ * - server-wide limits set by the operator (ENTITLEMENT_LIMITS, for example "roles.custom=10,members=500");
  * - a workspace's own limits, set by platform admins (round 7), which replace the server-wide one for that workspace.
  *
  * Limits are enforced on the server when something is added. Nothing here charges anyone, and there is no upgrade
  * flow, so no upgrade is ever offered.
  */
 export const ENTITLEMENT_KEYS = [
-  "integrations.installed",
-  "integrations.webhooks",
-  "integrations.notifications",
   "roles.custom",
   // Round 7 (docs/USAGE_AND_PLANS.md).
   "members",
   "storage.bytes",
+] as const;
+export type EntitlementKey = (typeof ENTITLEMENT_KEYS)[number];
+
+/**
+ * Limits for modules the community rebuild removed (apps, workflows, documents, groups, developer keys, AI, inbox).
+ * An environment file that still names one starts the server and the limit is ignored.
+ */
+const RETIRED_KEYS: readonly string[] = [
+  "integrations.installed",
+  "integrations.webhooks",
+  "integrations.notifications",
   "workflows",
   "documents",
   "groups",
   "api_keys",
   "webhooks.outgoing",
-  // Round 7 (docs/AI.md): AI requests per calendar month.
   "ai.requests_monthly",
-  // Round 8 (docs/UNIFIED_INBOX.md): connected business accounts.
   "inbox.accounts",
-] as const;
-export type EntitlementKey = (typeof ENTITLEMENT_KEYS)[number];
+];
 
 const LABELS: Record<EntitlementKey, string> = {
-  "integrations.installed": "Installed apps",
-  "integrations.webhooks": "Incoming webhooks",
-  "integrations.notifications": "App notifications in channels",
   "roles.custom": "Custom roles",
   members: "Members (including guests)",
   "storage.bytes": "Stored file bytes",
-  workflows: "Workflows",
-  documents: "Documents",
-  groups: "User groups",
-  api_keys: "Active API keys",
-  "webhooks.outgoing": "Outgoing webhooks",
-  "ai.requests_monthly": "AI requests this month",
-  "inbox.accounts": "Connected business accounts",
 };
 
 export interface EntitlementConfig {
@@ -60,6 +55,7 @@ export function entitlementConfig(env: NodeJS.ProcessEnv): EntitlementConfig {
   const limits: Partial<Record<EntitlementKey, number>> = {};
   for (const part of (env.ENTITLEMENT_LIMITS ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
     const [key, value] = part.split("=").map((s) => s.trim());
+    if (RETIRED_KEYS.includes(key)) continue;
     if (!isEntitlementKey(key)) throw new Error(`ENTITLEMENT_LIMITS: unknown capability "${key}" (known: ${ENTITLEMENT_KEYS.join(", ")})`);
     const n = Number(value);
     if (!Number.isInteger(n) || n < 0) throw new Error(`ENTITLEMENT_LIMITS: ${key} needs a whole number`);
@@ -114,7 +110,7 @@ export class Entitlements {
   check(key: EntitlementKey, used: number, orgId?: string, adding = 1): void {
     const { limit, source } = this.limitFor(key, orgId);
     if (limit !== null && used + adding > limit) {
-      const who = source === "workspace" ? "This workspace's plan allows" : "This server allows";
+      const who = source === "workspace" ? "This community's plan allows" : "This server allows";
       const amount = key === "storage.bytes" ? `${Math.round(limit / 1_048_576)} MB of stored files` : `${limit} ${LABELS[key].toLowerCase()}`;
       throw new ApiError(409, "limit_reached", `${who} ${amount}${key === "storage.bytes" ? "" : " per workspace"}, and this workspace has reached it.`, { key, limit });
     }

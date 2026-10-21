@@ -114,25 +114,11 @@ export class MeetingService {
     if (!(input.endsAt > input.startsAt)) throw badRequest("A meeting has to end after it starts");
     if (input.endsAt - input.startsAt > MEETING_LIMITS.maxHours * 3_600_000) throw badRequest(`A meeting lasts at most ${MEETING_LIMITS.maxHours} hours`);
     if (!isValidTimeZone(input.timeZone)) throw badRequest("Unknown time zone");
-    const fromGroups = input.groupIds.flatMap((g) => {
-      const row = this.ctx.db.prepare("SELECT id FROM user_groups WHERE id = ? AND org_id = ?").get(g, orgId);
-      if (!row) throw badRequest("Unknown group", { groupId: g });
-      return this.ctx.groups.memberIds(g, orgId);
-    });
-    const invitees = [...new Set([...input.participantIds, ...fromGroups])].filter((u) => u !== organizerId);
+    const invitees = [...new Set(input.participantIds)].filter((u) => u !== organizerId);
     if (invitees.length > MEETING_LIMITS.participants) throw badRequest(`A meeting has at most ${MEETING_LIMITS.participants} people invited`);
     const cannot = invitees.filter((u) => !authz.orgRole(orgId, u) || !authz.canViewChannel(room, u));
     if (cannot.length) throw badRequest("Some people can't open that voice room: add them to it first", { userIds: cannot });
     return { room, invitees };
-  }
-
-  /** Webhooks hear about meetings in rooms that aren't private: title, times and room, never who's invited. */
-  private toWebhooks(m: MeetingRow, type: "meeting.created" | "meeting.updated" | "meeting.cancelled"): void {
-    const room = this.ctx.authz.conversation(m.room_id);
-    if (!room || room.kind === "PRIVATE") return;
-    this.ctx.developer?.emit(m.org_id, type, `${type}:${m.id}:${m.rev}`, {
-      meeting: { id: m.id, title: m.title, startsAt: m.starts_at, endsAt: m.ends_at, timeZone: m.time_zone, room: { id: room.id, name: room.name } },
-    });
   }
 
   private notify(m: MeetingRow, kind: "meeting.updated" | "meeting.soon", extra: string[] = []): void {
@@ -160,7 +146,6 @@ export class MeetingService {
     this.ctx.audit({ actorId: organizerId, orgId, action: "meeting.create", target: id });
     const m = this.load(id) as MeetingRow;
     this.notify(m, "meeting.updated");
-    this.toWebhooks(m, "meeting.created");
     return this.view(m, organizerId);
   }
 
@@ -186,7 +171,6 @@ export class MeetingService {
     this.ctx.audit({ actorId: userId, orgId: m.org_id, action: "meeting.update", target: id });
     const fresh = this.load(id) as MeetingRow;
     this.notify(fresh, "meeting.updated", before);
-    this.toWebhooks(fresh, "meeting.updated");
     return this.view(fresh, userId);
   }
 
@@ -197,7 +181,6 @@ export class MeetingService {
     this.ctx.audit({ actorId: userId, orgId: m.org_id, action: "meeting.cancel", target: id });
     const fresh = this.load(id) as MeetingRow;
     this.notify(fresh, "meeting.updated");
-    this.toWebhooks(fresh, "meeting.cancelled");
     return this.view(fresh, userId);
   }
 

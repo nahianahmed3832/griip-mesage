@@ -3,7 +3,12 @@
  * SQLite exactly as before. MONGODB_DOMAINS lists the data that is authoritative in MongoDB instead; each domain moves
  * as a whole, with its own migration (src/mongo/migrate.ts), so no table ever has two writable copies.
  */
-export const MONGO_DOMAINS = ["accounts", "preferences", "integrations"] as const;
+export const MONGO_DOMAINS = ["accounts", "preferences"] as const;
+/**
+ * Domains that no longer exist: "integrations" went with the apps (docs/COMMUNITY_REBUILD_2026-10-21.md). A server
+ * still configured with one starts and ignores it, so an unchanged environment file can't stop a deploy.
+ */
+export const RETIRED_MONGO_DOMAINS: readonly string[] = ["integrations"];
 export type MongoDomain = (typeof MONGO_DOMAINS)[number];
 
 export interface MongoConfig {
@@ -40,7 +45,7 @@ export function mongoConfig(env: NodeJS.ProcessEnv, appEnv: string, int: (name: 
   const domains = (env.MONGODB_DOMAINS ?? "")
     .split(",")
     .map((d) => d.trim())
-    .filter(Boolean);
+    .filter((d) => d && !RETIRED_MONGO_DOMAINS.includes(d));
   for (const d of domains) {
     if (!(MONGO_DOMAINS as readonly string[]).includes(d)) throw new Error(`MONGODB_DOMAINS: unknown domain "${d}" (known: ${MONGO_DOMAINS.join(", ")})`);
   }

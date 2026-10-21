@@ -9,7 +9,7 @@ import { expectStatus, type Harness, startServer } from "./support/harness.js";
  */
 let h: Harness;
 let owner: GriipClient, admin: GriipClient, member: GriipClient, member2: GriipClient, guest: GriipClient, outsider: GriipClient;
-let orgId: string, otherOrg: string, channelId: string, branchId: string;
+let orgId: string, otherOrg: string, channelId: string;
 
 const roles = async (c: GriipClient, archived = false) => (await c.req("GET", `/v1/orgs/${orgId}/roles${archived ? "?includeArchived=true" : ""}`)) as any;
 const createRole = (c: GriipClient, body: object, org = orgId) => c.req("POST", `/v1/orgs/${org}/roles`, body).then((r) => r.role);
@@ -28,7 +28,6 @@ beforeAll(async () => {
   await member2.req("POST", "/v1/invites/accept", { code: await invite("MEMBER") });
   await guest.req("POST", "/v1/invites/accept", { code: await invite("GUEST") });
   channelId = (await owner.req("POST", `/v1/orgs/${orgId}/channels`, { name: "general", scope: "ORG", kind: "PUBLIC", autoJoin: true })).channel.id;
-  branchId = (await owner.req("POST", `/v1/orgs/${orgId}/branches`, { name: "Dhaka" })).branch.id;
 });
 afterAll(async () => h.close());
 
@@ -51,7 +50,7 @@ describe("catalog and visibility", () => {
 describe("creating, cloning and editing", () => {
   it("creates from a template and refuses duplicate or base-role names", async () => {
     const mod = await createRole(owner, { template: "moderator" });
-    expect(mod).toMatchObject({ name: "Moderator", permissions: ["channels.manage", "channels.visibility", "messages.announce"], rev: 1, memberCount: 0 });
+    expect(mod).toMatchObject({ name: "Moderator", permissions: ["channels.manage", "channels.visibility", "messages.announce", "members.remove", "members.ban"], rev: 1, memberCount: 0 });
     expect((await expectStatus(createRole(owner, { name: "moderator" }), 409)).error.code).toBe("role_name_taken");
     expect((await expectStatus(createRole(owner, { name: "Admin" }), 409)).error.code).toBe("role_name_taken");
   });
@@ -151,10 +150,10 @@ describe("assignments and effective permissions", () => {
 
 describe("delegated administration", () => {
   it("lets a delegated co-admin manage members, while admins can't undo someone more powerful", async () => {
-    const coAdmin = await createRole(owner, { name: "People lead", permissions: ["roles.delegate", "roles.assign", "members.remove", "members.titles", "teams.create"] });
+    const coAdmin = await createRole(owner, { name: "People lead", permissions: ["roles.delegate", "roles.assign", "members.remove", "members.titles", "channels.create"] });
     await assign(owner, coAdmin.id, member);
-    // Real powers: create branches, set titles, remove a guest.
-    await member.req("POST", `/v1/orgs/${orgId}/branches`, { name: "Chattogram" });
+    // Real powers: create categories, set titles, remove a guest.
+    await member.req("POST", `/v1/orgs/${orgId}/categories`, { name: "Chattogram" });
     await member.req("PATCH", `/v1/orgs/${orgId}/members/${member2.userId}`, { title: "Designer" });
     // Not beyond them: admins and owners stay out of reach.
     await expectStatus(member.req("DELETE", `/v1/orgs/${orgId}/members/${admin.userId}`), 403);
@@ -164,7 +163,7 @@ describe("delegated administration", () => {
     await expectStatus(unassign(admin, coAdmin.id, member), 403);
     // The owner can.
     await unassign(owner, coAdmin.id, member);
-    await expectStatus(member.req("POST", `/v1/orgs/${orgId}/branches`, { name: "Sylhet" }), 403);
+    await expectStatus(member.req("POST", `/v1/orgs/${orgId}/categories`, { name: "Sylhet" }), 403);
   });
 
   it("doesn't let an admin restrict another admin by editing a role that admin holds", async () => {
@@ -257,9 +256,9 @@ describe("usage and audit", () => {
     expect(u.members.total).toBeGreaterThanOrEqual(5);
     expect(u.structure.channels).toBeGreaterThanOrEqual(1);
     expect(u.roles.custom).toBeGreaterThanOrEqual(2);
-    expect(u.apps).toMatchObject({ installed: 0 });
+    expect(u.structure).toMatchObject({ branches: 0, teams: 0 });
     await expectStatus(member.req("GET", `/v1/orgs/${orgId}/usage`), 403);
-    const fin = await createRole(owner, { template: "finance" });
+    const fin = await createRole(owner, { name: "Treasurer", permissions: ["workspace.usage.view"] });
     await assign(owner, fin.id, member);
     expect((await member.req("GET", `/v1/orgs/${orgId}/usage`)).members.total).toBeGreaterThanOrEqual(5);
   });

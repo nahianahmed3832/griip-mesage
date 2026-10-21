@@ -67,22 +67,6 @@ export const EXPERIMENTS: readonly ExperimentDef[] = [
     metrics: ["community.joined", "message.sent", "onboarding.completed"],
     successCriteria: "A higher share of people who join a community send their first message there within a day.",
   },
-  {
-    id: "directory-layout",
-    description: "The app directory shows recommended apps first (control) or groups every app by what it helps with (by-task).",
-    layer: "integrations",
-    traffic: 1,
-    control: "recommended",
-    variants: [
-      { id: "recommended", weight: 1 },
-      { id: "by-task", weight: 1 },
-    ],
-    status: "draft",
-    startsAt: null,
-    endsAt: null,
-    metrics: ["integration.connected", "integration.viewed"],
-    successCriteria: "More app connections completed per directory visit, with no rise in disconnections within a week.",
-  },
 ];
 
 /** Problems with the definitions (empty when they're sound); unit-tested so a bad edit fails CI, not production. */

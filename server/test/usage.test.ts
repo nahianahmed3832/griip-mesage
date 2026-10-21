@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Entitlements, entitlementConfig } from "../src/entitlements.js";
 import { UsageMeter, utcDay } from "../src/usage/meter.js";
@@ -17,9 +16,10 @@ const join = async (c: GriipClient) => {
 const capability = async (key: string) => ((await owner.req("GET", `/v1/orgs/${orgId}/plan`)).capabilities as { key: string; limit: number | null; used: number; source: string }[]).find((c) => c.key === key)!;
 
 beforeAll(async () => {
-  h = await startServer({ WORKFLOW_TICK_MS: "0", ENTITLEMENT_LIMITS: "documents=50", INTEGRATIONS_TOKEN_KEY: crypto.randomBytes(32).toString("base64") });
+  // A retired limit (documents) in an old environment file is ignored rather than stopping the server.
+  h = await startServer({ WORKFLOW_TICK_MS: "0", ENTITLEMENT_LIMITS: "roles.custom=50,documents=5" });
   [owner, member, platform] = await Promise.all(["usowner", "usmember", "usplatform"].map((n) => h.client(n)));
-  (h.ctx.config.integrations.platformAdmins as Set<string>).add(platform.userId);
+  (h.ctx.config.platformAdmins as Set<string>).add(platform.userId);
   orgId = (await owner.req("POST", "/v1/orgs", { name: "Meter Co" })).org.id;
 });
 afterAll(async () => h.close());
@@ -29,33 +29,31 @@ describe("usage metering", () => {
     const pure = (await owner.req("POST", "/v1/orgs", { name: "Pure Co" })).org.id;
     let t = Date.parse("2026-10-20T10:00:00Z");
     const m = new UsageMeter(h.ctx.db, () => t);
-    m.add(pure, "api.requests");
-    m.add(pure, "api.requests", 2);
-    m.add(null, "api.requests", 5); // no workspace: not metered
+    m.add(pure, "files.upload_bytes");
+    m.add(pure, "files.upload_bytes", 2);
+    m.add(null, "files.upload_bytes", 5); // no community: not metered
     m.snapshot(true);
     m.snapshot(true);
     const s = m.series(pure, 3);
-    expect(s.find((x) => x.metric === "api.requests")?.total).toBe(3);
+    expect(s.find((x) => x.metric === "files.upload_bytes")?.total).toBe(3);
     expect(s.find((x) => x.metric === "seats.members")?.total).toBe(1);
     t += 86_400_000;
-    m.add(pure, "api.requests");
-    const next = m.series(pure, 2).find((x) => x.metric === "api.requests")!;
+    m.add(pure, "files.upload_bytes");
+    const next = m.series(pure, 2).find((x) => x.metric === "files.upload_bytes")!;
     expect(next.daily).toEqual([{ day: "2026-10-20", value: 3 }, { day: "2026-10-21", value: 1 }]);
     expect(utcDay(Date.parse("2026-10-20T23:59:59Z"))).toBe("2026-10-20");
   });
 
-  it("measures real actions: uploads and downloads, API requests, members", async () => {
+  it("measures real actions: uploads and downloads, members", async () => {
     await join(member);
     const ch = (await owner.req("POST", `/v1/orgs/${orgId}/channels`, { name: "files", scope: "ORG", kind: "PUBLIC" })).channel.id;
     const up = await member.req("POST", `/v1/attachments?conversationId=${ch}`, undefined, Buffer.alloc(1000, 1));
     await owner.req("GET", `/v1/attachments/${up.id}`);
-    const { token } = await owner.req("POST", `/v1/orgs/${orgId}/api-keys`, { name: "meter", scopes: ["workspace:read"] });
-    await fetch(`${h.baseUrl}/ext/v1/workspace`, { headers: { authorization: `Bearer ${token}` } });
     const usage = (await owner.req("GET", `/v1/orgs/${orgId}/usage`)).metered.metrics as { metric: string; total: number }[];
     const total = (m: string) => usage.find((x) => x.metric === m)?.total;
     expect(total("files.upload_bytes")).toBeGreaterThanOrEqual(1000);
     expect(total("files.download_bytes")).toBeGreaterThanOrEqual(1000);
-    expect(total("api.requests")).toBe(1);
+    expect(total("api.requests")).toBeUndefined();
     expect(total("seats.members")).toBe(2);
     expect(total("storage.bytes")).toBeGreaterThanOrEqual(1000);
     // Only counts and sizes: nothing that names a person or a file.
@@ -72,16 +70,17 @@ describe("usage metering", () => {
 
 describe("plan limits", () => {
   it("shows where each limit comes from: the server's, the workspace's own, or none", async () => {
-    expect(await capability("documents")).toMatchObject({ limit: 50, source: "server" });
-    expect(await capability("workflows")).toMatchObject({ limit: null, source: "none" });
+    expect(await capability("roles.custom")).toMatchObject({ limit: 50, source: "server" });
+    expect(await capability("storage.bytes")).toMatchObject({ limit: null, source: "none" });
+    expect(await capability("documents")).toBeUndefined();
     expect((await owner.req("GET", `/v1/orgs/${orgId}/plan`)).plan).toBeNull(); // no plans exist: never invented
   });
 
   it("only platform admins set a workspace's own limits, never the workspace itself", async () => {
     await expectStatus(owner.req("PUT", `/v1/admin/orgs/${orgId}/limits`, { limits: { members: 100 } }), 403);
     await expectStatus(platform.req("PUT", `/v1/admin/orgs/${orgId}/limits`, { limits: { nonsense: 1 } }), 400);
-    await platform.req("PUT", `/v1/admin/orgs/${orgId}/limits`, { limits: { members: 2, documents: 1, groups: 0 } });
-    expect(await capability("documents")).toMatchObject({ limit: 1, source: "workspace" });
+    await platform.req("PUT", `/v1/admin/orgs/${orgId}/limits`, { limits: { members: 2, "roles.custom": 1 } });
+    expect(await capability("roles.custom")).toMatchObject({ limit: 1, source: "workspace" });
     const audit = h.ctx.db.prepare("SELECT action FROM audit_log WHERE org_id = ? AND action = 'plan.limits'").get(orgId);
     expect(audit).toBeTruthy();
   });
@@ -89,11 +88,10 @@ describe("plan limits", () => {
   it("is enforced on the server when something is added", async () => {
     const third = await h.client("usthird");
     await expectStatus(join(third), 409); // members = 2, already two
-    await owner.req("POST", `/v1/orgs/${orgId}/documents`, { title: "One", access: "workspace" });
-    await expectStatus(owner.req("POST", `/v1/orgs/${orgId}/documents`, { title: "Two", access: "workspace" }), 409);
-    await expectStatus(owner.req("POST", `/v1/orgs/${orgId}/groups`, { name: "Any", memberIds: [] }), 409);
-    await platform.req("PUT", `/v1/admin/orgs/${orgId}/limits`, { limits: { members: null, documents: null, groups: null } });
-    expect(await capability("documents")).toMatchObject({ limit: 50, source: "server" });
+    await owner.req("POST", `/v1/orgs/${orgId}/roles`, { name: "One", permissions: [], denies: [] });
+    await expectStatus(owner.req("POST", `/v1/orgs/${orgId}/roles`, { name: "Two", permissions: [], denies: [] }), 409);
+    await platform.req("PUT", `/v1/admin/orgs/${orgId}/limits`, { limits: { members: null, "roles.custom": null } });
+    expect(await capability("roles.custom")).toMatchObject({ limit: 50, source: "server" });
     await join(third);
   });
 

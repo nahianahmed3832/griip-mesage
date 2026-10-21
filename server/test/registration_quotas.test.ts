@@ -47,16 +47,15 @@ describe("invite-only registration (T1.6)", () => {
     await expectStatus(fresh("revoked").register(revoked.code), 403);
   });
 
-  it("an org invite registers the person and joins them to its org and team in one step", async () => {
+  it("a community invite registers the person and joins them to its community and role in one step", async () => {
     const owner = await fresh("owner").register(invite().code);
     const org = (await owner.req("POST", "/v1/orgs", { name: "Gate Co" })).org.id;
-    const branch = (await owner.req("POST", `/v1/orgs/${org}/branches`, { name: "Dhaka" })).branch.id;
-    const team = (await owner.req("POST", `/v1/orgs/${org}/teams`, { name: "Sales", branchId: branch })).team.id;
-    const code = (await owner.req("POST", `/v1/orgs/${org}/invites`, { role: "MEMBER", teamId: team, maxUses: 1 })).invite.code;
+    const role = (await owner.req("POST", `/v1/orgs/${org}/roles`, { name: "Sales", permissions: [], denies: [] })).role.id;
+    const code = (await owner.req("POST", `/v1/orgs/${org}/invites`, { role: "MEMBER", roleId: role, maxUses: 1 })).invite.code;
 
     const newbie = await fresh("newbie").register(code);
     expect((await newbie.req("GET", "/v1/orgs")).orgs.map((o: any) => o.id)).toContain(org);
-    expect((await owner.req("GET", `/v1/teams/${team}/members`)).members.map((m: any) => m.id)).toContain(newbie.userId);
+    expect((await owner.req("GET", `/v1/roles/${role}/members`)).members.map((m: any) => m.id)).toContain(newbie.userId);
     // The single use was consumed by the registration.
     await expectStatus(fresh("second").register(code), 403);
   });

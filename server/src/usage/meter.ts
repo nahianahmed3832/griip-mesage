@@ -4,29 +4,20 @@ import type { DB } from "../db.js";
  * Usage metering (docs/USAGE_AND_PLANS.md, round 7 slice C7): privacy-respecting counts per workspace and UTC day, for
  * future plans and for operators. Never message content, names, or who did what: only how much.
  *
- * - Counters are added to as things happen (API requests, webhook deliveries, workflow runs and emails, file transfer).
+ * - Counters are added to as things happen (file transfer). Counters of removed modules (API requests, webhooks,
+ *   workflows, AI, inbox) are no longer produced or reported; their old rows stay in usage_daily.
  * - Gauges are recomputed from the database and replace the day's value (members, active seats, stored file bytes,
  *   call participant minutes), so recomputing is always safe.
  */
-export const COUNTERS = ["api.requests", "webhooks.deliveries", "workflows.runs", "workflows.emails", "files.upload_bytes", "files.download_bytes", "ai.requests", "ai.input_tokens", "ai.output_tokens", "inbox.messages_in", "inbox.messages_out", "inbox.ai_auto_replies"] as const;
+export const COUNTERS = ["files.upload_bytes", "files.download_bytes"] as const;
 export const GAUGES = ["seats.members", "seats.active_30d", "storage.bytes", "calls.participant_minutes"] as const;
 export type Counter = (typeof COUNTERS)[number];
 export type Gauge = (typeof GAUGES)[number];
 export type Metric = Counter | Gauge;
 
 export const METRIC_LABELS: Record<Metric, string> = {
-  "api.requests": "API requests",
-  "webhooks.deliveries": "Webhook deliveries",
-  "workflows.runs": "Workflow runs",
-  "workflows.emails": "Workflow emails",
   "files.upload_bytes": "Files uploaded (bytes)",
   "files.download_bytes": "Files downloaded (bytes)",
-  "ai.requests": "AI requests",
-  "ai.input_tokens": "AI input tokens",
-  "ai.output_tokens": "AI output tokens",
-  "inbox.messages_in": "Customer messages received",
-  "inbox.messages_out": "Replies to customers",
-  "inbox.ai_auto_replies": "Automatic replies to customers",
   "seats.members": "Members",
   "seats.active_30d": "Active members (30 days)",
   "storage.bytes": "Stored files (bytes)",

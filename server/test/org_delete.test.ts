@@ -56,7 +56,8 @@ describe("deleting an organization", () => {
     await member.connect();
     const requestId = crypto.randomUUID();
     const r = await owner.req("DELETE", `/v1/orgs/${orgId}`, { confirmName: "Test Org To Delete", requestId });
-    expect(r).toMatchObject({ deleted: true, orgId, channels: 1, files: 1 });
+    // The channel made here plus the five every community starts with.
+    expect(r).toMatchObject({ deleted: true, orgId, channels: 6, files: 1 });
     expect(r.members).toBe(4);
     // Gone for everyone.
     await expectStatus(owner.req("GET", `/v1/orgs/${orgId}`), 404);
@@ -65,7 +66,7 @@ describe("deleting an organization", () => {
     expect((await member.req("GET", "/v1/conversations")).conversations.map((c: any) => c.id)).not.toContain(channel);
     await expectStatus(member.req("GET", `/v1/attachments/${fileId}`), 404);
     expect(fs.existsSync(path.join(h.dir, "attachments", fileId))).toBe(false);
-    for (const t of ["org_members", "invitations", "branches", "teams"]) {
+    for (const t of ["org_members", "invitations", "branches", "teams", "channel_categories", "channel_overwrites", "org_bans", "org_roles"]) {
       expect((h.ctx.db.prepare(`SELECT COUNT(*) n FROM ${t} WHERE org_id = ?`).get(orgId) as { n: number }).n).toBe(0);
     }
     expect((h.ctx.db.prepare("SELECT COUNT(*) n FROM delivery_queue WHERE conversation_id = ?").get(channel) as { n: number }).n).toBe(0);

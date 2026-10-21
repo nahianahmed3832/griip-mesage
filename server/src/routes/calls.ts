@@ -395,7 +395,7 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
     const { userId, deviceId } = me(req);
     const body = parse(z.object({ conversationId: z.string().max(64), video: z.boolean().default(false) }), req.body);
     const conv = authz.requireMember(body.conversationId, userId);
-    if (conv.archived_at || authz.conversationScopeArchived(conv)) throw conflict("This channel is archived");
+    if (conv.archived_at) throw conflict("This channel is archived");
     // One live call per conversation: starting while one exists joins it instead (also one hosted by another server).
     const existing = db.prepare("SELECT * FROM calls WHERE conversation_id = ? AND state != 'ENDED' ORDER BY created_at DESC LIMIT 1").get(conv.id) as
       | CallRow

@@ -8,6 +8,7 @@ import { ApiError, badRequest, conflict, forbidden, newId, notFound, now } from 
 import { fedDmId } from "../federation/service.js";
 import { userSummary } from "./auth.js";
 import { evictRemovedMember } from "./calls.js";
+import { reconcileAccess } from "./community.js";
 import { notifyConversation } from "./orgs.js";
 import { deviceDirectory } from "./users.js";
 
@@ -33,17 +34,22 @@ export function conversationView(ctx: AppContext, c: ConversationRow, userId: st
     c.voice && call
       ? (db.prepare("SELECT DISTINCT user_id FROM call_participants WHERE call_id = ? AND left_at IS NULL LIMIT 12").all(call.id) as { user_id: string }[]).map((r) => r.user_id)
       : undefined;
-  let scopeName: string | null = null;
-  if (c.scope === "BRANCH" && c.scope_id) scopeName = (db.prepare("SELECT name FROM branches WHERE id = ?").get(c.scope_id) as any)?.name ?? null;
-  if (c.scope === "TEAM" && c.scope_id) scopeName = (db.prepare("SELECT name FROM teams WHERE id = ?").get(c.scope_id) as any)?.name ?? null;
-  if (c.scope === "ORG" && c.org_id) scopeName = (db.prepare("SELECT name FROM orgs WHERE id = ?").get(c.org_id) as any)?.name ?? null;
+  // Older apps group channels by scope: a channel in a category is shown to them as a team named after the category,
+  // so they list categories too. Newer apps read categoryId and position (docs/COMMUNITY_REBUILD_2026-10-21.md §7).
+  const category = c.category_id ? (db.prepare("SELECT id, name FROM channel_categories WHERE id = ?").get(c.category_id) as { id: string; name: string } | undefined) : undefined;
+  const orgName = c.org_id ? ((db.prepare("SELECT name FROM orgs WHERE id = ?").get(c.org_id) as { name: string } | undefined)?.name ?? null) : null;
+  const channel = c.type === "CHANNEL";
   return {
     id: c.id,
     type: c.type,
     orgId: c.org_id,
-    scope: c.scope,
-    scopeId: c.scope_id,
-    scopeName,
+    scope: channel ? (category ? "TEAM" : "ORG") : null,
+    scopeId: channel ? (category?.id ?? null) : null,
+    scopeName: channel ? (category?.name ?? orgName) : null,
+    categoryId: category?.id ?? null,
+    categoryName: category?.name ?? null,
+    position: c.position ?? 0,
+    format: c.format ?? "text",
     kind: c.kind,
     name: c.name,
     topic: c.topic,
@@ -209,34 +215,29 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
         topic: zText.nullable().optional(),
         archived: z.boolean().optional(),
         kind: z.enum(["PUBLIC", "PRIVATE", "ANNOUNCEMENT"]).optional(),
+        format: z.enum(["text", "forum"]).optional(),
       }),
       req.body,
     );
+    if (body.format !== undefined && (c.type !== "CHANNEL" || c.voice)) throw badRequest("Only text channels can become forums");
     if (body.archived !== undefined && c.type !== "CHANNEL") throw badRequest("Only channels can be archived");
     const kindChange = body.kind !== undefined && body.kind !== c.kind;
     if (body.kind !== undefined && c.type !== "CHANNEL") throw badRequest("Only channels have an access mode");
     if (kindChange) {
       // Access mode (docs/WORKSPACE_ADMINISTRATION.md): only the scope's managers, never a channel admin by role alone.
-      if (!authz.canManageChannelAccess(c, userId)) throw forbidden("Only this channel's workspace, branch or team managers can change who can see and post in it");
+      if (!authz.canManageChannelAccess(c, userId)) throw forbidden("Only people who can change channel access can change who can see and post in it");
       if (c.archived_at && body.archived !== false) throw conflict("This channel is archived. Restore it before changing its access.");
     }
-    // Private channels never auto-join; announcement channels always do; a channel made public again auto-joins its
-    // branch or team (not the whole organization), as a new channel would. Nobody is added or removed by the change.
-    const autoJoin = !kindChange
-      ? c.auto_join
-      : body.kind === "PRIVATE"
-        ? 0
-        : body.kind === "ANNOUNCEMENT"
-          ? 1
-          : c.kind === "PRIVATE"
-            ? c.scope !== "ORG" ? 1 : 0
-            : c.auto_join;
-    db.prepare("UPDATE conversations SET name = ?, topic = ?, archived_at = ?, kind = ?, auto_join = ?, updated_at = ? WHERE id = ?").run(
+    // Private channels never auto-join; announcement channels always do; a channel made public again auto-joins the
+    // people its permissions let see it, as a new channel would. Making a channel private removes nobody.
+    const autoJoin = !kindChange ? c.auto_join : body.kind === "PRIVATE" ? 0 : body.kind === "ANNOUNCEMENT" ? 1 : c.kind === "PRIVATE" ? 1 : c.auto_join;
+    db.prepare("UPDATE conversations SET name = ?, topic = ?, archived_at = ?, kind = ?, auto_join = ?, format = ?, updated_at = ? WHERE id = ?").run(
       body.name ?? c.name,
       body.topic === undefined ? c.topic : body.topic,
       body.archived === undefined ? c.archived_at : body.archived ? now() : null,
       kindChange ? body.kind : c.kind,
       autoJoin,
+      body.format ?? c.format ?? "text",
       now(),
       id,
     );
@@ -245,7 +246,8 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
       if (body.archived !== undefined && body.archived !== !!c.archived_at) {
         ctx.audit({ actorId: userId, orgId: c.org_id, action: body.archived ? "channel.archive" : "channel.restore", target: id });
       }
-      if (body.name !== undefined || body.topic !== undefined) ctx.audit({ actorId: userId, orgId: c.org_id, action: "channel.update", target: id });
+      if (body.name !== undefined || body.topic !== undefined || body.format !== undefined) ctx.audit({ actorId: userId, orgId: c.org_id, action: "channel.update", target: id });
+      if (kindChange && body.kind !== "PRIVATE") await reconcileAccess(ctx, c.org_id);
     }
     notifyConversation(ctx, id);
     return { conversation: conversationView(ctx, authz.conversation(id)!, userId) };
@@ -276,9 +278,9 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
     if (!target) throw notFound("User not found");
     if (c.type === "CHANNEL") {
       const targetOrgRole = authz.orgRole(c.org_id!, p.userId);
-      if (!targetOrgRole) throw conflict("That person is not a member of this organization");
+      if (!targetOrgRole) throw conflict("That person is not a member of this community");
       if (targetOrgRole !== "GUEST" && !authz.scopeEligible(c, p.userId)) {
-        throw conflict(`That person has no access to this channel's ${c.scope?.toLowerCase()}. Add them there first.`);
+        throw conflict("That person can't see this channel: its permissions don't include them");
       }
     } else {
       const n = (db.prepare("SELECT COUNT(*) n FROM conversation_members WHERE conversation_id = ?").get(c.id) as { n: number }).n;

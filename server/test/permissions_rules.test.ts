@@ -31,7 +31,7 @@ describe("permission catalog", () => {
 
   it("gives members and guests no administrative power by default", () => {
     for (const p of BASE_ROLE_PERMISSIONS.MEMBER) expect([p, permissionDef(p).admin]).toEqual([p, false]);
-    expect([...BASE_ROLE_PERMISSIONS.GUEST]).toEqual(["messages.post"]);
+    expect([...BASE_ROLE_PERMISSIONS.GUEST].sort()).toEqual(["messages.attach", "messages.post"]);
   });
 
   it("only uses catalog keys in the starter templates", () => {
@@ -61,8 +61,8 @@ describe("effective permissions", () => {
   });
 
   it("gives guests only what a guest may hold", () => {
-    const p = effectivePermissions("GUEST", [grant(["integrations.connect", "integrations.view", "channels.manage", "members.remove"])]);
-    expect([...p].sort()).toEqual(["integrations.connect", "integrations.view", "messages.post"]);
+    const p = effectivePermissions("GUEST", [grant(["messages.attach", "messages.announce", "channels.manage", "members.remove", "channels.view"])]);
+    expect([...p].sort()).toEqual(["messages.attach", "messages.post"]);
   });
 
   it("can't restrict an owner, and restricts only restrictable permissions", () => {
@@ -92,7 +92,7 @@ describe("defining roles", () => {
   });
 
   it("won't let anyone edit a role that's already stronger than them", () => {
-    const strong = grant(["channels.manage", "teams.manage"]);
+    const strong = grant(["channels.manage", "members.ban"]);
     expect(roleDefinitionRefusal(actor("ADMIN"), grant(["messages.announce"]), strong)?.code).toBe("delegation_required");
     const delegated = actor("MEMBER", ["roles.manage", "roles.delegate", "channels.manage"]);
     expect(roleDefinitionRefusal(delegated, grant(["channels.manage"]), strong)?.code).toBe("beyond_your_powers");
@@ -109,7 +109,7 @@ describe("assigning and removing roles", () => {
 
   it("refuses roles a guest can't hold", () => {
     expect(roleAssignmentRefusal(actor("OWNER"), { ...member, base: "GUEST", perms: BASE_ROLE_PERMISSIONS.GUEST }, grant(["channels.manage"]))?.code).toBe("not_for_guests");
-    expect(roleAssignmentRefusal(actor("OWNER"), { ...member, base: "GUEST", perms: BASE_ROLE_PERMISSIONS.GUEST }, grant(["integrations.connect"]))).toBeNull();
+    expect(roleAssignmentRefusal(actor("OWNER"), { ...member, base: "GUEST", perms: BASE_ROLE_PERMISSIONS.GUEST }, grant(["messages.attach"]))).toBeNull();
   });
 
   it("keeps admins off admins and owners, and everyone off people with powers they lack", () => {

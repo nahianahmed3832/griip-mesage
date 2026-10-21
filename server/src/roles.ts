@@ -63,3 +63,16 @@ export function removalAllowed(actorLike: ActorLike, targetRole: OrgRole, target
   if (actor.base === "OWNER") return true;
   return actor.perms.has("members.remove") && isLow(targetRole) && canActOn(actor, targetOf(targetRole, false, targetPerms));
 }
+
+/**
+ * Banning someone: like removing them, with `members.ban` instead of `members.remove`; owners ban anyone but another
+ * owner (an owner leaves by handing over ownership, never by a ban). [targetRole] null: not a member (a ban ahead of
+ * time), which needs only the permission.
+ */
+export function banAllowed(actorLike: ActorLike, targetRole: OrgRole | null, targetPerms?: ReadonlySet<Permission>): boolean {
+  const actor = asActor(actorLike);
+  if (targetRole === "OWNER") return false;
+  if (actor.base === "OWNER") return true;
+  if (!actor.perms.has("members.ban")) return false;
+  return targetRole === null || (isLow(targetRole) && canActOn(actor, targetOf(targetRole, false, targetPerms)));
+}
