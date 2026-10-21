@@ -1,75 +1,156 @@
-# Session handoff (2026-10-21, Ultimate Master Prompt round)
+# Session handoff (2026-10-21, gated-batch round)
 
 For the next session: where everything is, what was done and verified, what isn't, and exactly what comes next. The
-plan is `MELDIQ_IMPLEMENTATION_PLAN.md`; the status of every feature is `MELDIQ_FEATURE_GAP_MATRIX.md`.
+batch plan and its approval gate are in `MELDIQ_IMPLEMENTATION_PLAN.md`; the status of every feature is in
+`MELDIQ_FEATURE_GAP_MATRIX.md`.
+
+> **Gate in force:** batch B1 is built and its APK is waiting for the owner's phone test. **Don't start B2, or make
+> other UI or backend changes, until the owner approves B1 or reports defects in it.** Answer questions and fix
+> reported B1 defects only.
 
 ## 1. Repositories and branches
 
 | Repository | Folder | Branch | State at hand-off |
 |---|---|---|---|
-| meldiq (Android, server, docs), `github.com/nahianahmed3832/meldiq` | **`/Volumes/code_files/meldiq_android`** (the owner signs from here) | `internal-beta` (local; a tag shares the name, so use `refs/heads/internal-beta`) | Fast-forwarded to this session's last commit. **Not pushed.** The owner's own uncommitted edit stays as it was: `android/app/build.gradle.kts` versionCode 20, versionName `0.4.0-beta` (lower than the committed `0.5.0-beta`; the owner's choice to confirm) |
+| meldiq (Android, server, docs), `github.com/nahianahmed3832/meldiq` | **`/Volumes/code_files/meldiq_android`** (the owner signs from here) | `internal-beta` (a tag shares the name: use `refs/heads/internal-beta`) | Fast-forwarded to this session's last commit. **Not pushed.** The owner's own uncommitted edit is untouched: `android/app/build.gradle.kts` versionCode 20, versionName `0.4.0-beta` |
 | same | `.claude/worktrees/meldiq-android-rebuild-8c8540` | `claude/meldiq-android-rebuild-8c8540` | Where this session worked; same commits |
-| meldiq-web, `github.com/nahianahmed3832/meldiq-web` | `/Volumes/code_files/orbit_web` | `main` | Was 11 commits behind `origin/main`; fast-forwarded (clean tree). Two new local commits: sign-in help (`0f462ed`) and emoji picker (`bd42c61`). **Not pushed.** The `orbit_web-meldiq-2` and `orbit_web-remediation-r1` worktrees were not touched |
+| meldiq-web, `github.com/nahianahmed3832/meldiq-web` | `/Volumes/code_files/orbit_web` | `main` | Two local commits, sign-in help (`0f462ed`) and emoji picker (`bd42c61`). **Not pushed** |
 
-The owner's rule (`CLAUDE.md` and memory) applies: work lands in `/Volumes/code_files/meldiq_android`. Never touch
-`signed_file/` or `android/app/release/`. Checksums of `signed_file/` were verified unchanged.
-`android/app/release/app-release.aab` was re-signed by the owner at 16:37.
+Never touch `signed_file/` or `android/app/release/`.
 
-## 2. Done this session, and how it was checked
+## 2. Computer and Discord access (verified 2026-10-21)
 
-| Work | Checked |
-|---|---|
-| **Sign-in and unlock show only the normal path.** Recovery choices behind "Having trouble signing in?" and "Can't access your email?" (Android and web) | Android: 61 account unit tests (5 new). Emulator walk-through: sign up → verify → new phone → sign in (clean) → help sheet → recovery keeps the email → unlock screen (clean) → other ways → emailed code unlock. Web: type check, lint, 255 Vitest, Playwright `accounts` (2) and `cross-device` (3) |
-| **Full emoji picker** (Unicode 15.1, 1,898 emoji, search, categories, recent, skin tone), **More reactions**, reaction validation (Android and web) | Android `EmojiCatalogTest` (5) and emulator (search, tone, insert, send, reaction from Flags). Web `emoji.test.ts` (5), Playwright `emoji.spec` (found and fixed a category-jump bug) |
-| **History movable to MongoDB** (store interface, MongoDB store, cascades, retention of orphans) | Server: full suite on SQLite and with accounts, preferences and history in MongoDB, 621 each at that point; `history_mongo.test.ts` (6) |
-| **Member timeouts**: server permission, route, enforcement, voice eviction; Android sheet, tag, composer notice | Server `member_timeout.test.ts` (6) and full suite 627 passed. Android `TimeoutRulesTest` (4), 572 unit tests, lint. Emulator: moderator timed out a member; the timed-out member saw "You're timed out … until 7:10 PM" |
-| Docs: Discord feature audit (with developer-docs evidence), gap matrix, full-stack spec, MongoDB migration, AWS architecture (from a read-only account check), realtime media plan, AI architecture, design system index, architecture and implementation plans | — |
+- **Tool:** the computer-use MCP server. It drives the Discord desktop app on the owner's Mac (`com.hnc.Discord`,
+  stable 643186), signed in to the owner's account. The owner granted app access and full-screen control (asked again
+  per session).
+- **Not available:**
+  - Discord on mobile;
+  - flows that send, join, create or reach people;
+  - Community-only admin screens.
+- **Screenshots:**
+  - `research/discord/live-2026-10-21/`, 94 from this round; the social ones are prefixed `2-`;
+  - round 1's are in `research/discord/`.
+  - Both folders are git-ignored because they show real people and messages. They exist only on this Mac's main
+    folder and the worktree.
+- **Side effects of inspecting** (safety log, `MELDIQ_LIVE_DISCORD_INSPECTION.md` §1):
+  - a toggle flipped and restored;
+  - one REA guide task ticked by visiting a channel;
+  - read state;
+  - a group-DM invite link shown and not shared;
+  - a report survey dismissed.
+  - Nothing was sent, posted, created, submitted, joined or called.
 
-**Final results:**
-- Server: 627 passed, 10 skipped (SQLite, after the timeout change).
-- Android: 572 unit tests, 0 failures, lint clean.
-- Web: 260 Vitest; Playwright accounts, cross-device and emoji in Chromium.
+## 3. Discord inspection coverage
 
-## 3. Things the owner should know
+| Area | Document | Coverage |
+|---|---|---|
+| Navigation, community (member and owner), channels and categories, messages, composer, report flow, forums, polls, events, emoji, creation, discovery, settings, Safety Setup, AutoMod, Audit Log, Bans, Access, Invites, Emoji settings | `MELDIQ_LIVE_DISCORD_INSPECTION.md` | About 90 control rows with IDs (`NAV-CTRL-*`, `COMM-CTRL-*`, `CHAN-CTRL-*`, `CAT-CTRL-*`, `CHAT-MSG-*`, `CHAT-COMP-*`, `FORUM-CTRL-*`, `POLL-CTRL-*`, `EVENT-CTRL-*`, `EXPR-CTRL-*`, `CREATE-CTRL-*`, `SET-CTRL-*`, `ADMIN-CTRL-*`) |
+| Friends, DMs, group DMs | `MELDIQ_SOCIAL_AND_COMMUNICATION_AUDIT.md` | `FRIEND-CTRL-001–012`, `DM-CTRL-001–010`, `GDM-CTRL-001–008`. Lists, menus, forms, profiles and settings observed; request, accept, block and send actions were not performed (they reach real people) |
+| Invitations | `MELDIQ_COMMUNITY_INVITATION_SPEC.md` | `INV-CTRL-001–010`. Entry points, Invites page, Pause, Access observed; the invite dialog and link opening are documentation-based (opening the dialog creates a real invite) |
+| Calls and screen share | `MELDIQ_CALLING_SCREENSHARE_AUDIT.md` | `CALL-CTRL-001–009`: entry points and settings observed; live calls and sharing not observed (would reach real people) |
+| Round 1 (server settings, roles, permissions, create channel) | `MELDIQ_DISCORD_REFERENCE_AUDIT.md` | — |
 
-1. **A test sign-up reached production.** The emulator still held an earlier install's data pointing at
-   `https://msg.griipbuddy.cloud`. One sign-up for `ada@meldiq.test` went there before I noticed and switched to the
-   local server. Production couldn't send the email, so the account is **unverified**: no keys, no access, and
-   replaced by any later sign-up with that address. It was not deleted, because that needs the owner's go-ahead.
-2. **The AWS tools use the root user's access key** (seen on 2026-10-21; already flagged on 2026-10-17). Only
-   read-only calls were made. The fix is in `MELDIQ_AWS_ARCHITECTURE.md` §5.
-3. **The media bucket has no CORS rules**, by design: the web goes through the nginx `/media` proxy.
-4. **Server version is now 0.14.0** (migration 034 adds `org_members.timeout_until`). Not deployed. Deploys follow
-   `docs/DEPLOYMENT.md` with a backup and the owner's go-ahead.
-5. **Android database version 11** (`conversations.timedOutUntil`), a forward migration with the schema exported.
-   Installing over 0.5.0-beta migrates in place.
+To finish the blocked flows, the owner provides a Discord test server and spare accounts (social audit §5).
 
-## 4. Not done, blocked or unverified
+## 4. Findings that changed the plan
 
-- **MongoDB as the only database:** 2 of 9 live domains (accounts, preferences) plus history can run on MongoDB;
-  about 640 statements remain. No production MongoDB exists (needs the owner). See the migration doc for the order.
-- **AWS:** nothing created. IaC templates are specified, not written.
-- **Media:**
-  - the camera and screen-share fixes from 2026-10-20 are still awaiting a phone;
-  - no quality measurements yet;
-  - game streaming is specified only.
-- **Phone tests:** no device was connected this session. Emulator only.
-- **Web:**
-  - community rebuild not started (W1);
-  - timeouts not on the web yet;
-  - Firefox and WebKit Playwright runs not done this time.
-- **Specified only:** reports, slowmode, 2FA, custom emoji, onboarding questions, the encryption-compatible
-  equivalents of automatic moderation, AI.
-- **Translations:** the new Chinese and Bengali strings need native review.
+- **DMs need consent:** `POST /v1/conversations/dm` creates a DM with anyone (DM-03, P1). The proposed connections
+  model reverses matrix DM-04 and **needs the owner's approval** (`MELDIQ_FRIENDS_AND_DMS_SPEC.md`).
+- **Invites:** the server side is complete and tested. Links are `meldiq://` only: B4 adds https App Links, a
+  signed-out preview, pause invites, and invites from DMs (`MELDIQ_COMMUNITY_INVITATION_SPEC.md`).
+- **Translations:** hard-coded English in the message menu and the conversation info screen (MSG-19, B5).
+- **Camera:** a stage-by-stage trace plan for B10 (`MELDIQ_CALLING_SCREENSHARE_AUDIT.md` §3). The 2026-10-20 fixes
+  are still unverified on a phone.
+- **New feature IDs:** NAV-11, COM-16–18, CH-17–18, MSG-19–21, DM-07–09, MOD-13, CALL-11.
 
-## 5. Next steps, exactly
+## 5. Batch B1: what it contains and how it was checked
 
-1. Owner: review and push `refs/heads/internal-beta` (meldiq) and `main` (meldiq-web). Decide versionCode and
-   versionName. Deploy API 0.14.0 with the usual rehearsal.
-2. Owner: phone checks (media plan §7); AWS root key (AWS doc §5); Atlas cluster (migration doc §7).
-3. Engineering, next session:
-   - **Reports (MOD-07):** server `reports` table and routes, Android report sheet and moderator queue, tests. Spec
-     §2.2.
-   - **Timeouts on the web:** Members › Time out, plus the composer notice.
-   - **MongoDB files domain:** same recipe as history.
-   - Then slowmode, message requests and 2FA.
+**Scope:** sign-in shows only email, password and Sign in, plus one "Having trouble signing in?" link. That opens a
+sheet with forgot password, recovery code and moving an old account. The unlock screen shows "Get a code by email"
+first, with the other ways behind "Can't access your email?". Built on 2026-10-21 (commit `377d83c`, Android; web
+`0f462ed`). See `MELDIQ_AUTH_FLOW_AUDIT.md`.
+
+**Automated:**
+- **Android:** 572 unit tests passed this round (including 61 account tests). Lint was clean at commit `377d83c`.
+- **Web:** type check, lint, Vitest, Playwright `accounts` and `cross-device`, on 2026-10-21.
+
+**Emulator:** the walk-through on 2026-10-21 covered:
+- sign up → verify → new phone → sign in;
+- help sheet → recovery keeps the email;
+- unlock screen → other ways → emailed code unlock.
+
+Screenshots `docs/product/screens-2026-10-21/auth-1..4`. Session restore after an app restart was **not re-checked in
+this round**: it's on the phone checklist.
+
+**Physical phone:** **not yet tested.**
+
+## 6. B1 APK and the owner's phone checklist
+
+Built on 2026-10-21 at 18:41 with:
+
+```bash
+./gradlew assembleDebug -Pmeldiq.sideBySide=true -Pmeldiq.environment=production
+```
+
+The build succeeded. `testDebugUnitTest` before it: **572 tests, 0 failures**.
+
+- **APK:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b1-debug.apk`
+  (147 MB, git-ignored).
+  - SHA-256: `f90d185460c66897c1c5060cd269df12c459cd81cc3bb5cf44e5d89553ca993c`.
+  - Built from commit `46e5873` plus this round's docs; no app code changed since.
+- **Variant:** debug, side by side: package `com.meldiq.android.test`, label "Meldiq Test". It installs beside the
+  owner's Meldiq and never replaces it.
+- **Server:** production relay `https://msg.griipbuddy.cloud` (the environment flag `meldiq.environment=production`),
+  because sign-in and unlock need real emails.
+- **Version:** versionCode 19, `0.5.0-beta` (committed values; the owner's uncommitted 20 / `0.4.0-beta` isn't in
+  this build).
+
+**Phone checklist (B1):**
+1. Install: `adb install -r meldiq-test-b1-debug.apk`, or open the file on the phone. It appears as "Meldiq Test".
+2. Sign in with your account.
+   - **Expected:** only email, password, Sign in, and the link "Having trouble signing in?". No recovery options are
+     listed on the form.
+3. Tap "Having trouble signing in?".
+   - **Expected:** a sheet with three choices: "I forgot my password", "I can't get into my email", "Move an existing
+     account".
+   - Close it with "Back to sign in" and with the back gesture: the form keeps what you typed.
+4. Sign in.
+   - **Expected:** because this is a new device, the unlock screen shows one main button "Get a code by email" and the
+     link "Can't access your email?".
+   - If your account has no key backup yet (for example after a password reset), the screen says so and lists the
+     other ways directly. That's correct too: note which one you saw.
+5. Tap "Can't access your email?".
+   - **Expected:** "Other ways to unlock" lists another phone, recovery key and start fresh, with "Back to the email
+     code".
+   - **Don't choose "Start fresh" with your real account:** it replaces your encryption keys.
+   - Go back.
+6. Tap "Get a code by email", enter the emailed code.
+   - **Expected:** your messages unlock and history appears.
+7. Swipe the app away and reopen it.
+   - **Expected:** you're still signed in and unlocked, with no sign-in screen.
+8. Turn on airplane mode and open the app.
+   - **Expected:** it opens to your chats with an offline banner, no crash.
+   - Turn airplane mode off: it reconnects.
+9. Optional: in Settings › Language, switch to 中文 and বাংলা and repeat step 3. The help sheet is translated.
+10. Report back: pass/fail per step, a screenshot of anything wrong, and the phone model.
+
+Afterwards you can remove "Meldiq Test" from the phone, and sign out of it first so the server forgets that device.
+
+## 7. Things the owner should know (carried over)
+
+1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
+   call).
+2. **The AWS tools use the root user's access key:** move them off it (`MELDIQ_AWS_ARCHITECTURE.md` §5).
+3. **Server 0.14.0 isn't deployed:** migration 034 (timeouts).
+4. **Android database version 11:** a forward migration.
+
+## 8. Next, exactly
+
+1. **Owner:** the B1 phone test (§6), then approve or report.
+2. **Owner:** decisions listed in `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions" (connections model, fingerprints,
+   test accounts).
+3. **Engineering, only after B1 approval:** B2 (community navigation and home) as scoped in the plan. Its first step
+   is a short Discord re-check of the notification dialog and rail order, then Meldiq's `CommunityMenus.kt`,
+   `CommunitySettingsScreen.kt` and the server's preferences domain.
+4. **Don't change before B1 feedback:** the sign-in and unlock screens (`AccountScreens.kt`,
+   `DeviceSetupScreens.kt`, `AccountHelpSheets.kt`, `AccountFlowViewModel.kt`) except to fix reported defects.

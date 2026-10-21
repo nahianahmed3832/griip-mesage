@@ -1,6 +1,6 @@
 # Meldiq feature gap matrix (2026-10-21)
 
-Meldiq's status for every feature in `DISCORD_FEATURE_AUDIT.md`, by the same ID. Kept current as work lands: update
+Meldiq's status for every feature in `DISCORD_FEATURE_AUDIT.md`, by the same ID. Control-level evidence (round 3, 2026-10-21) is in `MELDIQ_LIVE_DISCORD_INSPECTION.md`, `MELDIQ_SOCIAL_AND_COMMUNICATION_AUDIT.md`, `MELDIQ_COMMUNITY_INVITATION_SPEC.md` and `MELDIQ_CALLING_SCREENSHARE_AUDIT.md`; the Batch column there (B1–B13) is the order of work, each batch gated on the owner's phone test. Kept current as work lands: update
 the row in the same change.
 
 **Status:**
@@ -56,6 +56,7 @@ Meldiq differs from Discord by design in two ways:
 | NAV-08 | Presence, custom status | I | I | I | I | — | |
 | NAV-09 | Settings | I | I | I | — | — | |
 | NAV-10 | Back behaviour | E2E | I | — | — | — | |
+| NAV-11 | Reorder communities in the rail | R | — | — | — | P3 (B2) | Discord: rail menu › Move to › First / Last (NAV-CTRL-002) |
 
 ## C. Communities and discovery
 
@@ -65,7 +66,7 @@ Meldiq differs from Discord by design in two ways:
 | COM-02 | Name, icon, description | I | I | I | I | P3 | Banner: deferred |
 | COM-03 | Visibility and join policy | IT | I | I | I | — | Invite only / public with invites / public and open |
 | COM-04 | Discover and preview | E2E | I | D | I | P1 (web) | |
-| COM-05 | Invites (expiry, uses, QR) | E2E | I | I | I | — | Pausing invites: P3 |
+| COM-05 | Invites (expiry, uses, QR) | E2E | I | I | I | P1 (B4) | Server side complete and tested (expiry, uses, revoke, role safety, bans, races). **Gaps (round 3):** links are `meldiq://` only (not tappable in most apps), no https App Link, no signed-out web preview, pause invites, invite from a DM. `MELDIQ_COMMUNITY_INVITATION_SPEC.md` |
 | COM-06 | Welcome screen | I | I | — | I | P2 | #welcome channel with welcome actions; no "recommended channels" card |
 | COM-07 | Onboarding questions | R | — | — | — | P2 | Not built. Plan: `community_onboarding` (prompts → options → role ids and channel ids), applied by the server when a member answers; channels follow from roles. `MELDIQ_FULLSTACK_SPEC.md` §5 |
 | COM-08 | Rules shown before joining | I | I | I | I | — | |
@@ -76,6 +77,9 @@ Meldiq differs from Discord by design in two ways:
 | COM-13 | Community notifications | I | I | I | I | — | Mute all, per-channel levels |
 | COM-14 | Verification level | R | — | — | — | P3 | Email is always verified in Meldiq; "account age" levels: P3 |
 | COM-15 | System messages | D | — | — | — | P3 | |
+| COM-16 | Hide channels without leaving, channel browser | R | — | — | — | P2 (B3) | Discord Browse Channels and Remove from Channel List (COMM-CTRL-007, CHAN-CTRL-005) |
+| COM-17 | Server Guide with Get Started tasks | R | — | — | — | P2 (B8) | Tasks tied to channels, ticked on visit (COMM-CTRL-003/004/005) |
+| COM-18 | Join applications (apply to join, moderator approval) | R | — | — | — | P2 (B4) | Discord Access › Apply to Join with up to 5 questions (ADMIN-CTRL-008) |
 
 ## D. Categories and channels
 
@@ -94,9 +98,11 @@ Meldiq differs from Discord by design in two ways:
 | CH-11 | Forum channels and tags | E2E | I | D | I | P1 (web) | Required tag, gallery view: P3 |
 | CH-12 | Voice channels | E2E | I | I | I | — | Phone: speak and listen-only 2026-10-21 |
 | CH-13 | Stage channels | D | — | — | — | P3 | Calls have raise hand and host moderation, a base for it |
-| CH-14 | Slowmode | S | — | — | — | P2 | Server-enforced per member and channel (`last_post_at`); permission `messages.bypass_slowmode`. Possible because the server sees who posts, not what |
+| CH-14 | Slowmode | R (observed) S | — | — | — | P2 | Server-enforced per member and channel (`last_post_at`); permission `messages.bypass_slowmode`. Possible because the server sees who posts, not what |
 | CH-15 | Channel and category menus | E2E | I | D | — | P1 (web) | |
 | CH-16 | Media channels | — | | | | | Forum with attachments covers it |
+| CH-17 | Timed mute (15 min to 24 h) and "category default" level | R | — | — | — | P2 (B3) | Meldiq mutes are open-ended (CHAN-CTRL-002/003) |
+| CH-18 | Thread list per channel | R | — | — | — | P2 (B5) | CHAN-CTRL-011 |
 
 ## E. Conversations and content
 
@@ -120,6 +126,9 @@ Meldiq differs from Discord by design in two ways:
 | MSG-16 | Attachments, 1 GiB target | E2E (600 MB, USB) | I | I | I | P1 | 1 GiB over real Wi-Fi and mobile data to production: owner's test (`MELDIQ_SESSION_HANDOFF.md`) |
 | MSG-17 | Voice messages | I | I | I | — | — | |
 | MSG-18 | Markdown | I | I | I | — | — | |
+| MSG-19 | Message menu translations | FIX | I | — | — | P1 (B5) | Hard-coded English in `ConversationScreen.kt` (Pin, Save to Gallery/Files, Share) and `ConversationInfoScreen.kt` (Group info, Rename group, Add members, Leave, Remove from group) |
+| MSG-20 | Copy message link (members only) | R | — | — | — | P3 (B5) | CHAT-MSG-004 |
+| MSG-21 | Poll duration and answer emoji | R | — | — | — | P2 (B8) | POLL-CTRL-001 |
 
 ## F. DMs and groups
 
@@ -127,10 +136,13 @@ Meldiq differs from Discord by design in two ways:
 |---|---|---|---|---|---|---|---|
 | DM-01 | One-to-one DM | E2E | I | IT | I | — | |
 | DM-02 | Group DM | I | I | I | I | — | |
-| DM-03 | Message requests | R | — | — | — | P2 | DMs from people with no shared community: request inbox. Server knows the relationship (metadata) |
-| DM-04 | Friends | — | | | | | Meldiq uses contacts plus shared communities; no friend graph (privacy choice) |
+| DM-03 | Message requests and DM permissions | R (observed) S | — | — | — | P1 (B6) | **Gap found:** `POST /v1/conversations/dm` creates a DM with anyone; only blocking stops delivery. Spec `MELDIQ_FRIENDS_AND_DMS_SPEC.md` |
+| DM-04 | Connections (request, accept, decline, cancel, remove) | R (observed) S | — | — | — | P1 (B6) | **Proposed reversal of "no friend graph", needs the owner's approval:** a small `connections` model (no suggestions, no contact mining). `MELDIQ_FRIENDS_AND_DMS_SPEC.md` |
 | DM-05 | Block | I | I | I | I | — | |
 | DM-06 | Favourite, archive, mute DMs | I | I | I | I | — | |
+| DM-07 | Group photo | R | — | — | — | P2 (B6) | GDM-CTRL-002 |
+| DM-08 | Invite to community from a DM or profile | R | — | — | — | P2 (B4/B6) | INV-B-05 |
+| DM-09 | Report a person | R | — | — | — | P1 (B4) | FRIEND-CTRL-011, with MOD-07 |
 
 ## G. Roles, permissions and moderation
 
@@ -142,12 +154,13 @@ Meldiq differs from Discord by design in two ways:
 | MOD-04 | Remove (kick) | IT | I | I | I | — | `members.remove` |
 | MOD-05 | Ban / unban | IT | I | I | I | — | |
 | MOD-06 | Timeout | E2E (Android) | I | D | I | — | 2026-10-21: `PUT /v1/orgs/:id/members/:userId/timeout` (≤ 28 days, reason in the audit log), permission `members.timeout` (in the Moderator template); takes posting, files, announcements and voice in every channel of the community (as a restriction no overwrite lifts), removes them from live voice calls; owners never, admins only by the owner. Android: Members › Time out (60 s – 1 week), Timed out tag, End timeout, composer says until when. Server `member_timeout.test.ts` (6); emulator screenshots `timeout-*.png`. Web: P2 |
-| MOD-07 | Report | S | — | — | — | P1 | Report a message: the reporter's app sends the decrypted message they saw (the reporter's choice to disclose it), with the conversation and message ids, to the community's moderators (in-community) or to Meldiq's operators (platform). The server stores it in `reports` with status. Never automatic |
+| MOD-07 | Report | R (observed: reasons → summary → submit) S | — | — | — | P1 | Report a message: the reporter's app sends the decrypted message they saw (the reporter's choice to disclose it), with the conversation and message ids, to the community's moderators (in-community) or to Meldiq's operators (platform). The server stores it in `reports` with status. Never automatic |
 | MOD-08 | AutoMod | R | — | — | — | P3 | Text rules can't run on the server (encrypted). Possible: on-device keyword filter rules distributed by the community, mention-spam limits (the server sees mention counts), join-rate limits. Spec §6 |
 | MOD-09 | Audit log | I | I | I | I | — | `audit.view` |
-| MOD-10 | Raid / abuse protection | I | — | — | I | P2 | Rate limits on joins, invites and sign-ups (`abuse.ts`); alerts to moderators: P2 |
+| MOD-10 | Raid / abuse protection | I | — | — | I | P2 | Rate limits on joins, invites and sign-ups (`abuse.ts`); alerts to moderators: P2 (B4, Discord Activity Alerts, ADMIN-CTRL-002) |
 | MOD-11 | Explicit media filter | — | | | | | Server can't see media (encrypted); on-device options: P3 |
 | MOD-12 | 2FA for moderators | R | — | — | — | P3 | After AUTH-05 |
+| MOD-13 | Pause invites and member DMs for a time | R | — | — | — | P2 (B4) | ADMIN-CTRL-007 |
 
 ## H. Calls, voice and video
 
@@ -156,13 +169,14 @@ Meldiq differs from Discord by design in two ways:
 | CALL-01 | 1:1 voice and video | I | I | I | I | P1 | End-to-end encrypted media (LiveKit with frame encryption) |
 | CALL-02 | Group calls | I | I | I | I | P1 | Group-call tiles; phone validation open |
 | CALL-03 | Voice channels | E2E | I | I | I | — | |
-| CALL-04 | Camera switch, mute | I (fixed in code) | I | I | — | P1 | Rear-camera mirroring and switch race fixed 2026-10-20 (`docs/MELDIQ_CALL_BUGS_2026-10-20.md`); **awaiting phone validation** |
+| CALL-04 | Camera switch, mute | I (fixed in code) | I | I | — | P1 | Rear-camera mirroring and switch race fixed 2026-10-20 (`docs/MELDIQ_CALL_BUGS_2026-10-20.md`); **awaiting phone validation**. B10 traces it stage by stage (`MELDIQ_CALLING_SCREENSHARE_AUDIT.md` §3) |
 | CALL-05 | Screen share | I | I | I | — | P1 | Android MediaProjection with display-rotation following; awaiting phone validation |
-| CALL-06 | Game streaming ("Go Live") | S | — | — | — | P2 | Screen share at up to 1080p is the base; high-frame-rate encoding, system audio capture (Android 10+ `AudioPlaybackCapture`, with consent) and viewer quality choice are specified in `MELDIQ_REALTIME_MEDIA_PLAN.md` |
+| CALL-06 | Game streaming ("Go Live") | S (B11) | — | — | — | P2 | Screen share at up to 1080p is the base; high-frame-rate encoding, system audio capture (Android 10+ `AudioPlaybackCapture`, with consent) and viewer quality choice are specified in `MELDIQ_REALTIME_MEDIA_PLAN.md` |
 | CALL-07 | Stage (raise hand) | I (calls) | I | I | I | P3 | Raise hand and host moderation in calls |
 | CALL-08 | Noise suppression | I | I | I | — | — | WebRTC NS/AEC/AGC; hardware NS off |
 | CALL-09 | Reconnect | I | I | I | — | P2 | Measure on phones |
 | CALL-10 | Soundboard, activities | — | | | | | Not planned |
+| CALL-11 | Deafen, pre-call mic and camera check | R | — | — | — | P2 (B10) | CALL-CTRL-004/005/006 |
 
 ## I. Expression
 

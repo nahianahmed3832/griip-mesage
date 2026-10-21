@@ -16,11 +16,26 @@ reference for structure and behaviour only.
 | **D** documented | Read in Discord's official documentation | Developer docs via REA round 1 (Permissions, Channels); this round: developer docs pages Guild (features, verification, MFA level, onboarding, welcome screen, member timeout), Channel (types, slowmode, threads, forum fields, stage, video quality, bitrate), Guild Scheduled Event, Auto Moderation, Poll, Emoji; help center articles read in round 1 (mobile layout, categories, forums, announcements) |
 | **U** unverified | Known product behaviour not confirmed from a source in this audit | Marked so; check before building on it |
 
-**Not observed (both rounds):**
+**Round 3 (2026-10-21, later the same day):** a control-by-control pass of the signed-in desktop app. It covers:
+- a large public server as a member, the owner's own server as owner, and settings;
+- friends, DMs and group DMs;
+- the report flow up to Submit;
+- poll, event and forum post forms;
+- AutoMod, Safety Setup, Access, Invites, Bans, Audit Log and Emoji.
+
+It is recorded in `MELDIQ_LIVE_DISCORD_INSPECTION.md` and `MELDIQ_SOCIAL_AND_COMMUNICATION_AUDIT.md`, with 94
+screenshots kept out of Git. Rows here that round 3 observed are marked there, by control ID.
+
+**Not observed (all rounds):**
 - Discord's Android and iOS apps.
 - Voice, video and screen share in use.
-- Stage channels, onboarding questions and AutoMod rules in a live server.
-- Discord's account security screens (2FA setup, recovery codes).
+- Stage channels.
+- Discord's 2FA setup screens.
+- Anything that sends, joins, creates or reaches another person:
+  - friend-request actions, blocking;
+  - invites, calls, screen share;
+  - submitting a report.
+- Round 3 did observe AutoMod's rule form (cancelled) and a member's view of onboarding questions.
 
 **Access limits:**
 - No signed-in mobile session.
