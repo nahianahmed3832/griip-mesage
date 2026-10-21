@@ -4,10 +4,10 @@ For the next session: where everything is, what was done and verified, what isn'
 batch plan and its approval gate are in `MELDIQ_IMPLEMENTATION_PLAN.md`; the status of every feature is in
 `MELDIQ_FEATURE_GAP_MATRIX.md`.
 
-> **Gate in force:** B1, B2 and B3 were phone-tested and approved by the owner (every checklist step passed,
-> 2026-10-21). B4 is built and its APK is waiting for the owner's phone test. **Don't start B4b, or make other UI or
-> backend changes, until the owner approves B4 or reports defects in it.** Answer questions and fix reported B4 defects
-> only.
+> **Gate changed 2026-10-21 23:13:** B1, B2 and B3 were phone-tested and approved by the owner. The owner then asked
+> for the remaining batches to be built one after another without waiting, and to phone-test them all together at the
+> end. Each batch is committed on its own with its own APK and checklist below, so a defect can be traced to its batch.
+> **Nothing from B4 onwards has been tested on a real phone yet**; emulator checks are listed per batch.
 
 ## 1. Repositories and branches
 
@@ -74,7 +74,7 @@ To finish the blocked flows, the owner provides a Discord test server and spare 
 
 All three are **physically verified**. Details are in git history (`377d83c`, `edfb459`, `457757a`) and the matrix.
 
-## 6. Batch B4: administration, part 1 (built 2026-10-21, waiting for the phone test)
+## 6. Batch B4: administration, part 1 (built 2026-10-21, not phone-tested)
 
 B4 as first planned was too large for one testable batch. It was split: this batch, and **B4b** (join applications,
 raid alerts, https invite links with a signed-out preview, invite from a DM, Meldiq's operator review tool).
@@ -195,29 +195,95 @@ raid alerts, https invite links with a signed-out preview, invite from a DM, Mel
 9. **Languages:** switch to 中文 or বাংলা and open the report sheet and the Reports screen: the text is translated.
 10. **Report back:** pass or fail per step, a screenshot of anything wrong, and the phone model.
 
+## 6b. Batch B4b: administration, part 2 (built 2026-10-22, not phone-tested)
+
+### What's in it
+
+| Feature | What the person sees | Code |
+|---|---|---|
+| Join applications (COM-18, Discord ADMIN-CTRL-008) | <ul><li>Community settings › Community › **Join questions** (public communities, people who can edit the community): up to 5 questions, Save, or **Turn off applications**;</li><li>Discover › the community › **Apply to join**: an answer for every question, **Send application**, then "Your application is waiting for the moderators" with **Withdraw application**;</li><li>after a decline: "Your last application wasn't accepted. You can apply again";</li><li>while the questions are on, open joining is refused (`application_required`)</li></ul> | Android `moderation/ApplicationsScreen.kt` (`ApplySheet`, `JoinQuestionsSheet`), `DiscoverScreen.kt`, `ApplicationRules.kt`, `ApplicationRepository.kt`. Server `routes/applications.ts`, migration 037, permission `members.approve` (Moderator and Community Manager templates) |
+| Applications queue | Community settings › Moderation › **Applications**: Waiting (n) / Answered; each shows the person, when, and every question with its answer; **Let in** (they join, with the usual ban, pause and member-limit checks) or **Decline**, each with an optional note; "Let in by …" afterwards. Audited as `application.approved` / `application.denied` | `ApplicationsScreen.kt`, route `applications/{orgId}` |
+| Activity alerts (MOD-10, ADMIN-CTRL-002) | When 10 or more people join within 10 minutes, the people who can pause joining see "N people joined within 10 minutes" with **Security** in Community settings, for 24 hours; at most one alert per 30 minutes; nothing is paused automatically. Security actions › **Activity alerts** on/off | Server `workspace/activityAlerts.ts`; Android `CommunitySettingsScreen.kt`, `SecuritySheet.kt` |
+| https invite links (COM-05, INV-B-01/02) | Invitations are shared and drawn as `https://meldiq.app/invite/CODE`. Tapping one inside a Meldiq chat opens Join with the code and preview. Outside the app, Android opens Meldiq for it once `meldiq.app` serves `assetlinks.json` (owner, below); the old `meldiq://` links and QR codes still work | `InviteScan.kt`, `AndroidManifest.xml`, `MainActivity.kt`, `ConversationScreen.kt` |
+| Signed-out invite page | Web repo: `/invite/CODE` shows the community's name, description and size (never channels or members), the code, **Open in the Meldiq app**, **Copy the code**, **Use Meldiq Web**; clear messages for invalid, expired, revoked and used-up links, and for paused joining | `orbit_web` commit `2ed45e4`: `public/invite.html`, `public/invite.js`, nginx `location ^~ /invite/`; server `GET /v1/invites/:code/public` (30 per minute per address) |
+| Invite from a profile (DM-08, INV-B-05) | Someone's profile › **Invite** › one of your communities (not ones where you're a guest): a one-use invitation valid 7 days, sent as the https link in your DM with them; the DM opens | `profile/InviteToCommunitySheet.kt` (`ProfileInvite`) |
+| Meldiq's operator commands for reports | On the server: `admin reports [closed]`, `admin report-show <id>`, `admin report-close <id> actioned\|dismissed [note]` for reports sent to Meldiq's team | `server/src/admin.ts` |
+
+**Server and API:** API **0.18.0**, features `join-applications`, `activity-alerts`, `invite-links`. **Migration 037**
+(additive): `orgs.join_questions`, `orgs.activity_alerts` (default on), `orgs.raid_alert_at`, `orgs.raid_alert_count`,
+and a `join_applications` table (MongoDB domain `workspace`). Also fixed: the admin `cleanup` command lacked the reports
+store, so purging closed reports there would have failed.
+
+**New Android strings** in three languages: `ja_*`, `pi_*`.
+
+### How it was checked
+
+- **Server:** `npx vitest run`: **670 passed**, 10 skipped (`applications_alerts.test.ts`, 8 tests: questions and
+  limits, answers required, one pending application, bans and private communities, approve joins the person, deny,
+  withdraw, paused joining, open joining refused while questions are on, the alert after 10 joins and only for
+  moderators, turning alerts off, the public invite preview).
+- **Android:** `testDebugUnitTest` **598 tests, 0 failures** (new `ApplicationRulesTest`, `InviteScanTest` updated);
+  `lintDebug` 0 errors.
+- **Web:** `npm test` 260 passed, eslint and prettier clean; the page checked in a browser against the local server
+  (valid and invalid codes).
+- **Emulator** (local server, Ada in the main app, Erin in "Meldiq Test"):
+  - `https://meldiq.app/invite/CODE` sent to the app opened Join with the code and preview; Ada joined;
+  - Erin › Discover › Apply Lab › Apply to join › answered both › waiting; Ada › Applications › Waiting (1) showed both
+    answers › Let in with a note › Answered "Let in by Ada · Welcome"; Erin became a member and the preview offered Open;
+  - 10 test accounts joined by script: Ada saw "10 people joined within 10 minutes" › Security › the Activity alerts
+    switch turned off and on (stored on the server);
+  - Join questions: added a third question and saved ("On · 3 questions");
+  - Carol's profile › Invite › Apply Lab: the DM opened with the https link (one use, 168 hours on the server); tapping
+    the link in the chat opened Join.
+- **Not checked:** App Link verification on a real phone (needs `assetlinks.json` on meldiq.app); the web page on the
+  real domain; Chinese and Bengali on screen.
+
+### B4b APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b4b-debug.apk`
+  (147 MB, git-ignored). **SHA-256:** `15fef42d5844dde4fc9f06a0f5e86f7f21ce260514e050d734391c1f99f09b82`.
+- **Variant:** debug, side by side: `com.meldiq.android.test`, versionCode 19 / `0.5.0-beta`, server
+  `http://localhost:8080` (the local test server over USB). It contains B4 as well, so B4 and B4b can be tested with
+  this one APK.
+
+### Owner's phone checklist (B4b)
+
+**Before you start:** server from `/Volumes/code_files/meldiq_android` with `server/scripts/phone-test-server.sh` (API
+0.18.0); `adb install -r android/app/build/outputs/apk/debug/meldiq-test-b4b-debug.apk`; your owner account and the
+member account. Your test community must be **listed in Discover** (Settings › Overview).
+
+1. **Questions:** as the owner, Settings › **Join questions** › two questions › Save. **Expected:** "On · 2 questions".
+2. **Apply:** as a person who isn't a member (a third account, or leave the community with the member account first),
+   Discover › your community › **Apply to join** › answer › Send. **Expected:** "Your application is waiting".
+3. **Queue:** as the owner, Settings › Moderation › **Applications**. **Expected:** both answers. **Let in** with a
+   note. **Expected:** Answered "Let in by …", and the person sees the community.
+4. **Decline and apply again:** repeat 2 and 3 with **Decline**. **Expected:** the person sees "wasn't accepted. You can
+   apply again".
+5. **Invite from a profile:** open someone's profile › **Invite** › a community. **Expected:** your DM with them opens
+   with a `https://meldiq.app/invite/…` link. On their phone, tapping it in the chat opens Join.
+6. **Activity alerts:** Settings › Security actions › **Activity alerts** is on; turn it off and on. (A join spike needs
+   10 joins within 10 minutes; Claude checked that on the emulator.)
+7. **Languages:** 中文 or বাংলা: the Applications screen and the apply sheet are translated.
+8. **Report back:** pass or fail per step, a screenshot of anything wrong, and the phone model.
+
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
    call).
 2. **The AWS tools use the root user's access key:** move them off it (`MELDIQ_AWS_ARCHITECTURE.md` §5).
-3. **Server 0.17.0 isn't deployed** (production runs 0.13.0): 0.14.0 migration 034 (timeouts); 0.15.0 B2's preference fields and templates; 0.16.0 migration 035 (slowmode) and B3's fields; 0.17.0 migration 036 (reports, pauses). For deployment, set `REPORTS_KEY` (or back up `reports.key` with the database).
+3. **Server 0.18.0 isn't deployed** (production runs 0.13.0): 0.18.0 adds migration 037 (applications, alerts); 0.14.0 migration 034 (timeouts); 0.15.0 B2's preference fields and templates; 0.16.0 migration 035 (slowmode) and B3's fields; 0.17.0 migration 036 (reports, pauses). For deployment, set `REPORTS_KEY` (or back up `reports.key` with the database).
 4. **Android database version 11:** a forward migration.
+5. **For https invite links (B4b):** serve `https://meldiq.app/.well-known/assetlinks.json` from
+   `orbit_web/deploy/app-links/assetlinks.template.json` with the release signing-certificate SHA-256 (from your signing
+   key; Claude never reads it), and route `meldiq.app/invite/*` to the web server's invite page (or serve the web app
+   on meldiq.app). Until then, links open the web page instead of the app outside Meldiq.
 
 ## 8. Next, exactly
 
-1. **Owner:** the B4 phone test (§6), then approve or report.
-2. **Owner:** decisions listed in `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions" (connections model, fingerprints,
-   test accounts).
-3. **Engineering, only after B4 approval:** B4b:
-   - join applications (COM-18);
-   - raid alerts to moderators (MOD-10);
-   - https invite links with a signed-out preview and invite from a DM (`MELDIQ_COMMUNITY_INVITATION_SPEC.md`
-     INV-B-01/02/05);
-   - Meldiq's operator review tool for reports sent to Meldiq.
-4. **Don't change before B4 feedback:**
-   - Android: `moderation/*`, the report entry in `ConversationScreen.kt`, `ProfileScreens.kt`, `OrgScreens.kt`'s
-     member sheet and invite form, `AdminScreens.kt`'s audit filters, `CommunitySettingsScreen.kt`'s moderation
-     group;
-   - server: `routes/reports.ts`, `reports/`, `mongo/reports.ts`, the security route and its checks.
-
-   Only reported defects get fixed there.
+1. **Engineering (in progress overnight):** B5 (thread list per channel, message links, translated message menus, an
+   Unreads view in Activity), then B6 to B13 in order, each committed with its own APK and checklist in this file.
+2. **Owner, when back:** phone-test the batches together using the per-batch checklists (B4, B4b, then later ones),
+   and report pass or fail per batch.
+3. **Owner decisions:** `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions" (fingerprint and meldiq.app hosting for invite
+   links, test accounts and a second device for calls, deploy).
+4. Reported defects are fixed in the batch they belong to.

@@ -66,7 +66,7 @@ Meldiq differs from Discord by design in two ways:
 | COM-02 | Name, icon, description | I | I | I | I | P3 | Banner: deferred |
 | COM-03 | Visibility and join policy | IT | I | I | I | — | Invite only / public with invites / public and open |
 | COM-04 | Discover and preview | E2E | I | D | I | P1 (web) | |
-| COM-05 | Invites (expiry, uses, QR) | E2E | I | I | I | P1 (B4) | Server side complete and tested (expiry, uses, revoke, role safety, bans, races). B4 2026-10-21: more choices (1, 10, 50, 100, 500 uses; 1 hour to 30 days) and pausing (MOD-13). **Still open (B4b):** links are `meldiq://` only, no https App Link, no signed-out web preview, invite from a DM. `MELDIQ_COMMUNITY_INVITATION_SPEC.md` |
+| COM-05 | Invites (expiry, uses, QR) | E2E | I | I | I | P1 (B4) | Server side complete and tested (expiry, uses, revoke, role safety, bans, races). B4 2026-10-21: more choices (1, 10, 50, 100, 500 uses; 1 hour to 30 days) and pausing (MOD-13). B4b: links are `https://meldiq.app/invite/CODE` (Android App Link with `autoVerify`; QR and the old `meldiq://` form still work; links tapped inside a chat open Join), a signed-out page at `/invite/CODE` in the web repo using `GET /v1/invites/:code/public` (name, description, size only), and invite from a profile (DM-08). **Owner:** host `meldiq.app/invite/*` and `/.well-known/assetlinks.json` with the release fingerprint (template `orbit_web/deploy/app-links/`). `MELDIQ_COMMUNITY_INVITATION_SPEC.md` |
 | COM-06 | Welcome screen | I | I | — | I | P2 | #welcome channel with welcome actions; no "recommended channels" card |
 | COM-07 | Onboarding questions | R | — | — | — | P2 | Not built. Plan: `community_onboarding` (prompts → options → role ids and channel ids), applied by the server when a member answers; channels follow from roles. `MELDIQ_FULLSTACK_SPEC.md` §5 |
 | COM-08 | Rules shown before joining | I | I | I | I | — | |
@@ -79,7 +79,7 @@ Meldiq differs from Discord by design in two ways:
 | COM-15 | System messages | D | — | — | — | P3 | |
 | COM-16 | Hide channels without leaving, channel browser | E2E (emulator) | I | — | I | — | B3 2026-10-21: channel menu › Hide from channel list; "N hidden · Browse channels" row; community sheet › Browse channels with a switch per channel and Show all; hidden channels come back while they mention you. `hidden` in the community document. Phone test pending |
 | COM-17 | Server Guide with Get Started tasks | R | — | — | — | P2 (B8) | Tasks tied to channels, ticked on visit (COMM-CTRL-003/004/005) |
-| COM-18 | Join applications (apply to join, moderator approval) | R | — | — | — | P2 (B4) | Discord Access › Apply to Join with up to 5 questions (ADMIN-CTRL-008) |
+| COM-18 | Join applications (apply to join, moderator approval) | E2E (emulator) | I | — | I | — | B4b 2026-10-21: Community settings › **Join questions** (public communities, `workspace.edit`): up to 5 questions, or off. Discover preview › **Apply to join** with an answer to every question; "waiting" with Withdraw; a declined person can apply again. Moderation › **Applications** (`members.approve`, Moderator and Community Manager templates): Waiting/Answered, Let in or Decline with a note; audited. While questions are on, open joining is refused (`application_required`). Server `routes/applications.ts`, migration 037. Web: not yet |
 
 ## D. Categories and channels
 
@@ -141,7 +141,7 @@ Meldiq differs from Discord by design in two ways:
 | DM-05 | Block | I | I | I | I | — | |
 | DM-06 | Favourite, archive, mute DMs | I | I | I | I | — | |
 | DM-07 | Group photo | R | — | — | — | P2 (B6) | GDM-CTRL-002 |
-| DM-08 | Invite to community from a DM or profile | R | — | — | — | P2 (B4/B6) | INV-B-05 |
+| DM-08 | Invite to community from a DM or profile | E2E (emulator) | I | — | I | — | B4b 2026-10-21: profile › **Invite** › pick a community (not ones where you're a guest): a one-use invitation valid 7 days, sent as the https link in your DM with them. The server checks your role may invite |
 | DM-09 | Report a person | E2E (emulator) | I | — | I | — | B4: profile › Report (send to Meldiq's team or one of your communities' moderators; the server checks the person is in it), community member sheet › Report |
 
 ## G. Roles, permissions and moderation
@@ -157,7 +157,7 @@ Meldiq differs from Discord by design in two ways:
 | MOD-07 | Report | E2E (emulator) | I | — | I | — | B4 2026-10-21: message menu › Report: reason, then a review step (who reads it, what is shared: the message and up to 5 before it, as decrypted on the phone), optional note, Send. Channels go to the community's moderators (`reports.view`, Moderator template), DMs, groups and illegal content to Meldiq's team. Sealed at rest (`REPORTS_KEY` or `reports.key`), 10 an hour, a repeat returns the first, moderators never see who reported, a moderator can't close a report about themselves. Queue: Community settings › Reports (Open/Closed, handled/dismiss with a note, reopen). Store on SQLite or MongoDB (`reports` domain). Deleted 90 days after closing. Operator queue: not built (B4b or later). Phone test pending. Web: not yet |
 | MOD-08 | AutoMod | R | — | — | — | P3 | Text rules can't run on the server (encrypted). Possible: on-device keyword filter rules distributed by the community, mention-spam limits (the server sees mention counts), join-rate limits. Spec §6 |
 | MOD-09 | Audit log | E2E (emulator) | I | I | I | — | `audit.view`. B4: filters by kind of change (Members, Channels, Categories, Roles, Invites, Community, Reports) and by person (`actorId`) |
-| MOD-10 | Raid / abuse protection | I | — | — | I | P2 | Rate limits on joins, invites and sign-ups (`abuse.ts`); alerts to moderators: P2 (B4, Discord Activity Alerts, ADMIN-CTRL-002) |
+| MOD-10 | Raid / abuse protection | E2E (emulator) | I | — | I | — | Rate limits on joins, invites and sign-ups (`abuse.ts`). B4b 2026-10-21 activity alerts (Discord ADMIN-CTRL-002): 10 or more joins within 10 minutes alert the people who can pause joining (banner in Community settings for 24 hours, a realtime event, an audit entry), at most once per 30 minutes; nothing is paused automatically. On/off in Security actions. `workspace/activityAlerts.ts` |
 | MOD-11 | Explicit media filter | — | | | | | Server can't see media (encrypted); on-device options: P3 |
 | MOD-12 | 2FA for moderators | R | — | — | — | P3 | After AUTH-05 |
 | MOD-13 | Pause invites and member DMs for a time | E2E (emulator) | I | — | I | — | B4: Community settings › Security actions: pause joining (invites and open joins, `invites_paused`) and new DMs between members (`dms_paused`; existing DMs and moderators unaffected) for 1 h to 7 days, or resume; audited |

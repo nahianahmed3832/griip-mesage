@@ -22,6 +22,7 @@ export const PERMISSION_KEYS = [
   "members.remove",
   "members.ban",
   "members.timeout",
+  "members.approve",
   // Roles
   "roles.view",
   "roles.manage",
@@ -81,6 +82,7 @@ const DEFS: Record<Permission, Def> = {
   "members.titles": { category: "members", label: "Edit titles", description: "Change the short title shown next to members' names.", admin: true },
   "members.remove": { category: "members", label: "Remove people", description: "Remove members and guests from the community (they can come back with an invitation).", admin: true },
   "members.ban": { category: "members", label: "Ban people", description: "Remove people and keep them out until the ban is lifted, and see the ban list.", admin: true },
+  "members.approve": { category: "members", label: "Approve applications", description: "Approve or deny people who applied to join.", admin: true },
   "members.timeout": { category: "members", label: "Time out people", description: "Stop someone posting, sharing files and joining voice channels for up to 28 days.", admin: true },
   "roles.view": { category: "roles", label: "View roles", description: "See the community's roles and what each one allows." },
   "roles.manage": { category: "roles", label: "Create and edit roles", description: "Create, edit, clone and archive custom roles (only with powers you hold).", admin: true },
@@ -164,7 +166,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     description: "Keeps conversations healthy: manages channels and their access, posts announcements, times out, removes and bans people.",
     color: "#E39B7B",
     icon: "shield",
-    permissions: ["channels.manage", "channels.visibility", "messages.announce", "messages.bypass_slowmode", "members.remove", "members.ban", "members.timeout", "reports.view"],
+    permissions: ["channels.manage", "channels.visibility", "messages.announce", "messages.bypass_slowmode", "members.remove", "members.ban", "members.timeout", "members.approve", "reports.view"],
     denies: [],
   },
   {
@@ -173,7 +175,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     description: "Grows the community: invites people, sets up channels and categories, keeps titles right.",
     color: "#C9A27A",
     icon: "star",
-    permissions: ["members.invite", "members.invites.manage", "members.titles", "channels.create", "channels.manage"],
+    permissions: ["members.invite", "members.invites.manage", "members.approve", "members.titles", "channels.create", "channels.manage"],
     denies: [],
   },
   {

@@ -13,18 +13,26 @@ import com.google.zxing.qrcode.QRCodeReader
 
 /**
  * What a scanned QR code may contain (T4.2). Only invite codes are accepted: the link the invite
- * screen draws (`meldiq://invite/CODE`, or `griip://invite/CODE` from Orbit and Griip Message), the
- * shared invite text that contains it, or a bare code. Anything else, web links included, is refused,
- * so a QR code can never make the app open a URL.
+ * screen draws (`https://meldiq.app/invite/CODE` since batch B4b; `meldiq://invite/CODE`, or `griip://invite/CODE`
+ * from Orbit and Griip Message), the shared invite text that contains it, or a bare code. Anything else, other web
+ * links included, is refused, so a QR code can never make the app open a URL.
  */
 object InviteCodes {
-    private val LINK = Regex("""(?:meldiq|griip)://invite/([A-Za-z0-9-]{1,40})""", RegexOption.IGNORE_CASE)
+    private val LINK = Regex("""(?:(?:meldiq|griip)://invite/|https://(?:www\.)?meldiq\.app/invite/)([A-Za-z0-9-]{1,40})""", RegexOption.IGNORE_CASE)
 
     /** Schemes whose invite links open this app (the older one only for invitations made before Meldiq). */
     val LINK_SCHEMES = setOf("meldiq", "griip")
 
-    /** The link the invite screen draws and shares. */
-    fun link(code: String) = "meldiq://invite/$code"
+    /** Batch B4b: the web address invite links use; it opens this app when installed (Android App Links). */
+    const val WEB_HOST = "meldiq.app"
+
+    /** The link the invite screen draws and shares: a web link, tappable in any app, that opens Meldiq when installed. */
+    fun link(code: String) = "https://$WEB_HOST/invite/$code"
+
+    /** Whether [scheme]/[host]/[path] is an invite link this app opens (the old app scheme or the meldiq.app page). */
+    fun isInviteLink(scheme: String?, host: String?, path: String?): Boolean =
+        (scheme in LINK_SCHEMES && host == "invite") ||
+            (scheme == "https" && (host == WEB_HOST || host == "www.$WEB_HOST") && path.orEmpty().startsWith("/invite/"))
     private val BARE = Regex("""[A-Za-z0-9]{4}(-?[A-Za-z0-9]{4}){2,4}""")
 
     /** A code inside longer text, e.g. the shared invite message pasted into the code field; never part of a web address. */

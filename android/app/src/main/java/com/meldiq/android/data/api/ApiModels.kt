@@ -264,7 +264,14 @@ object ChannelFormat {
     /** Batch B4 (servers with `security-actions`): running pauses of joining and of new DMs between members. */
     val invitesPausedUntil: Long? = null,
     val dmsPausedUntil: Long? = null,
+    /** Batch B4b (servers with `join-applications`): the questions people answer to join, or null when it doesn't take applications. */
+    val joinQuestions: List<String>? = null,
+    /** Batch B4b (servers with `activity-alerts`): whether join spikes alert moderators, and the current alert (moderators only). */
+    val activityAlerts: Boolean = true,
+    val activityAlert: ActivityAlertDto? = null,
 )
+/** Batch B4b: [count] people joined within ten minutes, at [at]. */
+@Serializable data class ActivityAlertDto(val kind: String = "joins", val count: Int = 0, val at: Long = 0)
 
 /** Who can find a community and how people get in (docs/COMMUNITY_REBUILD_2026-10-21.md §5). */
 object CommunityAccess {
@@ -385,7 +392,7 @@ object CommunityAccess {
 @Serializable data class ReportRes(val report: ReportDto)
 /** Batch B4 Security actions: until when (epoch ms, at most 7 days ahead), or null to resume. Omitted: unchanged. */
 @Serializable data class SecurityReq(val invitesPausedUntil: Long? = null, val dmsPausedUntil: Long? = null)
-@Serializable data class SecurityRes(val invitesPausedUntil: Long? = null, val dmsPausedUntil: Long? = null)
+@Serializable data class SecurityRes(val invitesPausedUntil: Long? = null, val dmsPausedUntil: Long? = null, val activityAlerts: Boolean = true)
 @Serializable data class ActivityDto(
     val id: Long, val at: Long, val action: String, val actorId: String? = null, val actorName: String? = null,
     val target: String? = null, val detail: String? = null,
@@ -425,13 +432,33 @@ object CommunityAccess {
 @Serializable data class DiscoverCommunityDto(
     val id: String, val name: String, val description: String? = null, val memberCount: Int = 0, val photoRev: Long? = null,
     val joinPolicy: String = CommunityAccess.INVITE, val joined: Boolean = false,
+    /** Batch B4b: people apply to join by answering the community's questions. */
+    val applications: Boolean = false,
 )
 @Serializable data class DiscoverRes(val communities: List<DiscoverCommunityDto> = emptyList(), val nextCursor: Int? = null)
 @Serializable data class PreviewChannelDto(
     val id: String, val name: String? = null, val topic: String? = null, val kind: String? = null, val voice: Boolean = false,
     val format: String = ChannelFormat.TEXT,
 )
-@Serializable data class CommunityPreviewRes(val community: OrgDto, val channels: List<PreviewChannelDto> = emptyList(), val joined: Boolean = false, val banned: Boolean = false)
+@Serializable data class CommunityPreviewRes(
+    val community: OrgDto, val channels: List<PreviewChannelDto> = emptyList(), val joined: Boolean = false, val banned: Boolean = false,
+    /** Batch B4b: this person's latest application here, if any. */
+    val application: MyApplicationDto? = null,
+)
+@Serializable data class MyApplicationDto(val id: String, val status: String, val createdAt: Long = 0, val orgId: String? = null, val orgName: String? = null)
+@Serializable data class MyApplicationsRes(val applications: List<MyApplicationDto> = emptyList())
+@Serializable data class ApplicationUserDto(val id: String, val username: String? = null, val displayName: String? = null)
+/** Batch B4b: an application as people with `members.approve` see it. */
+@Serializable data class ApplicationDto(
+    val id: String, val orgId: String, val user: ApplicationUserDto, val questions: List<String> = emptyList(), val answers: List<String> = emptyList(),
+    val status: String, val createdAt: Long = 0, val handledAt: Long? = null, val handledByName: String? = null, val note: String? = null,
+)
+@Serializable data class ApplicationsRes(val applications: List<ApplicationDto> = emptyList(), val pending: Int = 0)
+@Serializable data class ApplicationRes(val application: ApplicationDto)
+@Serializable data class ApplyReq(val answers: List<String>)
+@Serializable data class ApplyRes(val application: ApplicationDto, val repeated: Boolean = false)
+@Serializable data class DecideApplicationReq(val status: String, val note: String? = null)
+@Serializable data class QuestionsRes(val questions: List<String>? = null)
 @Serializable data class JoinCommunityRes(val org: OrgDto, val alreadyMember: Boolean = false)
 @Serializable data class BanDto(
     val userId: String, val displayName: String, val username: String = "", val reason: String? = null,

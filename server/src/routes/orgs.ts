@@ -4,6 +4,8 @@ import { type ConversationRow, parsePermissionList } from "../authz.js";
 import { type AppContext, me, parse, requireAuth, zName, zText } from "../context.js";
 import { memberView } from "../profile.js";
 import { ApiError, badRequest, conflict, forbidden, humanCode, newId, notFound, now, sha256Hex } from "../util.js";
+import { activityAlert, noteJoin } from "../workspace/activityAlerts.js";
+import { joinQuestions } from "./applications.js";
 import { INVITE_PROBLEMS, inviteAlreadySatisfied, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../invites.js";
 import { userSummary } from "./auth.js";
 import { deleteBlobNow, processBlobDeletes, queueBlobDelete } from "./attachments.js";
@@ -70,6 +72,10 @@ export function orgSummary(ctx: AppContext, org: any, userId: string) {
     // Batch B4: Security actions that are running (null otherwise).
     invitesPausedUntil: ctx.authz.pausedUntil(org.id, "invites", Date.now()),
     dmsPausedUntil: ctx.authz.pausedUntil(org.id, "dms", Date.now()),
+    // Batch B4b: join applications (the questions, or null), activity alerts (on/off), and a recent alert (moderators).
+    joinQuestions: joinQuestions(org),
+    activityAlerts: org.activity_alerts === undefined ? true : !!org.activity_alerts,
+    activityAlert: activityAlert(ctx, org, userId, Date.now()),
   };
 }
 
@@ -628,6 +634,24 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     };
   });
 
+  /**
+   * Batch B4b: what the meldiq.app/invite page shows before anyone signs in. Only the community's name, description and
+   * size, never its channels or members; the same problem codes as the signed-in preview. Rate limited per address.
+   */
+  app.get("/v1/invites/:code/public", { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req) => {
+    const { code } = parse(z.object({ code: z.string().min(8).max(40) }), req.params);
+    const inv = findInvite(code);
+    const org = db.prepare("SELECT id, name, description, photo_rev FROM orgs WHERE id = ?").get(inv.org_id) as { id: string; name: string; description: string | null; photo_rev: number | null };
+    return {
+      community: {
+        name: org.name,
+        description: org.description,
+        memberCount: (db.prepare("SELECT COUNT(*) n FROM org_members WHERE org_id = ?").get(org.id) as { n: number }).n,
+      },
+      invitesPaused: !!authz.pausedUntil(inv.org_id, "invites", now()),
+    };
+  });
+
   app.post("/v1/invites/accept", inviteRate, async (req) => {
     const userId = me(req).userId;
     const { code } = parse(z.object({ code: z.string().min(8).max(40) }), req.body);
@@ -643,6 +667,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     if (!result.repeated) {
       ctx.audit({ actorId: userId, orgId: result.orgId, action: "invite.accept", target: result.inviteId, detail: result.role });
       notifyOrg(ctx, result.orgId);
+      noteJoin(ctx, result.orgId, t);
     }
     return { org: orgSummary(ctx, db.prepare("SELECT * FROM orgs WHERE id = ?").get(result.orgId), userId), alreadyMember: result.repeated };
   });

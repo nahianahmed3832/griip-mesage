@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.HowToReg
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Flag
@@ -73,7 +74,7 @@ import com.meldiq.android.ui.theme.Shapes
 import com.meldiq.android.ui.theme.Space
 import kotlinx.coroutines.launch
 
-private enum class SettingsSheet { Overview, Transfer, Delete, Leave, Security }
+private enum class SettingsSheet { Overview, Transfer, Delete, Leave, Security, Questions }
 
 /**
  * Community settings in groups (docs/product/MELDIQ_COMMUNITY_CHAT_SPEC.md §4): Community, People, Channels,
@@ -94,10 +95,15 @@ fun CommunitySettingsScreen(nav: NavHostController) {
     // Batch B4: reports and Security actions, on servers that have them.
     var reportsAvailable by remember { mutableStateOf(false) }
     var securityAvailable by remember { mutableStateOf(false) }
+    // Batch B4b: join applications and activity alerts.
+    var applicationsAvailable by remember { mutableStateOf(false) }
+    var alertsAvailable by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         vm.refresh()
         reportsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.REPORTS) == true
         securityAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.SECURITY_ACTIONS) == true
+        applicationsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.JOIN_APPLICATIONS) == true
+        alertsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.ACTIVITY_ALERTS) == true
     }
     val d = detail
 
@@ -128,6 +134,14 @@ fun CommunitySettingsScreen(nav: NavHostController) {
                 }
             }
         }
+        d.org.activityAlert?.let { alert ->
+            item(key = "alert") {
+                StatusBanner(
+                    stringResource(R.string.ja_alert, alert.count), BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp),
+                    action = stringResource(R.string.ja_alert_action), onAction = { sheet = SettingsSheet.Security },
+                )
+            }
+        }
         if (p.canManageOrg) item(key = "setup") { WorkspaceSetupCard(d) }
         group(R.string.nv_group_community) {
             MenuRow(Icons.Outlined.Info, stringResource(R.string.nv_overview), subtitle = stringResource(R.string.nv_overview_sub), onClick = { sheet = SettingsSheet.Overview })
@@ -135,6 +149,11 @@ fun CommunitySettingsScreen(nav: NavHostController) {
                 Icons.Outlined.Public, stringResource(R.string.nv_access_rules),
                 subtitle = stringResource(if (d.org.joinPolicy == CommunityAccess.OPEN) R.string.dc_open else R.string.dc_invite_only),
                 onClick = { sheet = SettingsSheet.Overview },
+            )
+            if (applicationsAvailable && d.org.visibility == CommunityAccess.PUBLIC && (p.isOwner || "workspace.edit" in p.effective)) MenuRow(
+                Icons.Outlined.HowToReg, stringResource(R.string.ja_questions_title),
+                subtitle = d.org.joinQuestions?.let { stringResource(R.string.ja_questions_on, it.size) } ?: stringResource(R.string.ja_questions_off),
+                onClick = { sheet = SettingsSheet.Questions },
             )
         }
         group(R.string.nv_group_people) {
@@ -147,7 +166,9 @@ fun CommunitySettingsScreen(nav: NavHostController) {
         }
         val canReports = reportsAvailable && (p.isOwner || "reports.view" in p.effective)
         val canSecurity = securityAvailable && (p.isOwner || "workspace.edit" in p.effective || p.canBan)
-        if (p.canBan || p.canViewAudit || p.canViewDirectory || canReports || canSecurity) group(R.string.nv_group_moderation) {
+        val canApplications = applicationsAvailable && (p.isOwner || "members.approve" in p.effective)
+        if (p.canBan || p.canViewAudit || p.canViewDirectory || canReports || canSecurity || canApplications) group(R.string.nv_group_moderation) {
+            if (canApplications) MenuRow(Icons.Outlined.HowToReg, stringResource(R.string.ja_title), subtitle = stringResource(R.string.ja_sub), tint = c.peach, tintBg = c.peachSoft, onClick = { nav.navigate(Routes.applications(d.org.id)) })
             if (canReports) MenuRow(Icons.Outlined.Flag, stringResource(R.string.rq_title), subtitle = stringResource(R.string.rq_sub), tint = c.danger, tintBg = c.dangerSoft, onClick = { nav.navigate(Routes.reports(d.org.id)) })
             if (canSecurity) MenuRow(
                 Icons.Outlined.Shield, stringResource(R.string.sa_title),
@@ -175,7 +196,9 @@ fun CommunitySettingsScreen(nav: NavHostController) {
     if (d != null) when (sheet) {
         SettingsSheet.Security -> com.meldiq.android.ui.screens.moderation.SecuritySheet(
             d.org.id, d.org.invitesPausedUntil, d.org.dmsPausedUntil, onDismiss = { sheet = null }, onChanged = { vm.refresh() },
+            alertsOn = if (alertsAvailable) d.org.activityAlerts else null,
         )
+        SettingsSheet.Questions -> com.meldiq.android.ui.screens.moderation.JoinQuestionsSheet(d.org.id, d.org.joinQuestions, onDismiss = { sheet = null }, onChanged = { vm.refresh() })
         SettingsSheet.Overview -> WorkspaceSettingsSheet(d, onDismiss = { sheet = null }, onChanged = { vm.refresh() }, onLeft = { name ->
             sheet = null
             Toast.makeText(ctx, ctx.getString(R.string.ws_left, name), Toast.LENGTH_SHORT).show()

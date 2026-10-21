@@ -1,11 +1,13 @@
 package com.meldiq.android.ui.screens.moderation
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import com.meldiq.android.ui.components.GriipSwitch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -13,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -38,13 +41,15 @@ private val PAUSE_LABELS = listOf(R.string.sa_1h, R.string.sa_6h, R.string.sa_24
  * to 7 days, or resume. A running pause says until when. The server checks who may.
  */
 @Composable
-fun SecuritySheet(orgId: String, invitesUntil: Long?, dmsUntil: Long?, onDismiss: () -> Unit, onChanged: () -> Unit) {
+fun SecuritySheet(orgId: String, invitesUntil: Long?, dmsUntil: Long?, onDismiss: () -> Unit, onChanged: () -> Unit, alertsOn: Boolean? = null) {
     val container = LocalContainer.current
     val c = Griip.colors
     val scope = rememberCoroutineScope()
     var invites by remember { mutableStateOf(invitesUntil) }
     var dms by remember { mutableStateOf(dmsUntil) }
     var error by remember { mutableStateOf<String?>(null) }
+    // Batch B4b: activity alerts; null on servers without them.
+    var alerts by remember { mutableStateOf(alertsOn) }
     fun apply(setInvites: Boolean, until: Long?) = scope.launch {
         runCatching { container.reports.security(orgId, if (setInvites) until else null, if (setInvites) null else until, setInvites, !setInvites) }
             .onSuccess { invites = it.invitesPausedUntil; dms = it.dmsPausedUntil; error = null; onChanged() }
@@ -55,6 +60,22 @@ fun SecuritySheet(orgId: String, invitesUntil: Long?, dmsUntil: Long?, onDismiss
             PauseSection(stringResource(R.string.sa_invites), stringResource(R.string.sa_invites_sub), invites, onPause = { apply(true, it) }, onResume = { apply(true, null) })
             Spacer(Modifier.height(16.dp))
             PauseSection(stringResource(R.string.sa_dms), stringResource(R.string.sa_dms_sub), dms, onPause = { apply(false, it) }, onResume = { apply(false, null) })
+            alerts?.let { on ->
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.ja_alerts), style = Griip.type.bodyMedium, color = c.textPrimary)
+                        Text(stringResource(R.string.ja_alerts_sub), style = Griip.type.caption, color = c.textSecondary)
+                    }
+                    GriipSwitch(on, { want ->
+                        scope.launch {
+                            runCatching { container.applications.setActivityAlerts(orgId, want) }
+                                .onSuccess { alerts = it.activityAlerts; error = null; onChanged() }
+                                .onFailure { error = it.friendly() }
+                        }
+                    })
+                }
+            }
             error?.let { Spacer(Modifier.height(8.dp)); StatusBanner(it, BannerKind.Error) }
             Spacer(Modifier.height(8.dp))
         }

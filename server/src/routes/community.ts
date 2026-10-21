@@ -14,6 +14,8 @@ import {
 } from "../permissions/channel.js";
 import { banAllowed, timeoutAllowed } from "../roles.js";
 import { ApiError, badRequest, conflict, forbidden, newId, notFound, now } from "../util.js";
+import { noteJoin } from "../workspace/activityAlerts.js";
+import { joinQuestions } from "./applications.js";
 import { evictFromCall, evictRemovedMember, type CallRow } from "./calls.js";
 import { CHANNEL_LIMITS, notifyConversation, notifyOrg, orgSummary, removeFromWorkspace } from "./orgs.js";
 
@@ -324,6 +326,7 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
         memberCount: o.member_count,
         photoRev: o.photo_rev ?? null,
         joinPolicy: o.join_policy === "open" ? "open" : "invite",
+        applications: !!o.join_questions,
         joined: authz.orgRole(o.id, userId) !== null,
       })),
       nextCursor: rows.length > DISCOVER_PAGE ? q.cursor + DISCOVER_PAGE : null,
@@ -345,6 +348,12 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
       channels: channels.map((c) => ({ id: c.id, name: c.name, topic: c.topic, kind: c.kind, voice: !!c.voice, format: c.format ?? "text" })),
       joined: member,
       banned: authz.isBanned(id, userId),
+      // Batch B4b: the person's latest application here, if any.
+      application: ((r) => (r ? { id: r.id, status: r.status, createdAt: r.created_at } : null))(
+        db.prepare("SELECT id, status, created_at FROM join_applications WHERE org_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1").get(id, userId) as
+          | { id: string; status: string; created_at: number }
+          | undefined,
+      ),
     };
   });
 
@@ -355,6 +364,8 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
     if (!o || o.visibility !== "public") throw notFound("Community not found");
     if (authz.orgRole(id, userId)) return { org: orgSummary(ctx, o, userId), alreadyMember: true };
     if (o.join_policy !== "open") throw forbidden("This community is invite-only: ask a member for an invitation");
+    // Batch B4b: a community with questions takes applications instead.
+    if (joinQuestions(o)) throw new ApiError(403, "application_required", "This community asks a few questions first: apply to join");
     if (authz.isBanned(id, userId)) throw new ApiError(403, "banned", "You've been banned from this community");
     const t = now();
     if (authz.pausedUntil(id, "invites", t)) throw new ApiError(403, "invites_paused", "This community has paused new members for now. Try again later.");
@@ -364,6 +375,7 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
       authz.autoJoinScope(id, userId, t);
     })();
     ctx.audit({ actorId: userId, orgId: id, action: "community.join", target: userId });
+    noteJoin(ctx, id, t);
     notifyOrg(ctx, id);
     return { org: orgSummary(ctx, db.prepare("SELECT * FROM orgs WHERE id = ?").get(id), userId), alreadyMember: false };
   });
@@ -460,7 +472,9 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
     const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
     const actor = me(req).userId;
     const body = parse(
-      z.object({ invitesPausedUntil: z.number().int().nullable().optional(), dmsPausedUntil: z.number().int().nullable().optional() }).strict(),
+      z
+        .object({ invitesPausedUntil: z.number().int().nullable().optional(), dmsPausedUntil: z.number().int().nullable().optional(), activityAlerts: z.boolean().optional() })
+        .strict(),
       req.body,
     );
     authz.requireOrgMember(orgId, actor);
@@ -475,12 +489,17 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
       db.prepare("UPDATE orgs SET invites_paused_until = ? WHERE id = ?").run(body.invitesPausedUntil, orgId);
       ctx.audit({ actorId: actor, orgId, action: body.invitesPausedUntil === null ? "community.invites_resume" : "community.invites_pause", target: orgId });
     }
+    if (body.activityAlerts !== undefined) {
+      db.prepare("UPDATE orgs SET activity_alerts = ? WHERE id = ?").run(body.activityAlerts ? 1 : 0, orgId);
+      ctx.audit({ actorId: actor, orgId, action: body.activityAlerts ? "community.alerts_on" : "community.alerts_off", target: orgId });
+    }
     if (body.dmsPausedUntil !== undefined) {
       db.prepare("UPDATE orgs SET dms_paused_until = ? WHERE id = ?").run(body.dmsPausedUntil, orgId);
       ctx.audit({ actorId: actor, orgId, action: body.dmsPausedUntil === null ? "community.dms_resume" : "community.dms_pause", target: orgId });
     }
     notifyOrg(ctx, orgId);
-    return { invitesPausedUntil: authz.pausedUntil(orgId, "invites", t), dmsPausedUntil: authz.pausedUntil(orgId, "dms", t) };
+    const alerts = (db.prepare("SELECT activity_alerts FROM orgs WHERE id = ?").get(orgId) as { activity_alerts: number } | undefined)?.activity_alerts ?? 1;
+    return { invitesPausedUntil: authz.pausedUntil(orgId, "invites", t), dmsPausedUntil: authz.pausedUntil(orgId, "dms", t), activityAlerts: !!alerts };
   });
 
   // ───────────── Timeouts (docs/product/MELDIQ_FEATURE_GAP_MATRIX.md MOD-06) ─────────────

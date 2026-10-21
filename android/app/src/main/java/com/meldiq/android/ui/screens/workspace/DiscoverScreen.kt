@@ -37,6 +37,7 @@ import com.meldiq.android.R
 import com.meldiq.android.data.api.CommunityAccess
 import com.meldiq.android.data.api.CommunityPreviewRes
 import com.meldiq.android.data.api.DiscoverCommunityDto
+import com.meldiq.android.data.model.ApplicationRules
 import com.meldiq.android.ui.LocalContainer
 import com.meldiq.android.ui.Routes
 import com.meldiq.android.ui.components.BannerKind
@@ -135,7 +136,11 @@ private fun CommunityPreviewSheet(o: DiscoverCommunityDto, onDismiss: () -> Unit
     var preview by remember { mutableStateOf<CommunityPreviewRes?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    LaunchedEffect(o.id) { runCatching { container.orgs.preview(o.id) }.onSuccess { preview = it }.onFailure { error = it.friendly() } }
+    var application by remember { mutableStateOf<com.meldiq.android.data.api.MyApplicationDto?>(null) }
+    var applying by remember { mutableStateOf(false) }
+    LaunchedEffect(o.id) {
+        runCatching { container.orgs.preview(o.id) }.onSuccess { preview = it; application = it.application }.onFailure { error = it.friendly() }
+    }
     GlassSheet(onDismiss, title = o.name) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -170,10 +175,29 @@ private fun CommunityPreviewSheet(o: DiscoverCommunityDto, onDismiss: () -> Unit
             }
             error?.let { Spacer(Modifier.height(10.dp)); StatusBanner(it, BannerKind.Error) }
             Spacer(Modifier.height(16.dp))
+            // Batch B4b: a community with questions takes applications instead of open joining.
+            val questions = p?.community?.joinQuestions
+            val offer = ApplicationRules.offer(!questions.isNullOrEmpty() || (p == null && o.applications), application?.status, o.joinPolicy == CommunityAccess.OPEN)
+            if (application?.status == ApplicationRules.DENIED && offer == ApplicationRules.Offer.Apply) {
+                StatusBanner(stringResource(R.string.ja_denied), BannerKind.Info)
+                Spacer(Modifier.height(10.dp))
+            }
             when {
                 p?.banned == true -> StatusBanner(stringResource(R.string.dc_banned), BannerKind.Warning)
                 p?.joined == true || o.joined -> PillButton(stringResource(R.string.dc_open_it), { onOpen(o.id) }, Modifier.fillMaxWidth(), height = 50.dp)
-                o.joinPolicy == CommunityAccess.OPEN -> PillButton(stringResource(R.string.cm_join), {
+                offer == ApplicationRules.Offer.Waiting -> {
+                    StatusBanner(stringResource(R.string.ja_waiting), BannerKind.Info)
+                    PillButton(stringResource(R.string.ja_withdraw), {
+                        val id = application?.id ?: return@PillButton
+                        scope.launch {
+                            runCatching { container.applications.withdraw(id) }
+                                .onSuccess { application = application?.copy(status = ApplicationRules.WITHDRAWN) }
+                                .onFailure { error = it.friendly() }
+                        }
+                    }, Modifier.fillMaxWidth().padding(top = 10.dp), tone = ButtonTone.Glass, height = 46.dp, showKnob = false)
+                }
+                offer == ApplicationRules.Offer.Apply -> PillButton(stringResource(R.string.ja_apply), { applying = true }, Modifier.fillMaxWidth(), enabled = !questions.isNullOrEmpty(), height = 50.dp)
+                offer == ApplicationRules.Offer.Join -> PillButton(stringResource(R.string.cm_join), {
                     busy = true
                     scope.launch {
                         runCatching { container.orgs.join(o.id) }
@@ -189,5 +213,14 @@ private fun CommunityPreviewSheet(o: DiscoverCommunityDto, onDismiss: () -> Unit
             }
             Spacer(Modifier.height(8.dp))
         }
+    }
+    val questions = preview?.community?.joinQuestions
+    if (applying && !questions.isNullOrEmpty()) {
+        com.meldiq.android.ui.screens.moderation.ApplySheet(o.id, o.name, questions, onDismiss = { applying = false }, onSent = {
+            applying = false
+            application = com.meldiq.android.data.api.MyApplicationDto("", ApplicationRules.PENDING)
+            android.widget.Toast.makeText(ctx, ctx.getString(R.string.ja_sent), android.widget.Toast.LENGTH_SHORT).show()
+            scope.launch { runCatching { container.orgs.preview(o.id) }.onSuccess { preview = it; application = it.application } }
+        })
     }
 }

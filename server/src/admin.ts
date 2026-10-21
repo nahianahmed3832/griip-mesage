@@ -54,6 +54,12 @@ import { MONGO_COMMANDS, runMongoCommand } from "./mongo/admin.js";
 import { RETIRED_COMMANDS, runRetiredCommand } from "./retiredData.js";
 import { migrateBranchesAndTeams, verifyCommunityMigration } from "./communityMigration.js";
 import { openMongo } from "./mongo/index.js";
+import { MongoReportStore } from "./mongo/reports.js";
+import { ReportSealer } from "./reports/seal.js";
+import { type ReportStore, SqliteReportStore } from "./reports/store.js";
+
+/** Reports live where MONGODB_DOMAINS says. */
+const reportStore = (ctx: AppContext): ReportStore => (ctx.mongo?.owns("reports") ? new MongoReportStore(ctx.mongo) : new SqliteReportStore(ctx.db));
 
 const [cmd, ...rest] = process.argv.slice(2);
 // verify-backup only reads the snapshot: it must not open (or migrate) the live database.
@@ -207,6 +213,7 @@ switch (cmd) {
     // Domains kept in MongoDB are cleaned there (docs/MONGODB.md).
     if (cfg.mongo) ctx.mongo = await openMongo(cfg.mongo, db);
     ctx.accounts = new Accounts(ctx);
+    ctx.reports = reportStore(ctx);
     try {
       const r = await runCleanup(ctx);
       console.table(r);
@@ -380,9 +387,40 @@ switch (cmd) {
     } else if (orphans.length) console.log("dry run: nothing deleted. Re-run with --delete to remove them.");
     break;
   }
+  // Batch B4b: Meldiq's operators review reports sent to Meldiq (DMs, groups, illegal content).
+  case "reports":
+  case "report-show":
+  case "report-close": {
+    const ctx = { db, config: cfg } as unknown as AppContext;
+    if (cfg.mongo) ctx.mongo = await openMongo(cfg.mongo, db);
+    const store = reportStore(ctx);
+    const sealer = ReportSealer.load(process.env, cfg.dataDir);
+    try {
+      if (cmd === "reports") {
+        const rows = await store.list(null, rest[0] === "closed", 100);
+        console.table(rows.map((r) => ({ id: r.id, reason: r.reason, status: r.status, target: r.target_user_id, conversation: r.conversation_id, at: new Date(r.created_at).toISOString() })));
+      } else if (cmd === "report-show") {
+        const r = rest[0] ? await store.get(rest[0]) : null;
+        if (!r || r.org_id) throw new Error("usage: report-show <id> (a report sent to Meldiq)");
+        console.log(JSON.stringify({ ...r, content: sealer.open(r.id, r.content), reporter_id: undefined }, null, 2));
+      } else {
+        const [id, status, ...note] = rest;
+        const r = id ? await store.get(id) : null;
+        if (!r || r.org_id || !["actioned", "dismissed"].includes(status ?? "")) throw new Error("usage: report-close <id> actioned|dismissed [note]");
+        await store.setStatus(id, status as "actioned" | "dismissed", "operator", note.join(" ") || null, now());
+        console.log(`${id}: ${status}`);
+      }
+    } catch (e) {
+      console.error((e as Error).message);
+      process.exitCode = 1;
+    } finally {
+      await ctx.mongo?.close();
+    }
+    break;
+  }
   default:
     console.log(
-      "commands: stats | users | invite <orgSlug> [role] [uses] | reg-invite [uses] [days] [note] | reg-invites | reg-invite-revoke <hint|id> | disable <username> | enable <username> | cleanup | backup <file> | verify-backup <file> | fed-status | fed-rotate-key | fed-decommission <reason> --yes | fed-block <serverId> [reason] | fed-unblock <serverId>",
+      "commands: stats | users | invite <orgSlug> [role] [uses] | reg-invite [uses] [days] [note] | reg-invites | reg-invite-revoke <hint|id> | disable <username> | enable <username> | cleanup | backup <file> | verify-backup <file> | fed-status | fed-rotate-key | fed-decommission <reason> --yes | fed-block <serverId> [reason] | fed-unblock <serverId> | reports [closed] | report-show <id> | report-close <id> actioned|dismissed [note]",
     );
 }
 db.close();

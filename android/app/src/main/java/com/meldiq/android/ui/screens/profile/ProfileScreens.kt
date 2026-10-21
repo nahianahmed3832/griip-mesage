@@ -320,7 +320,13 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
     var blocked by remember { mutableStateOf<Boolean?>(null) }
     var reporting by remember { mutableStateOf(false) }
     var reportsAvailable by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { reportsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.REPORTS) == true }
+    // Batch B4b: inviting this person to one of your communities.
+    var inviteLinks by remember { mutableStateOf(false) }
+    var inviting by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        reportsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.REPORTS) == true
+        inviteLinks = container.features.has(com.meldiq.android.data.repo.ServerFeatures.INVITE_LINKS) == true
+    }
     LaunchedEffect(userId) { blocked = runCatching { userId in container.federation.blocked() }.getOrNull() }
     val u = user
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
@@ -349,6 +355,7 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
                             PillButton("Message", {
                                 scope.launch { runCatching { container.conversations.openDm(u.id) }.onSuccess { nav.navigate(Routes.conversation(it.id)) }.onFailure { error = it.friendly() } }
                             }, Modifier.weight(1f), height = 48.dp)
+                            if (inviteLinks && !GlobalAddress.isRemote(u.username, u.homeServer)) PillButton(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.pi_invite), { inviting = true }, Modifier.weight(1f), tone = ButtonTone.Glass, height = 48.dp)
                         }
                     }
                 }
@@ -431,6 +438,9 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
         com.meldiq.android.ui.screens.moderation.ReportSheet(
             com.meldiq.android.ui.screens.moderation.ReportTarget(userId = userId, name = who.displayName), onDismiss = { reporting = false },
         )
+    }
+    if (inviting) user?.let { who ->
+        InviteToCommunitySheet(userId, who.displayName, onDismiss = { inviting = false }, onSent = { cid -> inviting = false; nav.navigate(Routes.conversation(cid)) })
     }
 }
 

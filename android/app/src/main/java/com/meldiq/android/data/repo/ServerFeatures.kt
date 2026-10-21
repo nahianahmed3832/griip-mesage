@@ -75,6 +75,10 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val REPORTS = "reports"
         /** Batch B4: pausing joining and new DMs between members; the audit log's person filter. */
         const val SECURITY_ACTIONS = "security-actions"
+        /** Batch B4b: applying to join with a community's questions; join-spike alerts; https invite links and their page. */
+        const val JOIN_APPLICATIONS = "join-applications"
+        const val ACTIVITY_ALERTS = "activity-alerts"
+        const val INVITE_LINKS = "invite-links"
         /** Meldiq 2.0: experiments and content-free analytics counts (docs/product/EXPERIMENTS.md). */
         const val EXPERIMENTS = "experiments"
         const val ANALYTICS_EVENTS = "analytics-events"

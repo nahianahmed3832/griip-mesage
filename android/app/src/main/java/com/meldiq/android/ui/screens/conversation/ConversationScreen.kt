@@ -310,7 +310,11 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     // Links: opened as the Chat settings say, after a confirmation when asked for or when the address looks misleading.
     var linkToOpen by remember { mutableStateOf<String?>(null) }
     val onOpenLink: (String) -> Unit = { url ->
-        if (com.meldiq.android.ui.LinkOpener.needsConfirmation(url, chatSettings.linkOpening)) linkToOpen = url
+        // Batch B4b: a Meldiq invite link opens the invite here (preview, then join), not in a browser.
+        val uri = runCatching { android.net.Uri.parse(url) }.getOrNull()
+        val invite = if (uri != null && com.meldiq.android.ui.scan.InviteCodes.isInviteLink(uri.scheme, uri.host, uri.path)) com.meldiq.android.ui.scan.InviteCodes.fromScan(url) else null
+        if (invite != null) nav.navigate(com.meldiq.android.ui.Routes.JOIN + "?code=$invite")
+        else if (com.meldiq.android.ui.LinkOpener.needsConfirmation(url, chatSettings.linkOpening)) linkToOpen = url
         else if (!com.meldiq.android.ui.LinkOpener.open(ctx, url, chatSettings.linkOpening == com.meldiq.android.data.repo.LinkOpening.IN_APP)) vm.error.value = "No app can open this link"
     }
     val composerPreview by vm.linkPreview.collectAsStateWithLifecycle()

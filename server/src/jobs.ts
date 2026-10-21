@@ -139,7 +139,7 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
   }
   r.auditPruned = db.prepare("DELETE FROM audit_log WHERE at <= ?").run(t - ctx.config.auditRetentionDays * 86_400_000).changes;
   // Reports may live in MongoDB: an unreachable store mustn't stop the rest of retention.
-  r.reportsPurged = await ctx.reports.purgeClosed(t - REPORT_RETENTION_MS).catch((e) => {
+  r.reportsPurged = await (async () => ctx.reports.purgeClosed(t - REPORT_RETENTION_MS))().catch((e) => {
     ctx.log.error({ err: e }, "report retention failed");
     return 0;
   });

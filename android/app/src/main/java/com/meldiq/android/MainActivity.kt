@@ -134,7 +134,7 @@ class MainActivity : ComponentActivity() {
         // The ongoing-call notification (UI-003): straight back to the full call screen.
         if (intent.getBooleanExtra(EXTRA_OPEN_CALL, false)) (application as GriipApp).container?.calls?.expand()
         val data = intent.data
-        if (data != null && data.scheme in InviteCodes.LINK_SCHEMES && data.host == "invite") {
+        if (data != null && InviteCodes.isInviteLink(data.scheme, data.host, data.path)) {
             pendingInvite = InviteCodes.fromScan(data.toString()) // same rule as the in-app scanner
         }
     }

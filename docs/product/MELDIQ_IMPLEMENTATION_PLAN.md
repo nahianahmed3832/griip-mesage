@@ -24,9 +24,14 @@ go-ahead (`docs/DEPLOYMENT.md`).
 | B1 | Sign-in and unlock polish: recovery choices behind help links, session restore | **Done: phone-tested and approved by the owner 2026-10-21** |
 | B2 | Community navigation and home | **Done: phone-tested and approved by the owner 2026-10-21** |
 | B3 | Channels and categories | **Done: phone-tested and approved by the owner 2026-10-21** |
-| B4 | Administration, part 1: reports, Security actions, audit filters, invite choices | **Built; APK ready; waiting for the owner's phone test** (2026-10-21) |
-| B4b | Administration, part 2: join applications, raid alerts, https invite links with a signed-out preview, invite from a DM, Meldiq's operator queue for reports | After B4 approval |
-| B3 to B13 | Below | Not started |
+| B4 | Administration, part 1: reports, Security actions, audit filters, invite choices | **Built; APK ready; owner tests it with the rest** (2026-10-21) |
+| B4b | Administration, part 2: join applications, activity alerts, https invite links with a signed-out page, invite from a profile, Meldiq's operator commands for reports | **Built; APK ready; owner tests it with the rest** (2026-10-21) |
+| B5 to B13 | Below | Not started |
+
+> **Gate changed 2026-10-21 23:13:** the owner asked for the remaining batches to be built one after another without
+> waiting, and to phone-test them all together at the end. Each batch is still committed on its own, with its own APK
+> and checklist in the handoff, so a defect can be traced to its batch. Nothing is marked phone-verified until the
+> owner has tested it.
 
 Already built earlier the same day and included in the B1 APK (to be checked within their own batches later):
 - full emoji picker (B9);

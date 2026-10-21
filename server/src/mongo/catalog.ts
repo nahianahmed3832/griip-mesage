@@ -74,6 +74,7 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   channel_categories: "workspace",
   channel_overwrites: "workspace",
   org_bans: "workspace",
+  join_applications: "workspace",
   community_migration_runs: "workspace",
   branches: "workspace",
   branch_members: "workspace",

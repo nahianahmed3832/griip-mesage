@@ -36,7 +36,7 @@ state that could split a domain between the stores (`src/mongo/index.ts`):
 | preferences | nav_preferences (new 2026-10-19) | SQLite (prod default) | **Yes** (`MongoPreferenceStore`) |
 | integrations | *retired 2026-10-21 with the apps (COMMUNITY_REBUILD_2026-10-21.md)*: listed in `MONGODB_DOMAINS` it is ignored; its SQLite tables stay for `admin retired-data` | — | No |
 | identity | users, devices, user_blocks, push_endpoints, registration_invites | SQLite | Copy and verify only |
-| workspace | orgs, org_members, branches, branch_members, departments, teams, team_members, invitations, org_deletions, audit_log, org_roles, org_role_members | SQLite | Copy and verify only |
+| workspace | orgs, org_members, branches, branch_members, departments, teams, team_members, invitations, org_deletions, audit_log, org_roles, org_role_members, join_applications | SQLite | Copy and verify only |
 | conversations | conversations, conversation_members, mention_all_events | SQLite | Copy and verify only |
 | relay | delivery_queue, submitted_messages, calls, call_participants | SQLite | Copy and verify only |
 | files | attachments, attachment_uploads, abandoned_uploads, pending_blob_deletes | SQLite | Copy and verify only |
