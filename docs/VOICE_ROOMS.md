@@ -37,3 +37,20 @@ Calls carry `voiceRoom` and `hands`. Feature flag: `voice-rooms`. Migration 019 
 `server/test/voice_rooms.test.ts` (no ring, active at once, shared call, hands, moderation rights, mute and remove,
 closing), `CallKeyVerifierTest`. A full test needs two devices in the room; see the round report. Not built: speaker
 queues with stage roles, recording or transcription (would need consent and retention rules), invite links for guests.
+
+## Who may join and speak (2026-10-21, Discord reference round)
+
+Two channel permissions, granted to members and guests by default and changeable by roles and by category or channel
+overwrites like any other (`permissions/channel.ts`):
+
+- `voice.connect`: join the voice channel's call. Without it, `POST /v1/calls` and `POST /v1/calls/:id/join` answer
+  403 "You can't join this voice channel", and the channel view says `canConnect: false` (the app shows a notice instead
+  of Join).
+- `voice.speak`: talk, share video or share the screen. Without it the LiveKit token is issued with `canPublish: false`
+  and the join answer says `media.canSpeak: false`: the app joins with the microphone off, disables the microphone,
+  camera and screen-share buttons, and says "You can listen in this voice channel, but not speak".
+
+The check happens each time a token is issued (joining, rejoining). A permission changed during a call applies from
+the next join; LiveKit doesn't revoke an already issued grant. Owners and admins skip overwrites; a custom role's
+community-wide restriction of `voice.speak` still wins over a channel allow. Tests: `server/test/community_channels.test.ts`.
+

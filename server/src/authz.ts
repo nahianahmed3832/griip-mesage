@@ -33,6 +33,8 @@ export interface ConversationRow {
   category_id?: string | null;
   position?: number;
   format?: "text" | "forum";
+  /** A forum's tags, JSON [{id, name}] (migration 033). */
+  forum_tags?: string | null;
 }
 
 /** A custom role as assigned to someone (src/permissions, docs/WORKSPACE_ROLES.md). */
@@ -269,6 +271,20 @@ export class Authz {
     if (!this.canPost(conv, userId)) return false;
     if (conv.type !== "CHANNEL" || !conv.org_id) return true;
     return this.channelPermissions(conv, userId).has("messages.attach");
+  }
+
+  /** May this user join the call of a voice channel? Members of it, holding `voice.connect` there (not checked outside communities). */
+  canConnectVoice(conv: ConversationRow, userId: string): boolean {
+    if (!this.isMember(conv.id, userId)) return false;
+    if (conv.type !== "CHANNEL" || !conv.org_id) return true;
+    return this.channelPermissions(conv, userId).has("voice.connect");
+  }
+
+  /** May this user talk (and share video or the screen) in a voice channel's call? Without it, they listen only. */
+  canSpeakInVoice(conv: ConversationRow, userId: string): boolean {
+    if (!this.canConnectVoice(conv, userId)) return false;
+    if (conv.type !== "CHANNEL" || !conv.org_id) return true;
+    return this.channelPermissions(conv, userId).has("voice.speak");
   }
 
   /**

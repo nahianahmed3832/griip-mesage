@@ -277,16 +277,25 @@ export function callActions(ctx: AppContext) {
   const broadcast = (c: CallRow, event: string, extra: object = {}) => broadcastCall(ctx, c, event, extra);
   const endCall = (c: CallRow, reason: string) => endCallRow(ctx, c, reason);
 
+  /**
+   * Media credentials for one device. In a voice channel the person's channel permissions decide (docs/VOICE_ROOMS.md):
+   * without `voice.connect` they can't join at all; without `voice.speak` the token can't publish, so they listen only.
+   */
   const issue = async (c: CallRow, userId: string, deviceId: string) => {
     if (!ctx.livekit) throw new ApiError(503, "media_unavailable", "Calling is not configured on this server");
+    const conv = authz.conversation(c.conversation_id);
+    const room = !!conv?.voice;
+    if (room && conv && !authz.canConnectVoice(conv, userId)) throw forbidden("You can't join this voice channel");
+    const canSpeak = !room || !conv || authz.canSpeakInVoice(conv, userId);
     const u = db.prepare("SELECT display_name FROM users WHERE id = ?").get(userId) as { display_name: string };
     const token = await ctx.livekit.token({
       room: c.room_name,
       identity: `${userId}.${deviceId}`,
       name: u.display_name,
       metadata: JSON.stringify({ userId, deviceId }),
+      canPublish: canSpeak,
     });
-    return { url: ctx.livekit.publicUrl, token, room: c.room_name };
+    return { url: ctx.livekit.publicUrl, token, room: c.room_name, canSpeak };
   };
 
   return {
@@ -415,6 +424,7 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
     if (conv.type === "CHANNEL" && !conv.voice) {
       throw new ApiError(409, "text_channel_no_calls", "Calls happen in voice rooms, not in text channels");
     }
+    if (conv.voice && !authz.canConnectVoice(conv, userId)) throw forbidden("You can't join this voice channel");
     const id = newId("call");
     const room = `griip-${crypto.randomBytes(12).toString("hex")}`;
     if (conv.voice) {

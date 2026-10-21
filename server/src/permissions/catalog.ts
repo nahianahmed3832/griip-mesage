@@ -35,13 +35,16 @@ export const PERMISSION_KEYS = [
   "messages.post",
   "messages.attach",
   "messages.announce",
+  // Voice channels
+  "voice.connect",
+  "voice.speak",
   // Security and administration
   "audit.view",
 ] as const;
 
 export type Permission = (typeof PERMISSION_KEYS)[number];
 
-export type PermissionCategory = "workspace" | "members" | "roles" | "channels" | "messaging" | "security";
+export type PermissionCategory = "workspace" | "members" | "roles" | "channels" | "messaging" | "voice" | "security";
 
 export interface PermissionDef {
   key: Permission;
@@ -86,6 +89,8 @@ const DEFS: Record<Permission, Def> = {
   "messages.post": { category: "messaging", label: "Post in channels", description: "Send messages in the community's channels.", restrictable: true, guestAllowed: true },
   "messages.attach": { category: "messaging", label: "Share files", description: "Send photos, videos, voice messages and files in channels.", restrictable: true, guestAllowed: true },
   "messages.announce": { category: "messaging", label: "Post announcements", description: "Post in announcement channels, where only managers can post." },
+  "voice.connect": { category: "voice", label: "Join voice channels", description: "Join the calls in voice channels.", restrictable: true, guestAllowed: true },
+  "voice.speak": { category: "voice", label: "Speak in voice channels", description: "Talk, share video and share the screen in voice channels. Without it, people listen only.", restrictable: true, guestAllowed: true },
   "audit.view": { category: "security", label: "View the audit log", description: "See every administrative change in the community.", admin: true },
 };
 
@@ -116,8 +121,8 @@ export function isPermission(key: string): key is Permission {
 }
 
 /** What the protected base roles hold. Owners hold everything; admins everything but owner-only powers and delegation. */
-const MEMBER_BASE: readonly Permission[] = ["members.view", "roles.view", "channels.view", "messages.post", "messages.attach"];
-const GUEST_BASE: readonly Permission[] = ["messages.post", "messages.attach"];
+const MEMBER_BASE: readonly Permission[] = ["members.view", "roles.view", "channels.view", "messages.post", "messages.attach", "voice.connect", "voice.speak"];
+const GUEST_BASE: readonly Permission[] = ["messages.post", "messages.attach", "voice.connect", "voice.speak"];
 
 export const BASE_ROLE_PERMISSIONS: Readonly<Record<OrgRole, ReadonlySet<Permission>>> = {
   OWNER: new Set(PERMISSION_KEYS),

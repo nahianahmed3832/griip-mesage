@@ -31,7 +31,8 @@ describe("permission catalog", () => {
 
   it("gives members and guests no administrative power by default", () => {
     for (const p of BASE_ROLE_PERMISSIONS.MEMBER) expect([p, permissionDef(p).admin]).toEqual([p, false]);
-    expect([...BASE_ROLE_PERMISSIONS.GUEST].sort()).toEqual(["messages.attach", "messages.post"]);
+    // Guests may also join and talk in the voice channels a manager added them to (2026-10-21).
+    expect([...BASE_ROLE_PERMISSIONS.GUEST].sort()).toEqual(["messages.attach", "messages.post", "voice.connect", "voice.speak"]);
   });
 
   it("only uses catalog keys in the starter templates", () => {
@@ -62,7 +63,7 @@ describe("effective permissions", () => {
 
   it("gives guests only what a guest may hold", () => {
     const p = effectivePermissions("GUEST", [grant(["messages.attach", "messages.announce", "channels.manage", "members.remove", "channels.view"])]);
-    expect([...p].sort()).toEqual(["messages.attach", "messages.post"]);
+    expect([...p].sort()).toEqual(["messages.attach", "messages.post", "voice.connect", "voice.speak"]);
   });
 
   it("can't restrict an owner, and restricts only restrictable permissions", () => {

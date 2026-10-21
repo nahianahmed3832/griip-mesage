@@ -12,8 +12,20 @@ import { type Permission, permissionDef } from "./catalog.js";
  * member") are community-wide and still win afterwards, so no channel can lift them.
  */
 
-/** What an overwrite can change. `channels.create` matters on categories: creating channels inside that category. */
-export const CHANNEL_CAPABILITIES = ["channels.view", "messages.post", "messages.attach", "messages.announce", "channels.manage", "channels.create"] as const;
+/**
+ * What an overwrite can change. `channels.create` matters on categories: creating channels inside that category.
+ * `voice.connect` and `voice.speak` matter on voice channels: joining their call, and talking in it (listen-only without).
+ */
+export const CHANNEL_CAPABILITIES = [
+  "channels.view",
+  "messages.post",
+  "messages.attach",
+  "messages.announce",
+  "channels.manage",
+  "channels.create",
+  "voice.connect",
+  "voice.speak",
+] as const;
 export type ChannelCapability = (typeof CHANNEL_CAPABILITIES)[number];
 
 export const EVERYONE = "everyone";

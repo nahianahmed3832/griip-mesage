@@ -47,7 +47,7 @@ import { Metrics } from "./ops/metrics.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
-export const VERSION = "0.12.0";
+export const VERSION = "0.13.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
@@ -331,6 +331,11 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     "community-channels",
     "community-discovery",
     "community-moderation",
+    // 2026-10-21 Discord reference round (docs/product/MELDIQ_COMMUNITY_CHAT_SPEC.md): forum tags, deleting a channel,
+    // and voice channel permissions (voice.connect, voice.speak: listen-only tokens).
+    "forum-tags",
+    "channel-delete",
+    "voice-permissions",
     // Round 7: end dates for guests and a community's guest policy (routes/community.ts).
     "guest-expiry",
     // Round 6: recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md).

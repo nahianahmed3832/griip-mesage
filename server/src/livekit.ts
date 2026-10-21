@@ -18,7 +18,8 @@ export class LiveKitService {
     return this.cfg.publicUrl;
   }
 
-  async token(p: { room: string; identity: string; name: string; metadata: string }): Promise<string> {
+  /** [canPublish] false: a listener (voice channels where the person may not speak), who can still receive and send data. */
+  async token(p: { room: string; identity: string; name: string; metadata: string; canPublish?: boolean }): Promise<string> {
     const at = new AccessToken(this.cfg.apiKey, this.cfg.apiSecret, {
       identity: p.identity,
       name: p.name,
@@ -28,7 +29,7 @@ export class LiveKitService {
     at.addGrant({
       room: p.room,
       roomJoin: true,
-      canPublish: true,
+      canPublish: p.canPublish ?? true,
       canSubscribe: true,
       canPublishData: true,
       canUpdateOwnMetadata: false,

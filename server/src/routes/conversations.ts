@@ -7,6 +7,7 @@ import { canSeeLastSeen, memberView, type ProfileRow } from "../profile.js";
 import { ApiError, badRequest, conflict, forbidden, newId, notFound, now } from "../util.js";
 import { fedDmId } from "../federation/service.js";
 import { userSummary } from "./auth.js";
+import { processBlobDeletes, queueBlobDelete } from "./attachments.js";
 import { evictRemovedMember } from "./calls.js";
 import { reconcileAccess } from "./community.js";
 import { notifyConversation } from "./orgs.js";
@@ -50,6 +51,7 @@ export function conversationView(ctx: AppContext, c: ConversationRow, userId: st
     categoryName: category?.name ?? null,
     position: c.position ?? 0,
     format: c.format ?? "text",
+    forumTags: c.format === "forum" ? forumTags(c) : [],
     kind: c.kind,
     name: c.name,
     topic: c.topic,
@@ -61,6 +63,7 @@ export function conversationView(ctx: AppContext, c: ConversationRow, userId: st
     joined: myRole !== null,
     myRole,
     canPost: authz.canPost(c, userId),
+    canAttach: authz.canAttach(c, userId),
     canManage: authz.canManageConversation(c, userId),
     // Whether this person may switch the channel between public, private and announcement (scope managers only).
     canManageAccess: authz.canManageChannelAccess(c, userId),
@@ -68,8 +71,51 @@ export function conversationView(ctx: AppContext, c: ConversationRow, userId: st
     canMentionAll: mentionAllPermission(ctx, c, userId) === null,
     activeCall: call ? { id: call.id, video: !!call.video, state: call.state, startedAt: call.created_at, ...(inRoom ? { participantIds: inRoom } : {}) } : null,
     voice: !!c.voice,
+    // Voice channels: whether this person may join the call, and talk in it (listen-only otherwise).
+    ...(c.voice ? { canConnect: authz.canConnectVoice(c, userId), canSpeak: authz.canSpeakInVoice(c, userId) } : {}),
     federation: federationInfo(ctx, c.id),
   };
+}
+
+export interface ForumTag {
+  id: string;
+  name: string;
+}
+
+/** Up to this many tags per forum (the reference forum allows the same). */
+export const FORUM_TAG_LIMIT = 20;
+
+/** A forum's tags as stored; anything malformed reads as no tags. */
+export function forumTags(c: Pick<ConversationRow, "forum_tags">): ForumTag[] {
+  try {
+    const v: unknown = JSON.parse(c.forum_tags ?? "[]");
+    if (!Array.isArray(v)) return [];
+    return v.filter((t): t is ForumTag => typeof t?.id === "string" && typeof t?.name === "string").slice(0, FORUM_TAG_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The tags to store from a manager's list: names trimmed, empty and repeated names (ignoring case) dropped, existing ids
+ * kept for names that already had one (so posts keep their labels), new ids for new names.
+ */
+export function nextForumTags(prev: readonly ForumTag[], wanted: readonly { id?: string; name: string }[], makeId: () => string): ForumTag[] {
+  const seen = new Set<string>();
+  const used = new Set<string>();
+  const out: ForumTag[] = [];
+  for (const w of wanted) {
+    const name = w.name.trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    // An id goes to one tag only: a renamed tag keeps its id, and its old name sent again becomes a new tag.
+    const keep = prev.find((p) => p.id === w.id && !used.has(p.id)) ?? prev.find((p) => p.name.toLowerCase() === key && !used.has(p.id));
+    const id = keep?.id ?? makeId();
+    used.add(id);
+    out.push({ id, name });
+  }
+  return out;
 }
 
 /** For a conversation with people on other servers: each server's domain, directory state and queued deliveries. */
@@ -216,11 +262,18 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
         archived: z.boolean().optional(),
         kind: z.enum(["PUBLIC", "PRIVATE", "ANNOUNCEMENT"]).optional(),
         format: z.enum(["text", "forum"]).optional(),
+        forumTags: z
+          .array(z.object({ id: z.string().max(64).optional(), name: z.string().max(20) }))
+          .max(FORUM_TAG_LIMIT)
+          .optional(),
       }),
       req.body,
     );
     if (body.format !== undefined && (c.type !== "CHANNEL" || c.voice)) throw badRequest("Only text channels can become forums");
     if (body.archived !== undefined && c.type !== "CHANNEL") throw badRequest("Only channels can be archived");
+    const nextFormat = body.format ?? c.format ?? "text";
+    if (body.forumTags !== undefined && nextFormat !== "forum") throw badRequest("Only forum channels have tags");
+    const tags = body.forumTags === undefined ? (c.forum_tags ?? null) : JSON.stringify(nextForumTags(forumTags(c), body.forumTags, () => newId("tag")));
     const kindChange = body.kind !== undefined && body.kind !== c.kind;
     if (body.kind !== undefined && c.type !== "CHANNEL") throw badRequest("Only channels have an access mode");
     if (kindChange) {
@@ -231,13 +284,14 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
     // Private channels never auto-join; announcement channels always do; a channel made public again auto-joins the
     // people its permissions let see it, as a new channel would. Making a channel private removes nobody.
     const autoJoin = !kindChange ? c.auto_join : body.kind === "PRIVATE" ? 0 : body.kind === "ANNOUNCEMENT" ? 1 : c.kind === "PRIVATE" ? 1 : c.auto_join;
-    db.prepare("UPDATE conversations SET name = ?, topic = ?, archived_at = ?, kind = ?, auto_join = ?, format = ?, updated_at = ? WHERE id = ?").run(
+    db.prepare("UPDATE conversations SET name = ?, topic = ?, archived_at = ?, kind = ?, auto_join = ?, format = ?, forum_tags = ?, updated_at = ? WHERE id = ?").run(
       body.name ?? c.name,
       body.topic === undefined ? c.topic : body.topic,
       body.archived === undefined ? c.archived_at : body.archived ? now() : null,
       kindChange ? body.kind : c.kind,
       autoJoin,
-      body.format ?? c.format ?? "text",
+      nextFormat,
+      tags,
       now(),
       id,
     );
@@ -246,11 +300,55 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
       if (body.archived !== undefined && body.archived !== !!c.archived_at) {
         ctx.audit({ actorId: userId, orgId: c.org_id, action: body.archived ? "channel.archive" : "channel.restore", target: id });
       }
-      if (body.name !== undefined || body.topic !== undefined || body.format !== undefined) ctx.audit({ actorId: userId, orgId: c.org_id, action: "channel.update", target: id });
+      if (body.name !== undefined || body.topic !== undefined || body.format !== undefined || body.forumTags !== undefined) ctx.audit({ actorId: userId, orgId: c.org_id, action: "channel.update", target: id });
       if (kindChange && body.kind !== "PRIVATE") await reconcileAccess(ctx, c.org_id);
     }
     notifyConversation(ctx, id);
     return { conversation: conversationView(ctx, authz.conversation(id)!, userId) };
+  });
+
+  /**
+   * Deleting a community channel (docs/product/MELDIQ_ANDROID_INTERACTION_MATRIX.md): people who manage it, after
+   * typing its name. Its messages, files, calls and permissions go for everyone, in one transaction; the community and
+   * its other channels are untouched. Archiving (PATCH `archived`) is the reversible alternative.
+   */
+  app.delete("/v1/conversations/:id", auth, async (req) => {
+    const { userId } = me(req);
+    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const body = parse(z.object({ confirmName: z.string().max(200) }), req.body ?? {});
+    const c = authz.requireMember(id, userId);
+    if (c.type !== "CHANNEL" || !c.org_id) throw badRequest("Only community channels can be deleted; leave a group or conversation instead");
+    if (!authz.canManageConversation(c, userId)) throw forbidden("Only people who manage this channel can delete it");
+    if (body.confirmName.trim().replace(/^#/, "") !== (c.name ?? "").trim()) {
+      throw new ApiError(400, "confirm_mismatch", "Type the channel's name exactly as it appears to delete it");
+    }
+    const orgId = c.org_id;
+    const result = db
+      .transaction(() => {
+        if (!db.prepare("SELECT 1 FROM conversations WHERE id = ?").get(id)) return null;
+        const members = (db.prepare("SELECT user_id FROM conversation_members WHERE conversation_id = ?").all(id) as { user_id: string }[]).map((r) => r.user_id);
+        const files = (db.prepare("SELECT id FROM attachments WHERE conversation_id = ?").all(id) as { id: string }[]).map((r) => r.id);
+        const rooms = (db.prepare("SELECT room_name FROM calls WHERE conversation_id = ? AND state != 'ENDED'").all(id) as { room_name: string }[]).map((r) => r.room_name);
+        for (const f of files) queueBlobDelete(ctx, "attachments", f);
+        db.prepare(
+          "INSERT OR IGNORE INTO abandoned_uploads (id, multipart_id, attempts, next_at) SELECT id, multipart_id, 0, 0 FROM attachment_uploads WHERE conversation_id = ?",
+        ).run(id);
+        // Rows without a foreign key to the conversation (members, attachment rows and calls cascade), and its overwrites.
+        for (const table of ["delivery_queue", "submitted_messages", "mention_all_events"]) db.prepare(`DELETE FROM ${table} WHERE conversation_id = ?`).run(id);
+        db.prepare("DELETE FROM channel_overwrites WHERE target_type = 'channel' AND target_id = ?").run(id);
+        db.prepare("DELETE FROM conversations WHERE id = ?").run(id);
+        return { members, files, rooms };
+      })
+      .immediate();
+    if (!result) throw notFound("Conversation not found");
+    ctx.audit({ actorId: userId, orgId, action: "channel.delete", target: id, detail: `${c.name ?? ""} (${result.files.length} files)` });
+    // Apps refresh the channel (now 404, shown as gone) and the community's channel list.
+    ctx.hub.sendToUsers(new Set(result.members), { t: "conv.updated", conversationId: id });
+    const orgMembers = (db.prepare("SELECT user_id FROM org_members WHERE org_id = ?").all(orgId) as { user_id: string }[]).map((r) => r.user_id);
+    ctx.hub.sendToUsers(new Set(orgMembers), { t: "org.updated", orgId });
+    for (const room of result.rooms) await ctx.livekit?.deleteRoom(room).catch(() => {});
+    await processBlobDeletes(ctx).catch(() => 0);
+    return { deleted: true, id, members: result.members.length, files: result.files.length };
   });
 
   app.post("/v1/conversations/:id/join", auth, async (req) => {
