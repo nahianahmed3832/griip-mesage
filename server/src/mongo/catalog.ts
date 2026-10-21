@@ -131,6 +131,9 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   history_accounts: "history",
   history_items: "history",
   reports: "reports",
+  // Batch B8b: onboarding questions and members' answers (configuration of a community, like roles).
+  community_onboarding: "workspace",
+  onboarding_answers: "workspace",
   // Batch B6: connections, message requests and who may message you.
   connections: "relationships",
   dm_requests: "relationships",

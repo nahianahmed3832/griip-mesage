@@ -530,12 +530,66 @@ server accepted it before the end (every device applies the same rule with the s
    both accounts. After the hour it says Closed and no one can vote.
 6. **Report back:** pass or fail per step, with screenshots.
 
+## 6h. Batch B8b: repeating events, community guide, onboarding questions (built 2026-10-22, not phone-tested)
+
+### What's in it
+
+| Feature | What the person sees | Code |
+|---|---|---|
+| Repeating events (MSG-13, EVENT-CTRL-002) | New event › **Repeats**: Does not repeat / Weekly on Thursday / Every other Thursday / Monthly on the fourth Thursday / Every year (named from the chosen date). The events list says how it repeats. When one occurrence ends, the event moves to the next (same people and answers; a new "starting soon" notice) | Server `workspace/eventRepeat.ts`, `MeetingService.rollRepeating`, migration 041. Android `MeetingsScreen.kt`, `EventRepeatRules` |
+| Community guide (COM-17, COMM-CTRL-003/004/005) | On the community's home: **Community guide** card with the welcome line, **Get started · n of m** tasks (each opens a channel and is ticked once opened, on this phone), and **Resources**; × hides it for now. Community settings › **Community guide** edits it | Server `routes/guide.ts`, `orgs.guide`. Android `GuideOnboarding.kt` (`GuideCard`, `GuideEditorSheet`), `CommunityGuideRepository` |
+| Onboarding questions (COM-07) | Members who haven't answered see "This community asks a few questions to set things up for you" › **Answer**: one card per question (choose one / several; * required) › Done. Community settings › **Onboarding questions** (editors): turn on, add questions, answers that give roles and open public channels; members: **My onboarding answers** | Server `routes/onboarding.ts`, migration 042. Android `OnboardingSheet`, `OnboardingEditorSheet`, `OnboardingRules` |
+
+**Safety:** onboarding can never give a role with an administrative permission (checked when the questions are saved
+and again when someone answers, so a role that gains such a permission later stops being given) and can only open public
+channels. Answering again takes back only roles that onboarding gave (`assigned_by = 'onboarding'`).
+
+**Server and API:** API **0.22.0**, features `event-repeat`, `onboarding`, `community-guide`; **migrations 041**
+(`meetings.repeat`) **and 042** (`community_onboarding`, `onboarding_answers`, `orgs.guide`; workspace domain).
+
+### How it was checked
+
+- **Server:** full suite **702 passed**, 10 skipped; `events_onboarding_guide.test.ts` (9 tests: weekly across a
+  daylight-saving change in New York, every other week, monthly third and missing-fifth weekday, December to January,
+  yearly 29 February, the current occurrence; a weekly event moving on and "none" turning it off; onboarding: editors
+  only, admin roles and private channels refused, required and one-answer rules, roles and channels given, answering
+  again takes them back, a role that gained an admin permission isn't given, guests refused; the guide: editors only,
+  members see it, an archived channel's task disappears, removing it).
+- **Android:** `GuideOnboardingRulesTest` (5 tests) and the full suite: **625 tests, 0 failures**; lint 0 errors.
+- **Emulator** (Ada, with a guide and a question set on Apply Lab by its owner through the API): the home showed the
+  onboarding banner and the guide card ("Get started · 0 of 2"); tapping "Read the welcome" opened #welcome and, back
+  home, it said **1 of 2**; Answer › 🎨 Painting › Done: the banner went away and the server shows the "Painter" role
+  given by onboarding; New event showed **Repeats** with "Weekly on Thursday" and "Every other Thursday".
+- **Not checked on the emulator:** the two editors' screens (server-tested), an event actually rolling over (tested
+  on the server with a moved clock).
+
+### B8b APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b8b-debug.apk`
+  (147 MB, git-ignored). **SHA-256:** `0820620d8dae9de2b1aecde9bb6eee5d20039f0bc3f93b0601bee0096ed2657e`.
+- **Variant:** debug, side by side, server `http://localhost:8080` (API 0.22.0). It contains everything since B4: **the
+  one APK to install for testing B4 to B8b together.**
+
+### Owner's phone checklist (B8b)
+
+1. **Guide:** Community settings › **Community guide** › a welcome line, two tasks (each with a channel), one resource
+   › Save. **Expected:** the card on the community's home; open a task's channel and come back: it's ticked.
+2. **Onboarding:** Community settings › **Onboarding questions** › turn on › Add a question (one answer, required) with
+   two answers, one giving a role you made (without admin permissions) and a channel › Save › Save. **Expected:** on
+   your second account, the community shows "This community asks a few questions…" › Answer › pick › Done: the role is
+   on that member (Members › their roles) and the channel is in their list.
+3. **Refusal:** try giving an answer a role that has an admin permission (e.g. one with "Ban members"). **Expected:**
+   "Onboarding can only give this community's roles without administrative permissions".
+4. **Repeating event:** Events › New event › Repeats › Weekly … › Save. **Expected:** the list says "Weekly on …".
+5. **Report back:** pass or fail per step, with screenshots.
+
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
    call).
 2. **The AWS tools use the root user's access key:** move them off it (`MELDIQ_AWS_ARCHITECTURE.md` §5).
-3. **Server 0.21.0 isn't deployed** (production runs 0.13.0): 0.21.0 adds migration 040 (forum guidelines); 0.20.0
+3. **Server 0.22.0 isn't deployed** (production runs 0.13.0): 0.22.0 adds migrations 041 and 042 (event repeats,
+   onboarding, the guide); 0.21.0 adds migration 040 (forum guidelines); 0.20.0
    adds migration 039 (group photo, presence);
    0.19.0 adds migration 038 (connections, requests) and `DEFAULT_DM_POLICY`; 0.18.0 adds migration 037 (applications, alerts); 0.14.0 migration 034 (timeouts); 0.15.0 B2's preference fields and templates; 0.16.0 migration 035 (slowmode) and B3's fields; 0.17.0 migration 036 (reports, pauses). For deployment, set `REPORTS_KEY` (or back up `reports.key` with the database).
 4. **Android database version 13:** forward migrations (v12 in B6, v13 in B6b).
@@ -546,8 +600,8 @@ server accepted it before the end (every device applies the same rule with the s
 
 ## 8. Next, exactly
 
-1. **Engineering (in progress overnight):** B8b (event recurrence, Server Guide, onboarding questions), then B9 to
-   B13 in order, each committed with its own APK and checklist in this file.
+1. **Engineering (in progress overnight):** B9 (custom emoji and stickers), then B10 to B13 in order, each committed
+   with its own APK and checklist in this file.
 2. **Owner, when back:** phone-test the batches together using the per-batch checklists (B4, B4b, then later ones),
    and report pass or fail per batch.
 3. **Owner decisions:** `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions" (fingerprint and meldiq.app hosting for invite

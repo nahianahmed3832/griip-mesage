@@ -6,6 +6,8 @@ import { memberView } from "../profile.js";
 import { ApiError, badRequest, conflict, forbidden, humanCode, newId, notFound, now, sha256Hex } from "../util.js";
 import { activityAlert, noteJoin } from "../workspace/activityAlerts.js";
 import { joinQuestions } from "./applications.js";
+import { guideOf } from "./guide.js";
+import { onboardingOn } from "./onboarding.js";
 import { INVITE_PROBLEMS, inviteAlreadySatisfied, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../invites.js";
 import { userSummary } from "./auth.js";
 import { deleteBlobNow, processBlobDeletes, queueBlobDelete } from "./attachments.js";
@@ -74,6 +76,9 @@ export function orgSummary(ctx: AppContext, org: any, userId: string) {
     dmsPausedUntil: ctx.authz.pausedUntil(org.id, "dms", Date.now()),
     // Batch B4b: join applications (the questions, or null), activity alerts (on/off), and a recent alert (moderators).
     joinQuestions: joinQuestions(org),
+    // Batch B8b: the community guide (members only), and whether onboarding questions are on.
+    guide: ctx.authz.orgRole(org.id, userId) ? guideOf(ctx, org) : null,
+    onboarding: onboardingOn(ctx, org.id),
     activityAlerts: org.activity_alerts === undefined ? true : !!org.activity_alerts,
     activityAlert: activityAlert(ctx, org, userId, Date.now()),
   };

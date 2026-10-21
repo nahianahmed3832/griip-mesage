@@ -74,7 +74,7 @@ import com.meldiq.android.ui.theme.Shapes
 import com.meldiq.android.ui.theme.Space
 import kotlinx.coroutines.launch
 
-private enum class SettingsSheet { Overview, Transfer, Delete, Leave, Security, Questions }
+private enum class SettingsSheet { Overview, Transfer, Delete, Leave, Security, Questions, Guide, OnboardingEdit, OnboardingAnswer }
 
 /**
  * Community settings in groups (docs/product/MELDIQ_COMMUNITY_CHAT_SPEC.md §4): Community, People, Channels,
@@ -98,12 +98,17 @@ fun CommunitySettingsScreen(nav: NavHostController) {
     // Batch B4b: join applications and activity alerts.
     var applicationsAvailable by remember { mutableStateOf(false) }
     var alertsAvailable by remember { mutableStateOf(false) }
+    // Batch B8b: the community guide and onboarding questions.
+    var guideAvailable by remember { mutableStateOf(false) }
+    var onboardingAvailable by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         vm.refresh()
         reportsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.REPORTS) == true
         securityAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.SECURITY_ACTIONS) == true
         applicationsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.JOIN_APPLICATIONS) == true
         alertsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.ACTIVITY_ALERTS) == true
+        guideAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.COMMUNITY_GUIDE) == true
+        onboardingAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.ONBOARDING) == true
     }
     val d = detail
 
@@ -155,6 +160,18 @@ fun CommunitySettingsScreen(nav: NavHostController) {
                 subtitle = d.org.joinQuestions?.let { stringResource(R.string.ja_questions_on, it.size) } ?: stringResource(R.string.ja_questions_off),
                 onClick = { sheet = SettingsSheet.Questions },
             )
+            val canEditCommunity = p.isOwner || "workspace.edit" in p.effective
+            if (guideAvailable && canEditCommunity) MenuRow(
+                Icons.Outlined.Info, stringResource(R.string.b8b_guide),
+                subtitle = stringResource(if (d.org.guide != null) R.string.b8b_guide_on else R.string.b8b_guide_off), onClick = { sheet = SettingsSheet.Guide },
+            )
+            if (onboardingAvailable && canEditCommunity) MenuRow(
+                Icons.Outlined.HowToReg, stringResource(R.string.b8b_onboarding_title),
+                subtitle = stringResource(if (d.org.onboarding) R.string.b8b_onboarding_is_on else R.string.b8b_onboarding_is_off), onClick = { sheet = SettingsSheet.OnboardingEdit },
+            )
+            if (onboardingAvailable && d.org.onboarding && d.org.myRole != "GUEST") MenuRow(
+                Icons.Outlined.HowToReg, stringResource(R.string.b8b_my_answers), onClick = { sheet = SettingsSheet.OnboardingAnswer },
+            )
         }
         group(R.string.nv_group_people) {
             if (p.canViewDirectory) MenuRow(Icons.Outlined.ManageAccounts, stringResource(R.string.cm_stat_members), onClick = { nav.navigate(Routes.members(d.org.id)) })
@@ -198,6 +215,9 @@ fun CommunitySettingsScreen(nav: NavHostController) {
             d.org.id, d.org.invitesPausedUntil, d.org.dmsPausedUntil, onDismiss = { sheet = null }, onChanged = { vm.refresh() },
             alertsOn = if (alertsAvailable) d.org.activityAlerts else null,
         )
+        SettingsSheet.Guide -> GuideEditorSheet(d.org.id, d.org.guide, onDismiss = { sheet = null }, onSaved = { vm.refresh() })
+        SettingsSheet.OnboardingEdit -> OnboardingEditorSheet(d.org.id, onDismiss = { sheet = null }, onSaved = { vm.refresh() })
+        SettingsSheet.OnboardingAnswer -> OnboardingSheet(d.org.id, onDismiss = { sheet = null }, onDone = { sheet = null; vm.refresh() })
         SettingsSheet.Questions -> com.meldiq.android.ui.screens.moderation.JoinQuestionsSheet(d.org.id, d.org.joinQuestions, onDismiss = { sheet = null }, onChanged = { vm.refresh() })
         SettingsSheet.Overview -> WorkspaceSettingsSheet(d, onDismiss = { sheet = null }, onChanged = { vm.refresh() }, onLeft = { name ->
             sheet = null

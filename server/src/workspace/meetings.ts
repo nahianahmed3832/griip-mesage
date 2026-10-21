@@ -3,6 +3,7 @@ import type { AppContext } from "../context.js";
 import { errorKind } from "../ops/metrics.js";
 import { isValidTimeZone } from "../reminders/schedule.js";
 import { ApiError, badRequest, conflict, forbidden, newId, notFound, now } from "../util.js";
+import { currentOccurrence, type EventRepeat } from "./eventRepeat.js";
 
 /**
  * Scheduled meetings (docs/WORKSPACE_C5.md, round 7 slice C5). A meeting belongs to a voice room, the workspace's
@@ -25,6 +26,7 @@ interface MeetingRow {
   rev: number;
   created_at: number;
   updated_at: number;
+  repeat: EventRepeat | null;
 }
 
 export const MEETING_LIMITS = { maxHours: 24, participants: 200, titleChars: 120, descriptionChars: 2000, soonMs: 10 * 60_000, pastGraceMs: 5 * 60_000 } as const;
@@ -38,6 +40,8 @@ export interface MeetingInput {
   timeZone: string;
   participantIds: string[];
   groupIds: string[];
+  /** Batch B8b: how it repeats; null or absent: once. */
+  repeat?: EventRepeat | null;
 }
 
 export class MeetingService {
@@ -88,6 +92,7 @@ export class MeetingService {
       participants: ps.map((p) => ({ id: p.user_id, name: this.name(p.user_id), response: p.response })),
       myResponse: ps.find((p) => p.user_id === userId)?.response ?? null,
       cancelled: m.cancelled_at !== null,
+      repeat: m.repeat ?? null,
       canEdit: this.canEdit(m, userId),
       rev: m.rev,
     };
@@ -136,10 +141,10 @@ export class MeetingService {
     this.ctx.db.transaction(() => {
       this.ctx.db
         .prepare(
-          `INSERT INTO meetings (id, org_id, room_id, title, description, starts_at, ends_at, time_zone, organizer_id, rev, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+          `INSERT INTO meetings (id, org_id, room_id, title, description, starts_at, ends_at, time_zone, organizer_id, rev, created_at, updated_at, repeat)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
         )
-        .run(id, orgId, input.roomId, input.title, input.description ?? null, input.startsAt, input.endsAt, input.timeZone, organizerId, t, t);
+        .run(id, orgId, input.roomId, input.title, input.description ?? null, input.startsAt, input.endsAt, input.timeZone, organizerId, t, t, input.repeat ?? null);
       const ins = this.ctx.db.prepare("INSERT INTO meeting_participants (meeting_id, user_id, response) VALUES (?, ?, 'pending')");
       for (const u of invitees) ins.run(id, u);
     })();
@@ -160,8 +165,8 @@ export class MeetingService {
     const timeChanged = input.startsAt !== m.starts_at;
     this.ctx.db.transaction(() => {
       this.ctx.db
-        .prepare("UPDATE meetings SET room_id = ?, title = ?, description = ?, starts_at = ?, ends_at = ?, time_zone = ?, rev = rev + 1, updated_at = ?, notified_at = CASE WHEN ? THEN NULL ELSE notified_at END WHERE id = ?")
-        .run(input.roomId, input.title, input.description ?? null, input.startsAt, input.endsAt, input.timeZone, t, timeChanged ? 1 : 0, id);
+        .prepare("UPDATE meetings SET room_id = ?, title = ?, description = ?, starts_at = ?, ends_at = ?, time_zone = ?, repeat = ?, rev = rev + 1, updated_at = ?, notified_at = CASE WHEN ? THEN NULL ELSE notified_at END WHERE id = ?")
+        .run(input.roomId, input.title, input.description ?? null, input.startsAt, input.endsAt, input.timeZone, input.repeat === undefined ? m.repeat : input.repeat, t, timeChanged ? 1 : 0, id);
       this.ctx.db.prepare(`DELETE FROM meeting_participants WHERE meeting_id = ? AND user_id NOT IN (${invitees.map(() => "?").join(",") || "''"})`).run(id, ...invitees);
       const ins = this.ctx.db.prepare("INSERT OR IGNORE INTO meeting_participants (meeting_id, user_id, response) VALUES (?, ?, 'pending')");
       for (const u of invitees) ins.run(id, u);
@@ -192,9 +197,26 @@ export class MeetingService {
     return this.view(m, userId);
   }
 
+  /**
+   * Batch B8b: a repeating event whose occurrence has ended moves to its next one (same people and answers, a new
+   * "starting soon" notice). Run with the notices; exposed for tests.
+   */
+  rollRepeating(t = now()): number {
+    const ended = this.ctx.db.prepare("SELECT * FROM meetings WHERE repeat IS NOT NULL AND cancelled_at IS NULL AND ends_at <= ?").all(t) as MeetingRow[];
+    for (const m of ended) {
+      const start = currentOccurrence(m.starts_at, m.ends_at - m.starts_at, m.repeat as EventRepeat, m.time_zone, t);
+      this.ctx.db
+        .prepare("UPDATE meetings SET starts_at = ?, ends_at = ?, notified_at = NULL, rev = rev + 1, updated_at = ? WHERE id = ?")
+        .run(start, start + (m.ends_at - m.starts_at), t, m.id);
+      this.notify(this.load(m.id) as MeetingRow, "meeting.updated");
+    }
+    return ended.length;
+  }
+
   /** Sends "starting soon" once per meeting (and again after its time changes). Exposed for tests. */
   notifySoon(): number {
     const t = now();
+    this.rollRepeating(t);
     const due = this.ctx.db
       .prepare("SELECT * FROM meetings WHERE cancelled_at IS NULL AND notified_at IS NULL AND starts_at <= ? AND ends_at > ?")
       .all(t + MEETING_LIMITS.soonMs, t) as MeetingRow[];

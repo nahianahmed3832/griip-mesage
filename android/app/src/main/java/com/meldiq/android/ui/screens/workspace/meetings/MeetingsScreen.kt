@@ -103,7 +103,10 @@ fun MeetingsScreen(nav: NavHostController, orgId: String, canSchedule: Boolean) 
             items(list.orEmpty(), key = { it.id }) { m ->
                 ListCard(
                     m.title, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                    subtitle = listOfNotNull(MeetingRules.whenText(m.startsAt, m.endsAt, zone), m.room?.name?.let { "#$it" }, responseLabel(m), if (m.cancelled) stringResource(R.string.mtg_cancelled) else null).joinToString(" · "),
+                    subtitle = listOfNotNull(
+                        MeetingRules.whenText(m.startsAt, m.endsAt, zone), m.room?.name?.let { "#$it" },
+                        m.repeat?.let { repeatLabel(it, m.startsAt, zone) }, responseLabel(m), if (m.cancelled) stringResource(R.string.mtg_cancelled) else null,
+                    ).joinToString(" · "),
                     leading = { IconTile(Icons.Outlined.Event, if (m.cancelled) c.textTertiary else c.primary, if (m.cancelled) c.surfaceVariant else c.primarySoft, size = 44.dp) },
                     onClick = { open = m },
                 )
@@ -190,6 +193,10 @@ private fun MeetingEditor(orgId: String, meeting: MeetingDto?, zone: String, onS
     var minutes by remember { mutableIntStateOf(initial.third) }
     var roomId by remember { mutableStateOf(meeting?.room?.id) }
     var description by remember { mutableStateOf(meeting?.description.orEmpty()) }
+    // Batch B8b: how the event repeats (servers with `event-repeat`).
+    var repeat by remember { mutableStateOf(meeting?.repeat ?: com.meldiq.android.data.model.EventRepeatRules.NONE) }
+    var repeatAvailable by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { repeatAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.EVENT_REPEAT) == true }
     var people by remember { mutableStateOf(meeting?.participants.orEmpty().associate { it.id to it.name.orEmpty() }) }
     var groupIds by remember { mutableStateOf(emptySet<String>()) }
     var rooms by remember { mutableStateOf<List<ConversationDto>>(emptyList()) }
@@ -213,6 +220,13 @@ private fun MeetingEditor(orgId: String, meeting: MeetingDto?, zone: String, onS
                 GriipTextField(time, { time = it.take(5) }, stringResource(R.string.mtg_field_time), Modifier.weight(1f), helper = zone)
             }
             ChipRow(Modifier.padding(horizontal = 0.dp)) { MeetingRules.DURATIONS.forEach { d -> PillChip(stringResource(R.string.mtg_minutes, d), minutes == d, { minutes = d }) } }
+            if (repeatAvailable) {
+                Text(stringResource(R.string.b8b_repeat), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp))
+                val startForLabel = MeetingRules.startMs(date, time, zone)
+                ChipRow(Modifier.padding(horizontal = 0.dp)) {
+                    com.meldiq.android.data.model.EventRepeatRules.CHOICES.forEach { r -> PillChip(repeatLabel(r, startForLabel, zone), repeat == r, { repeat = r }) }
+                }
+            }
             Text(stringResource(R.string.mtg_room), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp))
             if (rooms.isEmpty()) Text(stringResource(R.string.mtg_no_rooms), style = Griip.type.caption, color = c.textSecondary)
             ChipRow(Modifier.padding(horizontal = 0.dp)) { rooms.forEach { r -> PillChip("#${r.name.orEmpty()}", roomId == r.id, { roomId = r.id }) } }
@@ -238,7 +252,10 @@ private fun MeetingEditor(orgId: String, meeting: MeetingDto?, zone: String, onS
         Spacer(Modifier.height(8.dp))
         PillButton(stringResource(R.string.mtg_save), {
             val start = MeetingRules.startMs(date, time, zone) ?: return@PillButton
-            val req = MeetingReq(roomId.orEmpty(), title.trim(), description.trim().ifEmpty { null }, start, start + minutes * 60_000L, zone, people.keys.toList(), groupIds.toList(), meeting?.rev)
+            val req = MeetingReq(
+                roomId.orEmpty(), title.trim(), description.trim().ifEmpty { null }, start, start + minutes * 60_000L, zone, people.keys.toList(), groupIds.toList(), meeting?.rev,
+                repeat = repeat.takeIf { repeatAvailable },
+            )
             scope.launch {
                 runCatching {
                     if (meeting == null) container.api.post<MeetingReq, MeetingRes>("/v1/orgs/$orgId/meetings", req) else container.api.put<MeetingReq, MeetingRes>("/v1/meetings/${meeting.id}", req)
@@ -246,5 +263,29 @@ private fun MeetingEditor(orgId: String, meeting: MeetingDto?, zone: String, onS
             }
         }, Modifier.fillMaxWidth(), enabled = problems.isEmpty(), height = 48.dp)
         Spacer(Modifier.height(16.dp))
+    }
+}
+
+
+/** Batch B8b: "Does not repeat", "Weekly on Wednesday", "Every other Wednesday", "Monthly on the third Wednesday", "Every year". */
+@Composable
+private fun repeatLabel(repeat: String, startMs: Long?, zone: String): String {
+    val (weekday, nth) = startMs?.let { com.meldiq.android.data.model.EventRepeatRules.weekdayAndNth(it, zone) } ?: (null to null)
+    val day = weekday?.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault()).orEmpty()
+    return when (repeat) {
+        com.meldiq.android.data.model.EventRepeatRules.WEEKLY -> stringResource(R.string.b8b_weekly, day)
+        com.meldiq.android.data.model.EventRepeatRules.BIWEEKLY -> stringResource(R.string.b8b_biweekly, day)
+        com.meldiq.android.data.model.EventRepeatRules.MONTHLY -> stringResource(
+            when (nth) {
+                1 -> R.string.b8b_monthly_1
+                2 -> R.string.b8b_monthly_2
+                3 -> R.string.b8b_monthly_3
+                4 -> R.string.b8b_monthly_4
+                else -> R.string.b8b_monthly_last
+            },
+            day,
+        )
+        com.meldiq.android.data.model.EventRepeatRules.YEARLY -> stringResource(R.string.b8b_yearly)
+        else -> stringResource(R.string.b8b_once)
     }
 }

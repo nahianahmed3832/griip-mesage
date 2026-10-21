@@ -68,7 +68,7 @@ Meldiq differs from Discord by design in two ways:
 | COM-04 | Discover and preview | E2E | I | D | I | P1 (web) | |
 | COM-05 | Invites (expiry, uses, QR) | E2E | I | I | I | P1 (B4) | Server side complete and tested (expiry, uses, revoke, role safety, bans, races). B4 2026-10-21: more choices (1, 10, 50, 100, 500 uses; 1 hour to 30 days) and pausing (MOD-13). B4b: links are `https://meldiq.app/invite/CODE` (Android App Link with `autoVerify`; QR and the old `meldiq://` form still work; links tapped inside a chat open Join), a signed-out page at `/invite/CODE` in the web repo using `GET /v1/invites/:code/public` (name, description, size only), and invite from a profile (DM-08). **Owner:** host `meldiq.app/invite/*` and `/.well-known/assetlinks.json` with the release fingerprint (template `orbit_web/deploy/app-links/`). `MELDIQ_COMMUNITY_INVITATION_SPEC.md` |
 | COM-06 | Welcome screen | I | I | — | I | P2 | #welcome channel with welcome actions; no "recommended channels" card |
-| COM-07 | Onboarding questions | R | — | — | — | P2 | Not built. Plan: `community_onboarding` (prompts → options → role ids and channel ids), applied by the server when a member answers; channels follow from roles. `MELDIQ_FULLSTACK_SPEC.md` §5 |
+| COM-07 | Onboarding questions | E2E (emulator) | I | — | I | — | B8b 2026-10-22: Community settings › **Onboarding questions** (people who edit the community): up to 5 questions, one answer or several, required or not; each answer can give roles **without administrative permissions** and open **public** channels (checked when set and again when answered). New members see "This community asks a few questions…" › Answer; changing answers takes back only what onboarding gave. Guests don't answer. `routes/onboarding.ts`, migration 042 |
 | COM-08 | Rules shown before joining | I | I | I | I | — | |
 | COM-09 | Member list | I | I | I | I | P3 | Grouping by hoisted role: P3 |
 | COM-10 | Leave | E2E | I | I | I | — | Phone 2026-10-21 |
@@ -78,7 +78,7 @@ Meldiq differs from Discord by design in two ways:
 | COM-14 | Verification level | R | — | — | — | P3 | Email is always verified in Meldiq; "account age" levels: P3 |
 | COM-15 | System messages | D | — | — | — | P3 | |
 | COM-16 | Hide channels without leaving, channel browser | E2E (emulator) | I | — | I | — | B3 2026-10-21: channel menu › Hide from channel list; "N hidden · Browse channels" row; community sheet › Browse channels with a switch per channel and Show all; hidden channels come back while they mention you. `hidden` in the community document. Phone test pending |
-| COM-17 | Server Guide with Get Started tasks | R | — | — | — | P2 (B8) | Tasks tied to channels, ticked on visit (COMM-CTRL-003/004/005) |
+| COM-17 | Server Guide with Get Started tasks | E2E (emulator) | I | — | I | — | B8b 2026-10-22 (COMM-CTRL-003/004/005): **Community guide** card on the community's home: welcome line, "Get started · n of m" tasks ticked when you open their channel (kept on this phone), resources. Edited in Community settings. `routes/guide.ts` |
 | COM-18 | Join applications (apply to join, moderator approval) | E2E (emulator) | I | — | I | — | B4b 2026-10-21: Community settings › **Join questions** (public communities, `workspace.edit`): up to 5 questions, or off. Discover preview › **Apply to join** with an answer to every question; "waiting" with Withdraw; a declined person can apply again. Moderation › **Applications** (`members.approve`, Moderator and Community Manager templates): Waiting/Answered, Let in or Decline with a note; audited. While questions are on, open joining is refused (`application_required`). Server `routes/applications.ts`, migration 037. Web: not yet |
 
 ## D. Categories and channels
@@ -120,7 +120,7 @@ Meldiq differs from Discord by design in two ways:
 | MSG-10 | Mentions (@user, @everyone) | I | I | I | I | P3 | @role mentions: P3 |
 | MSG-11 | Unread line, mark unread | E2E | I | I | — | — | |
 | MSG-12 | Polls | I | I | I | — | P3 | In the encrypted message; votes are encrypted controls |
-| MSG-13 | Events | I | I | I | I | P2 | Meetings with RSVP; recurrence and "voice channel" events: P2 |
+| MSG-13 | Events | I | I | I | I | — | Meetings with RSVP in voice rooms. B8b 2026-10-22 (EVENT-CTRL-002): **Repeats**: does not repeat / weekly on the weekday / every other week / monthly on the same weekday (the third Wednesday; a missing fifth becomes the last) / every year, at the same local time across daylight-saving changes; a finished occurrence moves to the next with the same people and answers. "Somewhere else" locations: P3 |
 | MSG-14 | Typing indicator | I | I | I | I | — | |
 | MSG-15 | Save for later, reminders | I | I | I | I | — | |
 | MSG-16 | Attachments, 1 GiB target | E2E (600 MB USB; 100 MB emulator 2026-10-22) | I | I | I | P1 | Built: chunked encryption, resumable downloads, S3 multipart uploads that resume. B7 2026-10-22: 100 MB Ada → Erin on the emulator, same SHA-256 on arrival. 1 GiB over real Wi-Fi and mobile data to production: owner's test (`MELDIQ_SESSION_HANDOFF.md` §6f) |

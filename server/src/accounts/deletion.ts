@@ -173,6 +173,8 @@ function deletePersonalRecords(db: DB, userId: string): void {
     "DELETE FROM delivery_queue WHERE sender_user_id = ?",
     "DELETE FROM submitted_messages WHERE sender_user_id = ?",
     "DELETE FROM mention_all_events WHERE user_id = ?",
+    // Batch B8b: what they answered to communities' onboarding questions.
+    "DELETE FROM onboarding_answers WHERE user_id = ?",
     // A link-a-device approval still holds the sealed identity key for the new device.
     "DELETE FROM pairing_requests WHERE approved_user_id = ?",
     "DELETE FROM history_items WHERE user_id = ?",

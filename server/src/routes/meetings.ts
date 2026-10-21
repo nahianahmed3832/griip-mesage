@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { type AppContext, me, parse, requireAuth } from "../context.js";
+import { EVENT_REPEATS } from "../workspace/eventRepeat.js";
 import { MEETING_LIMITS } from "../workspace/meetings.js";
 
 /**
@@ -20,6 +21,13 @@ export default async function meetingRoutes(app: FastifyInstance, ctx: AppContex
     participantIds: z.array(z.string().max(64)).max(MEETING_LIMITS.participants).default([]),
     // User groups were removed with the rebuild; older apps send an empty list.
     groupIds: z.array(z.string().max(64)).max(0, "User groups were removed: invite people instead").default([]),
+    // Batch B8b: how the event repeats (absent on older apps: unchanged on edit, once on create).
+    // "none" (or null) turns repeating off; apps that leave nulls out send "none".
+    repeat: z
+      .enum([...EVENT_REPEATS, "none"])
+      .nullable()
+      .optional()
+      .transform((v) => (v === "none" ? null : v)),
   });
 
   app.get("/v1/orgs/:orgId/meetings", auth, async (req) => {

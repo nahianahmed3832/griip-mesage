@@ -87,6 +87,10 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val PRESENCE_MODES = "presence-modes"
         /** Batch B8: a forum's post guidelines. */
         const val FORUM_GUIDELINES = "forum-guidelines"
+        /** Batch B8b: repeating events, onboarding questions, the community guide. */
+        const val EVENT_REPEAT = "event-repeat"
+        const val ONBOARDING = "onboarding"
+        const val COMMUNITY_GUIDE = "community-guide"
         /** Meldiq 2.0: experiments and content-free analytics counts (docs/product/EXPERIMENTS.md). */
         const val EXPERIMENTS = "experiments"
         const val ANALYTICS_EVENTS = "analytics-events"

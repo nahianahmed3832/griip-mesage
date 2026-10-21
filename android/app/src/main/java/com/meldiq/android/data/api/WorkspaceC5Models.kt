@@ -39,11 +39,15 @@ import kotlinx.serialization.Serializable
     val cancelled: Boolean = false,
     val canEdit: Boolean = false,
     val rev: Int,
+    /** Batch B8b (servers with `event-repeat`): "weekly", "biweekly", "monthly" (same weekday) or "yearly"; null: once. */
+    val repeat: String? = null,
 )
 @Serializable data class MeetingsRes(val meetings: List<MeetingDto>)
 @Serializable data class MeetingRes(val meeting: MeetingDto)
 @Serializable data class MeetingReq(
     val roomId: String, val title: String, val description: String? = null, val startsAt: Long, val endsAt: Long,
     val timeZone: String, val participantIds: List<String> = emptyList(), val groupIds: List<String> = emptyList(), val rev: Int? = null,
+    /** Batch B8b: how it repeats, or "none". Left out (older servers) when the feature isn't there. */
+    val repeat: String? = null,
 )
 @Serializable data class MeetingRespondReq(val response: String)

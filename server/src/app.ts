@@ -25,6 +25,8 @@ import { SqliteReportStore } from "./reports/store.js";
 import reportRoutes from "./routes/reports.js";
 import applicationRoutes from "./routes/applications.js";
 import connectionRoutes from "./routes/connections.js";
+import onboardingRoutes from "./routes/onboarding.js";
+import guideRoutes from "./routes/guide.js";
 import { MongoPreferenceStore } from "./mongo/preferences.js";
 import { type PushDeps, PushService } from "./push/service.js";
 import { createBlobStore } from "./storage/index.js";
@@ -57,7 +59,7 @@ import { Metrics } from "./ops/metrics.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
-export const VERSION = "0.21.0";
+export const VERSION = "0.22.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
@@ -289,7 +291,7 @@ export async function buildApp(
     push: config.push ? { unifiedPushHosts: config.push.unifiedPushHosts } : null,
   }));
 
-  for (const r of [authRoutes, userRoutes, orgRoutes, roleRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, preferenceRoutes, reminderRoutes, reportRoutes, applicationRoutes, connectionRoutes, wsRoutes]) {
+  for (const r of [authRoutes, userRoutes, orgRoutes, roleRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, preferenceRoutes, reminderRoutes, reportRoutes, applicationRoutes, connectionRoutes, onboardingRoutes, guideRoutes, wsRoutes]) {
     await app.register(async (scope) => r(scope, ctx));
   }
   await app.register(async (scope) => opsRoutes(scope, ctx, VERSION));
@@ -372,6 +374,10 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     "presence-modes",
     // Batch B8: a forum's post guidelines (polls' end times and answer emoji live inside the encrypted message).
     "forum-guidelines",
+    // Batch B8b: repeating events, onboarding questions, the community guide.
+    "event-repeat",
+    "onboarding",
+    "community-guide",
     // Round 7: end dates for guests and a community's guest policy (routes/community.ts).
     "guest-expiry",
     // Round 6: recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md).

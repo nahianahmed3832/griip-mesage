@@ -149,6 +149,15 @@ fun CommunityHomeScreen(nav: NavHostController) {
     val list = NavPrefsRules.railOrdered(WorkspaceList.normalize(orgs.orEmpty()), railOrder) { it.id }
     val org = list.firstOrNull { it.id == selectedId }
     val d = detail?.takeIf { it.org.id == org?.id }
+    // Batch B8b: the guide's ticked tasks (this phone), guides hidden for now, and unanswered onboarding questions.
+    val guideDone by container.guide.done.collectAsStateWithLifecycle()
+    var hiddenGuides by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(emptySet<String>()) }
+    var onboardingPending by remember { mutableStateOf(false) }
+    var onboardingOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(d?.org?.id, d?.org?.onboarding) {
+        val o = d?.org
+        onboardingPending = o != null && o.onboarding && runCatching { container.guide.onboarding(o.id).answered == null }.getOrDefault(false)
+    }
     val orgId = org?.id
     val view = views[orgId] ?: com.meldiq.android.data.repo.CommunityViewPrefs.View()
     val orgPrefs = orgId?.let { navPrefs[it] } ?: NavPrefsDto()
@@ -181,6 +190,8 @@ fun CommunityHomeScreen(nav: NavHostController) {
     fun categoryOf(key: String) = d?.categories?.firstOrNull { ("category:" + it.id) == key }
     fun open(ch: PanelChannel) {
         orgId?.let { container.communityView.opened(it, ch.id) }
+        // Batch B8b: opening a guide task's channel ticks it.
+        orgId?.let { id -> scope.launch { container.guide.visited(id, d?.org?.guide, ch.id) } }
         if (ch.joined) nav.navigate(Routes.conversation(ch.id))
         else vm.join(ch.id, then = { id -> nav.navigate(Routes.conversation(id)) }, onError = ::toast)
     }
@@ -252,6 +263,23 @@ fun CommunityHomeScreen(nav: NavHostController) {
                         }
                     }
                     return@LazyColumn
+                }
+                // Batch B8b: onboarding questions not answered yet, and the community guide.
+                if (onboardingPending && org.myRole != "GUEST") item(key = "onboarding") {
+                    StatusBanner(
+                        stringResource(R.string.b8b_onboarding_banner), BannerKind.Info, Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        action = stringResource(R.string.b8b_onboarding_answer), onAction = { onboardingOpen = true },
+                    )
+                }
+                d?.org?.guide?.takeIf { org.id !in hiddenGuides }?.let { guide ->
+                    item(key = "guide") {
+                        GuideCard(
+                            guide, guideDone[org.id].orEmpty(),
+                            onOpenChannel = { id -> channels.firstOrNull { it.id == id }?.let(::open) ?: nav.navigate(Routes.conversation(id)) },
+                            onHide = { hiddenGuides = hiddenGuides + org.id },
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                    }
                 }
                 item(key = "events") { PanelShortcut(Icons.Outlined.Event, stringResource(R.string.cm_events)) { nav.navigate(Routes.meetings(org.id, canSchedule = org.myRole != "GUEST")) } }
                 if (d?.permissions?.canViewDirectory == true) item(key = "members") { PanelShortcut(Icons.Outlined.People, stringResource(R.string.cm_stat_members)) { nav.navigate(Routes.members(org.id)) } }
@@ -462,4 +490,7 @@ fun CommunityHomeScreen(nav: NavHostController) {
         }
     }
     editingSection?.let { section -> SectionEditSheet(section, onDismiss = { editingSection = null }) }
+    if (onboardingOpen) d?.org?.id?.let { id ->
+        OnboardingSheet(id, onDismiss = { onboardingOpen = false }, onDone = { onboardingOpen = false; onboardingPending = false; vm.reloadDetail() })
+    }
 }

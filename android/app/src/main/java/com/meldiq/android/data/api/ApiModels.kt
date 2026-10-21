@@ -295,7 +295,27 @@ object ChannelFormat {
     /** Batch B4b (servers with `activity-alerts`): whether join spikes alert moderators, and the current alert (moderators only). */
     val activityAlerts: Boolean = true,
     val activityAlert: ActivityAlertDto? = null,
+    /** Batch B8b: the community guide (members only), and whether it asks onboarding questions. */
+    val guide: GuideDto? = null,
+    val onboarding: Boolean = false,
 )
+/** Batch B8b: the community guide: a welcome line, "Get started" tasks and resources, each opening a channel. */
+@Serializable data class GuideDto(val welcome: String? = null, val tasks: List<GuideItemDto> = emptyList(), val resources: List<GuideItemDto> = emptyList())
+@Serializable data class GuideItemDto(val id: String? = null, val title: String, val channelId: String)
+@Serializable data class GuideRes(val guide: GuideDto? = null)
+/** Batch B8b: onboarding questions, and what you answered (null: not yet). */
+@Serializable data class OnboardingDto(
+    val enabled: Boolean = false, val prompts: List<OnboardingPromptDto> = emptyList(), val answered: List<String>? = null, val answeredAt: Long? = null,
+)
+@Serializable data class OnboardingPromptDto(
+    val id: String? = null, val title: String, val single: Boolean = false, val required: Boolean = false, val options: List<OnboardingOptionDto> = emptyList(),
+)
+@Serializable data class OnboardingOptionDto(
+    val id: String? = null, val title: String, val emoji: String? = null, val roleIds: List<String> = emptyList(), val channelIds: List<String> = emptyList(),
+)
+@Serializable data class OnboardingPutReq(val enabled: Boolean, val prompts: List<OnboardingPromptDto>)
+@Serializable data class OnboardingAnswersReq(val optionIds: List<String>)
+@Serializable data class OnboardingAnswersRes(val roleIds: List<String> = emptyList(), val channelIds: List<String> = emptyList())
 /** Batch B4b: [count] people joined within ten minutes, at [at]. */
 @Serializable data class ActivityAlertDto(val kind: String = "joins", val count: Int = 0, val at: Long = 0)
 
