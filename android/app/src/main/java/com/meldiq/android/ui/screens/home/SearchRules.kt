@@ -8,7 +8,7 @@ package com.meldiq.android.ui.screens.home
  * which applies each one's access rule; conversations from this phone's list.
  */
 object SearchRules {
-    enum class Filter { ALL, MESSAGES, FILES, PINNED, PEOPLE, CHANNELS, DOCUMENTS, WORKSPACES }
+    enum class Filter { ALL, MESSAGES, FILES, PINNED, PEOPLE, CHANNELS, WORKSPACES }
 
     /** The analytics scope for a filter (the server's closed list: all, messages, people, channels, files, apps). */
     fun analyticsScope(filter: Filter): String = when (filter) {
@@ -16,7 +16,7 @@ object SearchRules {
         Filter.MESSAGES, Filter.PINNED -> "messages"
         Filter.PEOPLE -> "people"
         Filter.CHANNELS -> "channels"
-        Filter.FILES, Filter.DOCUMENTS -> "files"
+        Filter.FILES -> "files"
     }
 
     /** How many results came back, bucketed as the analytics catalogue requires (never the exact count). */
@@ -27,7 +27,7 @@ object SearchRules {
         else -> "6+"
     }
 
-    enum class Section { CONVERSATIONS, CHANNELS, DOCUMENTS, WORKSPACES, GROUPS, PEOPLE, MESSAGES, FILES, PINNED }
+    enum class Section { CONVERSATIONS, CHANNELS, WORKSPACES, GROUPS, PEOPLE, MESSAGES, FILES, PINNED }
 
     /** Pause after typing before searching. */
     const val DEBOUNCE_MS = 250L
@@ -44,16 +44,14 @@ object SearchRules {
         Filter.PINNED -> listOf(Section.PINNED)
         Filter.PEOPLE -> listOf(Section.PEOPLE)
         Filter.CHANNELS -> listOf(Section.CHANNELS)
-        Filter.DOCUMENTS -> listOf(Section.DOCUMENTS)
         Filter.WORKSPACES -> listOf(Section.WORKSPACES)
     }
 
     /** The server kinds a filter needs ("people,channels,…"), or null when it needs none. */
     fun serverTypes(filter: Filter): String? = when (filter) {
-        Filter.ALL -> "people,channels,workspaces,groups,documents"
+        Filter.ALL -> "people,channels,workspaces,groups"
         Filter.PEOPLE -> "people"
         Filter.CHANNELS -> "channels"
-        Filter.DOCUMENTS -> "documents"
         Filter.WORKSPACES -> "workspaces"
         Filter.MESSAGES, Filter.FILES, Filter.PINNED -> null
     }

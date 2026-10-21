@@ -16,6 +16,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Headset
+import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Groups
@@ -49,9 +51,11 @@ import com.meldiq.android.ui.theme.Griip
 import com.meldiq.android.ui.theme.Shapes
 import com.meldiq.android.ui.theme.Space
 
-fun channelIcon(kind: String?): ImageVector = when (kind) {
-    "PRIVATE" -> Icons.Outlined.Lock
-    "ANNOUNCEMENT" -> Icons.Outlined.Campaign
+fun channelIcon(kind: String?, voice: Boolean = false, format: String? = null): ImageVector = when {
+    voice -> Icons.Outlined.Headset
+    format == "forum" -> Icons.Outlined.Forum
+    kind == "PRIVATE" -> Icons.Outlined.Lock
+    kind == "ANNOUNCEMENT" -> Icons.Outlined.Campaign
     else -> Icons.Outlined.Tag
 }
 

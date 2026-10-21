@@ -55,7 +55,7 @@
     <string name="start_title">Get started with Meldiq</string>
     <string name="start_progress">%1$d of %2$d done</string>
     <string name="start_profile">Add your name and photo</string>
-    <string name="start_workspace">Create or join a workspace</string>
+    <string name="start_workspace">Create or join a community</string>
     <string name="start_invite">Invite your teammates</string>
     <string name="start_apps">Connect the tools you use</string>
     <string name="start_notifications">Turn on notifications</string>

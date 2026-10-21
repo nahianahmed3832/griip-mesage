@@ -12,7 +12,7 @@ S = {
 "m2_kind_team_sub": ("Colleagues working together: branches, teams and admin tools", "一起工作的同事：分部、团队和管理工具", "একসাথে কাজ করা সহকর্মী: শাখা, টিম ও অ্যাডমিন টুল"),
 "m2_kind_community": ("Community", "社区", "কমিউনিটি"),
 "m2_kind_community_sub": ("People with a shared interest: channels, voice rooms and open invitations", "有共同兴趣的人：频道、语音房间和开放邀请", "একই আগ্রহের মানুষ: চ্যানেল, ভয়েস রুম ও খোলা আমন্ত্রণ"),
-"m2_kind_setting": ("Kind of workspace", "工作区类型", "ওয়ার্কস্পেসের ধরন"),
+"m2_kind_setting": ("Kind of community", "社区类型", "কমিউনিটির ধরন"),
 "m2_kind_setting_sub": ("Changes what Meldiq shows first. Nothing is added or removed.", "只改变 Meldiq 优先显示的内容，不会增加或删除任何东西。", "Meldiq প্রথমে কী দেখায় শুধু তা বদলায়। কিছু যোগ বা মুছে যায় না।"),
 "m2_kind_owner_only": ("Only owners can change this.", "只有所有者可以修改。", "শুধু মালিকরা এটি বদলাতে পারেন।"),
 # The workspace rail on Home

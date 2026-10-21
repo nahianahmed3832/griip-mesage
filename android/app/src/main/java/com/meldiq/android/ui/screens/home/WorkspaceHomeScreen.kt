@@ -113,7 +113,7 @@ private val FabClearance = 88.dp
 /**
  * The Home tab (UI-002): the selected workspace at a glance (Cocoa, like every signed-in screen). A header with the
  * workspace switcher, your avatar (profile and settings), search and options; quick-access cards (Unreads, Drafts,
- * Calls); unread DMs; @mentions; and the workspace's channels grouped by organisation, branch and team, each group
+ * Calls); unread DMs; @mentions; and the community's channels grouped by category in its order, each group
  * collapsible. Everything is this phone's real data; empty sections say so. [onSeeAllUnreadDms] opens the DMs tab
  * filtered to unread.
  */
@@ -184,7 +184,11 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
         )
     }
     val placed = remember(orgPrefs, personalPrefs) { NavPrefsRules.placed(orgPrefs) + NavPrefsRules.placed(personalPrefs) }
-    val groups = remember(convs, org?.id, orgName, unreadOnly, placed) { WorkspaceHomeRules.channelGroups(convs, org?.id, orgName, unreadOnly, placed) }
+    val categories = detail?.takeIf { it.org.id == org?.id }?.categories.orEmpty()
+    val channelsTitle = stringResource(R.string.cm_channels)
+    val groups = remember(convs, org?.id, channelsTitle, unreadOnly, placed, categories) {
+        WorkspaceHomeRules.channelGroups(convs, org?.id, channelsTitle, unreadOnly, placed, categories)
+    }
     fun setCollapsed(key: String, value: Boolean) { org?.id?.let { container.navPrefs.change(it, NavOp.Collapse(key, value)) } }
     fun setAllCollapsed(value: Boolean) {
         groups.filter { (it.key in collapsed) != value }.forEach { setCollapsed(it.key, value) }
@@ -195,8 +199,6 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
     val missed = remember(callLog) { WorkspaceHomeRules.missedCalls(callLog, System.currentTimeMillis(), WorkspaceHomeRules.MISSED_CALLS_CARD_WINDOW_MS).size }
     val online = remember(users) { users.associate { it.id to it.online } }
     val usersById = remember(users) { users.associateBy { it.id } }
-    // Voice rooms of this workspace (round 6): their own section, not among the text channels.
-    val voiceRooms = remember(convs, org?.id) { convs.filter { it.voice && it.orgId == org?.id && it.joined && !it.removed } }
     val liveCall = if (call.phase == CallPhase.Idle) convs.firstOrNull { it.activeCallId != null } else null
 
     fun open(conv: ConversationEntity) = nav.navigate(Routes.conversation(conv.id))
@@ -256,7 +258,7 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
         StartStep(stringResource(R.string.start_workspace), done = !orgs.isNullOrEmpty()) { nav.navigate(Routes.JOIN + "?code=") },
         StartStep(stringResource(R.string.start_invite), done = (org?.memberCount ?: 0) > 1) { org?.id?.let { nav.navigate(Routes.invites(it)) } ?: nav.navigate(Routes.JOIN + "?code=") },
         StartStep(stringResource(R.string.start_notifications), done = settings.notifications && vm.notificationsAllowed()) { nav.navigate(Routes.NOTIFICATION_SETTINGS) },
-        StartStep(stringResource(R.string.start_apps), done = false, optional = true) { org?.id?.let { nav.navigate(Routes.apps(it)) } ?: nav.navigate(Routes.JOIN + "?code=") },
+        StartStep(stringResource(R.string.cm_discover), done = (orgs?.size ?: 0) > 1, optional = true) { nav.navigate(Routes.DISCOVER) },
     )
     val list = rememberLazyListState()
     val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0 } }
@@ -354,14 +356,11 @@ private fun WorkspaceHome(nav: NavHostController, onSeeAllUnreadDms: () -> Unit)
                     )
                 }
             } else {
-                voiceRoomsSection(
-                    voiceRooms, usersById, onOpen = ::open,
-                    onJoin = { room -> permission(false) { container.scope.launch { container.calls.startCall(room.id, false) } } },
-                )
                 channelSection(
-                    groups, collapsed, unreadOnly, me,
+                    groups, collapsed, unreadOnly, me, usersById,
                     onToggle = { key -> setCollapsed(key, key !in collapsed) },
                     onOpen = ::open, onLongPress = { actionsFor = it },
+                    onJoinVoice = { room -> permission(false) { container.scope.launch { container.calls.startCall(room.id, false) } } },
                     onBrowse = { nav.navigate(Routes.WORKSPACE) },
                 )
             }
@@ -570,9 +569,11 @@ private fun LazyListScope.channelSection(
     collapsed: Set<String>,
     unreadOnly: Boolean,
     me: String?,
+    users: Map<String, com.meldiq.android.data.db.UserEntity>,
     onToggle: (String) -> Unit,
     onOpen: (ConversationEntity) -> Unit,
     onLongPress: (ConversationEntity) -> Unit,
+    onJoinVoice: (ConversationEntity) -> Unit,
     onBrowse: () -> Unit,
 ) {
     if (groups.isEmpty()) {
@@ -583,7 +584,11 @@ private fun LazyListScope.channelSection(
     groups.forEach { group ->
         val expanded = group.key !in collapsed
         item(key = "group-" + group.key) { ChannelGroupHeader(group, expanded, { onToggle(group.key) }, Modifier.animateItem()) }
-        if (expanded) items(group.channels.filterNot { it.voice }, key = { "channel-" + it.id }) { conv ->
+        if (expanded) items(group.channels, key = { "channel-" + it.id }) { conv ->
+            if (conv.voice) {
+                VoiceRoomRow(conv, roomPeople(conv), users, { onOpen(conv) }, { onJoinVoice(conv) })
+                return@items
+            }
             val unread = conv.unreadCount > 0
             HomeListRow(
                 listTitle(conv, me).removePrefix("#"),
@@ -611,7 +616,7 @@ private fun LazyListScope.channelSection(
     }
 }
 
-/** A channel's kind as an icon (#, lock for private, megaphone for announcements); people and groups as avatars. */
+/** A channel's type as an icon (#, lock, megaphone, forum bubbles); people and groups as avatars. */
 @Composable
 internal fun ChannelOrAvatar(conv: ConversationEntity, me: String?) {
     val c = Griip.colors
@@ -619,13 +624,14 @@ internal fun ChannelOrAvatar(conv: ConversationEntity, me: String?) {
         ConversationAvatar(conv, me, size = 32.dp)
         return
     }
-    val description = when (conv.kind) {
-        "PRIVATE" -> "Private channel"
-        "ANNOUNCEMENT" -> "Announcement channel"
+    val description = when {
+        conv.format == "forum" -> "Forum channel"
+        conv.kind == "PRIVATE" -> "Private channel"
+        conv.kind == "ANNOUNCEMENT" -> "Announcement channel"
         else -> null
     }
     Icon(
-        channelIcon(conv.kind), description, tint = if (conv.unreadCount > 0 && !conv.muted) c.textPrimary else c.textSecondary,
+        com.meldiq.android.ui.screens.chats.channelIcon(conv.kind, conv.voice, conv.format), description, tint = if (conv.unreadCount > 0 && !conv.muted) c.textPrimary else c.textSecondary,
         modifier = Modifier.size(20.dp),
     )
 }

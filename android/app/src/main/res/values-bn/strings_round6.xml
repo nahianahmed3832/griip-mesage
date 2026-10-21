@@ -41,9 +41,9 @@
     <string name="intro_voice_title">কথা বলে মিটিয়ে নিন</string>
     <string name="intro_voice_body">স্ক্রিন শেয়ারসহ ভয়েস ও ভিডিও কল, আর ভয়েস রুম যেখানে আপনার দল যেকোনো সময় যোগ দিতে পারে।</string>
     <string name="intro_apps_title">আপনার টুল সঙ্গে আনুন</string>
-    <string name="intro_apps_body">Figma, GitHub, GitLab ও আরও অনেক কিছু আপনার ওয়ার্কস্পেসে যুক্ত করুন, অনুমতি আপনার অ্যাডমিনদের হাতে।</string>
+    <string name="intro_apps_body">Figma, GitHub, GitLab ও আরও অনেক কিছু আপনার কমিউনিটিতে যুক্ত করুন, অনুমতি আপনার অ্যাডমিনদের হাতে।</string>
     <string name="intro_people_title">মানুষ ও এইচআর</string>
-    <string name="intro_people_body">টিম ডিরেক্টরি, উপস্থিতি, শিফট ও ছুটি শীঘ্রই Meldiq ওয়ার্কস্পেসে আসছে, ভূমিকা অনুযায়ী অ্যাক্সেসসহ।</string>
+    <string name="intro_people_body">টিম ডিরেক্টরি, উপস্থিতি, শিফট ও ছুটি শীঘ্রই Meldiq কমিউনিটিতে আসছে, ভূমিকা অনুযায়ী অ্যাক্সেসসহ।</string>
     <string name="settings_intro">পরিচিতি</string>
     <string name="settings_intro_sub">স্বাগত পৃষ্ঠাগুলো আবার দেখুন</string>
     <string name="recover_q">ইমেইলে আর ঢুকতে পারছেন না?</string>

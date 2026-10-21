@@ -60,6 +60,10 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val rootMessage = (threadRoot?.let { c.messages.observeMessage(it) } ?: flowOf(null)).stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val threadCounts = c.messages.observeThreadCounts(conversationId).map { l -> l.associate { it.root to it.n } }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+    /** Forum channels: each post's replies (count and newest time), for the post list. */
+    val forumReplies = c.messages.observeThreadCounts(conversationId)
+        .map { l -> l.associate { it.root to com.meldiq.android.data.model.ForumRules.Replies(it.n, it.lastTs) } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     init {
         // An open thread is seen up to its newest message, including replies that arrive while it's open (Activity).
@@ -379,6 +383,14 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     }
 
     /** A contact card, a one-time location or an animated emoji, with the reply target chosen now. */
+    /** A forum post: its title travels inside the encrypted message; the text starts with it for apps without forums. */
+    fun sendForumPost(title: String, body: String) = viewModelScope.launch {
+        val clean = com.meldiq.android.data.model.ForumRules.cleanTitle(title) ?: return@launch
+        runCatching {
+            c.messages.sendText(conversationId, com.meldiq.android.data.model.ForumRules.text(clean, body), rich = com.meldiq.android.data.model.RichContent(title = clean))
+        }.onSuccess { c.analytics.track("message.sent", mapOf("surface" to "channel")) }.onFailure { error.value = it.friendly() }
+    }
+
     fun sendRich(rich: com.meldiq.android.data.model.RichContent) = viewModelScope.launch {
         val replyId = replyTo.value?.id
         runCatching { c.messages.sendText(conversationId, "", replyTo = replyId, threadRoot = threadRoot, rich = rich) }
@@ -426,16 +438,6 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
         }
     }
 
-    /**
-     * A link to an item in a connected app (docs/INTEGRATIONS.md › Sharing): its name and link as text, with the
-     * provider's metadata as a link card, all inside the end-to-end encrypted message. The item itself stays put.
-     */
-    fun sendLink(text: String, card: com.meldiq.android.data.model.LinkPreview?) = viewModelScope.launch {
-        val replyId = replyTo.value?.id
-        runCatching { c.messages.sendText(conversationId, text, replyTo = replyId, threadRoot = threadRoot, rich = card?.let { com.meldiq.android.data.model.RichContent(link = it) }) }
-            .onSuccess { replyTo.value = ReplyTarget.afterSend(replyTo.value, replyId, success = true) }
-            .onFailure { error.value = it.friendly() }
-    }
 
     /**
      * Downloads received photos (up to 10 MB each) among [recent] in the background, when Settings › Chats allows it

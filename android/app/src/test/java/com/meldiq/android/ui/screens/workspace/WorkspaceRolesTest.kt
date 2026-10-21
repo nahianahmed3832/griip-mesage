@@ -1,13 +1,11 @@
 package com.meldiq.android.ui.screens.workspace
 
-import com.meldiq.android.data.api.BranchDto
 import com.meldiq.android.data.api.ConversationDto
 import com.meldiq.android.data.api.InviteDto
 import com.meldiq.android.data.api.OrgDetailRes
 import com.meldiq.android.data.api.OrgDto
 import com.meldiq.android.data.api.OrgPermissions
 import com.meldiq.android.data.api.OrgStats
-import com.meldiq.android.data.api.TeamDto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -69,21 +67,6 @@ class WorkspaceRolesTest {
     }
 
     @Test
-    fun `team leads edit their team but only admins and branch managers archive it`() {
-        val team = TeamDto("t1", "Support", branchId = "b1", canManage = true, myRole = "LEAD")
-        val asLead = detail("MEMBER", branches = listOf(BranchDto("b1", "Dhaka", myRole = "MEMBER", canManage = false)))
-        val asManager = detail("MEMBER", branches = listOf(BranchDto("b1", "Dhaka", myRole = "MANAGER", canManage = true)))
-        val asAdmin = detail("ADMIN", canManageOrg = true)
-        assertTrue(ScopeAdmin.canEditTeam(team))
-        assertFalse(ScopeAdmin.canArchiveTeam(asLead, team))
-        assertTrue(ScopeAdmin.canArchiveTeam(asManager, team))
-        assertTrue(ScopeAdmin.canArchiveTeam(asAdmin, team))
-        assertFalse(ScopeAdmin.canArchiveTeam(asManager, team.copy(branchId = null, crossBranch = true)))
-        assertFalse(ScopeAdmin.canArchiveBranch(asManager))
-        assertTrue(ScopeAdmin.canArchiveBranch(asAdmin))
-    }
-
-    @Test
     fun `invites have one state from the server, or worked out the same way`() {
         val now = 1_000_000L
         val base = InviteDto("i", role = "MEMBER", maxUses = 2, uses = 0, expiresAt = now + 10)
@@ -116,9 +99,8 @@ class WorkspaceRolesTest {
         myRole: String,
         canLeave: Boolean? = null,
         canManageOrg: Boolean = false,
-        branches: List<BranchDto> = emptyList(),
     ) = OrgDetailRes(
-        OrgDto("o1", "Acme", myRole = myRole), branches, emptyList(), emptyList(), OrgStats(),
+        OrgDto("o1", "Acme", myRole = myRole), OrgStats(),
         OrgPermissions(canManageOrg = canManageOrg, canLeave = canLeave),
     )
 }

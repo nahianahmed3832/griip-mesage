@@ -57,8 +57,9 @@ fun LazyListScope.voiceRoomsSection(
     items(rooms, key = { "voice-" + it.id }) { room -> VoiceRoomRow(room, roomPeople(room), users, { onOpen(room) }, { onJoin(room) }) }
 }
 
+/** A voice channel in its category: who is in it now and Join (opening the row opens its chat). */
 @Composable
-private fun VoiceRoomRow(room: ConversationEntity, people: List<String>, users: Map<String, UserEntity>, onOpen: () -> Unit, onJoin: () -> Unit) {
+internal fun VoiceRoomRow(room: ConversationEntity, people: List<String>, users: Map<String, UserEntity>, onOpen: () -> Unit, onJoin: () -> Unit) {
     val c = Griip.colors
     val live = people.isNotEmpty()
     Row(

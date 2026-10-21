@@ -90,7 +90,7 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :cid AND threadRootId = :root ORDER BY sortTs ASC")
     fun observeThread(cid: String, root: String): Flow<List<MessageEntity>>
 
-    @Query("SELECT threadRootId AS root, COUNT(*) AS n FROM messages WHERE conversationId = :cid AND threadRootId IS NOT NULL AND deleted = 0 GROUP BY threadRootId")
+    @Query("SELECT threadRootId AS root, COUNT(*) AS n, MAX(sortTs) AS lastTs FROM messages WHERE conversationId = :cid AND threadRootId IS NOT NULL AND deleted = 0 GROUP BY threadRootId")
     fun observeThreadCounts(cid: String): Flow<List<ThreadCount>>
 
     @Query("SELECT * FROM messages WHERE conversationId = :cid AND pinned = 1 AND deleted = 0 ORDER BY sortTs DESC")
@@ -184,7 +184,8 @@ interface MessageDao {
     suspend fun latestVisible(cid: String): MessageEntity?
 }
 
-data class ThreadCount(val root: String, val n: Int)
+/** A thread's replies on this phone: how many, and when the newest was sent (forum posts sort by it). */
+data class ThreadCount(val root: String, val n: Int, val lastTs: Long = 0)
 
 @Dao
 interface OutboxDao {
@@ -368,7 +369,7 @@ abstract class GriipDatabase : RoomDatabase() {
          * Schema version. Raising it needs a matching step in [Migrations] and the exported schema
          * committed under `app/schemas` (docs/DECISIONS.md D-13); `MigrationsTest` enforces both.
          */
-        const val VERSION = 8
+        const val VERSION = 9
 
         /**
          * The database file is encrypted with SQLCipher (AES-256) using a random passphrase that is

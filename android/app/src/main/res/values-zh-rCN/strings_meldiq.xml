@@ -55,7 +55,7 @@
     <string name="start_title">开始使用 Meldiq</string>
     <string name="start_progress">已完成 %1$d/%2$d</string>
     <string name="start_profile">添加你的名字和照片</string>
-    <string name="start_workspace">创建或加入工作区</string>
+    <string name="start_workspace">创建或加入社区</string>
     <string name="start_invite">邀请你的同事</string>
     <string name="start_apps">连接你常用的工具</string>
     <string name="start_notifications">开启通知</string>

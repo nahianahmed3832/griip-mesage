@@ -11,7 +11,7 @@
     <string name="m2_kind_team_sub">一起工作的同事：分部、团队和管理工具</string>
     <string name="m2_kind_community">社区</string>
     <string name="m2_kind_community_sub">有共同兴趣的人：频道、语音房间和开放邀请</string>
-    <string name="m2_kind_setting">工作区类型</string>
+    <string name="m2_kind_setting">社区类型</string>
     <string name="m2_kind_setting_sub">只改变 Meldiq 优先显示的内容，不会增加或删除任何东西。</string>
     <string name="m2_kind_owner_only">只有所有者可以修改。</string>
     <string name="m2_rail_switch">切换到 %1$s</string>

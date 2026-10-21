@@ -6,33 +6,32 @@ import com.meldiq.android.data.api.ApiClient
 import com.meldiq.android.data.api.ChannelRes
 import com.meldiq.android.data.api.ChannelsRes
 import com.meldiq.android.data.api.CodeReq
-import com.meldiq.android.data.api.CreateBranchReq
 import com.meldiq.android.data.api.CreateChannelReq
-import com.meldiq.android.data.api.CreateDepartmentReq
 import com.meldiq.android.data.api.CreateOrgReq
-import com.meldiq.android.data.api.CreateTeamReq
 import com.meldiq.android.data.api.GriipJson
 import com.meldiq.android.data.api.InvitePreviewRes
 import com.meldiq.android.data.api.InviteReq
 import com.meldiq.android.data.api.InviteRes
 import com.meldiq.android.data.api.InvitesRes
-import com.meldiq.android.data.api.MoveReq
 import com.meldiq.android.data.api.OkRes
 import com.meldiq.android.data.api.OrgDetailRes
 import com.meldiq.android.data.api.OrgRes
 import com.meldiq.android.data.api.OrgRoleReq
 import com.meldiq.android.data.api.OrgsRes
-import com.meldiq.android.data.api.PatchScopeReq
-import com.meldiq.android.data.api.RoleReq
-import com.meldiq.android.data.api.TeamDepartmentReq
-import com.meldiq.android.data.api.UpdateDepartmentReq
 import com.meldiq.android.data.api.UsersRes
-import com.meldiq.android.data.api.ArchiveReq
-import com.meldiq.android.data.api.ArchivedRes
-import com.meldiq.android.data.api.UpdateBranchReq
 import com.meldiq.android.data.api.UpdateOrgReq
-import com.meldiq.android.data.api.UpdateTeamReq
 import com.meldiq.android.data.api.OrgTitleReq
+import com.meldiq.android.data.api.BanReq
+import com.meldiq.android.data.api.BansRes
+import com.meldiq.android.data.api.CategoryRes
+import com.meldiq.android.data.api.CommunityPreviewRes
+import com.meldiq.android.data.api.DiscoverRes
+import com.meldiq.android.data.api.JoinCommunityRes
+import com.meldiq.android.data.api.LayoutReq
+import com.meldiq.android.data.api.LayoutRes
+import com.meldiq.android.data.api.NameReq
+import com.meldiq.android.data.api.OverwriteReq
+import com.meldiq.android.data.api.OverwritesRes
 import com.meldiq.android.data.db.GriipDatabase
 import com.meldiq.android.data.db.KvEntity
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,7 +39,11 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.coroutines.flow.StateFlow
 
-/** Organisation hierarchy operations. Every call is authorised server-side; UI hides what the user can't do. */
+/**
+ * Communities (the server's "orgs"): membership, invitations, categories, channel layout and permissions, discovery
+ * and bans (docs/COMMUNITY_REBUILD_2026-10-21.md). Every call is authorised server-side; the UI hides what the person
+ * can't do.
+ */
 class OrgRepository(
     private val api: ApiClient,
     private val db: GriipDatabase,
@@ -49,19 +52,14 @@ class OrgRepository(
 ) {
     private val _selectedOrg = MutableStateFlow<String?>(null)
     val selectedOrg: StateFlow<String?> = _selectedOrg
-    private val _selectedBranch = MutableStateFlow<String?>(null)
-    val selectedBranch: StateFlow<String?> = _selectedBranch
 
     suspend fun loadSelection() {
-        _selectedOrg.value = db.kv().get("org")
-        _selectedBranch.value = db.kv().get("branch")
+        _selectedOrg.value = db.kv().get("org")?.takeIf { it.isNotEmpty() }
     }
 
-    suspend fun select(orgId: String?, branchId: String? = null) {
+    suspend fun select(orgId: String?) {
         _selectedOrg.value = orgId
-        _selectedBranch.value = branchId
         db.kv().put(KvEntity("org", orgId ?: ""))
-        db.kv().put(KvEntity("branch", branchId ?: ""))
     }
 
     suspend fun orgs() = api.get<OrgsRes>("/v1/orgs").orgs.also { list ->
@@ -94,18 +92,19 @@ class OrgRepository(
     suspend fun cachedDetail(orgId: String): OrgDetailRes? =
         db.kv().get("cache.org.$orgId")?.let { runCatching { GriipJson.decodeFromString(OrgDetailRes.serializer(), it) }.getOrNull() }
 
-    /** [kind]: [com.meldiq.android.data.api.OrgKind]; null asks for a team (and works with servers before communities). */
-    suspend fun create(name: String, description: String?, requestId: String? = null, kind: String? = null) =
-        api.post<CreateOrgReq, OrgRes>("/v1/orgs", CreateOrgReq(name, description, requestId, kind?.takeIf { it != com.meldiq.android.data.api.OrgKind.TEAM })).org
-    /** Team or community (owners only; the server checks). */
-    suspend fun updateKind(orgId: String, kind: String) =
-        api.patch<com.meldiq.android.data.api.UpdateOrgKindReq, OrgRes>("/v1/orgs/$orgId", com.meldiq.android.data.api.UpdateOrgKindReq(kind)).org.also { runCatching { orgs() } }
-    /** Name and description (owners and admins; the server checks). A blank description clears it. */
-    suspend fun updateOrg(orgId: String, name: String, description: String?) =
-        api.patch<UpdateOrgReq, OrgRes>("/v1/orgs/$orgId", UpdateOrgReq(name.trim(), jsonOrNull(description))).org.also { runCatching { orgs() } }
+    suspend fun create(name: String, description: String?, requestId: String? = null, visibility: String? = null, joinPolicy: String? = null) =
+        api.post<CreateOrgReq, OrgRes>("/v1/orgs", CreateOrgReq(name, description, requestId, visibility, joinPolicy)).org
+    /**
+     * Name, description and rules (owners and admins), visibility and joining (owners only; the server checks). A blank
+     * description or rules clears it.
+     */
+    suspend fun updateOrg(orgId: String, name: String, description: String?, rules: String? = null, visibility: String? = null, joinPolicy: String? = null) =
+        api.patch<UpdateOrgReq, OrgRes>(
+            "/v1/orgs/$orgId", UpdateOrgReq(name.trim(), jsonOrNull(description), rules?.let { jsonOrNull(it) }, visibility, joinPolicy),
+        ).org.also { runCatching { orgs() } }
 
     /**
-     * Leaves the organization: the server removes [myUserId]'s branch, team and channel memberships (the last owner is
+     * Leaves the community: the server removes [myUserId]'s roles and channel memberships (the last owner is
      * refused with 409). Afterwards its channels show as left on this phone and another workspace is selected.
      */
     suspend fun leave(orgId: String, myUserId: String) {
@@ -123,54 +122,20 @@ class OrgRepository(
         runCatching { orgs() }
     }
 
-    suspend fun editBranch(id: String, name: String, description: String?, location: String?) =
-        api.patch<UpdateBranchReq, OkRes>("/v1/branches/$id", UpdateBranchReq(name.trim(), jsonOrNull(description), jsonOrNull(location)))
-    suspend fun setBranchArchived(id: String, archived: Boolean) = api.patch<ArchiveReq, OkRes>("/v1/branches/$id", ArchiveReq(archived))
-    suspend fun editTeam(id: String, name: String, description: String?) =
-        api.patch<UpdateTeamReq, OkRes>("/v1/teams/$id", UpdateTeamReq(name.trim(), jsonOrNull(description)))
-    suspend fun setTeamArchived(id: String, archived: Boolean) = api.patch<ArchiveReq, OkRes>("/v1/teams/$id", ArchiveReq(archived))
-    /** Archived branches and teams the caller may restore (servers with `workspace-admin`). */
-    suspend fun archived(orgId: String) = api.get<ArchivedRes>("/v1/orgs/$orgId/archived")
-
     /** A trimmed value, or JSON null to clear the field when it's blank. */
     private fun jsonOrNull(v: String?): kotlinx.serialization.json.JsonElement = v?.trim()?.takeIf { it.isNotEmpty() }?.let { JsonPrimitive(it) } ?: JsonNull
 
-    suspend fun createBranch(orgId: String, name: String, location: String?) =
-        api.post<CreateBranchReq, kotlinx.serialization.json.JsonObject>("/v1/orgs/$orgId/branches", CreateBranchReq(name, null, location))
-    suspend fun updateBranch(id: String, name: String?, description: String?, archived: Boolean? = null) =
-        api.patch<PatchScopeReq, OkRes>("/v1/branches/$id", PatchScopeReq(name, description, archived))
-    suspend fun createDepartment(branchId: String, name: String) =
-        api.post<CreateDepartmentReq, kotlinx.serialization.json.JsonObject>("/v1/branches/$branchId/departments", CreateDepartmentReq(name))
-    suspend fun createTeam(orgId: String, name: String, description: String?, branchId: String?, departmentId: String?) =
-        api.post<CreateTeamReq, kotlinx.serialization.json.JsonObject>("/v1/orgs/$orgId/teams", CreateTeamReq(name, description, branchId, departmentId))
-    suspend fun updateDepartment(id: String, name: String, description: String?) =
-        api.patch<UpdateDepartmentReq, OkRes>("/v1/departments/$id", UpdateDepartmentReq(name, description?.let { JsonPrimitive(it) } ?: JsonNull))
-    /** Its teams stay in the branch, ungrouped (D-15). */
-    suspend fun deleteDepartment(id: String) = api.delete<OkRes>("/v1/departments/$id")
-    /** Puts a team in one of its branch's departments, or in none ([departmentId] null). */
-    suspend fun setTeamDepartment(teamId: String, departmentId: String?) =
-        api.patch<TeamDepartmentReq, OkRes>("/v1/teams/$teamId", TeamDepartmentReq(departmentId?.let { JsonPrimitive(it) } ?: JsonNull))
-    suspend fun updateTeam(id: String, name: String?, description: String?, archived: Boolean? = null) =
-        api.patch<PatchScopeReq, OkRes>("/v1/teams/$id", PatchScopeReq(name, description, archived))
-
     suspend fun members(orgId: String, q: String = "") =
         api.get<UsersRes>("/v1/orgs/$orgId/members" + if (q.isNotBlank()) "?q=${java.net.URLEncoder.encode(q, "UTF-8")}" else "").members.also { it.forEach { u -> users.remember(u) } }
-    suspend fun teamMembers(teamId: String) = api.get<UsersRes>("/v1/teams/$teamId/members").members
-    suspend fun branchMembers(branchId: String) = api.get<UsersRes>("/v1/branches/$branchId/members").members
 
     suspend fun setOrgRole(orgId: String, userId: String, role: String) = api.patch<OrgRoleReq, OkRes>("/v1/orgs/$orgId/members/$userId", OrgRoleReq(role = role))
     suspend fun removeFromOrg(orgId: String, userId: String) = api.delete<OkRes>("/v1/orgs/$orgId/members/$userId")
     /** A member's job title; blank clears it. */
     suspend fun setOrgTitle(orgId: String, userId: String, title: String) =
         api.patch<OrgTitleReq, OkRes>("/v1/orgs/$orgId/members/$userId", OrgTitleReq(jsonOrNull(title)))
-    suspend fun setBranchMember(branchId: String, userId: String, role: String?) =
-        if (role == null) api.delete<OkRes>("/v1/branches/$branchId/members/$userId") else api.put<RoleReq, OkRes>("/v1/branches/$branchId/members/$userId", RoleReq(role))
-    suspend fun setTeamMember(teamId: String, userId: String, role: String?) =
-        if (role == null) api.delete<OkRes>("/v1/teams/$teamId/members/$userId") else api.put<RoleReq, OkRes>("/v1/teams/$teamId/members/$userId", RoleReq(role))
-    suspend fun moveMember(fromTeam: String, userId: String, toTeam: String) = api.post<MoveReq, OkRes>("/v1/teams/$fromTeam/members/$userId/move", MoveReq(toTeam))
-
-    suspend fun createInvite(orgId: String, role: String, branchId: String?, teamId: String?, maxUses: Int, hours: Int, guestDays: Int? = null) =
-        api.post<InviteReq, InviteRes>("/v1/orgs/$orgId/invites", InviteReq(role, branchId, teamId, maxUses, hours, guestDays.takeIf { role == "GUEST" })).invite
+    /** [roleId]: a custom role the invitation gives on joining (not for guests). */
+    suspend fun createInvite(orgId: String, role: String, maxUses: Int, hours: Int, guestDays: Int? = null, roleId: String? = null) =
+        api.post<InviteReq, InviteRes>("/v1/orgs/$orgId/invites", InviteReq(role, maxUses, hours, guestDays.takeIf { role == "GUEST" }, roleId.takeIf { role != "GUEST" })).invite
     /** Round 7 (docs/WORKSPACE_C5.md): a guest's end date, null for none. */
     suspend fun setGuestExpiry(orgId: String, userId: String, expiresAt: Long?) =
         api.put<com.meldiq.android.data.api.GuestExpiryReq, kotlinx.serialization.json.JsonObject>("/v1/orgs/$orgId/members/$userId/expiry", com.meldiq.android.data.api.GuestExpiryReq(expiresAt))
@@ -185,4 +150,31 @@ class OrgRepository(
         api.post<CreateChannelReq, ChannelRes>("/v1/orgs/$orgId/channels", req).channel.also { conversations.upsertFromServer(it) }
 
     suspend fun activity(orgId: String) = api.get<ActivityRes>("/v1/orgs/$orgId/activity").activity
+
+    // ───────── Categories, layout and channel permissions ─────────
+    suspend fun createCategory(orgId: String, name: String) =
+        api.post<NameReq, CategoryRes>("/v1/orgs/$orgId/categories", NameReq(name.trim())).category
+    suspend fun renameCategory(id: String, name: String) = api.patch<NameReq, CategoryRes>("/v1/categories/$id", NameReq(name.trim())).category
+    /** Refused (409) while the category's permissions decide who sees channels still in it. */
+    suspend fun deleteCategory(id: String) = api.delete<OkRes>("/v1/categories/$id")
+    /** Category order (the listed ones first) and channels' category and position, in one write. */
+    suspend fun saveLayout(orgId: String, req: LayoutReq) = api.put<LayoutReq, LayoutRes>("/v1/orgs/$orgId/layout", req).also { runCatching { conversations.refresh() } }
+    suspend fun categoryOverwrites(id: String) = api.get<OverwritesRes>("/v1/categories/$id/overwrites")
+    suspend fun channelOverwrites(id: String) = api.get<OverwritesRes>("/v1/conversations/$id/overwrites")
+    /** Empty [allow] and [deny] remove the overwrite. Access may change for many people: their channels are refreshed. */
+    suspend fun setOverwrite(category: Boolean, id: String, req: OverwriteReq): OverwritesRes =
+        api.put<OverwriteReq, OverwritesRes>(if (category) "/v1/categories/$id/overwrites" else "/v1/conversations/$id/overwrites", req)
+            .also { runCatching { conversations.refresh() } }
+
+    // ───────── Discovery, joining and moderation ─────────
+    suspend fun discover(q: String, cursor: Int = 0) =
+        api.get<DiscoverRes>("/v1/communities/discover?cursor=$cursor" + if (q.isNotBlank()) "&q=${java.net.URLEncoder.encode(q.trim(), "UTF-8")}" else "")
+    suspend fun preview(id: String) = api.get<CommunityPreviewRes>("/v1/communities/$id/preview")
+    suspend fun join(id: String) =
+        api.post<JoinCommunityRes>("/v1/communities/$id/join")
+            .also { runCatching { orgs() }; runCatching { conversations.refresh() } }
+    suspend fun bans(orgId: String) = api.get<BansRes>("/v1/orgs/$orgId/bans").bans
+    suspend fun ban(orgId: String, userId: String, reason: String?) =
+        api.post<BanReq, OkRes>("/v1/orgs/$orgId/bans", BanReq(userId, reason?.trim()?.takeIf { it.isNotEmpty() }))
+    suspend fun unban(orgId: String, userId: String) = api.delete<OkRes>("/v1/orgs/$orgId/bans/$userId")
 }

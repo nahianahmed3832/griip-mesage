@@ -1,10 +1,13 @@
 package com.meldiq.android.ui.screens.home
 
 import androidx.compose.runtime.Immutable
+import com.meldiq.android.data.api.CategoryDto
 import com.meldiq.android.data.api.NavSectionDto
 import com.meldiq.android.data.api.OrgDto
 import com.meldiq.android.data.db.CallLogEntity
 import com.meldiq.android.data.db.ConversationEntity
+import com.meldiq.android.data.model.ChannelRef
+import com.meldiq.android.data.model.ChannelTree
 import com.meldiq.android.ui.screens.calls.CallLogText
 import com.meldiq.android.ui.screens.chats.ChatListRules
 
@@ -21,14 +24,14 @@ data class CustomSection(
     val unread: Int get() = items.count { it.unreadCount > 0 }
 }
 
-/** A collapsible group of channels on the Home tab: one organisation, branch or team and its channels you've joined. */
+/** A collapsible group of channels on the Home tab: one category (or the uncategorised channels) and its channels. */
 @Immutable
 data class ChannelGroup(
-    /** Stable across refreshes: the scope and its id ("TEAM:t1"); also the key that remembers it collapsed. */
+    /** Stable across refreshes: "category:<id>" or "category:none"; also the key that remembers it collapsed. */
     val key: String,
     val title: String,
-    /** ORG, BRANCH or TEAM, as the server scopes the channel (null on old data). */
-    val scope: String?,
+    /** The category, null for the community's uncategorised channels. */
+    val categoryId: String?,
     val channels: List<ConversationEntity>,
 ) {
     val unreadChannels: Int get() = channels.count { it.unreadCount > 0 }
@@ -73,8 +76,6 @@ object WorkspaceHomeRules {
     const val MISSED_CALLS_ACTIVITY_WINDOW_MS = 7L * 24 * 60 * 60 * 1000
     const val MISSED_CALLS_SHOWN = 20
 
-    private val scopeOrder = mapOf("ORG" to 0, "BRANCH" to 1, "TEAM" to 2)
-
     /** Direct messages and personal groups: the DMs tab and the Unread DMs section. */
     fun isPeople(c: ConversationEntity) = ChatListRules.isPeople(c)
 
@@ -100,29 +101,24 @@ object WorkspaceHomeRules {
     fun allMentions(convs: List<ConversationEntity>): List<ConversationEntity> = convs.filter { !it.removed && it.mentionCount > 0 }
 
     /**
-     * The selected workspace's joined channels, grouped by where they live (the organisation, a branch, a team), groups
-     * in that order then by name, channels by name. [unreadOnly]: only channels with unread messages, and only groups
-     * that still have one.
+     * The selected community's joined channels, grouped by category in the community's order (uncategorised first), each
+     * category's channels in their order; text, forum, announcement and voice channels together, as Discord lists
+     * them. [categories] comes from the community's detail (null or empty while it loads: the category names the
+     * channels carry are used). [unreadOnly]: only channels with unread messages, and only groups that still have one.
+     * [placed]: starred or in a custom section, shown there instead of twice. [uncategorisedTitle]: the first group's name.
      */
     fun channelGroups(
         convs: List<ConversationEntity>,
         orgId: String?,
-        orgName: String,
+        uncategorisedTitle: String,
         unreadOnly: Boolean = false,
         placed: Set<String> = emptySet(),
+        categories: List<CategoryDto> = emptyList(),
     ): List<ChannelGroup> {
         if (orgId == null) return emptyList()
-        return convs.asSequence()
-            // A channel that's starred or in a custom section shows there instead of twice; voice rooms have their own
-            // section (with who is in them), so they aren't listed here as well.
-            .filter { it.type == "CHANNEL" && !it.voice && it.orgId == orgId && it.joined && listed(it) && it.id !in placed && (!unreadOnly || it.unreadCount > 0) }
-            .groupBy { "${it.scope ?: "ORG"}:${it.scopeId ?: orgId}" }
-            .map { (key, channels) ->
-                val first = channels.first()
-                val title = first.scopeName?.takeIf { it.isNotBlank() } ?: orgName
-                ChannelGroup(key, title, first.scope, channels.sortedWith(compareBy({ it.name.orEmpty().lowercase() }, { it.id })))
-            }
-            .sortedWith(compareBy({ scopeOrder[it.scope] ?: scopeOrder.size }, { it.title.lowercase() }, { it.key }))
+        val listedChannels = convs.filter { it.type == "CHANNEL" && it.orgId == orgId && it.joined && listed(it) && it.id !in placed && (!unreadOnly || it.unreadCount > 0) }
+        return ChannelTree.sections(listedChannels, categories, ref = { ChannelRef(it.id, it.name.orEmpty(), it.categoryId, it.position) }, categoryName = { it.categoryName })
+            .map { ChannelGroup(it.key, it.title ?: uncategorisedTitle, it.categoryId, it.channels) }
     }
 
     /**

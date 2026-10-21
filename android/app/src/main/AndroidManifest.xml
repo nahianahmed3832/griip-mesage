@@ -64,14 +64,6 @@
                 <data android:scheme="meldiq" android:host="invite" />
                 <data android:scheme="griip" android:host="invite" />
             </intent-filter>
-            <!-- The browser comes back here after an app sign-in (docs/INTEGRATIONS.md): a flow id and a one-time finish
-                 code, never a token. Meldiq's own scheme only, so another app (Orbit) can't be the one it reaches. -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="meldiq" android:host="integrations" />
-            </intent-filter>
         </activity>
 
         <!-- Keeps media capture alive while a call runs in the background. -->

@@ -61,7 +61,7 @@ fun channelModeLabel(kind: String?): String = when (kind) {
     else -> stringResource(R.string.ch_mode_public)
 }
 
-/** Who can see, join and post in a channel of this mode, for [scopeName] (the workspace, branch or team). */
+/** Who can see, join and post in a channel of this mode, for [scopeName] (the community). */
 @Composable
 fun channelModeDescription(kind: String?, scopeName: String): String = when (kind) {
     ChannelAccess.PRIVATE -> stringResource(R.string.ch_mode_private_desc)
@@ -69,15 +69,12 @@ fun channelModeDescription(kind: String?, scopeName: String): String = when (kin
     else -> stringResource(R.string.ch_mode_public_desc, scopeName)
 }
 
-/** Where a channel lives: the whole workspace, a branch or a team. */
+/** Where a channel lives: its category, or the community itself. */
 @Composable
 private fun scopeLine(cv: ConversationEntity): String? {
+    cv.categoryName?.takeIf { it.isNotBlank() }?.let { return stringResource(R.string.ch_in_category, it) }
     val name = cv.scopeName?.takeIf { it.isNotBlank() } ?: return null
-    return when (cv.scope) {
-        "BRANCH" -> stringResource(R.string.ch_scope_branch, name)
-        "TEAM" -> stringResource(R.string.ch_scope_team, name)
-        else -> stringResource(R.string.ch_scope_org, name)
-    }
+    return stringResource(R.string.ch_scope_org, name)
 }
 
 /** About: the topic, where the channel lives and whether you can post. */

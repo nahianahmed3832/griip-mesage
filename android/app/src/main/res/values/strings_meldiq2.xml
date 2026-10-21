@@ -11,7 +11,7 @@
     <string name="m2_kind_team_sub">Colleagues working together: branches, teams and admin tools</string>
     <string name="m2_kind_community">Community</string>
     <string name="m2_kind_community_sub">People with a shared interest: channels, voice rooms and open invitations</string>
-    <string name="m2_kind_setting">Kind of workspace</string>
+    <string name="m2_kind_setting">Kind of community</string>
     <string name="m2_kind_setting_sub">Changes what Meldiq shows first. Nothing is added or removed.</string>
     <string name="m2_kind_owner_only">Only owners can change this.</string>
     <string name="m2_rail_switch">Switch to %1$s</string>

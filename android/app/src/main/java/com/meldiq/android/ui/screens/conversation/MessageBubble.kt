@@ -158,7 +158,7 @@ fun MessageBubble(
     onFindPhone: ((String) -> Unit)? = null,
     onOpenLink: (String) -> Unit = {},
     onVote: (List<String>) -> Unit = {},
-    /** Details of a connected app's link, looked up with the viewer's own access (docs/INTEGRATIONS.md › Previews). */
+    /** Extra details under a link, when the screen has any to show (none since apps were removed; kept as a slot). */
     linkDetails: (@Composable (String) -> Unit)? = null,
 ) {
     val m = b.m

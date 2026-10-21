@@ -73,7 +73,7 @@ fun DeleteWorkspaceSheet(d: OrgDetailRes, onDismiss: () -> Unit, onDeleted: (Str
     GlassSheet({ if (!busy) onDismiss() }, title = "Delete workspace") {
         Text(
             "Deleting “${d.org.name}” removes it for ${if (d.stats.members == 1) "its only member" else "all ${d.stats.members} members"}: " +
-                "its channels and their files on the server, its teams, branches and invitations. It can't be undone.",
+                "its channels and their files on the server, its categories, roles and invitations. It can't be undone.",
             style = Griip.type.body, color = c.textPrimary,
         )
         Spacer(Modifier.height(8.dp))

@@ -36,6 +36,11 @@ data class Payload(
     /** A "vote" control: the chosen option ids of the poll in [target] (empty takes the vote back). */
     val choices: List<String>? = null,
     val sticker: StickerRef? = null,
+    /**
+     * A forum post's title (communities, 2026-10-21). [text] then starts with the title and a blank line, so apps
+     * without forums still show it; omitted on every other message.
+     */
+    val title: String? = null,
 )
 
 /**
@@ -87,6 +92,8 @@ data class RichContent(
     /** The poll's creator closed it: no more votes. */
     val pollClosed: Boolean? = null,
     val sticker: StickerRef? = null,
+    /** A forum post's title; the post's text still starts with it ([ForumRules.body] strips it for display). */
+    val title: String? = null,
 ) {
     /** Replaces the text (a card, a poll, a sticker or an animated emoji) rather than accompanying it (a link preview). */
     val structured: Boolean get() = contact != null || location != null || animoji != null || poll != null || sticker != null

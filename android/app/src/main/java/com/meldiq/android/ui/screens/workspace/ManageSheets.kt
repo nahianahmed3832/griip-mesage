@@ -1,16 +1,19 @@
 package com.meldiq.android.ui.screens.workspace
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Campaign
+import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Headset
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Tag
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -18,16 +21,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.meldiq.android.R
 import com.meldiq.android.data.api.CreateChannelReq
-import com.meldiq.android.data.api.DepartmentDto
 import com.meldiq.android.data.api.OrgDetailRes
+import com.meldiq.android.data.model.ChannelType
+import com.meldiq.android.data.model.ChannelTypes
 import com.meldiq.android.ui.LocalContainer
 import com.meldiq.android.ui.components.BannerKind
-import com.meldiq.android.ui.components.ButtonTone
-import com.meldiq.android.ui.components.ConfirmDialog
 import com.meldiq.android.ui.components.ChipRow
 import com.meldiq.android.ui.components.GlassSheet
 import com.meldiq.android.ui.components.GriipTextField
@@ -39,208 +43,84 @@ import com.meldiq.android.ui.theme.Griip
 import kotlinx.coroutines.launch
 
 @Composable
-private fun Label(text: String) {
+internal fun Label(text: String) {
     Text(text, style = Griip.type.label, color = Griip.colors.textSecondary)
     Spacer(Modifier.height(6.dp))
 }
 
+/**
+ * A new channel: its type (text, announcements, forum, voice), whether it's private, and its category. Only the
+ * categories this person may create channels in are offered ("No category" needs the community-wide power); the server
+ * checks again.
+ */
 @Composable
-fun CreateBranchSheet(d: OrgDetailRes, onDismiss: () -> Unit, onDone: () -> Unit) {
+fun CreateChannelSheet(d: OrgDetailRes, preselectCategory: String?, onDismiss: () -> Unit, onDone: (String) -> Unit) {
     val container = LocalContainer.current
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf("") }
-    var location by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    GlassSheet(onDismiss, title = "New branch in ${d.org.name}") {
-        GriipTextField(name, { name = it.take(80) }, "Branch name", placeholder = "Bangladesh", keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
-        Spacer(Modifier.height(12.dp))
-        GriipTextField(location, { location = it.take(80) }, "Location (optional)", placeholder = "Dhaka")
-        error?.let { Spacer(Modifier.height(10.dp)); StatusBanner(it, BannerKind.Error) }
-        Spacer(Modifier.height(16.dp))
-        PillButton("Create branch", {
-            busy = true
-            scope.launch {
-                runCatching { container.orgs.createBranch(d.org.id, name.trim(), location.trim().ifEmpty { null }) }
-                    .onSuccess { onDone(); onDismiss() }.onFailure { error = it.friendly() }
-                busy = false
-            }
-        }, Modifier.fillMaxWidth(), enabled = name.isNotBlank(), loading = busy, height = 50.dp)
-    }
-}
-
-@Composable
-fun CreateDepartmentSheet(d: OrgDetailRes, onDismiss: () -> Unit, onDone: () -> Unit) {
-    val container = LocalContainer.current
-    val scope = rememberCoroutineScope()
-    val branches = d.branches.filter { it.canManage }
-    var branch by remember { mutableStateOf(branches.firstOrNull()?.id) }
-    var name by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    GlassSheet(onDismiss, title = "New department") {
-        Label("Branch")
-        ChipRow { branches.forEach { b -> PillChip(b.name, branch == b.id, { branch = b.id }) } }
-        Spacer(Modifier.height(12.dp))
-        GriipTextField(name, { name = it.take(80) }, "Department name", placeholder = "Operations", keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
-        error?.let { Spacer(Modifier.height(10.dp)); StatusBanner(it, BannerKind.Error) }
-        Spacer(Modifier.height(16.dp))
-        PillButton("Create department", {
-            scope.launch {
-                runCatching { container.orgs.createDepartment(branch!!, name.trim()) }.onSuccess { onDone(); onDismiss() }.onFailure { error = it.friendly() }
-            }
-        }, Modifier.fillMaxWidth(), enabled = name.isNotBlank() && branch != null, height = 50.dp)
-    }
-}
-
-/** Rename a department, change its description, or delete it (Phase 16). Branch managers only; the server enforces it. */
-@Composable
-fun EditDepartmentSheet(d: OrgDetailRes, dept: DepartmentDto, onDismiss: () -> Unit, onDone: () -> Unit) {
-    val container = LocalContainer.current
-    val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf(dept.name) }
-    var desc by remember { mutableStateOf(dept.description.orEmpty()) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
-    val teams = d.teams.count { it.departmentId == dept.id }
-    fun run(block: suspend () -> Unit) {
-        busy = true; error = null
-        scope.launch {
-            runCatching { block() }.onSuccess { onDone(); onDismiss() }.onFailure { error = it.friendly() }
-            busy = false
-        }
-    }
-    GlassSheet(onDismiss, title = "Edit department") {
-        GriipTextField(name, { name = it.take(80) }, "Department name", keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
-        Spacer(Modifier.height(12.dp))
-        GriipTextField(desc, { desc = it.take(300) }, "Description (optional)", singleLine = false, minLines = 2)
-        error?.let { Spacer(Modifier.height(10.dp)); StatusBanner(it, BannerKind.Error) }
-        Spacer(Modifier.height(16.dp))
-        PillButton("Save", { run { container.orgs.updateDepartment(dept.id, name.trim(), desc.trim().ifEmpty { null }) } },
-            Modifier.fillMaxWidth(), enabled = name.isNotBlank() && !busy, loading = busy, height = 50.dp)
-        Spacer(Modifier.height(10.dp))
-        PillButton("Delete department", { confirmDelete = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, enabled = !busy, height = 50.dp)
-    }
-    if (confirmDelete) ConfirmDialog(
-        "Delete ${dept.name}?",
-        if (teams == 0) "It has no teams. Nobody loses access." else "Its $teams team${if (teams == 1) "" else "s"} stay in the branch, without a department. Nobody loses access.",
-        "Delete",
-        onConfirm = { confirmDelete = false; run { container.orgs.deleteDepartment(dept.id) } },
-        onDismiss = { confirmDelete = false },
-        destructive = true,
-    )
-}
-
-@Composable
-fun CreateTeamSheet(d: OrgDetailRes, preselectBranch: String?, onDismiss: () -> Unit, onDone: () -> Unit) {
-    val container = LocalContainer.current
-    val scope = rememberCoroutineScope()
-    val branches = d.branches.filter { it.canManage }
-    var branch by remember { mutableStateOf(preselectBranch?.takeIf { id -> branches.any { it.id == id } } ?: if (d.permissions.canManageOrg) null else branches.firstOrNull()?.id) }
-    var dept by remember { mutableStateOf<String?>(null) }
-    var name by remember { mutableStateOf("") }
-    var desc by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    GlassSheet(onDismiss, title = "New team") {
-        Label("Where")
-        ChipRow {
-            if (d.permissions.canManageOrg) PillChip("Cross-branch", branch == null, { branch = null; dept = null })
-            branches.forEach { b -> PillChip(b.name, branch == b.id, { branch = b.id; dept = null }) }
-        }
-        val depts = d.departments.filter { it.branchId == branch }
-        if (depts.isNotEmpty()) {
-            Spacer(Modifier.height(10.dp))
-            Label("Department (optional)")
-            ChipRow {
-                PillChip("None", dept == null, { dept = null })
-                depts.forEach { dp -> PillChip(dp.name, dept == dp.id, { dept = dp.id }) }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        GriipTextField(name, { name = it.take(80) }, "Team name", placeholder = "Customer Support", keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
-        Spacer(Modifier.height(12.dp))
-        GriipTextField(desc, { desc = it.take(300) }, "Description (optional)", singleLine = false, minLines = 2)
-        error?.let { Spacer(Modifier.height(10.dp)); StatusBanner(it, BannerKind.Error) }
-        Spacer(Modifier.height(16.dp))
-        PillButton("Create team", {
-            scope.launch {
-                runCatching { container.orgs.createTeam(d.org.id, name.trim(), desc.trim().ifEmpty { null }, branch, dept) }
-                    .onSuccess { onDone(); onDismiss() }.onFailure { error = it.friendly() }
-            }
-        }, Modifier.fillMaxWidth(), enabled = name.isNotBlank(), height = 50.dp)
-    }
-}
-
-@Composable
-fun CreateChannelSheet(d: OrgDetailRes, preselectBranch: String?, onDismiss: () -> Unit, onDone: (String) -> Unit) {
-    val container = LocalContainer.current
-    val scope = rememberCoroutineScope()
-    val branches = d.branches.filter { it.canManage }
-    val teams = d.teams.filter { it.canManage }
-    var scopeKind by remember { mutableStateOf(if (d.permissions.canManageOrg) "ORG" else if (branches.isNotEmpty()) "BRANCH" else "TEAM") }
-    var scopeId by remember { mutableStateOf(preselectBranch?.takeIf { id -> branches.any { it.id == id } } ?: branches.firstOrNull()?.id) }
-    var kind by remember { mutableStateOf("PUBLIC") }
-    var voice by remember { mutableStateOf(false) }
+    val communityWide = "channels.create" in d.permissions.effective || d.permissions.canManageOrg
+    val categories = d.categories.filter { it.canCreateChannels }
+    var categoryId by remember { mutableStateOf(preselectCategory?.takeIf { id -> categories.any { it.id == id } } ?: if (communityWide) null else categories.firstOrNull()?.id) }
+    var type by remember { mutableStateOf(ChannelType.TEXT) }
+    var private by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var topic by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    GlassSheet(onDismiss, title = "New channel") {
-        androidx.compose.foundation.layout.Column(Modifier.verticalScroll(rememberScrollState())) {
-            Label("Visible to")
+    GlassSheet(onDismiss, title = stringResource(R.string.cm_new_channel)) {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            Label(stringResource(R.string.ch_type))
             ChipRow {
-                if (d.permissions.canManageOrg) PillChip("Whole organization", scopeKind == "ORG", { scopeKind = "ORG"; scopeId = null })
-                if (branches.isNotEmpty()) PillChip("A branch", scopeKind == "BRANCH", { scopeKind = "BRANCH"; scopeId = branches.first().id })
-                if (teams.isNotEmpty()) PillChip("A team", scopeKind == "TEAM", { scopeKind = "TEAM"; scopeId = teams.first().id })
-            }
-            if (scopeKind == "BRANCH") {
-                Spacer(Modifier.height(8.dp))
-                ChipRow { branches.forEach { b -> PillChip(b.name, scopeId == b.id, { scopeId = b.id }) } }
-            }
-            if (scopeKind == "TEAM") {
-                Spacer(Modifier.height(8.dp))
-                ChipRow { teams.forEach { t -> PillChip(t.name, scopeId == t.id, { scopeId = t.id }) } }
-            }
-            Spacer(Modifier.height(12.dp))
-            // Round 6: a voice room is a channel people drop into for a call; nobody rings.
-            Label("Channel or voice room")
-            ChipRow {
-                PillChip("Text channel", !voice, { voice = false }, icon = Icons.Outlined.Tag)
-                PillChip("Voice room", voice, { voice = true; if (kind == "ANNOUNCEMENT") kind = "PUBLIC" }, icon = Icons.Outlined.Headset)
-            }
-            Spacer(Modifier.height(12.dp))
-            Label("Type")
-            ChipRow {
-                PillChip("Public", kind == "PUBLIC", { kind = "PUBLIC" }, icon = Icons.Outlined.Tag)
-                PillChip("Private", kind == "PRIVATE", { kind = "PRIVATE" }, icon = Icons.Outlined.Lock)
-                if (!voice) PillChip("Announcements", kind == "ANNOUNCEMENT", { kind = "ANNOUNCEMENT" }, icon = Icons.Outlined.Campaign)
+                PillChip(stringResource(R.string.ch_text), type == ChannelType.TEXT, { type = ChannelType.TEXT }, icon = Icons.Outlined.Tag)
+                PillChip(stringResource(R.string.ch_announcement), type == ChannelType.ANNOUNCEMENT, { type = ChannelType.ANNOUNCEMENT; private = false }, icon = Icons.Outlined.Campaign)
+                PillChip(stringResource(R.string.ch_forum), type == ChannelType.FORUM, { type = ChannelType.FORUM }, icon = Icons.Outlined.Forum)
+                PillChip(stringResource(R.string.ch_voice), type == ChannelType.VOICE, { type = ChannelType.VOICE }, icon = Icons.Outlined.Headset)
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                when {
-                    voice -> "Anyone in it can join its call at any time, without ringing anyone. Room managers can mute people and lower hands."
-                    else -> when (kind) {
-                    "PRIVATE" -> "Only people you add can see and read it — even admins aren't added automatically."
-                    "ANNOUNCEMENT" -> "Everyone in scope is added automatically; only managers can post."
-                    else -> "Everyone in scope can find and join it."
-                    }
-                },
+                stringResource(
+                    when (type) {
+                        ChannelType.TEXT -> R.string.ch_text_sub
+                        ChannelType.ANNOUNCEMENT -> R.string.ch_announcement_sub
+                        ChannelType.FORUM -> R.string.ch_forum_sub
+                        ChannelType.VOICE -> R.string.ch_voice_sub
+                    },
+                ),
                 style = Griip.type.caption, color = Griip.colors.textTertiary,
             )
+            if (type != ChannelType.ANNOUNCEMENT) {
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.ch_private), style = Griip.type.bodyMedium, color = Griip.colors.textPrimary)
+                        Text(stringResource(R.string.ch_private_sub), style = Griip.type.caption, color = Griip.colors.textTertiary)
+                    }
+                    Switch(private, { private = it })
+                }
+            }
+            if (categories.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Label(stringResource(R.string.ch_category))
+                ChipRow {
+                    if (communityWide) PillChip(stringResource(R.string.cm_no_category), categoryId == null, { categoryId = null })
+                    categories.forEach { cat -> PillChip(cat.name, categoryId == cat.id, { categoryId = cat.id }) }
+                }
+            }
             Spacer(Modifier.height(12.dp))
-            GriipTextField(name, { name = it.lowercase().replace(' ', '-').take(60) }, "Channel name", placeholder = "support-desk", prefix = "#")
+            GriipTextField(name, { name = it.lowercase().replace(' ', '-').take(60) }, stringResource(R.string.ch_name), placeholder = "general", prefix = if (type == ChannelType.VOICE) null else "#")
             Spacer(Modifier.height(12.dp))
-            GriipTextField(topic, { topic = it.take(300) }, "Topic (optional)")
+            GriipTextField(topic, { topic = it.take(300) }, stringResource(R.string.ch_topic))
             error?.let { Spacer(Modifier.height(10.dp)); StatusBanner(it, BannerKind.Error) }
             Spacer(Modifier.height(16.dp))
-            PillButton(if (voice) "Create voice room" else "Create channel", {
+            PillButton(stringResource(R.string.ch_create), {
                 busy = true
+                val (kind, voice, format) = ChannelTypes.request(type, private)
                 scope.launch {
-                    runCatching { container.orgs.createChannel(d.org.id, CreateChannelReq(name.trim(), topic.trim().ifEmpty { null }, scopeKind, scopeId, kind, voice = voice)) }
-                        .onSuccess { onDismiss(); onDone(it.id) }.onFailure { error = it.friendly() }
+                    runCatching {
+                        container.orgs.createChannel(d.org.id, CreateChannelReq(name.trim(), topic.trim().ifEmpty { null }, kind, voice = voice, categoryId = categoryId, format = format))
+                    }.onSuccess { onDismiss(); onDone(it.id) }.onFailure { error = it.friendly() }
                     busy = false
                 }
-            }, Modifier.fillMaxWidth(), enabled = name.isNotBlank() && (scopeKind == "ORG" || scopeId != null), loading = busy, height = 50.dp)
+            }, Modifier.fillMaxWidth().padding(bottom = 8.dp), enabled = name.isNotBlank() && (communityWide || categoryId != null), loading = busy, height = 50.dp)
         }
     }
 }

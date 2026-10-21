@@ -79,8 +79,6 @@ class AppContainer(
     val orgs = OrgRepository(api, db, conversations, users)
     /** Custom roles, ownership transfer, usage and the audit log (docs/WORKSPACE_ROLES.md). */
     val roles = com.meldiq.android.data.repo.RoleRepository(api)
-    /** The app directory and connected apps (docs/INTEGRATIONS.md). */
-    val integrations = com.meldiq.android.data.repo.IntegrationRepository(api)
     /** Starred, sections, collapsed groups and mutes, kept on the server for every device (docs/WORKSPACE_ADMINISTRATION.md). */
     val navPrefs = com.meldiq.android.data.repo.NavPreferences(api, db, features, scope).also { np ->
         messages.notifyLevelOf = { conv ->
@@ -92,7 +90,6 @@ class AppContainer(
     /** Reminders kept and fired by the server, sealed on this phone (docs/REMINDERS.md). */
     val reminderNotifier = com.meldiq.android.notify.ReminderNotifier(app, db) { session.session?.userId }
     val meetingNotifier = com.meldiq.android.notify.MeetingNotifier(app, api)
-    val inboxNotifier = com.meldiq.android.notify.InboxNotifier(app)
     val reminders = com.meldiq.android.data.repo.ReminderRepository(api, session, features) { reminderNotifier.show(it) }
     /** When each thread was last opened on this phone (Activity's thread replies). */
     val threadSeen = com.meldiq.android.data.repo.ThreadSeen(db)
@@ -138,7 +135,6 @@ class AppContainer(
         scope.launch { messages.reminderEvents.collect { runCatching { reminders.refresh() } } }
         // Round 7: "starting soon" for scheduled meetings (docs/WORKSPACE_C5.md).
         scope.launch { messages.meetingSoon.collect { id -> runCatching { meetingNotifier.startingSoon(id) } } }
-        scope.launch { messages.inboxEvents.collect { e -> runCatching { inboxNotifier.notice(e.kind, e.conversationId) } } }
         // Conversations that arrive later (a new channel, the first list after sign-in) get their synced mute state.
         scope.launch {
             conversations.observeAll().map { list -> list.map { it.id }.toSet() }.distinctUntilChanged()

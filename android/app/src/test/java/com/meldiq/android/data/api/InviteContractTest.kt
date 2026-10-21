@@ -41,10 +41,10 @@ class InviteContractTest {
 
     @Test
     fun previewFromTheFixedServerKeepsTheSlug() = runBlocking {
-        server.enqueue(json(200, """{"org":{"id":"o_1","name":"GriipBuddy","slug":"griipbuddy","description":null},"role":"ADMIN","branch":{"id":"b_1","name":"Dhaka"},"team":null,"alreadyMember":true}"""))
+        server.enqueue(json(200, """{"org":{"id":"o_1","name":"GriipBuddy","slug":"griipbuddy","description":null},"role":"ADMIN","branch":null,"team":null,"grantRole":{"id":"r_1","name":"Moderator","color":null},"alreadyMember":true}"""))
         val p = api.post<CodeReq, InvitePreviewRes>("/v1/invites/preview", CodeReq("XFG6-3KAJ-EQ3J"))
         assertEquals("griipbuddy", p.org.slug)
-        assertEquals("Dhaka", p.branch?.name)
+        assertEquals("Moderator", p.grantRole?.name)
         assertTrue(p.alreadyMember)
     }
 

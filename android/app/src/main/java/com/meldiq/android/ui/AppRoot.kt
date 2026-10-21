@@ -77,7 +77,6 @@ import com.meldiq.android.ui.screens.profile.UserProfileScreen
 import com.meldiq.android.ui.screens.workspace.ActivityScreen
 import com.meldiq.android.ui.screens.workspace.InvitesScreen
 import com.meldiq.android.ui.screens.workspace.MembersScreen
-import com.meldiq.android.ui.screens.workspace.TeamScreen
 import com.meldiq.android.ui.screens.workspace.WorkspaceScreen
 
 val LocalContainer = staticCompositionLocalOf<AppContainer> { error("no container") }
@@ -123,37 +122,23 @@ object Routes {
     const val SERVICE_HEALTH = "settings/health"
     const val CONNECTORS = "settings/connectors"
     const val CONTACTS = "contacts"
+    /** Public communities to find and join (docs/COMMUNITY_REBUILD_2026-10-21.md). */
+    const val DISCOVER = "discover"
     const val PRIVACY = "privacy"
     const val BLOCKED = "blocked"
     fun conversation(id: String, thread: String? = null) = "conversation/$id" + (thread?.let { "?thread=$it" } ?: "")
     fun info(id: String) = "conversation/$id/info"
-    fun team(orgId: String, teamId: String) = "team/$orgId/$teamId"
     fun members(orgId: String) = "members/$orgId"
     fun invites(orgId: String) = "invites/$orgId"
     fun activity(orgId: String) = "activity/$orgId"
     fun roles(orgId: String) = "roles/$orgId"
-    fun apps(orgId: String) = "apps/$orgId"
-    /** API keys and webhooks (round 7, docs/DEVELOPER_API.md). */
-    fun developer(orgId: String) = "developer/$orgId"
-    /** Groups and meetings (round 7, docs/WORKSPACE_C5.md). */
-    fun groups(orgId: String, canManage: Boolean) = "groups/$orgId?manage=$canManage"
+    /** Scheduled events in voice channels (round 7 meetings, docs/WORKSPACE_C5.md). */
     fun meetings(orgId: String, canSchedule: Boolean) = "meetings/$orgId?schedule=$canSchedule"
-    /** The customer inbox (round 8, docs/UNIFIED_INBOX.md). */
-    fun inbox(orgId: String, canManage: Boolean) = "inbox/$orgId?manage=$canManage"
-    fun inboxConversation(id: String) = "inbox-c/$id"
-    fun inboxSetup(orgId: String) = "inbox-setup/$orgId"
-    /** Workspace documents (round 7, docs/DOCUMENTS.md). */
-    fun documents(orgId: String, canCreate: Boolean = true) = "documents/$orgId?create=$canCreate"
-    fun document(id: String, edit: Boolean = false) = "document/$id?edit=$edit"
-    /** Workspace workflows (round 7, docs/WORKFLOWS.md). */
-    fun workflows(orgId: String) = "workflows/$orgId"
-    /** [id]: a workflow's id, "new", or "tpl:<template id>". */
-    fun workflowEdit(orgId: String, id: String) = "workflows/$orgId/edit/${android.net.Uri.encode(id)}"
-    fun app(orgId: String, appId: String) = "apps/$orgId/$appId"
+    /** Permission overwrites of a category ([category] true) or a channel. */
+    fun permissions(category: Boolean, id: String, name: String) = "permissions/${if (category) "category" else "channel"}/$id?name=${android.net.Uri.encode(name)}"
+    fun bans(orgId: String) = "bans/$orgId"
     fun audit(orgId: String) = "audit/$orgId"
     fun usage(orgId: String) = "usage/$orgId"
-    /** A workspace's AI page (round 7, docs/AI.md). */
-    fun ai(orgId: String) = "ai/$orgId"
     fun user(id: String) = "user/$id"
     /**
      * The bottom bar (UI-002): exactly Home, DMs and Activity. Calls, Contacts, Settings and the Workspace screen open
@@ -295,43 +280,21 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             composable(Routes.SEARCH) { SearchScreen(nav) }
             composable("conversation/{id}?thread={thread}") { ConversationScreen(nav, it.arguments!!.getString("id")!!, it.arguments?.getString("thread")) }
             composable("conversation/{id}/info") { ConversationInfoScreen(nav, it.arguments!!.getString("id")!!) }
-            composable("team/{orgId}/{teamId}") { TeamScreen(nav, it.arguments!!.getString("orgId")!!, it.arguments!!.getString("teamId")!!) }
             composable("members/{orgId}") { MembersScreen(nav, it.arguments!!.getString("orgId")!!) }
             composable("invites/{orgId}") { InvitesScreen(nav, it.arguments!!.getString("orgId")!!) }
             composable("activity/{orgId}") { ActivityScreen(nav, it.arguments!!.getString("orgId")!!) }
-            // Custom roles, apps, audit and usage (2026-10-19, docs/WORKSPACE_ROLES.md, docs/INTEGRATIONS.md).
+            // Custom roles, audit and usage (2026-10-19, docs/WORKSPACE_ROLES.md).
             composable("roles/{orgId}") { com.meldiq.android.ui.screens.workspace.roles.RolesScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
-            composable(
-                "documents/{orgId}?create={create}",
-                arguments = listOf(androidx.navigation.navArgument("create") { type = androidx.navigation.NavType.BoolType; defaultValue = true }),
-            ) { com.meldiq.android.ui.screens.workspace.documents.DocumentsScreen(nav, it.arguments?.getString("orgId").orEmpty(), it.arguments?.getBoolean("create") ?: true) }
-            composable(
-                "document/{id}?edit={edit}",
-                arguments = listOf(androidx.navigation.navArgument("edit") { type = androidx.navigation.NavType.BoolType; defaultValue = false }),
-            ) { com.meldiq.android.ui.screens.workspace.documents.DocumentScreen(nav, it.arguments?.getString("id").orEmpty(), it.arguments?.getBoolean("edit") ?: false) }
-            composable(
-                "groups/{orgId}?manage={manage}",
-                arguments = listOf(androidx.navigation.navArgument("manage") { type = androidx.navigation.NavType.BoolType; defaultValue = false }),
-            ) { com.meldiq.android.ui.screens.workspace.groups.GroupsScreen(nav, it.arguments?.getString("orgId").orEmpty(), it.arguments?.getBoolean("manage") ?: false) }
             composable(
                 "meetings/{orgId}?schedule={schedule}",
                 arguments = listOf(androidx.navigation.navArgument("schedule") { type = androidx.navigation.NavType.BoolType; defaultValue = false }),
             ) { com.meldiq.android.ui.screens.workspace.meetings.MeetingsScreen(nav, it.arguments?.getString("orgId").orEmpty(), it.arguments?.getBoolean("schedule") ?: false) }
-            composable(
-                "inbox/{orgId}?manage={manage}",
-                arguments = listOf(androidx.navigation.navArgument("manage") { type = androidx.navigation.NavType.BoolType; defaultValue = false }),
-            ) { com.meldiq.android.ui.screens.workspace.inbox.InboxScreen(nav, it.arguments?.getString("orgId").orEmpty(), it.arguments?.getBoolean("manage") ?: false) }
-            composable("inbox-c/{id}") { com.meldiq.android.ui.screens.workspace.inbox.InboxConversationScreen(nav, it.arguments?.getString("id").orEmpty()) }
-            composable("inbox-setup/{orgId}") { com.meldiq.android.ui.screens.workspace.inbox.InboxSetupScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
-            composable("ai/{orgId}") { com.meldiq.android.ui.screens.workspace.ai.AiScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
-            composable("developer/{orgId}") { com.meldiq.android.ui.screens.workspace.developer.DeveloperScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
-            composable("workflows/{orgId}") { com.meldiq.android.ui.screens.workspace.workflows.WorkflowsScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
-            composable("workflows/{orgId}/edit/{id}") {
-                com.meldiq.android.ui.screens.workspace.workflows.WorkflowEditorScreen(nav, it.arguments?.getString("orgId").orEmpty(), it.arguments?.getString("id").orEmpty())
-            }
-            composable("apps/{orgId}") { com.meldiq.android.ui.screens.workspace.apps.AppsScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
-            composable("apps/{orgId}/{appId}") {
-                com.meldiq.android.ui.screens.workspace.apps.AppDetailScreen(nav, it.arguments?.getString("orgId").orEmpty(), it.arguments?.getString("appId").orEmpty())
+            composable(Routes.DISCOVER) { com.meldiq.android.ui.screens.workspace.DiscoverScreen(nav) }
+            composable("bans/{orgId}") { com.meldiq.android.ui.screens.workspace.BansScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
+            composable("permissions/{type}/{id}?name={name}") {
+                com.meldiq.android.ui.screens.workspace.ChannelPermissionsScreen(
+                    nav, it.arguments?.getString("type") == "category", it.arguments?.getString("id").orEmpty(), it.arguments?.getString("name").orEmpty(),
+                )
             }
             composable("audit/{orgId}") { com.meldiq.android.ui.screens.workspace.AuditScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
             composable("usage/{orgId}") { com.meldiq.android.ui.screens.workspace.UsageScreen(nav, it.arguments?.getString("orgId").orEmpty()) }

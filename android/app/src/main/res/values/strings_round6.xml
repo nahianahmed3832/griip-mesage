@@ -41,9 +41,9 @@
     <string name="intro_voice_title">Talk it through</string>
     <string name="intro_voice_body">Voice and video calls with screen sharing, and voice rooms your team can drop into any time.</string>
     <string name="intro_apps_title">Bring your tools</string>
-    <string name="intro_apps_body">Connect Figma, GitHub, GitLab and more to your workspace, with permissions your admins control.</string>
+    <string name="intro_apps_body">Connect Figma, GitHub, GitLab and more to your community, with permissions your admins control.</string>
     <string name="intro_people_title">People and HR</string>
-    <string name="intro_people_body">Team directory, attendance, shifts and leave are coming to Meldiq workspaces, with access based on roles.</string>
+    <string name="intro_people_body">Team directory, attendance, shifts and leave are coming to Meldiq communities, with access based on roles.</string>
     <string name="settings_intro">Introduction</string>
     <string name="settings_intro_sub">See the welcome pages again</string>
     <string name="recover_q">Lost access to your email?</string>

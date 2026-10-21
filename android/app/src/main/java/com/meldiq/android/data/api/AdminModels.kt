@@ -95,13 +95,12 @@ import kotlinx.serialization.json.JsonElement
 
 // ───────── Usage and the audit log ─────────
 @Serializable data class UsageMembers(val total: Int = 0, val owners: Int = 0, val admins: Int = 0, val members: Int = 0, val guests: Int = 0)
-@Serializable data class UsageStructure(val branches: Int = 0, val departments: Int = 0, val teams: Int = 0, val channels: Int = 0, val archivedChannels: Int = 0)
+@Serializable data class UsageStructure(val categories: Int = 0, val channels: Int = 0, val archivedChannels: Int = 0)
 @Serializable data class UsageFiles(val count: Int = 0, val bytes: Long = 0)
-@Serializable data class UsageApps(val installed: Int = 0, val pendingRequests: Int = 0, val connectedAccounts: Int = 0, val workspaceConnections: Int = 0, val notifications: Int = 0)
 @Serializable data class UsageCount(val active: Int = 0, val custom: Int = 0)
 @Serializable data class UsageRes(
     val members: UsageMembers = UsageMembers(), val structure: UsageStructure = UsageStructure(), val files: UsageFiles = UsageFiles(),
-    val invitations: UsageCount = UsageCount(), val roles: UsageCount = UsageCount(), val apps: UsageApps = UsageApps(),
+    val invitations: UsageCount = UsageCount(), val roles: UsageCount = UsageCount(),
     /** Round 7: measured usage over the last 30 days (docs/USAGE_AND_PLANS.md); absent from older servers. */
     val metered: MeteredDto? = null,
 )

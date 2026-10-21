@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Apartment
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.Groups
@@ -104,135 +105,6 @@ import com.meldiq.android.ui.theme.Space
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-// ───────────────────────────── Team ─────────────────────────────
-
-@Composable
-fun TeamScreen(nav: NavHostController, orgId: String, teamId: String) {
-    val container = LocalContainer.current
-    val c = Griip.colors
-    val scope = rememberCoroutineScope()
-    var detail by remember { mutableStateOf<OrgDetailRes?>(null) }
-    var members by remember { mutableStateOf<List<UserDto>?>(null) }
-    var channels by remember { mutableStateOf<List<ConversationDto>>(emptyList()) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var reload by remember { mutableIntStateOf(0) }
-    var showAdd by remember { mutableStateOf(false) }
-    var showChannel by remember { mutableStateOf(false) }
-    var moveFor by remember { mutableStateOf<UserDto?>(null) }
-    var showEdit by remember { mutableStateOf(false) }
-    LaunchedEffect(reload) {
-        runCatching { container.orgs.detail(orgId) }.onSuccess { detail = it }.onFailure { error = it.friendly() }
-        runCatching { container.orgs.teamMembers(teamId) }.onSuccess { members = it }.onFailure { error = it.friendly() }
-        runCatching { container.orgs.channels(orgId) }.onSuccess { channels = it.filter { ch -> ch.scope == "TEAM" && ch.scopeId == teamId } }
-    }
-    val team = detail?.teams?.firstOrNull { it.id == teamId }
-    val me = container.session.session?.userId
-    fun act(block: suspend () -> Unit) = scope.launch { runCatching { block() }.onFailure { error = it.friendly() }; reload++ }
-
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
-        item { GriipTopBar(team?.name ?: "Team", subtitle = team?.let { if (it.crossBranch) "Cross-branch team" else detail?.branches?.firstOrNull { b -> b.id == it.branchId }?.name }, onBack = { nav.popBackStack() }) }
-        error?.let { item { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp), action = "OK", onAction = { error = null }) } }
-        if (team != null) item {
-            GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), shape = Shapes.hero) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    MarkTile(team.name, team.name.hashCode(), size = 56.dp)
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(team.name, style = Griip.type.title, color = c.textPrimary)
-                        Text(team.description ?: "No description", style = Griip.type.bodySmall, color = c.textSecondary)
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StatTile("Members", "${team.memberCount}", Modifier.weight(1f))
-                    StatTile("Channels", "${channels.size}", Modifier.weight(1f))
-                    StatTile("Your role", team.myRole?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "—", Modifier.weight(1f))
-                }
-                if (team.canManage) {
-                    Spacer(Modifier.height(14.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        PillButton("Add member", { showAdd = true }, Modifier.weight(1f), tone = ButtonTone.Glass, showKnob = false, leadingIcon = Icons.Outlined.PersonAdd, height = 46.dp)
-                        PillButton("Channel", { showChannel = true }, Modifier.weight(1f), tone = ButtonTone.Glass, showKnob = false, leadingIcon = Icons.Outlined.PostAdd, height = 46.dp)
-                    }
-                    if (ScopeAdmin.canEditTeam(team)) {
-                        Spacer(Modifier.height(10.dp))
-                        PillButton(stringResource(R.string.team_edit), { showEdit = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.Edit, height = 46.dp)
-                    }
-                    // A department only groups a branch's teams (D-15); cross-branch teams have none.
-                    val depts = detail?.departments.orEmpty().filter { it.branchId == team.branchId }
-                    if (!team.crossBranch && depts.isNotEmpty()) {
-                        Spacer(Modifier.height(14.dp))
-                        Text("Department", style = Griip.type.label, color = c.textSecondary)
-                        Spacer(Modifier.height(6.dp))
-                        ChipRow {
-                            PillChip("None", team.departmentId == null, { if (team.departmentId != null) act { container.orgs.setTeamDepartment(teamId, null) } })
-                            depts.forEach { dep -> PillChip(dep.name, team.departmentId == dep.id, { if (team.departmentId != dep.id) act { container.orgs.setTeamDepartment(teamId, dep.id) } }) }
-                        }
-                    }
-                }
-            }
-        }
-        item { SectionHeader("Channels", Modifier.padding(top = 10.dp, bottom = 6.dp)) }
-        if (channels.isEmpty()) item { Text("No team channels yet.", style = Griip.type.bodySmall, color = c.textTertiary, modifier = Modifier.padding(horizontal = Space.gutter)) }
-        items(channels, key = { "c" + it.id }) { ch ->
-            ListCard(
-                "#${ch.name}", Modifier.padding(horizontal = 8.dp, vertical = 1.dp), subtitle = ch.topic,
-                leading = { IconTile(channelIcon(ch.kind), c.primary, c.primarySoft, size = 42.dp) },
-                trailing = {
-                    if (ch.activeCall != null) TagPill("Live", c.success, c.successSoft, icon = Icons.Rounded.Call)
-                    else if (ch.joined) ArrowKnob() else PillButton("Join", { scope.launch { runCatching { container.conversations.join(ch.id) }.onSuccess { nav.navigate(Routes.conversation(ch.id)) }.onFailure { error = it.friendly() } } }, tone = ButtonTone.Glass, showKnob = false, height = 36.dp)
-                },
-                onClick = if (ch.joined) ({ nav.navigate(Routes.conversation(ch.id)) }) else null,
-            )
-        }
-        item { SectionHeader("Members", Modifier.padding(top = 14.dp, bottom = 6.dp)) }
-        if (members == null) item { ShimmerList(3) }
-        items(members.orEmpty(), key = { it.id }) { u ->
-            var menu by remember { mutableStateOf(false) }
-            ListCard(
-                u.displayName + if (u.id == me) " (you)" else "", Modifier.padding(horizontal = 8.dp, vertical = 1.dp), subtitle = "@${u.username}",
-                leading = { Avatar(u.displayName, u.avatarColor, size = 44.dp, online = u.online) },
-                trailing = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RoleBadge(u.role?.takeIf { it == "LEAD" })
-                        if (team?.canManage == true) {
-                            CircleIconButton(Icons.Rounded.MoreVert, "Manage ${u.displayName}", { menu = true }, size = 34.dp)
-                            DropdownMenu(menu, { menu = false }) {
-                                DropdownMenuItem(text = { Text(if (u.role == "LEAD") "Make member" else "Make team lead") }, onClick = { menu = false; act { container.orgs.setTeamMember(teamId, u.id, if (u.role == "LEAD") "MEMBER" else "LEAD") } })
-                                DropdownMenuItem(text = { Text("Move to another team") }, onClick = { menu = false; moveFor = u })
-                                DropdownMenuItem(text = { Text("Remove from team", color = c.danger) }, onClick = { menu = false; act { container.orgs.setTeamMember(teamId, u.id, null) } })
-                            }
-                        }
-                    }
-                },
-                onClick = if (u.id != me) ({ nav.navigate(Routes.user(u.id)) }) else null,
-            )
-        }
-    }
-    if (showAdd) AddMembersSheet(orgId, members.orEmpty().map { it.id }.toSet(), { showAdd = false }) { ids ->
-        showAdd = false
-        act { ids.forEach { container.orgs.setTeamMember(teamId, it, "MEMBER") } }
-    }
-    if (showChannel) detail?.let { d ->
-        CreateChannelSheet(d.copy(permissions = d.permissions.copy(canManageOrg = false), branches = emptyList(), teams = d.teams.filter { it.id == teamId }), null, { showChannel = false }) { id ->
-            reload++; nav.navigate(Routes.conversation(id))
-        }
-    }
-    if (showEdit) detail?.let { d ->
-        team?.let { t -> EditTeamSheet(d, t, onDismiss = { showEdit = false }, onSaved = { reload++ }, onArchived = { nav.popBackStack() }) }
-    }
-    moveFor?.let { u ->
-        GlassSheet({ moveFor = null }, title = "Move ${u.displayName} to…") {
-            detail?.teams?.filter { it.id != teamId && it.canManage }?.forEach { t ->
-                ListCard(t.name, Modifier.padding(vertical = 4.dp), leading = { MarkTile(t.name, t.name.hashCode(), size = 40.dp) }, trailing = { Text("Move", color = c.primaryDeep, style = Griip.type.label) }, onClick = {
-                    moveFor = null
-                    act { container.orgs.moveMember(teamId, u.id, t.id) }
-                })
-            } ?: Text("No other teams you manage.", style = Griip.type.bodySmall, color = c.textSecondary)
-        }
-    }
-}
-
 // ───────────────────────────── Members & roles ─────────────────────────────
 
 @Composable
@@ -257,11 +129,11 @@ fun MembersScreen(nav: NavHostController, orgId: String) {
         delay(200)
         runCatching { container.orgs.members(orgId, q) }.onSuccess { list = it }.onFailure { error = it.friendly() }
     }
-    val canManage = detail?.permissions?.canManageOrg == true || detail?.branches?.any { it.canManage } == true || detail?.teams?.any { it.canManage } == true
+    val canManage = detail?.permissions?.let { it.canManageOrg || it.canAssignRoles || it.canBan || "members.remove" in it.effective || "members.roles" in it.effective } == true
     val shown = list.orEmpty().filter { roleFilter == null || it.orgRole == roleFilter }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
         item { GriipTopBar("Members & roles", subtitle = detail?.org?.name, onBack = { nav.popBackStack() }) }
-        item { SearchPill(q, { q = it }, "Search the directory", Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
+        item { SearchPill(q, { q = it }, "Search members", Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
         item { RolesGuideCard(Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) }
         item {
             ChipRow {
@@ -272,7 +144,6 @@ fun MembersScreen(nav: NavHostController, orgId: String) {
         error?.let { item { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp), action = "OK", onAction = { error = null }) } }
         if (list == null) item { ShimmerList(5) }
         items(shown, key = { it.id }) { u ->
-            val branchNames = u.branches.mapNotNull { b -> detail?.branches?.firstOrNull { it.id == b.id }?.name }
             ListCard(
                 u.displayName, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                 subtitle = "@${u.username}" + (u.title?.let { " · $it" } ?: ""),
@@ -281,8 +152,8 @@ fun MembersScreen(nav: NavHostController, orgId: String) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         RoleBadge(u.orgRole)
                         u.expiresAt?.let { TagPill(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.guest_until, com.meldiq.android.ui.TimeFmt.dayHeader(it)), c.warning, c.warningSoft) }
-                        branchNames.take(2).forEach { TagPill(it, c.primaryDeep, c.primarySoft, icon = Icons.Outlined.Apartment) }
-                        if (u.teams.isNotEmpty()) TagPill("${u.teams.size} team${if (u.teams.size > 1) "s" else ""}", c.textSecondary, c.surfaceVariant, icon = Icons.Outlined.Groups)
+                        u.customRoles.take(2).forEach { r -> TagPill(r.name, c.primaryDeep, c.primarySoft) }
+                        if (u.customRoles.size > 2) TagPill("+${u.customRoles.size - 2}", c.textSecondary, c.surfaceVariant)
                     }
                 },
                 trailing = { ArrowKnob() },
@@ -305,9 +176,8 @@ private fun MemberSheet(d: OrgDetailRes, u: UserDto, ownerCount: Int?, onDismiss
     val scope = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
     var role by remember { mutableStateOf(u.orgRole) }
-    val branchRoles = remember { mutableStateOf(u.branches.associate { it.id to it.role }) }
-    val teamRoles = remember { mutableStateOf(u.teams.associate { it.id to it.role }) }
     var confirmRemove by remember { mutableStateOf(false) }
+    var banning by remember { mutableStateOf(false) }
     val me = container.session.session?.userId
     fun act(block: suspend () -> Unit, after: () -> Unit = {}) = scope.launch {
         runCatching { block() }.onSuccess { after(); onChanged() }.onFailure { error = it.friendly() }
@@ -330,47 +200,20 @@ private fun MemberSheet(d: OrgDetailRes, u: UserDto, ownerCount: Int?, onDismiss
                 OrgTitleField(d, u, onSaved = onChanged, onError = { error = it })
                 if (role == "GUEST") GuestExpirySection(d, u, onChanged = onChanged, onError = { error = it })
             }
-            item { SectionHeader("Branches", Modifier.padding(top = 14.dp, bottom = 6.dp)) }
-            items(d.branches, key = { "b" + it.id }) { b ->
-                val cur = branchRoles.value[b.id]
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(b.name, style = Griip.type.bodyMedium, color = c.textPrimary, modifier = Modifier.weight(1f))
-                    if (b.canManage && role != "GUEST") {
-                        PillChip("Off", cur == null, { act({ container.orgs.setBranchMember(b.id, u.id, null) }) { branchRoles.value = branchRoles.value - b.id } })
-                        Spacer(Modifier.width(6.dp))
-                        PillChip("Member", cur == "MEMBER", { act({ container.orgs.setBranchMember(b.id, u.id, "MEMBER") }) { branchRoles.value = branchRoles.value + (b.id to "MEMBER") } })
-                        if (d.permissions.canManageOrg) {
-                            Spacer(Modifier.width(6.dp))
-                            PillChip("Manager", cur == "MANAGER", { act({ container.orgs.setBranchMember(b.id, u.id, "MANAGER") }) { branchRoles.value = branchRoles.value + (b.id to "MANAGER") } })
-                        }
-                    } else RoleBadge(cur)
-                }
-            }
-            item { SectionHeader("Teams", Modifier.padding(top = 14.dp, bottom = 6.dp)) }
-            items(d.teams, key = { "t" + it.id }) { t ->
-                val cur = teamRoles.value[t.id]
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(t.name, style = Griip.type.bodyMedium, color = c.textPrimary)
-                        Text(if (t.crossBranch) "Cross-branch" else d.branches.firstOrNull { it.id == t.branchId }?.name ?: "", style = Griip.type.caption, color = c.textTertiary)
-                    }
-                    if (t.canManage && role != "GUEST") {
-                        PillChip("Off", cur == null, { act({ container.orgs.setTeamMember(t.id, u.id, null) }) { teamRoles.value = teamRoles.value - t.id } })
-                        Spacer(Modifier.width(6.dp))
-                        PillChip("Member", cur == "MEMBER", { act({ container.orgs.setTeamMember(t.id, u.id, "MEMBER") }) { teamRoles.value = teamRoles.value + (t.id to "MEMBER") } })
-                        Spacer(Modifier.width(6.dp))
-                        PillChip("Lead", cur == "LEAD", { act({ container.orgs.setTeamMember(t.id, u.id, "LEAD") }) { teamRoles.value = teamRoles.value + (t.id to "LEAD") } })
-                    } else RoleBadge(cur)
-                }
-            }
             if (WorkspaceRoles.canRemove(d.org.myRole, role, self = u.id == me)) item {
                 Spacer(Modifier.height(16.dp))
                 PillButton(stringResource(R.string.member_remove), { confirmRemove = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, showKnob = false, leadingIcon = Icons.Outlined.DeleteOutline, height = 48.dp)
             }
+            // Bans (communities): removed and kept out until lifted. Owners can't be banned; the server checks the rest.
+            if (d.permissions.canBan && u.id != me && role != "OWNER" && (d.org.myRole == "OWNER" || role in setOf("MEMBER", "GUEST"))) item {
+                Spacer(Modifier.height(10.dp))
+                PillButton(stringResource(R.string.bn_ban), { banning = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, showKnob = false, leadingIcon = Icons.Outlined.Block, height = 48.dp)
+            }
         }
     }
+    if (banning) BanSheet(d.org.id, u.id, u.displayName, onDismiss = { banning = false }, onDone = { onChanged(); onDismiss() })
     if (confirmRemove) ConfirmDialog(
-        "Remove ${u.displayName}?", "They lose access to every branch, team and channel in ${d.org.name} immediately.", "Remove",
+        "Remove ${u.displayName}?", "They lose access to every channel in ${d.org.name} immediately. They can come back with a new invitation.", "Remove",
         onConfirm = { confirmRemove = false; act({ container.orgs.removeFromOrg(d.org.id, u.id) }) { onDismiss() } }, onDismiss = { confirmRemove = false }, destructive = true,
     )
 }
@@ -389,8 +232,8 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
     var error by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     var role by remember { mutableStateOf("MEMBER") }
-    var branch by remember { mutableStateOf<String?>(null) }
-    var team by remember { mutableStateOf<String?>(null) }
+    var grantRole by remember { mutableStateOf<String?>(null) }
+    var assignable by remember { mutableStateOf<List<com.meldiq.android.data.api.CustomRoleDto>>(emptyList()) }
     var uses by remember { mutableIntStateOf(10) }
     var hours by remember { mutableIntStateOf(72) }
     var busy by remember { mutableStateOf(false) }
@@ -401,10 +244,7 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
     LaunchedEffect(reload) {
         runCatching { container.orgs.detail(orgId) }.onSuccess { d ->
             detail = d
-            if (!d.permissions.canManageOrg && branch == null && team == null) {
-                branch = d.branches.firstOrNull { it.canManage }?.id
-                if (branch == null) team = d.teams.firstOrNull { it.canManage }?.id
-            }
+            if (d.permissions.canViewRoles) runCatching { container.roles.roles(orgId) }.onSuccess { r -> assignable = r.roles.filter { it.canAssign && !it.archived } }
         }
         runCatching { container.orgs.invites(orgId) }.onSuccess { invites = it }.onFailure { error = it.friendly() }
     }
@@ -423,13 +263,15 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
                     PillChip("Guest", role == "GUEST", { role = "GUEST" })
                     if (d.permissions.isOwner) PillChip("Admin", role == "ADMIN", { role = "ADMIN" })
                 }
-                Spacer(Modifier.height(10.dp))
-                Text("Adds them to", style = Griip.type.label, color = c.textSecondary)
-                Spacer(Modifier.height(6.dp))
-                ChipRow(Modifier.padding(horizontal = 0.dp)) {
-                    if (d.permissions.canManageOrg) PillChip("Org only", branch == null && team == null, { branch = null; team = null })
-                    d.branches.filter { it.canManage }.forEach { b -> PillChip(b.name, branch == b.id && team == null, { branch = b.id; team = null }) }
-                    d.teams.filter { it.canManage }.forEach { t -> PillChip(t.name, team == t.id, { team = t.id; branch = t.branchId }) }
+                // A role the invitation hands out on joining (for example the one that opens a category).
+                if (role != "GUEST" && assignable.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(stringResource(R.string.inv_give_role), style = Griip.type.label, color = c.textSecondary)
+                    Spacer(Modifier.height(6.dp))
+                    ChipRow(Modifier.padding(horizontal = 0.dp)) {
+                        PillChip(stringResource(R.string.inv_no_role), grantRole == null, { grantRole = null })
+                        assignable.forEach { r -> PillChip(r.name, grantRole == r.id, { grantRole = r.id }) }
+                    }
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -455,10 +297,10 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
                 PillButton("Create invite", {
                     busy = true
                     scope.launch {
-                        runCatching { container.orgs.createInvite(orgId, role, branch, team, uses, hours, guestDays) }.onSuccess { created = it; reload++ }.onFailure { error = it.friendly() }
+                        runCatching { container.orgs.createInvite(orgId, role, uses, hours, guestDays, grantRole) }.onSuccess { created = it; reload++ }.onFailure { error = it.friendly() }
                         busy = false
                     }
-                }, Modifier.fillMaxWidth(), loading = busy, height = 50.dp, enabled = d.permissions.canManageOrg || branch != null || team != null)
+                }, Modifier.fillMaxWidth(), loading = busy, height = 50.dp, enabled = d.permissions.canInvite)
             }
         }
         item { SectionHeader("Recent invites", Modifier.padding(top = 10.dp, bottom = 6.dp)) }
@@ -479,7 +321,7 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
             )
         }
         items(shownInvites, key = { it.id }) { inv ->
-            val scopeName = listOfNotNull(d?.branches?.firstOrNull { it.id == inv.branchId }?.name, d?.teams?.firstOrNull { it.id == inv.teamId }?.name).joinToString(" · ").ifEmpty { "Organization" }
+            val scopeName = assignable.firstOrNull { it.id == inv.roleId }?.name
             val state = InviteStates.of(inv, now)
             val usable = state == InviteState.ACTIVE
             ListCard(
@@ -519,7 +361,7 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
                 Text("Shown once — the server stores only a hash. ${inv.maxUses} use(s), ${inv.role.lowercase()}.", style = Griip.type.caption, color = c.textTertiary, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(16.dp))
                 PillButton("Share code", {
-                    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "Join ${d?.org?.name ?: "our workspace"} on Meldiq with invite code $code (${InviteCodes.link(code)})")
+                    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "Join ${d?.org?.name ?: "our community"} on Meldiq with invite code $code (${InviteCodes.link(code)})")
                     ctx.startActivity(Intent.createChooser(send, "Share invite"))
                 }, Modifier.fillMaxWidth(), leadingIcon = Icons.Outlined.Share, height = 50.dp)
             }
@@ -559,7 +401,7 @@ fun ActivityScreen(nav: NavHostController, orgId: String) {
         item { GriipTopBar("Activity", onBack = { nav.popBackStack() }) }
         error?.let { item { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = Space.gutter)) } }
         if (list == null && error == null) item { ShimmerList(6) }
-        if (list?.isEmpty() == true) item { EmptyState(Icons.Outlined.History, "Quiet so far", "Branch, team and channel changes will show up here.") }
+        if (list?.isEmpty() == true) item { EmptyState(Icons.Outlined.History, "Quiet so far", "Channel, category and membership changes will show up here.") }
         items(list.orEmpty(), key = { it.id }) { a ->
             val (icon, label) = describe(a)
             ListCard(
@@ -574,29 +416,32 @@ fun ActivityScreen(nav: NavHostController, orgId: String) {
 private fun describe(a: ActivityDto): Pair<androidx.compose.ui.graphics.vector.ImageVector, String> {
     val detail = a.detail?.substringAfter(' ') ?: ""
     return when (a.action) {
-        "branch.create" -> Icons.Outlined.Apartment to "Created branch ${a.detail ?: ""}"
-        "department.create" -> Icons.Outlined.Apartment to "Created department ${a.detail ?: ""}"
-        "team.create" -> Icons.Outlined.Groups to "Created team ${a.detail ?: ""}"
+        "category.create" -> Icons.Outlined.PostAdd to "Created category ${a.detail ?: ""}"
+        "category.update" -> Icons.Outlined.Edit to "Renamed a category"
+        "category.delete" -> Icons.Outlined.DeleteOutline to "Deleted category ${a.detail ?: ""}"
+        "layout.update" -> Icons.Outlined.SwapHoriz to "Rearranged channels"
+        "permissions.update" -> Icons.Outlined.Lock to "Changed channel permissions"
         "channel.create" -> Icons.Outlined.PostAdd to "Created channel #$detail"
-        "invite.accept" -> Icons.AutoMirrored.Outlined.Login to "Joined the organization"
+        "invite.accept" -> Icons.AutoMirrored.Outlined.Login to "Joined the community"
+        "community.join" -> Icons.AutoMirrored.Outlined.Login to "Joined from Discover"
+        "member.ban" -> Icons.Outlined.DeleteOutline to "Banned a member"
+        "member.unban" -> Icons.Outlined.Unarchive to "Lifted a ban"
         "invite.create" -> Icons.Outlined.GroupAdd to "Created a ${a.detail?.lowercase()} invite"
         "invite.revoke" -> Icons.Outlined.DeleteOutline to "Revoked an invite"
         "member.role" -> Icons.Outlined.SwapHoriz to "Changed a role (${a.detail})"
         "member.remove" -> Icons.Outlined.DeleteOutline to "Removed a member"
-        "member.leave" -> Icons.AutoMirrored.Outlined.Login to "Left the organization"
+        "member.leave" -> Icons.AutoMirrored.Outlined.Login to "Left the community"
         "call.start" -> Icons.Rounded.Call to "Started a ${a.detail} call"
         "channel.archive" -> Icons.Outlined.Campaign to "Archived a channel"
         "channel.restore" -> Icons.Outlined.Campaign to "Restored a channel"
         "channel.update" -> Icons.Outlined.Campaign to "Edited a channel"
         "channel.access" -> Icons.Outlined.Lock to "Changed who can see a channel (${a.detail?.lowercase()?.replace("→", " → ") ?: ""})"
-        "branch.archive" -> Icons.Outlined.Archive to "Archived branch ${a.detail ?: ""}"
-        "branch.restore" -> Icons.Outlined.Unarchive to "Restored branch ${a.detail ?: ""}"
-        "branch.update" -> Icons.Outlined.Apartment to "Edited branch ${a.detail ?: ""}"
-        "team.archive" -> Icons.Outlined.Archive to "Archived team ${a.detail ?: ""}"
-        "team.restore" -> Icons.Outlined.Unarchive to "Restored team ${a.detail ?: ""}"
-        "team.update" -> Icons.Outlined.Groups to "Edited team ${a.detail ?: ""}"
-        "org.update" -> Icons.Outlined.Edit to "Edited the workspace's details"
-        "org.photo" -> Icons.Outlined.Image to if (a.detail == "removed") "Removed the workspace photo" else "Changed the workspace photo"
+        // Rows from before communities (branches and teams became roles and categories).
+        "branch.create", "branch.update", "branch.archive", "branch.restore", "department.create", "team.create", "team.update", "team.archive", "team.restore" ->
+            Icons.Outlined.Archive to "Changed the old structure: ${a.action.substringBefore('.')} ${a.detail ?: ""}".trimEnd()
+        "community.migration" -> Icons.Outlined.SwapHoriz to "Branches and teams became roles and categories"
+        "org.update" -> Icons.Outlined.Edit to "Edited the community's details"
+        "org.photo" -> Icons.Outlined.Image to if (a.detail == "removed") "Removed the community photo" else "Changed the community photo"
         else -> Icons.Outlined.History to a.action.replace('.', ' ')
     }
 }

@@ -127,22 +127,12 @@ class MessageRepository(
     private val _callFrames = MutableSharedFlow<RealtimeFrame>(extraBufferCapacity = 32)
     val callFrames: SharedFlow<RealtimeFrame> = _callFrames
     private val _orgEvents = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    /** A channel got an app notification (the conversation id); its screen fetches them (docs/INTEGRATIONS.md). */
-    private val _appEvents = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    val appEvents: SharedFlow<String> = _appEvents
-    /** Something about apps changed for this person in a workspace (the workspace id): app screens reload. */
-    private val _appUpdates = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    val appUpdates: SharedFlow<String> = _appUpdates
     /** Round 7: a meeting starting in ten minutes (its id), and a workspace whose meetings changed (its id). */
     private val _meetingSoon = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val meetingSoon: SharedFlow<String> = _meetingSoon
     private val _meetingUpdates = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val meetingUpdates: SharedFlow<String> = _meetingUpdates
     val orgEvents: SharedFlow<String> = _orgEvents
-    /** Round 8: something changed in a workspace's customer inbox (ids only, docs/UNIFIED_INBOX.md). */
-    data class InboxEvent(val kind: String, val orgId: String, val conversationId: String?)
-    private val _inboxEvents = MutableSharedFlow<InboxEvent>(extraBufferCapacity = 32)
-    val inboxEvents: SharedFlow<InboxEvent> = _inboxEvents
     private val _orgDeleted = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val orgDeleted: SharedFlow<String> = _orgDeleted
     private val _reminderEvents = MutableSharedFlow<String>(extraBufferCapacity = 16)
@@ -233,7 +223,7 @@ class MessageRepository(
             type = "text", text = body, replyTo = replyTo, threadRoot = threadRoot, mentions = m.ids.ifEmpty { null },
             mentionAll = if (m.all) true else null, attachments = attachments.ifEmpty { null },
             contact = rich?.contact, location = rich?.location, animoji = rich?.animoji, forwarded = if (forwarded) true else null,
-            link = rich?.link, poll = rich?.poll, sticker = rich?.sticker,
+            link = rich?.link, poll = rich?.poll, sticker = rich?.sticker, title = rich?.title,
         )
         val existing = db.messages().get(id)
         val msg = MessageEntity(
@@ -853,13 +843,9 @@ class MessageRepository(
             "devices.changed" -> f.userId?.let { directory.invalidateUser(it) }
             "prefs.updated" -> f.workspaceId?.let { _prefsUpdated.tryEmit(it) }
             "reminder.due", "reminders.changed" -> f.id?.let { _reminderEvents.tryEmit(it) }
-            "integration.event" -> f.conversationId?.let { _appEvents.tryEmit(it) }
-            "integration.updated" -> f.orgId?.let { _appUpdates.tryEmit(it) }
             // Round 7 meetings (docs/WORKSPACE_C5.md).
             "meeting.soon" -> f.meetingId?.let { _meetingSoon.tryEmit(it) }
             "meeting.updated" -> f.orgId?.let { _meetingUpdates.tryEmit(it) }
-            "inbox.updated", "inbox.escalated", "inbox.overdue", "inbox.delivery_failed", "inbox.account_failed" ->
-                f.orgId?.let { _inboxEvents.tryEmit(InboxEvent(f.t, it, f.conversationId)) }
             "call" -> _callFrames.tryEmit(f)
         }
     }

@@ -80,7 +80,6 @@ import kotlinx.serialization.json.JsonObject
     val role: String? = null, val orgRole: String? = null, val title: String? = null,
     /** A guest's membership end date in the workspace directory (round 7), null without one. */
     val expiresAt: Long? = null,
-    val branches: List<ScopedRole> = emptyList(), val teams: List<ScopedRole> = emptyList(),
     // Federation (2026-10-16): set for people on another server (their username is then "name:server").
     val homeServer: String? = null, val address: String? = null,
     // Profile (server ≥ 2026-10-17, docs/PROFILE_AND_PRIVACY.md). Absent: not set, or not visible to you.
@@ -91,7 +90,6 @@ import kotlinx.serialization.json.JsonObject
     /** Workspace member lists (servers with `custom-roles`): the custom roles this person holds there. */
     val customRoles: List<RoleRef> = emptyList(),
 )
-@Serializable data class ScopedRole(val id: String, val role: String)
 @Serializable data class MeRes(val user: UserDto, val deviceId: String)
 @Serializable data class UserRes(val user: UserDto)
 @Serializable data class UsersRes(val users: List<UserDto> = emptyList(), val members: List<UserDto> = emptyList())
@@ -140,9 +138,19 @@ import kotlinx.serialization.json.JsonObject
     /** Whether this server lets you use @everyone here (false from older servers, which don't support it). */
     val canMentionAll: Boolean = false,
     val federation: ConversationFederationDto? = null,
-    /** A voice room (round 6, docs/VOICE_ROOMS.md): joining starts or joins its call, nobody rings. */
+    /** A voice channel (round 6, docs/VOICE_ROOMS.md): joining starts or joins its call, nobody rings. */
     val voice: Boolean = false,
+    /** Communities (docs/COMMUNITY_REBUILD_2026-10-21.md): the channel's category (null: none), its order, text or forum. */
+    val categoryId: String? = null,
+    val categoryName: String? = null,
+    val position: Int = 0,
+    val format: String = ChannelFormat.TEXT,
 )
+/** Text channels hold a conversation; forum channels hold posts with titles, each with its replies (threads). */
+object ChannelFormat {
+    const val TEXT = "text"
+    const val FORUM = "forum"
+}
 /** Servers of the people in a conversation who are on another server, as this server sees them. */
 @Serializable data class ConversationFederationDto(val servers: List<FederationServerDto> = emptyList(), val calls: Boolean = false)
 @Serializable data class FederationServerDto(val serverId: String, val domain: String? = null, val state: String = "unknown", val pending: Int = 0)
@@ -159,7 +167,11 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class ChannelRes(val channel: ConversationDto)
 @Serializable data class DmReq(val userId: String)
 @Serializable data class GroupReq(val name: String, val memberIds: List<String>)
-@Serializable data class PatchConversationReq(val name: String? = null, val topic: String? = null, val archived: Boolean? = null, val kind: String? = null)
+@Serializable data class PatchConversationReq(
+    val name: String? = null, val topic: String? = null, val archived: Boolean? = null, val kind: String? = null,
+    /** Communities: "text" or "forum" (text channels only). */
+    val format: String? = null,
+)
 @Serializable data class RoleReq(val role: String)
 
 // ───────── Messages & queue ─────────
@@ -204,27 +216,30 @@ import kotlinx.serialization.json.JsonObject
 @Serializable data class CompletedPart(val n: Int, val etag: String, val sha256: String)
 @Serializable data class CompleteUploadReq(val parts: List<CompletedPart>? = null)
 
-// ───────── Orgs ─────────
+// ───────── Communities (the server's "orgs") ─────────
 // slug defaults to "": servers before 2026-10-16 left it out of the invite preview, and requiring it made the app
 // reject a valid invite with "Unexpected server response" (physical-device test).
 @Serializable data class OrgDto(
     val id: String, val name: String, val slug: String = "", val description: String? = null, val myRole: String? = null,
     val memberCount: Int = 0, val createdAt: Long = 0,
-    /** The organisation's avatar revision (servers with `org-photos`); null without one. */
+    /** The community's avatar revision (servers with `org-photos`); null without one. */
     val photoRev: Long? = null,
     /** Round 7 guest policy (docs/WORKSPACE_C5.md). */
     val guestsAllowed: Boolean = true,
     val guestMaxDays: Int? = null,
-    /** Meldiq 2.0: "team" or "community" (servers with `communities`; older ones send nothing: a team). */
-    val kind: String = OrgKind.TEAM,
-) {
-    val isCommunity: Boolean get() = kind == OrgKind.COMMUNITY
-}
+    /** Listed in discovery ("public") or not ("private"), and how people get in ("invite" or "open"). */
+    val visibility: String = CommunityAccess.PRIVATE,
+    val joinPolicy: String = CommunityAccess.INVITE,
+    /** Rules shown before joining and on the community's home. */
+    val rules: String? = null,
+)
 
-/** What kind of workspace an organisation is (docs/product/MELDIQ_2_DECISIONS.md): the same model, different defaults. */
-object OrgKind {
-    const val TEAM = "team"
-    const val COMMUNITY = "community"
+/** Who can find a community and how people get in (docs/COMMUNITY_REBUILD_2026-10-21.md §5). */
+object CommunityAccess {
+    const val PRIVATE = "private"
+    const val PUBLIC = "public"
+    const val INVITE = "invite"
+    const val OPEN = "open"
 }
 /** Round 3: GET /v1/conversations/:id/presence. */
 @Serializable data class ConversationPresenceRes(val online: Int = 0, val members: Int = 0)
@@ -232,107 +247,129 @@ object OrgKind {
 @Serializable data class OrgRes(val org: OrgDto)
 /** `alreadyMember`: this person had already joined through the invite (a retry); the server used nothing up. */
 @Serializable data class AcceptInviteRes(val org: OrgDto, val alreadyMember: Boolean = false)
-@Serializable data class BranchDto(
-    val id: String, val name: String, val description: String? = null, val location: String? = null, val myRole: String? = null,
-    val canAccess: Boolean = false, val canManage: Boolean = false, val memberCount: Int = 0,
-)
-@Serializable data class DepartmentDto(val id: String, val branchId: String, val name: String, val description: String? = null)
-@Serializable data class TeamDto(
-    val id: String, val name: String, val description: String? = null, val branchId: String? = null, val departmentId: String? = null,
-    val crossBranch: Boolean = false, val myRole: String? = null, val canAccess: Boolean = false, val canManage: Boolean = false,
-    val memberCount: Int = 0,
-)
-@Serializable data class OrgStats(val members: Int = 0, val teams: Int = 0, val channels: Int = 0, val branches: Int = 0)
+@Serializable data class OrgStats(val members: Int = 0, val channels: Int = 0, val categories: Int = 0)
 @Serializable data class OrgPermissions(
     val canManageOrg: Boolean = false, val canInvite: Boolean = false, val canCreateChannels: Boolean = false,
     val canViewDirectory: Boolean = false, val isOwner: Boolean = false,
     /** Everyone but the last owner may leave (server ≥ workspace-admin; older servers: decided from the role). */
     val canLeave: Boolean? = null,
-    /** May see archived branches and teams to restore them (server ≥ workspace-admin). */
-    val canRestore: Boolean = false,
-    // Custom roles and apps (servers with `custom-roles` / `integrations`, docs/WORKSPACE_ROLES.md, INTEGRATIONS.md).
+    // Custom roles (servers with `custom-roles`, docs/WORKSPACE_ROLES.md).
     val canViewRoles: Boolean = false,
     val canManageRoles: Boolean = false,
     val canAssignRoles: Boolean = false,
     val canViewAudit: Boolean = false,
     val canViewUsage: Boolean = false,
-    val canViewApps: Boolean = false,
-    val canManageApps: Boolean = false,
-    val canManagePolicies: Boolean = false,
-    /** Round 7: may create and change workspace workflows (docs/WORKFLOWS.md). */
-    val canManageWorkflows: Boolean = false,
-    /** Round 7: may create and change user groups (docs/WORKSPACE_C5.md). */
-    val canManageGroups: Boolean = false,
-    /** Round 7: may manage API keys and webhooks (docs/DEVELOPER_API.md). */
-    val canManageDevelopers: Boolean = false,
+    /** Communities: may arrange and manage every channel and category, and ban people. */
+    val canManageChannels: Boolean = false,
+    val canBan: Boolean = false,
     val canTransferOwnership: Boolean = false,
-    /** The caller's effective permission keys in this workspace (empty on older servers). */
+    /** The caller's effective permission keys in this community (empty on older servers). */
     val effective: List<String> = emptyList(),
 )
+/** A channel category you can see, in order, with what you may do in it. */
+@Serializable data class CategoryDto(
+    val id: String, val name: String, val position: Int = 0, val channelCount: Int = 0,
+    val canManage: Boolean = false, val canCreateChannels: Boolean = false,
+)
 @Serializable data class OrgDetailRes(
-    val org: OrgDto, val branches: List<BranchDto>, val departments: List<DepartmentDto>, val teams: List<TeamDto>,
+    val org: OrgDto,
     val stats: OrgStats, val permissions: OrgPermissions,
     /** The custom roles the caller holds here. */
     val myRoles: List<RoleRef> = emptyList(),
+    /** Communities: categories you can see, in order (empty on older servers). */
+    val categories: List<CategoryDto> = emptyList(),
 )
-/** [requestId]: one per create form, so a retry or double tap returns the same workspace (server ≥ 2026-10-16). */
-@Serializable data class CreateOrgReq(val name: String, val description: String? = null, val requestId: String? = null, val kind: String? = null)
-/** Owners only: switches between a team and a community (only what the apps show first changes). */
-@Serializable data class UpdateOrgKindReq(val kind: String)
-@Serializable data class CreateBranchReq(val name: String, val description: String? = null, val location: String? = null)
-@Serializable data class CreateDepartmentReq(val name: String, val description: String? = null)
-@Serializable data class CreateTeamReq(val name: String, val description: String? = null, val branchId: String? = null, val departmentId: String? = null)
-@Serializable data class PatchScopeReq(val name: String? = null, val description: String? = null, val archived: Boolean? = null)
-/** JSON nulls are omitted by [GriipJson], so fields that may be cleared are sent as a [kotlinx.serialization.json.JsonElement] (`JsonNull` clears). */
-@Serializable data class UpdateDepartmentReq(val name: String, val description: kotlinx.serialization.json.JsonElement)
-@Serializable data class TeamDepartmentReq(val departmentId: kotlinx.serialization.json.JsonElement)
+/** [requestId]: one per create form, so a retry or double tap returns the same community (server ≥ 2026-10-16). */
+@Serializable data class CreateOrgReq(
+    val name: String, val description: String? = null, val requestId: String? = null,
+    val visibility: String? = null, val joinPolicy: String? = null, val rules: String? = null,
+)
 @Serializable data class CreateChannelReq(
-    val name: String, val topic: String? = null, val scope: String, val scopeId: String? = null, val kind: String,
+    val name: String, val topic: String? = null, val kind: String,
     val autoJoin: Boolean? = null, val memberIds: List<String> = emptyList(),
-    /** A voice room (round 6). */
+    /** A voice channel (round 6). */
     val voice: Boolean = false,
+    val categoryId: String? = null,
+    val format: String = ChannelFormat.TEXT,
 )
 @Serializable data class OrgRoleReq(val role: String? = null, val title: String? = null)
 @Serializable data class InviteReq(
-    val role: String, val branchId: String? = null, val teamId: String? = null, val maxUses: Int, val expiresInHours: Int,
+    val role: String, val maxUses: Int, val expiresInHours: Int,
     /** Round 7: how many days a guest's membership lasts once they join; null for no end date. */
     val guestDays: Int? = null,
+    /** A custom role the invitation gives on joining. */
+    val roleId: String? = null,
 )
 @Serializable data class InviteDto(
-    val id: String, val code: String? = null, val hint: String? = null, val role: String, val branchId: String? = null,
-    val teamId: String? = null, val maxUses: Int, val uses: Int = 0, val createdAt: Long = 0, val expiresAt: Long,
+    val id: String, val code: String? = null, val hint: String? = null, val role: String,
+    val maxUses: Int, val uses: Int = 0, val createdAt: Long = 0, val expiresAt: Long,
     val revokedAt: Long? = null, val active: Boolean = true,
     /** "active" | "revoked" | "expired" | "used_up" (server ≥ workspace-admin; null from older servers). */
     val status: String? = null, val createdBy: String? = null, val createdByName: String? = null,
+    val roleId: String? = null,
 )
 @Serializable data class InviteRes(val invite: InviteDto)
 @Serializable data class InvitesRes(val invites: List<InviteDto>)
 @Serializable data class CodeReq(val code: String)
 @Serializable data class NamedRef(val id: String, val name: String)
-@Serializable data class InvitePreviewRes(val org: OrgDto, val role: String, val branch: NamedRef? = null, val team: NamedRef? = null, val alreadyMember: Boolean = false)
+@Serializable data class GrantRoleRef(val id: String, val name: String, val color: String? = null)
+@Serializable data class InvitePreviewRes(
+    val org: OrgDto, val role: String, val alreadyMember: Boolean = false,
+    val grantRole: GrantRoleRef? = null, val banned: Boolean = false,
+)
 @Serializable data class ActivityDto(
     val id: Long, val at: Long, val action: String, val actorId: String? = null, val actorName: String? = null,
     val target: String? = null, val detail: String? = null,
 )
 @Serializable data class ActivityRes(val activity: List<ActivityDto>)
-@Serializable data class MoveReq(val toTeamId: String)
-/** Organization name and description; a JSON null description clears it ([GriipJson] omits plain nulls). */
-@Serializable data class UpdateOrgReq(val name: String, val description: kotlinx.serialization.json.JsonElement)
-/** Branch edits; a JSON null clears a field. */
-@Serializable data class UpdateBranchReq(
-    val name: String, val description: kotlinx.serialization.json.JsonElement, val location: kotlinx.serialization.json.JsonElement,
+/** Community profile; a JSON null clears description or rules ([GriipJson] omits plain nulls). */
+@Serializable data class UpdateOrgReq(
+    val name: String, val description: kotlinx.serialization.json.JsonElement,
+    val rules: kotlinx.serialization.json.JsonElement? = null,
+    val visibility: String? = null, val joinPolicy: String? = null,
 )
-@Serializable data class UpdateTeamReq(val name: String, val description: kotlinx.serialization.json.JsonElement)
 @Serializable data class ArchiveReq(val archived: Boolean)
 /** A member's title; a JSON null clears it. */
 @Serializable data class OrgTitleReq(val title: kotlinx.serialization.json.JsonElement)
-@Serializable data class ArchivedBranchDto(val id: String, val name: String, val description: String? = null, val location: String? = null, val archivedAt: Long = 0)
-@Serializable data class ArchivedTeamDto(
-    val id: String, val name: String, val description: String? = null, val branchId: String? = null, val crossBranch: Boolean = false,
-    val archivedAt: Long = 0, val branchArchived: Boolean = false,
+
+// ───────── Categories, layout and channel permissions (docs/COMMUNITY_REBUILD_2026-10-21.md) ─────────
+@Serializable data class CategoriesRes(val categories: List<CategoryDto> = emptyList())
+@Serializable data class CategoryRes(val category: CategoryDto? = null)
+@Serializable data class NameReq(val name: String)
+@Serializable data class LayoutChannel(val id: String, val categoryId: String?, val position: Int)
+@Serializable data class LayoutReq(val categories: List<String> = emptyList(), val channels: List<LayoutChannel> = emptyList())
+@Serializable data class LayoutRes(val ok: Boolean = true, val removed: Int = 0, val categories: List<CategoryDto> = emptyList())
+/** An overwrite: for "everyone", a role id, or "user:<id>"; [kind] everyone | role | member. */
+@Serializable data class OverwriteDto(
+    val subject: String, val kind: String, val label: String, val color: String? = null,
+    val allow: List<String> = emptyList(), val deny: List<String> = emptyList(),
 )
-/** What the caller may restore (GET /v1/orgs/:id/archived). */
-@Serializable data class ArchivedRes(val branches: List<ArchivedBranchDto> = emptyList(), val teams: List<ArchivedTeamDto> = emptyList())
+@Serializable data class CapabilityDto(val key: String, val label: String, val description: String = "")
+@Serializable data class RoleLite(val id: String, val name: String, val color: String? = null)
+@Serializable data class OverwritesRes(
+    val overwrites: List<OverwriteDto> = emptyList(), val capabilities: List<CapabilityDto> = emptyList(),
+    val roles: List<RoleLite> = emptyList(), val canManage: Boolean = false, val removed: Int = 0,
+)
+@Serializable data class OverwriteReq(val subject: String, val allow: List<String>, val deny: List<String>)
+
+// ───────── Discovery, joining and bans ─────────
+@Serializable data class DiscoverCommunityDto(
+    val id: String, val name: String, val description: String? = null, val memberCount: Int = 0, val photoRev: Long? = null,
+    val joinPolicy: String = CommunityAccess.INVITE, val joined: Boolean = false,
+)
+@Serializable data class DiscoverRes(val communities: List<DiscoverCommunityDto> = emptyList(), val nextCursor: Int? = null)
+@Serializable data class PreviewChannelDto(
+    val id: String, val name: String? = null, val topic: String? = null, val kind: String? = null, val voice: Boolean = false,
+    val format: String = ChannelFormat.TEXT,
+)
+@Serializable data class CommunityPreviewRes(val community: OrgDto, val channels: List<PreviewChannelDto> = emptyList(), val joined: Boolean = false, val banned: Boolean = false)
+@Serializable data class JoinCommunityRes(val org: OrgDto, val alreadyMember: Boolean = false)
+@Serializable data class BanDto(
+    val userId: String, val displayName: String, val username: String = "", val reason: String? = null,
+    val bannedAt: Long = 0, val bannedBy: String? = null, val bannedByName: String? = null,
+)
+@Serializable data class BansRes(val bans: List<BanDto> = emptyList())
+@Serializable data class BanReq(val userId: String, val reason: String? = null)
 
 // ───────── Personal navigation preferences (servers with `nav-preferences`, docs/WORKSPACE_ADMINISTRATION.md) ─────────
 @Serializable data class NavSectionDto(val id: String, val name: String, val items: List<String> = emptyList(), val collapsed: Boolean = false)
@@ -405,8 +442,6 @@ object OrgKind {
     val conversationId: String? = null,
     val orgId: String? = null,
     val deviceId: String? = null,
-    /** "integration.updated": which app changed for this person (docs/INTEGRATIONS.md). */
-    val connectorId: String? = null,
     /** Voice rooms: what a moderator did to you ("mute", "lower_hand", "remove"). */
     val action: String? = null,
     /** "reminder.due" / "reminders.changed": which reminder (docs/REMINDERS.md). */

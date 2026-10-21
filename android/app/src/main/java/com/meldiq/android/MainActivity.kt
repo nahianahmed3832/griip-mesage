@@ -137,18 +137,6 @@ class MainActivity : ComponentActivity() {
         if (data != null && data.scheme in InviteCodes.LINK_SCHEMES && data.host == "invite") {
             pendingInvite = InviteCodes.fromScan(data.toString()) // same rule as the in-app scanner
         }
-        // Back from an app sign-in in the browser: this signed-in app finishes it with the one-time code the browser
-        // handed back (no provider token or password), then the screen shows how it ended. Meldiq's scheme only.
-        if (data != null && data.scheme == "meldiq" && data.host == "integrations") {
-            val integrations = (application as GriipApp).container?.integrations ?: return
-            val flow = data.getQueryParameter("flow")
-            val finish = data.getQueryParameter("finish")
-            lifecycleScope.launch {
-                if (!integrations.browserReturned(flow, finish)) {
-                    Toast.makeText(this@MainActivity, getString(R.string.app_connect_not_yours), Toast.LENGTH_LONG).show()
-                }
-            }
-        }
     }
 
     companion object {

@@ -20,6 +20,8 @@ import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.DropdownMenu
@@ -78,18 +80,20 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
     var members by remember { mutableStateOf<List<UserDto>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     var showAdd by remember { mutableStateOf(false) }
-    var showAddGroup by remember { mutableStateOf(false) }
     var showEdit by remember { mutableStateOf(false) }
     var confirmLeave by remember { mutableStateOf(false) }
     var reload by remember { mutableStateOf(0) }
     // The server's current view (who may change the channel's access) and whether it supports access modes at all.
     var dto by remember { mutableStateOf<com.meldiq.android.data.api.ConversationDto?>(null) }
     var accessFeature by remember { mutableStateOf<Boolean?>(null) }
+    // Channel permissions and forums exist only on servers with communities.
+    var communityChannels by remember { mutableStateOf(false) }
     val files by container.messages.observeWithFiles(conversationId, CHANNEL_FILES_SHOWN).collectAsStateWithLifecycle(emptyList())
     LaunchedEffect(reload) {
         runCatching { container.conversations.members(conversationId) }.onSuccess { members = it }.onFailure { error = it.friendly() }
         if (conv?.type == "CHANNEL" || conv == null) {
             accessFeature = container.features.has(com.meldiq.android.data.repo.ServerFeatures.WORKSPACE_ADMIN)
+            communityChannels = container.features.has(com.meldiq.android.data.repo.ServerFeatures.COMMUNITY_CHANNELS) == true
             runCatching { container.conversations.fetch(conversationId) }.onSuccess { dto = it }
         }
     }
@@ -138,8 +142,17 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
                 if (cv.canManage) {
                     MenuRow(Icons.Outlined.Edit, if (cv.type == "CHANNEL") "Edit name & topic" else "Rename group", tint = c.lavender, tintBg = c.lavenderSoft, onClick = { showEdit = true })
                     if (cv.type != "DM") MenuRow(Icons.Outlined.PersonAdd, "Add members", onClick = { showAdd = true })
-                    // Round 7: add a user group's current members (docs/WORKSPACE_C5.md).
-                    if (cv.type == "CHANNEL" && cv.orgId != null) MenuRow(Icons.Outlined.PersonAdd, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.grp_add_to_channel), onClick = { showAddGroup = true })
+                    // Communities: who may see, post and share files here, on top of the category's rules.
+                    if (cv.type == "CHANNEL" && cv.orgId != null && communityChannels) MenuRow(
+                        Icons.Outlined.Security, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.cm_permissions), tint = c.lavender, tintBg = c.lavenderSoft,
+                        onClick = { nav.navigate(Routes.permissions(category = false, id = conversationId, name = cv.name.orEmpty())) },
+                    )
+                    // A text channel can become a forum (posts with titles and replies) and back; nothing is lost either way.
+                    if (cv.type == "CHANNEL" && !cv.voice && communityChannels) MenuRow(
+                        Icons.Outlined.Forum,
+                        androidx.compose.ui.res.stringResource(if (cv.format == "forum") com.meldiq.android.R.string.fm_make_text else com.meldiq.android.R.string.fm_make_forum),
+                        onClick = { scope.launch { runCatching { container.conversations.update(conversationId, format = if (cv.format == "forum") "text" else "forum") }.onFailure { error = it.friendly() }; reload++ } },
+                    )
                     if (cv.type == "CHANNEL") MenuRow(
                         if (cv.archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, if (cv.archived) "Unarchive channel" else "Archive channel",
                         tint = c.warning, tintBg = c.warningSoft,
@@ -191,9 +204,6 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
                 onClick = if (u.id != me) ({ nav.navigate(Routes.user(u.id)) }) else null,
             )
         }
-    }
-    if (showAddGroup) cv.orgId?.let { org ->
-        com.meldiq.android.ui.screens.workspace.groups.AddGroupSheet(org, conversationId, onDone = { msg -> showAddGroup = false; error = msg; reload++ }, onDismiss = { showAddGroup = false })
     }
     if (showAdd) AddMembersSheet(cv.orgId, members.map { it.id }.toSet(), onDismiss = { showAdd = false }) { ids ->
         scope.launch {

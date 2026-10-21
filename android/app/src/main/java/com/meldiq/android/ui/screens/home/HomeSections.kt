@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Apartment
 import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.Groups
@@ -304,13 +305,6 @@ private fun Chevron(expanded: Boolean) {
     Icon(Icons.Rounded.KeyboardArrowDown, null, tint = Griip.colors.textSecondary, modifier = Modifier.size(22.dp).rotate(turn))
 }
 
-/** The icon of a channel group: the organisation, a branch or a team. */
-fun scopeIcon(scope: String?): ImageVector = when (scope) {
-    "ORG" -> Icons.Outlined.Business
-    "BRANCH" -> Icons.Outlined.Apartment
-    "TEAM" -> Icons.Outlined.Groups
-    else -> Icons.Outlined.Tag
-}
 
 /** A channel group's collapsible header; collapsed, it shows how many of its channels have unread messages. */
 @Composable
@@ -330,7 +324,7 @@ fun ChannelGroupHeader(group: ChannelGroup, expanded: Boolean, onToggle: () -> U
             .padding(start = Space.gutter + 4.dp, end = Space.gutter - 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(scopeIcon(group.scope), null, tint = c.peach, modifier = Modifier.size(20.dp))
+        Icon(if (group.categoryId == null) androidx.compose.material.icons.Icons.Outlined.Tag else androidx.compose.material.icons.Icons.Outlined.FolderOpen, null, tint = c.peach, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
         Text(
             group.title, style = Griip.type.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = c.textPrimary,

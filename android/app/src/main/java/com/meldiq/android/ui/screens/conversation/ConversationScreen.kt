@@ -191,6 +191,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val users by vm.users.collectAsStateWithLifecycle()
     val typing by vm.typing.collectAsStateWithLifecycle()
     val threadCounts by vm.threadCounts.collectAsStateWithLifecycle()
+    val forumReplies by vm.forumReplies.collectAsStateWithLifecycle()
     val pinned by vm.pinned.collectAsStateWithLifecycle()
     val transfers by vm.transfers.collectAsStateWithLifecycle()
     val conn by vm.connection.collectAsStateWithLifecycle()
@@ -223,20 +224,6 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> if (uris.isNotEmpty()) vm.pick(ctx, uris) }
     val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(AttachmentPolicy.MAX_ITEMS)) { uris -> if (uris.isNotEmpty()) vm.pick(ctx, uris) }
     var attachSheet by remember { mutableStateOf(false) }
-    var aiSheet by remember { mutableStateOf<AttachAction?>(null) }
-    // Sharing a link to an item in a connected app (docs/INTEGRATIONS.md).
-    var shareFromApp by remember { mutableStateOf(false) }
-    // Whose app connections previews of shared links use: the channel's workspace, else the one selected on Home.
-    val homeOrg by vm.c.orgs.selectedOrg.collectAsStateWithLifecycle()
-    val appLinkOrg = conv?.orgId ?: homeOrg
-    // Connected apps' explicit actions on a message (docs/INTEGRATIONS.md › Actions), and the one being filled in.
-    var appActions by remember { mutableStateOf<List<com.meldiq.android.ui.screens.workspace.apps.MessageAction>>(emptyList()) }
-    var sendToApp by remember { mutableStateOf<Pair<com.meldiq.android.ui.screens.workspace.apps.MessageAction, String>?>(null) }
-    LaunchedEffect(appLinkOrg) {
-        val org = appLinkOrg ?: return@LaunchedEffect
-        if (vm.c.features.has(com.meldiq.android.data.repo.ServerFeatures.INTEGRATIONS) != true) return@LaunchedEffect
-        runCatching { vm.c.integrations.directory(org) }.onSuccess { d -> appActions = com.meldiq.android.ui.screens.workspace.apps.MessageActions.available(d.apps) }
-    }
     val batch by vm.batch.collectAsStateWithLifecycle()
     val batchNote by vm.batchNote.collectAsStateWithLifecycle()
     val riskyOpen by vm.riskyOpen.collectAsStateWithLifecycle()
@@ -293,6 +280,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     }
     var emojiSheet by remember { mutableStateOf(false) }
     var pollSheet by remember { mutableStateOf(false) }
+    var newPostSheet by remember { mutableStateOf(false) }
     var remindFor by remember { mutableStateOf<MessageEntity?>(null) }
     val stickerPrefs = remember { com.meldiq.android.data.repo.StickerPrefs(ctx) }
     // Saved for later (Home › Later): which messages here are saved, and whether this server keeps them.
@@ -576,13 +564,22 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             )
         }
         // What connected apps posted in this channel (server-visible, labelled as such).
-        if (conv?.type == "CHANNEL" && threadRoot == null) ChannelAppUpdatesBar(conversationId)
 
         // Messages, over Settings › Chats › wallpaper.
         Box(
             Modifier.weight(1f).then(com.meldiq.android.ui.theme.Wallpapers.modifier(chatSettings.wallpaper, c))
                 .observeTouches { composerAux.value = ComposerAux.onOutside(composerAux.value) },
         ) {
+            // A forum channel lists its posts; each post opens as a thread (communities, 2026-10-21).
+            if (conv?.format == "forum" && threadRoot == null && !searching) {
+                ForumPostList(
+                    messages, forumReplies, users, me,
+                    title = { m -> com.meldiq.android.data.model.ForumRules.titleOf(vm.c.messages.rich(m)?.title, m.text) },
+                    body = { m -> com.meldiq.android.data.model.ForumRules.body(vm.c.messages.rich(m)?.title ?: m.text.lineSequence().firstOrNull(), m.text) },
+                    onOpen = { m -> nav.navigate(Routes.conversation(conversationId, m.id)) },
+                )
+                return@Box
+            }
             if (messages.isEmpty() && threadRoot == null && conv?.type == "CHANNEL") {
                 ChannelWelcome(
                     conv?.name.orEmpty(), conv?.topic, conv?.canManage == true,
@@ -660,7 +657,6 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                             onReplyClick = { id -> val idx = messages.indexOfFirst { it.id == id }; if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) } },
                             onMentionClick = { id -> nav.navigate(Routes.user(id)) },
                             onOpenLink = onOpenLink,
-                            linkDetails = { url -> AppLinkDetails(appLinkOrg, url) },
                             onCopyText = { t -> scope.launch { clipboard.setClipEntry(ClipData.newPlainText("contact", t).toClipEntry()) } },
                             onFindPhone = { ph -> vm.findByPhone(ph) { id -> nav.navigate(Routes.user(id)) } },
                             voice = voicePlayer,
@@ -706,7 +702,9 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
 
         // Composer
         error?.let { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), action = "OK", onAction = { vm.error.value = null }) }
-        if (conv != null && !conv!!.canPost) {
+        if (conv?.format == "forum" && threadRoot == null) {
+            Box(Modifier.fillMaxWidth().background(c.surface).navigationBarsPadding()) { ForumComposerBar(conv?.canPost == true) { newPostSheet = true } }
+        } else if (conv != null && !conv!!.canPost) {
             Row(
                 Modifier.fillMaxWidth().background(c.surface).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -821,10 +819,6 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             }
             if (!m.deleted && m.kind == "text" && m.status != MessageStatus.SENDING && vm.c.messages.attachments(m).none { it.id == "pending" }) {
                 MenuRow(Icons.AutoMirrored.Outlined.Forward, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.menu_forward), onClick = { forwardFor = m; actionFor = null }, trailing = null)
-                // Explicit actions of connected apps (create a Jira issue, add a calendar event) on this message's text.
-                if (m.text.isNotBlank()) appActions.forEach { a ->
-                    MenuRow(Icons.Outlined.Apps, androidx.compose.ui.res.stringResource(a.label), subtitle = a.appName, tint = c.peach, tintBg = c.peachSoft, onClick = { sendToApp = a to m.text; actionFor = null }, trailing = null)
-                }
             }
             if (m.outgoing && (m.status == MessageStatus.SENDING || m.status == MessageStatus.FAILED) && vm.c.messages.attachments(m).any { it.id == "pending" }) {
                 MenuRow(Icons.Outlined.Close, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.menu_cancel_upload), subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.menu_cancel_upload_sub), tint = c.danger, tintBg = c.dangerSoft, onClick = { vm.cancelUpload(m); actionFor = null }, trailing = null)
@@ -859,18 +853,6 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             InfoLine("Encryption", "griip-envelope-v1 · signed by this device")
         }
     }
-    val aiStatus = com.meldiq.android.ui.screens.workspace.ai.rememberAiStatus(appLinkOrg)
-    val aiOrg = appLinkOrg
-    if (aiSheet == AttachAction.AiWrite && aiOrg != null) {
-        com.meldiq.android.ui.screens.workspace.ai.AiWriteSheet(aiOrg, field.text, onUse = { t -> setText(t); aiSheet = null }, onDismiss = { aiSheet = null })
-    } else if (aiSheet == AttachAction.AiCatchUp && aiOrg != null) {
-        val lines = remember(messages, users) {
-            com.meldiq.android.ui.screens.workspace.ai.AiRules.catchUp(messages.asReversed().map { m ->
-                com.meldiq.android.ui.screens.workspace.ai.AiRules.Line(users[m.senderUserId]?.displayName ?: "?", m.text, m.sortTs, m.kind == "text" && !m.deleted)
-            })
-        }
-        com.meldiq.android.ui.screens.workspace.ai.AiCatchUpSheet(aiOrg, conversationId, lines, onDismiss = { aiSheet = null })
-    }
     if (attachSheet) {
         AttachPanel(maxFile, onAction = { action ->
             attachSheet = false
@@ -882,13 +864,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 AttachAction.Contact -> profileSheet = true
                 AttachAction.Location -> shareLocation()
                 AttachAction.Poll -> pollSheet = true
-                AttachAction.FromApp -> shareFromApp = true
-                AttachAction.AiWrite, AttachAction.AiCatchUp -> aiSheet = action
             }
-        }, onDismiss = { attachSheet = false }, aiWrite = aiStatus?.available == true, aiCatchUp = aiStatus?.available == true && conv?.type == "CHANNEL" && threadRoot == null)
-    } else if (shareFromApp) {
-        // A channel's own workspace; for DMs and groups, the workspace selected on Home (connections belong to one).
-        ShareFromAppSheet(appLinkOrg, onShare = { text, card -> shareFromApp = false; vm.sendLink(text, card) }, onDismiss = { shareFromApp = false })
+        }, onDismiss = { attachSheet = false })
     } else if (batch.isNotEmpty()) {
         BatchComposer(
             batch, batchNote, onRemove = vm::unpick, onAddMore = { attachSheet = true },
@@ -937,6 +914,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             onSendSticker = { s -> vm.sendSticker(s); emojiSheet = false },
         )
     }
+    if (newPostSheet) NewPostSheet(onDismiss = { newPostSheet = false }, onPost = { t, b -> vm.sendForumPost(t, b) })
     if (pollSheet) PollComposerSheet(onSend = { poll -> vm.sendRich(com.meldiq.android.data.model.RichContent(poll = poll)); pollSheet = false }, onDismiss = { pollSheet = false })
     remindFor?.let { m ->
         com.meldiq.android.ui.screens.home.RemindSheet(
@@ -944,13 +922,6 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             onPick = { at -> vm.remind(m, at); remindFor = null },
             onDismiss = { remindFor = null },
         )
-    }
-    sendToApp?.let { (action, text) ->
-        val org = appLinkOrg
-        if (org != null) com.meldiq.android.ui.screens.workspace.apps.SendToAppSheet(org, action, text, onDismiss = { sendToApp = null }, onDone = { title ->
-            sendToApp = null
-            android.widget.Toast.makeText(ctx, ctx.getString(com.meldiq.android.R.string.send_done, title), android.widget.Toast.LENGTH_SHORT).show()
-        })
     }
     forwardFor?.let { m ->
         val all by vm.c.conversations.observeAll().collectAsStateWithLifecycle(emptyList())

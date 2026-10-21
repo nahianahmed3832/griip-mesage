@@ -45,9 +45,9 @@ S = {
 "intro_voice_title": ("Talk it through", "当面聊清楚", "কথা বলে মিটিয়ে নিন"),
 "intro_voice_body": ("Voice and video calls with screen sharing, and voice rooms your team can drop into any time.", "支持屏幕共享的语音和视频通话，还有团队随时可加入的语音房间。", "স্ক্রিন শেয়ারসহ ভয়েস ও ভিডিও কল, আর ভয়েস রুম যেখানে আপনার দল যেকোনো সময় যোগ দিতে পারে।"),
 "intro_apps_title": ("Bring your tools", "接入你的工具", "আপনার টুল সঙ্গে আনুন"),
-"intro_apps_body": ("Connect Figma, GitHub, GitLab and more to your workspace, with permissions your admins control.", "将 Figma、GitHub、GitLab 等连接到你的工作区，权限由管理员掌控。", "Figma, GitHub, GitLab ও আরও অনেক কিছু আপনার ওয়ার্কস্পেসে যুক্ত করুন, অনুমতি আপনার অ্যাডমিনদের হাতে।"),
+"intro_apps_body": ("Connect Figma, GitHub, GitLab and more to your community, with permissions your admins control.", "将 Figma、GitHub、GitLab 等连接到你的社区，权限由管理员掌控。", "Figma, GitHub, GitLab ও আরও অনেক কিছু আপনার কমিউনিটিতে যুক্ত করুন, অনুমতি আপনার অ্যাডমিনদের হাতে।"),
 "intro_people_title": ("People and HR", "人员与人事", "মানুষ ও এইচআর"),
-"intro_people_body": ("Team directory, attendance, shifts and leave are coming to Meldiq workspaces, with access based on roles.", "团队通讯录、考勤、排班和请假即将加入 Meldiq 工作区，并按角色控制访问。", "টিম ডিরেক্টরি, উপস্থিতি, শিফট ও ছুটি শীঘ্রই Meldiq ওয়ার্কস্পেসে আসছে, ভূমিকা অনুযায়ী অ্যাক্সেসসহ।"),
+"intro_people_body": ("Team directory, attendance, shifts and leave are coming to Meldiq communities, with access based on roles.", "团队通讯录、考勤、排班和请假即将加入 Meldiq 社区，并按角色控制访问。", "টিম ডিরেক্টরি, উপস্থিতি, শিফট ও ছুটি শীঘ্রই Meldiq কমিউনিটিতে আসছে, ভূমিকা অনুযায়ী অ্যাক্সেসসহ।"),
 "settings_intro": ("Introduction", "介绍", "পরিচিতি"),
 "settings_intro_sub": ("See the welcome pages again", "再次查看欢迎页面", "স্বাগত পৃষ্ঠাগুলো আবার দেখুন"),
 # Account recovery (sign-in)

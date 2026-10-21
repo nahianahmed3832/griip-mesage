@@ -14,7 +14,7 @@ class SearchRulesTest {
         assertNull(SearchRules.serverTypes(Filter.FILES))
         assertNull(SearchRules.serverTypes(Filter.PINNED))
         assertEquals("people", SearchRules.serverTypes(Filter.PEOPLE))
-        assertEquals("people,channels,workspaces,groups,documents", SearchRules.serverTypes(Filter.ALL))
+        assertEquals("people,channels,workspaces,groups", SearchRules.serverTypes(Filter.ALL))
     }
 
     @Test

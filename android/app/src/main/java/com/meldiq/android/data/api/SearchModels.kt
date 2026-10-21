@@ -12,13 +12,11 @@ import kotlinx.serialization.Serializable
     val channels: ChannelPageDto? = null,
     val workspaces: WorkspacePageDto? = null,
     val groups: ConversationPageDto? = null,
-    val documents: DocumentPageDto? = null,
 )
 
 @Serializable data class PeoplePageDto(val items: List<UserDto> = emptyList(), val next: String? = null)
 @Serializable data class ChannelPageDto(val items: List<ChannelHitDto> = emptyList(), val next: String? = null)
 @Serializable data class WorkspacePageDto(val items: List<WorkspaceHitDto> = emptyList(), val next: String? = null)
-@Serializable data class DocumentPageDto(val items: List<DocumentDto> = emptyList(), val next: String? = null)
 @Serializable data class ConversationPageDto(val items: List<ConversationDto> = emptyList(), val next: String? = null)
 
 /** A channel in any of your workspaces that you could open (joined, or public in your scope). */

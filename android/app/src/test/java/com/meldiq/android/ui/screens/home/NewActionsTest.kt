@@ -10,7 +10,7 @@ import org.junit.Test
 /** Home's New menu offers only what the selected workspace lets you do (the server checks each one again). */
 class NewActionsTest {
     private fun detail(channels: Boolean, invite: Boolean) = OrgDetailRes(
-        org = OrgDto("o1", "Acme"), branches = emptyList(), departments = emptyList(), teams = emptyList(),
+        org = OrgDto("o1", "Acme"),
         stats = OrgStats(), permissions = OrgPermissions(canCreateChannels = channels, canInvite = invite),
     )
 

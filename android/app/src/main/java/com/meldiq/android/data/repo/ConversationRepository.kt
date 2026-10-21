@@ -73,6 +73,7 @@ class ConversationRepository(
             archivedAt = local?.archivedAt,
             voice = d.voice,
             roomPeopleJson = d.activeCall?.participantIds?.let { GriipJson.encodeToString(ListSerializer(String.serializer()), it) },
+            categoryId = d.categoryId, categoryName = d.categoryName, position = d.position, format = d.format,
         )
         if (d.joined || local != null) db.conversations().upsert(e)
         return e
@@ -109,8 +110,8 @@ class ConversationRepository(
         return ConversationRepository.members(conv).map { com.meldiq.android.data.model.MentionMember(it.id, it.username, it.displayName) }
     }
 
-    suspend fun update(id: String, name: String? = null, topic: String? = null, archived: Boolean? = null, kind: String? = null) =
-        upsertFromServer(api.patch<PatchConversationReq, ConversationRes>("/v1/conversations/$id", PatchConversationReq(name, topic, archived, kind)).conversation)
+    suspend fun update(id: String, name: String? = null, topic: String? = null, archived: Boolean? = null, kind: String? = null, format: String? = null) =
+        upsertFromServer(api.patch<PatchConversationReq, ConversationRes>("/v1/conversations/$id", PatchConversationReq(name, topic, archived, kind, format)).conversation)
 
     /** The server's current view of a conversation, with fields the local table doesn't keep (who may change its access). */
     suspend fun fetch(id: String): ConversationDto = api.get<ConversationRes>("/v1/conversations/$id").conversation.also { upsertFromServer(it) }

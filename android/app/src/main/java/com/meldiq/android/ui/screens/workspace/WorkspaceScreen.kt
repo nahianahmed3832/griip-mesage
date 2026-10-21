@@ -1,5 +1,6 @@
 package com.meldiq.android.ui.screens.workspace
 
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -9,34 +10,30 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AddBusiness
 import androidx.compose.material.icons.outlined.AdminPanelSettings
-import androidx.compose.material.icons.outlined.Apps
-import androidx.compose.material.icons.outlined.Bolt
-import androidx.compose.material.icons.outlined.Code
-import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Forum
-import androidx.compose.material.icons.outlined.Event
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Insights
-import androidx.compose.material.icons.outlined.Policy
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.DeleteForever
-import androidx.compose.material.icons.outlined.Apartment
+import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.ManageAccounts
+import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material.icons.outlined.PostAdd
-import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.Workspaces
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,36 +41,41 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavHostController
+import com.meldiq.android.R
+import com.meldiq.android.data.api.CategoryDto
+import com.meldiq.android.data.api.CommunityAccess
 import com.meldiq.android.data.api.ConversationDto
+import com.meldiq.android.data.api.LayoutReq
 import com.meldiq.android.data.api.OrgDetailRes
 import com.meldiq.android.data.api.OrgDto
+import com.meldiq.android.data.model.ChannelRef
+import com.meldiq.android.data.model.ChannelSection
+import com.meldiq.android.data.model.ChannelTree
+import com.meldiq.android.data.model.LayoutRules
 import com.meldiq.android.di.AppContainer
 import com.meldiq.android.ui.Routes
 import com.meldiq.android.ui.components.ArrowKnob
 import com.meldiq.android.ui.components.BannerKind
 import com.meldiq.android.ui.components.ButtonTone
-import com.meldiq.android.ui.components.ChipRow
 import com.meldiq.android.ui.components.CircleIconButton
 import com.meldiq.android.ui.components.EmptyState
 import com.meldiq.android.ui.components.GlassCard
 import com.meldiq.android.ui.components.GlassSheet
 import com.meldiq.android.ui.components.IconTile
-import com.meldiq.android.ui.components.LargeHeader
 import com.meldiq.android.ui.components.ListCard
-import com.meldiq.android.ui.components.MarkTile
 import com.meldiq.android.ui.components.MenuRow
 import com.meldiq.android.ui.components.PillButton
-import com.meldiq.android.ui.components.PillChip
 import com.meldiq.android.ui.components.RoleBadge
 import com.meldiq.android.ui.components.SegmentedPills
 import com.meldiq.android.ui.components.ShimmerList
@@ -82,7 +84,6 @@ import com.meldiq.android.ui.components.StatusBanner
 import com.meldiq.android.ui.components.TagPill
 import com.meldiq.android.ui.containerViewModel
 import com.meldiq.android.ui.friendly
-import com.meldiq.android.ui.screens.chats.channelIcon
 import com.meldiq.android.ui.theme.Griip
 import com.meldiq.android.ui.theme.Shapes
 import com.meldiq.android.ui.theme.Space
@@ -94,6 +95,7 @@ class WorkspaceViewModel(val c: AppContainer) : ViewModel() {
     val detail = MutableStateFlow<OrgDetailRes?>(null)
     val channels = MutableStateFlow<List<ConversationDto>>(emptyList())
     val error = MutableStateFlow<String?>(null)
+    val notice = MutableStateFlow<String?>(null)
     val loading = MutableStateFlow(true)
     val selectedOrg = c.orgs.selectedOrg
 
@@ -106,7 +108,7 @@ class WorkspaceViewModel(val c: AppContainer) : ViewModel() {
         loading.value = true
         if (orgs.value == null) c.orgs.cachedOrgs()?.let { orgs.value = WorkspaceList.normalize(it) }
         runCatching { c.orgs.orgs() }.onSuccess { fetched ->
-            // Replaces (never appends to) the list: one entry per organisation id, in a stable order.
+            // Replaces (never appends to) the list: one entry per community id, in a stable order.
             val list = WorkspaceList.normalize(fetched)
             orgs.value = list
             val sel = selectedOrg.value?.takeIf { s -> list.any { it.id == s } } ?: list.firstOrNull()?.id
@@ -134,8 +136,37 @@ class WorkspaceViewModel(val c: AppContainer) : ViewModel() {
     fun join(ch: ConversationDto, then: (String) -> Unit) = viewModelScope.launch {
         runCatching { c.conversations.join(ch.id) }.onSuccess { then(ch.id); refresh() }.onFailure { error.value = it.friendly() }
     }
+
+    /** Saves a layout change; when moving a channel changed who can see it, says how many memberships changed. */
+    fun saveLayout(req: LayoutReq, movedMessage: (Int) -> String) = viewModelScope.launch {
+        val orgId = detail.value?.org?.id ?: return@launch
+        runCatching { c.orgs.saveLayout(orgId, req) }
+            .onSuccess { if (it.removed > 0) notice.value = movedMessage(it.removed); refresh() }
+            .onFailure { error.value = it.friendly() }
+    }
+
+    fun deleteCategory(cat: CategoryDto) = viewModelScope.launch {
+        runCatching { c.orgs.deleteCategory(cat.id) }.onSuccess { refresh() }.onFailure { error.value = it.friendly() }
+    }
 }
 
+private sealed interface CommunitySheet {
+    data object Switcher : CommunitySheet
+    data class NewChannel(val categoryId: String?) : CommunitySheet
+    data object NewCategory : CommunitySheet
+    data class RenameCategory(val category: CategoryDto) : CommunitySheet
+    data class CategoryActions(val category: CategoryDto) : CommunitySheet
+    data class ChannelActions(val channel: ConversationDto) : CommunitySheet
+    data class MoveTo(val channel: ConversationDto) : CommunitySheet
+    data object Settings : CommunitySheet
+    data object Transfer : CommunitySheet
+    data object Delete : CommunitySheet
+}
+
+/**
+ * The selected community (docs/COMMUNITY_REBUILD_2026-10-21.md): its channels in categories, in order, with joining and
+ * (for the people who may) arranging, permissions and new channels or categories; its About; and its administration.
+ */
 @Composable
 fun WorkspaceScreen(nav: NavHostController) {
     val vm = containerViewModel { WorkspaceViewModel(it) }
@@ -145,26 +176,36 @@ fun WorkspaceScreen(nav: NavHostController) {
     val detail by vm.detail.collectAsStateWithLifecycle()
     val channels by vm.channels.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
+    val notice by vm.notice.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val selectedOrg by vm.selectedOrg.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(0) }
-    var branchFilter by rememberSaveable { mutableStateOf<String?>(null) }
-    var showSwitcher by remember { mutableStateOf(false) }
-    var sheet by remember { mutableStateOf<String?>(null) }
-    var archivedReload by remember { androidx.compose.runtime.mutableIntStateOf(0) }
-    LaunchedEffect(Unit) { vm.refresh() }
+    var sheet by remember { mutableStateOf<CommunitySheet?>(null) }
+    // Discover exists only on servers with communities (an older one answers 404).
+    var discovery by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        vm.refresh()
+        discovery = vm.c.features.has(com.meldiq.android.data.repo.ServerFeatures.COMMUNITY_DISCOVERY) == true
+    }
+    LaunchedEffect(notice) { notice?.let { android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_LONG).show(); vm.notice.value = null } }
+    val movedMessage = { n: Int -> ctx.getString(R.string.cm_moved, n) }
 
     val d = detail
-    // AI shows once it can be used here, or for admins who can switch it on (round 7, docs/AI.md).
-    val aiStatus = com.meldiq.android.ui.screens.workspace.ai.rememberAiStatus(d?.org?.id)
-    val aiOffered = aiStatus?.available == true || (aiStatus?.canManage == true && aiStatus.providers.isNotEmpty())
+    val canArrange = d?.permissions?.canManageChannels == true
+    val canCreateCategory = d != null && ("channels.create" in d.permissions.effective || d.permissions.canManageOrg)
+    val sections: List<ChannelSection<ConversationDto>> = remember(channels, d?.categories, canArrange) {
+        ChannelTree.sections(channels.filter { !it.archived }, d?.categories.orEmpty(), keepEmpty = canArrange, ref = { ChannelRef(it.id, it.name.orEmpty(), it.categoryId, it.position) }, categoryName = { it.categoryName })
+    }
+    val categoryOrder = d?.categories.orEmpty().sortedBy { it.position }.map { it.id }
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
-            com.meldiq.android.ui.components.GriipTopBar("Workspace", subtitle = d?.org?.name, onBack = { nav.popBackStack() }) {
-                if ((orgs?.size ?: 0) > 0) CircleIconButton(Icons.Outlined.SwapHoriz, "Switch organization", { showSwitcher = true })
+            com.meldiq.android.ui.components.GriipTopBar(stringResource(R.string.cm_title), subtitle = d?.org?.name, onBack = { nav.popBackStack() }) {
+                if (discovery) CircleIconButton(Icons.Outlined.Explore, stringResource(R.string.cm_discover), { nav.navigate(Routes.DISCOVER) })
+                if ((orgs?.size ?: 0) > 0) CircleIconButton(Icons.Outlined.SwapHoriz, "Switch community", { sheet = CommunitySheet.Switcher })
             }
         }
-        // More than one workspace: switch with one tap, like a server rail.
+        // More than one community: switch with one tap, like a server rail.
         if ((orgs?.size ?: 0) > 1) item(key = "rail") {
             WorkspaceRail(orgs.orEmpty(), d?.org?.id ?: selectedOrg, { vm.switchOrg(it) }, { nav.navigate(Routes.JOIN + "?code=") }, Modifier.padding(bottom = 6.dp))
         }
@@ -172,10 +213,13 @@ fun WorkspaceScreen(nav: NavHostController) {
         if (d == null) {
             item {
                 if (loading && orgs == null) ShimmerList(4)
-                else EmptyState(
-                    Icons.Outlined.Workspaces, "No workspace yet", "Join your organization with an invite code from your manager, or create a new one.",
-                    action = "Join or create", onAction = { nav.navigate(Routes.JOIN + "?code=") },
-                )
+                else Column {
+                    EmptyState(
+                        Icons.Outlined.Workspaces, stringResource(R.string.cm_none_title), stringResource(R.string.cm_none_body),
+                        action = if (discovery) stringResource(R.string.cm_discover) else null, onAction = if (discovery) ({ nav.navigate(Routes.DISCOVER) }) else null,
+                    )
+                    PillButton(stringResource(R.string.cm_join_or_create), { nav.navigate(Routes.JOIN + "?code=") }, Modifier.fillMaxWidth().padding(horizontal = Space.gutter), tone = ButtonTone.Glass, height = 50.dp)
+                }
             }
             return@LazyColumn
         }
@@ -192,214 +236,97 @@ fun WorkspaceScreen(nav: NavHostController) {
                 }
                 Spacer(Modifier.height(14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StatTile("Members", "${d.stats.members}", Modifier.weight(1f))
-                    StatTile("Teams", "${d.stats.teams}", Modifier.weight(1f))
-                    StatTile("Channels", "${d.stats.channels}", Modifier.weight(1f))
+                    StatTile(stringResource(R.string.cm_stat_members), "${d.stats.members}", Modifier.weight(1f))
+                    StatTile(stringResource(R.string.cm_stat_channels), "${d.stats.channels}", Modifier.weight(1f))
+                    StatTile(stringResource(R.string.cm_stat_categories), "${d.categories.size}", Modifier.weight(1f))
                 }
             }
         }
-        if (d.branches.isNotEmpty()) {
-            item {
-                ChipRow {
-                    PillChip("All branches", branchFilter == null, { branchFilter = null }, icon = Icons.Rounded.Public)
-                    d.branches.forEach { b -> PillChip(b.name, branchFilter == b.id, { branchFilter = b.id }, icon = if (b.canAccess) null else Icons.Rounded.Lock) }
-                }
-            }
+        item {
+            SegmentedPills(
+                listOf(stringResource(R.string.cm_channels), stringResource(R.string.cm_about), stringResource(R.string.cm_manage)), tab, { tab = it },
+                Modifier.padding(horizontal = Space.gutter, vertical = 10.dp),
+            )
         }
-        item { SegmentedPills(listOf("Teams", "Channels", "Manage"), tab, { tab = it }, Modifier.padding(horizontal = Space.gutter, vertical = 10.dp)) }
 
         when (tab) {
             0 -> {
-                val selectedBranch = d.branches.firstOrNull { it.id == branchFilter }
-                if (selectedBranch != null && !selectedBranch.canAccess) {
-                    item { StatusBanner("You're not a member of ${selectedBranch.name}. Ask an admin or that branch's manager for access.", BannerKind.Info, Modifier.padding(horizontal = Space.gutter), icon = Icons.Rounded.Lock) }
-                }
-                val teams = d.teams.filter { branchFilter == null || it.branchId == branchFilter || it.crossBranch }
-                if (teams.isEmpty()) item { EmptyState(Icons.Outlined.Groups, "No teams here", "Teams you belong to, or can manage, appear here.") }
-                items(teams, key = { it.id }) { t ->
-                    val branch = d.branches.firstOrNull { it.id == t.branchId }?.name
-                    val dept = d.departments.firstOrNull { it.id == t.departmentId }?.name
-                    ListCard(
-                        t.name, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                        subtitle = t.description ?: listOfNotNull(branch, dept).joinToString(" · "),
-                        leading = { MarkTile(t.name, t.name.hashCode(), size = 50.dp) },
-                        meta = {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                TagPill(if (t.memberCount == 1) "1 member" else "${t.memberCount} members", c.textSecondary, c.surfaceVariant)
-                                if (t.crossBranch) TagPill("Cross-branch", c.lavender, c.lavenderSoft) else branch?.let { TagPill(it, c.primaryDeep, c.primarySoft) }
-                                t.myRole?.let { RoleBadge(it) }
-                            }
-                        },
-                        trailing = { ArrowKnob() },
-                        onClick = { nav.navigate(Routes.team(d.org.id, t.id)) },
-                    )
-                }
-            }
-            1 -> {
-                val teamBranch = d.teams.associate { it.id to it.branchId }
-                val shown = channels.filter { ch ->
-                    branchFilter == null || ch.scope == "ORG" || (ch.scope == "BRANCH" && ch.scopeId == branchFilter) || (ch.scope == "TEAM" && teamBranch[ch.scopeId] == branchFilter)
-                }
-                if (shown.isEmpty()) item { EmptyState(Icons.Outlined.Tag, "No channels", "Channels you can see in this branch appear here.") }
-                items(shown, key = { it.id }) { ch ->
-                    val (fg, bg) = when (ch.kind) {
-                        "ANNOUNCEMENT" -> c.peach to c.peachSoft
-                        "PRIVATE" -> c.lavender to c.lavenderSoft
-                        else -> c.primary to c.primarySoft
+                if (sections.isEmpty()) item { EmptyState(Icons.Outlined.Tag, stringResource(R.string.cm_empty_category), stringResource(R.string.cm_none_body)) }
+                sections.forEach { section ->
+                    val category = d.categories.firstOrNull { it.id == section.categoryId }
+                    item(key = "header-" + section.key) {
+                        CategoryHeader(
+                            section.title ?: stringResource(R.string.cm_channels), section.categoryId != null,
+                            onMore = category?.takeIf { it.canManage }?.let { { sheet = CommunitySheet.CategoryActions(it) } },
+                        )
                     }
-                    ListCard(
-                        "#${ch.name}", Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                        subtitle = ch.topic ?: ch.scopeName,
-                        leading = { IconTile(channelIcon(ch.kind), fg, bg, size = 46.dp) },
-                        meta = {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                TagPill(ch.scopeName ?: ch.scope?.lowercase() ?: "", c.textSecondary, c.surfaceVariant)
-                                TagPill("${ch.memberCount}", c.textSecondary, c.surfaceVariant, icon = Icons.Outlined.Groups)
-                                if (ch.activeCall != null) TagPill("Live call", c.success, c.successSoft)
-                            }
-                        },
-                        trailing = {
-                            if (ch.joined) ArrowKnob()
-                            else PillButton("Join", { vm.join(ch) { id -> nav.navigate(Routes.conversation(id)) } }, tone = ButtonTone.Glass, showKnob = false, height = 38.dp)
-                        },
-                        // A channel you haven't joined joins on a tap of the row too, not only its Join button (round 7).
-                        onClick = if (ch.joined) ({ nav.navigate(Routes.conversation(ch.id)) }) else ({ vm.join(ch) { id -> nav.navigate(Routes.conversation(id)) } }),
-                    )
+                    if (section.channels.isEmpty()) item(key = "empty-" + section.key) {
+                        Text(stringResource(R.string.cm_empty_category), style = Griip.type.caption, color = c.textTertiary, modifier = Modifier.padding(horizontal = Space.gutter + 8.dp, vertical = 4.dp))
+                    }
+                    items(section.channels, key = { "ch-" + it.id }) { ch ->
+                        ChannelRow(
+                            ch,
+                            onOpen = { if (ch.joined) nav.navigate(Routes.conversation(ch.id)) else vm.join(ch) { id -> nav.navigate(Routes.conversation(id)) } },
+                            onJoin = { vm.join(ch) { id -> nav.navigate(Routes.conversation(id)) } },
+                            onMore = if (ch.canManage || canArrange) ({ sheet = CommunitySheet.ChannelActions(ch) }) else null,
+                        )
+                    }
                 }
-                if (d.permissions.canCreateChannels) item {
-                    PillButton("New channel", { sheet = "channel" }, Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 12.dp), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.PostAdd)
+                item {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (d.permissions.canCreateChannels) PillButton(stringResource(R.string.cm_new_channel), { sheet = CommunitySheet.NewChannel(null) }, Modifier.weight(1f), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.PostAdd)
+                        if (canCreateCategory) PillButton(stringResource(R.string.cm_new_category), { sheet = CommunitySheet.NewCategory }, Modifier.weight(1f), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.CreateNewFolder)
+                    }
                 }
             }
+            1 -> item { CommunityAbout(d, onInvite = if (d.permissions.canInvite) ({ nav.navigate(Routes.invites(d.org.id)) }) else null) }
             else -> {
-                // Honest setup progress for the people who run the workspace (hidden once every step is done).
+                // Honest setup progress for the people who run the community (hidden once every step is done).
                 if (d.permissions.canManageOrg) item(key = "setup") { WorkspaceSetupCard(d) }
                 item {
                     GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), contentPadding = PaddingValues(6.dp)) {
                         MenuRow(
-                            Icons.Outlined.Settings, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ws_settings_open),
-                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ws_your_role, roleLabel(d.org.myRole)),
-                            onClick = { sheet = "settings" },
+                            Icons.Outlined.Settings, stringResource(R.string.ws_settings_open),
+                            subtitle = stringResource(R.string.ws_your_role, roleLabel(d.org.myRole)),
+                            onClick = { sheet = CommunitySheet.Settings },
                         )
-                        if (d.permissions.canViewDirectory) MenuRow(Icons.Outlined.ManageAccounts, "Members & roles", subtitle = "Directory, branches, teams, roles", onClick = { nav.navigate(Routes.members(d.org.id)) })
+                        if (d.permissions.canViewDirectory) MenuRow(Icons.Outlined.ManageAccounts, stringResource(R.string.cm_stat_members), subtitle = stringResource(R.string.manage_roles_sub), onClick = { nav.navigate(Routes.members(d.org.id)) })
                         if (d.permissions.canInvite) MenuRow(Icons.Outlined.GroupAdd, "Invitations", subtitle = "Create invite codes & QR, revoke", tint = c.peach, tintBg = c.peachSoft, onClick = { nav.navigate(Routes.invites(d.org.id)) })
-                        if (d.permissions.canViewDirectory) MenuRow(Icons.Outlined.History, "Branch & team activity", tint = c.lavender, tintBg = c.lavenderSoft, onClick = { nav.navigate(Routes.activity(d.org.id)) })
-                        // Custom roles, apps, audit and usage (2026-10-19): shown only to people the server says may use them.
                         if (d.permissions.canViewRoles) MenuRow(
-                            Icons.Outlined.AdminPanelSettings, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.manage_roles),
-                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.manage_roles_sub), onClick = { nav.navigate(Routes.roles(d.org.id)) },
+                            Icons.Outlined.AdminPanelSettings, stringResource(R.string.manage_roles),
+                            subtitle = stringResource(R.string.manage_roles_sub), onClick = { nav.navigate(Routes.roles(d.org.id)) },
                         )
-                        if (d.permissions.canViewApps) MenuRow(
-                            Icons.Outlined.Apps, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.manage_apps),
-                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.manage_apps_sub), tint = c.peach, tintBg = c.peachSoft,
-                            onClick = { nav.navigate(Routes.apps(d.org.id)) },
-                        )
-                        // Meetings and groups (round 7, docs/WORKSPACE_C5.md).
+                        if (d.permissions.canBan) MenuRow(Icons.Outlined.Block, stringResource(R.string.cm_bans), subtitle = stringResource(R.string.cm_bans_sub), tint = c.danger, tintBg = c.dangerSoft, onClick = { nav.navigate(Routes.bans(d.org.id)) })
                         MenuRow(
-                            Icons.Outlined.Event, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.mtg_title),
-                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.mtg_menu_sub), tint = c.peach, tintBg = c.peachSoft,
+                            Icons.Outlined.Event, stringResource(R.string.cm_events), subtitle = stringResource(R.string.cm_events_sub), tint = c.peach, tintBg = c.peachSoft,
                             onClick = { nav.navigate(Routes.meetings(d.org.id, canSchedule = d.org.myRole != "GUEST")) },
                         )
-                        if (d.org.myRole != "GUEST") MenuRow(
-                            Icons.Outlined.Groups, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.grp_title),
-                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.grp_menu_sub), tint = c.lavender, tintBg = c.lavenderSoft,
-                            onClick = { nav.navigate(Routes.groups(d.org.id, canManage = d.permissions.canManageGroups)) },
-                        )
-                        if (d.permissions.canManageOrg && d.permissions.canCreateChannels) MenuRow(
-                            Icons.Outlined.AutoAwesome, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.tpl_title),
-                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.tpl_menu_sub),
-                            onClick = { sheet = "templates" },
-                        )
-                        // Documents (round 7): everyone sees the ones shared with them; guests can't create.
-                        MenuRow(
-                            Icons.Outlined.Description, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.doc_title),
-                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.doc_menu_sub), tint = c.primary, tintBg = c.primarySoft,
-                            onClick = { nav.navigate(Routes.documents(d.org.id, canCreate = d.org.myRole != "GUEST")) },
-                        )
-                        // The customer inbox (round 8, docs/UNIFIED_INBOX.md): for people with inbox access.
-                        if ("inbox.view" in d.permissions.effective) MenuRow(
-                            Icons.Outlined.Forum, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ib_title),
-                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ib_menu_sub), tint = c.success, tintBg = c.successSoft,
-                            onClick = { nav.navigate(Routes.inbox(d.org.id, canManage = "inbox.manage" in d.permissions.effective)) },
-                        )
-                        // AI (round 7, docs/AI.md): off until the server has a provider and an admin turns it on.
-                        if (d.org.myRole != "GUEST" && aiOffered) MenuRow(
-                            Icons.Outlined.AutoAwesome, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ai_title),
-                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ai_menu_sub), tint = c.lavender, tintBg = c.lavenderSoft,
-                            onClick = { nav.navigate(Routes.ai(d.org.id)) },
-                        )
-                        if (d.permissions.canManageWorkflows) MenuRow(
-                            Icons.Outlined.Bolt, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.wf_title),
-                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.wf_menu_sub), tint = c.success, tintBg = c.successSoft,
-                            onClick = { nav.navigate(Routes.workflows(d.org.id)) },
-                        )
-                        if (d.permissions.canManageDevelopers) MenuRow(
-                            Icons.Outlined.Code, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.dev_title),
-                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.dev_menu_sub),
-                            onClick = { nav.navigate(Routes.developer(d.org.id)) },
-                        )
+                        if (d.permissions.canViewDirectory) MenuRow(Icons.Outlined.History, stringResource(R.string.activity_workspace_log), tint = c.lavender, tintBg = c.lavenderSoft, onClick = { nav.navigate(Routes.activity(d.org.id)) })
                         if (d.permissions.canViewAudit) MenuRow(
-                            Icons.Outlined.Policy, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.manage_audit),
-                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.manage_audit_sub), tint = c.lavender, tintBg = c.lavenderSoft,
+                            Icons.Outlined.Policy, stringResource(R.string.manage_audit),
+                            subtitle = stringResource(R.string.manage_audit_sub), tint = c.lavender, tintBg = c.lavenderSoft,
                             onClick = { nav.navigate(Routes.audit(d.org.id)) },
                         )
                         if (d.permissions.canViewUsage) MenuRow(
-                            Icons.Outlined.Insights, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.manage_usage),
-                            subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.manage_usage_sub), onClick = { nav.navigate(Routes.usage(d.org.id)) },
+                            Icons.Outlined.Insights, stringResource(R.string.manage_usage),
+                            subtitle = stringResource(R.string.manage_usage_sub), onClick = { nav.navigate(Routes.usage(d.org.id)) },
                         )
-                        if (d.permissions.canManageOrg) {
-                            MenuRow(Icons.Outlined.AddBusiness, "New branch", onClick = { sheet = "branch" })
-                        }
-                        if (d.permissions.canManageOrg || d.branches.any { it.canManage }) {
-                            MenuRow(Icons.Outlined.Apartment, "New department", onClick = { sheet = "department" })
-                            MenuRow(Icons.Outlined.Groups, "New team", onClick = { sheet = "team" })
-                        }
-                        if (d.permissions.canCreateChannels) MenuRow(Icons.Outlined.PostAdd, "New channel", onClick = { sheet = "channel" })
-                        MenuRow(Icons.Outlined.Workspaces, "Join or create another workspace", tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.JOIN + "?code=") })
+                        if (discovery) MenuRow(Icons.Outlined.Explore, stringResource(R.string.cm_discover), tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.DISCOVER) })
+                        MenuRow(Icons.Outlined.Workspaces, stringResource(R.string.cm_join_or_create), tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.JOIN + "?code=") })
                     }
                 }
-                item {
-                    Text("Branches", style = Griip.type.section, color = c.textPrimary, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 10.dp))
-                }
-                items(d.branches, key = { "b" + it.id }) { b ->
-                    ListCard(
-                        b.name, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                        subtitle = listOfNotNull(b.location, if (b.memberCount == 1) "1 member" else "${b.memberCount} members", d.departments.count { it.branchId == b.id }.let { if (it == 1) "1 department" else "$it departments" }).joinToString(" · "),
-                        leading = { MarkTile(b.name, b.name.hashCode() + 3, size = 46.dp) },
-                        trailing = { if (b.myRole != null) RoleBadge(b.myRole) else if (!b.canAccess) Icon(Icons.Rounded.Lock, "No access", tint = c.textTertiary) },
-                        // Managers and org admins edit the branch; org admins can also archive it (EditBranchSheet).
-                        onClick = if (b.canManage) ({ sheet = "branch:" + b.id }) else null,
-                    )
-                }
-                val depts = d.departments.filter { dep -> d.branches.any { it.id == dep.branchId } } // archived branches aren't listed
-                if (depts.isNotEmpty()) item {
-                    Text("Departments", style = Griip.type.section, color = c.textPrimary, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 10.dp))
-                }
-                items(depts, key = { "d" + it.id }) { dep ->
-                    val branch = d.branches.first { it.id == dep.branchId }
-                    ListCard(
-                        dep.name, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                        subtitle = listOfNotNull(branch.name, "${d.teams.count { it.departmentId == dep.id }} teams", dep.description).joinToString(" · "),
-                        leading = { IconTile(Icons.Outlined.Apartment, c.lavender, c.lavenderSoft, size = 42.dp) },
-                        trailing = { if (branch.canManage) ArrowKnob() },
-                        onClick = if (branch.canManage) ({ sheet = "dept:" + dep.id }) else null,
-                    )
-                }
-                item(key = "archived") { ArchivedScopesSection(d, archivedReload) { vm.refresh() } }
-                // Owner only, at the very end of Manage: far from switching workspaces, so a tap there can't reach it.
+                // Owner only, at the very end of Manage: far from switching communities, so a tap there can't reach it.
                 if (DeleteWorkspaceRules.visible(d.org.myRole)) {
-                    item {
-                        Text("Danger zone", style = Griip.type.section, color = c.danger, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 10.dp))
-                    }
+                    item { Text("Danger zone", style = Griip.type.section, color = c.danger, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 10.dp)) }
                     item {
                         GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), contentPadding = PaddingValues(6.dp)) {
                             if (d.permissions.canTransferOwnership) MenuRow(
-                                Icons.Outlined.SwapHoriz, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.owner_transfer),
-                                subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.owner_transfer_sub),
-                                tint = c.warning, tintBg = c.warningSoft, onClick = { sheet = "transfer" },
+                                Icons.Outlined.SwapHoriz, stringResource(R.string.owner_transfer), subtitle = stringResource(R.string.owner_transfer_sub),
+                                tint = c.warning, tintBg = c.warningSoft, onClick = { sheet = CommunitySheet.Transfer },
                             )
                             MenuRow(
-                                Icons.Outlined.DeleteForever, "Delete workspace", subtitle = "For every member. Can't be undone.",
-                                tint = c.danger, tintBg = c.dangerSoft, onClick = { sheet = "delete" },
+                                Icons.Outlined.DeleteForever, "Delete community", subtitle = "For every member. Can't be undone.",
+                                tint = c.danger, tintBg = c.dangerSoft, onClick = { sheet = CommunitySheet.Delete },
                             )
                         }
                     }
@@ -408,41 +335,128 @@ fun WorkspaceScreen(nav: NavHostController) {
         }
     }
 
-    if (showSwitcher) GlassSheet({ showSwitcher = false }, title = "Workspaces") {
-        WorkspaceSwitcherList(orgs.orEmpty(), d?.org?.id) { id -> vm.switchOrg(id); showSwitcher = false }
-        Spacer(Modifier.height(10.dp))
-        PillButton("Join or create", { showSwitcher = false; nav.navigate(Routes.JOIN + "?code=") }, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, height = 50.dp)
-    }
-    d?.let { det ->
-        when (sheet) {
-            "branch" -> CreateBranchSheet(det, { sheet = null }) { vm.refresh() }
-            "department" -> CreateDepartmentSheet(det, { sheet = null }) { vm.refresh() }
-            "team" -> CreateTeamSheet(det, branchFilter, { sheet = null }) { vm.refresh() }
-            "channel" -> CreateChannelSheet(det, branchFilter, { sheet = null }) { id -> vm.refresh(); nav.navigate(Routes.conversation(id)) }
-            "templates" -> TemplatesSheet(det.org.id, onApplied = { sheet = null; vm.refresh() }, onDismiss = { sheet = null })
-            "settings" -> WorkspaceSettingsSheet(det, onDismiss = { sheet = null }, onChanged = { vm.refresh() }, onLeft = { name ->
+    val det = d
+    when (val s = sheet) {
+        CommunitySheet.Switcher -> GlassSheet({ sheet = null }, title = stringResource(R.string.cm_title)) {
+            WorkspaceSwitcherList(orgs.orEmpty(), det?.org?.id) { id -> vm.switchOrg(id); sheet = null }
+            Spacer(Modifier.height(10.dp))
+            PillButton(stringResource(R.string.cm_join_or_create), { sheet = null; nav.navigate(Routes.JOIN + "?code=") }, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, height = 50.dp)
+        }
+        null -> Unit
+        else -> if (det != null) when (s) {
+            is CommunitySheet.NewChannel -> CreateChannelSheet(det, s.categoryId, { sheet = null }) { id -> vm.refresh(); nav.navigate(Routes.conversation(id)) }
+            CommunitySheet.NewCategory -> CategoryNameSheet(det.org.id, null, { sheet = null }) { vm.refresh() }
+            is CommunitySheet.RenameCategory -> CategoryNameSheet(det.org.id, s.category, { sheet = null }) { vm.refresh() }
+            is CommunitySheet.CategoryActions -> {
+                val i = categoryOrder.indexOf(s.category.id)
+                CategoryActionsSheet(
+                    s.category, canMoveUp = i > 0, canMoveDown = i in 0 until categoryOrder.lastIndex, canReorder = canArrange,
+                    onDismiss = { if (sheet == s) sheet = null },
+                    onNewChannel = if (s.category.canCreateChannels) ({ sheet = CommunitySheet.NewChannel(s.category.id) }) else null,
+                    onRename = { sheet = CommunitySheet.RenameCategory(s.category) },
+                    onPermissions = { nav.navigate(Routes.permissions(category = true, id = s.category.id, name = s.category.name)) },
+                    onMove = { delta -> vm.saveLayout(LayoutReq(categories = LayoutRules.move(categoryOrder, s.category.id, delta)), movedMessage) },
+                    onDelete = if (canArrange) ({ vm.deleteCategory(s.category) }) else null,
+                )
+            }
+            is CommunitySheet.ChannelActions -> {
+                val siblings = sections.firstOrNull { sec -> sec.channels.any { it.id == s.channel.id } }?.channels.orEmpty().map { it.id }
+                val i = siblings.indexOf(s.channel.id)
+                ChannelArrangeSheet(
+                    s.channel, canMoveUp = i > 0, canMoveDown = i in 0 until siblings.lastIndex, canArrange = canArrange,
+                    onDismiss = { if (sheet == s) sheet = null },
+                    onMove = { delta -> vm.saveLayout(LayoutReq(channels = LayoutRules.positions(s.channel.categoryId, LayoutRules.move(siblings, s.channel.id, delta))), movedMessage) },
+                    onMoveTo = { sheet = CommunitySheet.MoveTo(s.channel) },
+                    onPermissions = { nav.navigate(Routes.permissions(category = false, id = s.channel.id, name = s.channel.name.orEmpty())) },
+                )
+            }
+            is CommunitySheet.MoveTo -> MoveToCategorySheet(s.channel, det.categories, { if (sheet == s) sheet = null }) { target ->
+                val targetIds = sections.firstOrNull { it.categoryId == target }?.channels.orEmpty().map { it.id }
+                vm.saveLayout(LayoutReq(channels = LayoutRules.moveTo(s.channel.id, target, targetIds)), movedMessage)
+            }
+            CommunitySheet.Settings -> WorkspaceSettingsSheet(det, onDismiss = { sheet = null }, onChanged = { vm.refresh() }, onLeft = { name ->
                 sheet = null
-                android.widget.Toast.makeText(ctx, ctx.getString(com.meldiq.android.R.string.ws_left, name), android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(ctx, ctx.getString(R.string.ws_left, name), android.widget.Toast.LENGTH_SHORT).show()
                 vm.refresh()
             })
-            "transfer" -> if (det.permissions.canTransferOwnership) TransferOwnershipSheet(det, onDismiss = { sheet = null }, onDone = { name ->
+            CommunitySheet.Transfer -> if (det.permissions.canTransferOwnership) TransferOwnershipSheet(det, onDismiss = { sheet = null }, onDone = { name ->
                 sheet = null
-                android.widget.Toast.makeText(ctx, ctx.getString(com.meldiq.android.R.string.owner_transfer_done, name), android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(ctx, ctx.getString(R.string.owner_transfer_done, name), android.widget.Toast.LENGTH_SHORT).show()
                 vm.refresh()
             })
-            "delete" -> if (DeleteWorkspaceRules.visible(det.org.myRole)) DeleteWorkspaceSheet(det, onDismiss = { sheet = null }, onDeleted = { name ->
+            CommunitySheet.Delete -> if (DeleteWorkspaceRules.visible(det.org.myRole)) DeleteWorkspaceSheet(det, onDismiss = { sheet = null }, onDeleted = { name ->
                 sheet = null
                 android.widget.Toast.makeText(ctx, "Deleted “$name”", android.widget.Toast.LENGTH_SHORT).show()
                 vm.refresh()
             })
-            else -> if (sheet?.startsWith("branch:") == true) {
-                det.branches.firstOrNull { it.id == sheet?.removePrefix("branch:") }?.let { b ->
-                    EditBranchSheet(det, b, onDismiss = { sheet = null }) { vm.refresh(); archivedReload++ }
-                }
-            } else sheet?.removePrefix("dept:")?.takeIf { sheet!!.startsWith("dept:") }?.let { id ->
-                det.departments.firstOrNull { it.id == id }?.let { dep -> EditDepartmentSheet(det, dep, { sheet = null }) { vm.refresh() } }
-            }
+            else -> Unit
         }
     }
-    @Suppress("UNUSED_VARIABLE") val unused = rememberCoroutineScope()
+}
+
+@Composable
+private fun CategoryHeader(title: String, isCategory: Boolean, onMore: (() -> Unit)?) {
+    val c = Griip.colors
+    Row(Modifier.fillMaxWidth().padding(start = Space.gutter + 4.dp, end = Space.gutter - 4.dp, top = 12.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(if (isCategory) Icons.Outlined.FolderOpen else Icons.Outlined.Tag, null, tint = c.peach, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(title.uppercase(), style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = c.textSecondary, modifier = Modifier.weight(1f))
+        if (onMore != null) CircleIconButton(Icons.Outlined.MoreHoriz, title, onMore)
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun ChannelRow(ch: ConversationDto, onOpen: () -> Unit, onJoin: () -> Unit, onMore: (() -> Unit)?) {
+    val c = Griip.colors
+    val (fg, bg) = when {
+        ch.voice -> c.success to c.successSoft
+        ch.format == "forum" -> c.lavender to c.lavenderSoft
+        ch.kind == "ANNOUNCEMENT" -> c.peach to c.peachSoft
+        ch.kind == "PRIVATE" -> c.lavender to c.lavenderSoft
+        else -> c.primary to c.primarySoft
+    }
+    ListCard(
+        if (ch.voice) ch.name.orEmpty() else "#${ch.name}", Modifier.padding(horizontal = 8.dp, vertical = 1.dp).combinedClickable(onClick = onOpen, onLongClick = onMore),
+        subtitle = ch.topic,
+        leading = { IconTile(channelRowIcon(ch), fg, bg, size = 42.dp) },
+        meta = {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                TagPill("${ch.memberCount}", c.textSecondary, c.surfaceVariant, icon = Icons.Outlined.Groups)
+                if (ch.activeCall != null) TagPill("Live", c.success, c.successSoft)
+            }
+        },
+        trailing = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (ch.joined) ArrowKnob()
+                else PillButton(stringResource(R.string.cm_join), onJoin, tone = ButtonTone.Glass, showKnob = false, height = 38.dp)
+                if (onMore != null) CircleIconButton(Icons.Outlined.MoreHoriz, ch.name.orEmpty(), onMore)
+            }
+        },
+    )
+}
+
+/** About: the community's description, rules and how people find and join it. */
+@Composable
+private fun CommunityAbout(d: OrgDetailRes, onInvite: (() -> Unit)?) {
+    val c = Griip.colors
+    Column(Modifier.padding(horizontal = Space.gutter)) {
+        GlassCard(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            Text(d.org.name, style = Griip.type.title, color = c.textPrimary)
+            d.org.description?.let { Spacer(Modifier.height(6.dp)); Text(it, style = Griip.type.body, color = c.textSecondary) }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                TagPill(stringResource(if (d.org.visibility == CommunityAccess.PUBLIC) R.string.cs_public else R.string.cs_private), c.primaryDeep, c.primarySoft)
+                TagPill(stringResource(if (d.org.joinPolicy == CommunityAccess.OPEN) R.string.dc_open else R.string.dc_invite_only), c.textSecondary, c.surfaceVariant)
+            }
+        }
+        d.org.rules?.takeIf { it.isNotBlank() }?.let { rules ->
+            GlassCard(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                Text(stringResource(R.string.cm_rules), style = Griip.type.section, color = c.textPrimary)
+                Spacer(Modifier.height(6.dp))
+                Text(rules, style = Griip.type.body, color = c.textSecondary)
+            }
+        }
+        onInvite?.let { PillButton("Invite people", it, Modifier.fillMaxWidth().padding(vertical = 10.dp), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.GroupAdd) }
+    }
 }

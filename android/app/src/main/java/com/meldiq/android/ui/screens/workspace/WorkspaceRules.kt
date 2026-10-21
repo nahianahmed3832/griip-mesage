@@ -3,7 +3,6 @@ package com.meldiq.android.ui.screens.workspace
 import com.meldiq.android.data.api.ConversationDto
 import com.meldiq.android.data.api.InviteDto
 import com.meldiq.android.data.api.OrgDetailRes
-import com.meldiq.android.data.api.TeamDto
 
 /**
  * Who may change an organization role, title or membership: the app's mirror of the server's `roles.ts`
@@ -48,19 +47,6 @@ object WorkspaceRoles {
 
     /** Owners in a loaded directory (null while it's loading). */
     fun ownerCount(roles: List<String?>?): Int? = roles?.count { it == OWNER }
-}
-
-/** Branch and team administration the app offers (the server checks each one again). */
-object ScopeAdmin {
-    /** Rename and describe a team: its leads and managers (the server's `canManageTeam`). */
-    fun canEditTeam(team: TeamDto): Boolean = team.canManage
-
-    /** Archive or restore a team: org owners and admins, and the managers of its branch, not its leads. */
-    fun canArchiveTeam(detail: OrgDetailRes, team: TeamDto): Boolean =
-        detail.permissions.canManageOrg || (team.branchId != null && detail.branches.any { it.id == team.branchId && it.myRole == "MANAGER" })
-
-    /** Archive or restore a branch: org owners and admins only. Its managers may rename it. */
-    fun canArchiveBranch(detail: OrgDetailRes): Boolean = detail.permissions.canManageOrg
 }
 
 /** An invitation's one state, from the server (`status`) or, for older servers, worked out the same way. */

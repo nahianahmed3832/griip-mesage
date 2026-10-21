@@ -62,7 +62,6 @@ private data class ServerHits(
     val channels: List<ChannelHitDto> = emptyList(),
     val workspaces: List<WorkspaceHitDto> = emptyList(),
     val groups: List<ConversationDto> = emptyList(),
-    val documents: List<com.meldiq.android.data.api.DocumentDto> = emptyList(),
     val next: Map<Section, String> = emptyMap(),
 )
 
@@ -123,7 +122,7 @@ fun SearchScreen(nav: NavHostController) {
     fun showMore(section: Section) {
         val cursor = server.next[section] ?: return
         val type = when (section) {
-            Section.PEOPLE -> "people"; Section.CHANNELS -> "channels"; Section.WORKSPACES -> "workspaces"; Section.GROUPS -> "groups"; Section.DOCUMENTS -> "documents"
+            Section.PEOPLE -> "people"; Section.CHANNELS -> "channels"; Section.WORKSPACES -> "workspaces"; Section.GROUPS -> "groups"
             else -> return
         }
         scope.launch {
@@ -133,9 +132,8 @@ fun SearchScreen(nav: NavHostController) {
                     channels = server.channels + r.channels?.items.orEmpty(),
                     workspaces = server.workspaces + r.workspaces?.items.orEmpty(),
                     groups = server.groups + r.groups?.items.orEmpty(),
-                    documents = server.documents + r.documents?.items.orEmpty(),
                     next = server.next - section + listOfNotNull(
-                        (r.people?.next ?: r.channels?.next ?: r.workspaces?.next ?: r.groups?.next ?: r.documents?.next)?.let { section to it },
+                        (r.people?.next ?: r.channels?.next ?: r.workspaces?.next ?: r.groups?.next)?.let { section to it },
                     ),
                 )
             }
@@ -186,11 +184,6 @@ fun SearchScreen(nav: NavHostController) {
                     })
                 }
                 moreItem(filter, server.next[Section.CHANNELS]) { showMore(Section.CHANNELS) }
-            }
-            if (server.documents.isNotEmpty()) {
-                item { SectionHeader(stringResource(R.string.doc_title), Modifier.padding(vertical = 8.dp)) }
-                items(server.documents.take(limit), key = { "d" + it.id }) { doc -> DocumentHit(doc) { opened(); nav.navigate(Routes.document(doc.id)) } }
-                moreItem(filter, server.next[Section.DOCUMENTS]) { showMore(Section.DOCUMENTS) }
             }
             if (server.workspaces.isNotEmpty()) {
                 item { SectionHeader(stringResource(R.string.search_workspaces), Modifier.padding(vertical = 8.dp)) }
@@ -247,13 +240,12 @@ private suspend fun searchServer(container: com.meldiq.android.di.AppContainer, 
         val r = container.api.get<SearchRes>(searchPath(q, types, limit = if (filter == Filter.ALL) SearchRules.PREVIEW_COUNT + 1 else 20)).results
         // Counted only (docs/product/EXPERIMENTS.md): the scope and a bucket of how many came back, never the words.
         val found = (r.people?.items?.size ?: 0) + (r.channels?.items?.size ?: 0) + (r.workspaces?.items?.size ?: 0) +
-            (r.groups?.items?.size ?: 0) + (r.documents?.items?.size ?: 0)
+            (r.groups?.items?.size ?: 0)
         container.analytics.track("search.performed", mapOf("scope" to SearchRules.analyticsScope(filter), "results" to SearchRules.resultBucket(found)))
         return ServerHits(
             people = r.people?.items.orEmpty(), channels = r.channels?.items.orEmpty(),
-            workspaces = r.workspaces?.items.orEmpty(), groups = r.groups?.items.orEmpty(), documents = r.documents?.items.orEmpty(),
+            workspaces = r.workspaces?.items.orEmpty(), groups = r.groups?.items.orEmpty(),
             next = listOfNotNull(
-                r.documents?.next?.let { Section.DOCUMENTS to it },
                 r.people?.next?.let { Section.PEOPLE to it }, r.channels?.next?.let { Section.CHANNELS to it },
                 r.workspaces?.next?.let { Section.WORKSPACES to it }, r.groups?.next?.let { Section.GROUPS to it },
             ).toMap(),
@@ -278,7 +270,6 @@ private fun filterLabel(f: Filter): String = stringResource(
         Filter.PINNED -> R.string.search_pinned
         Filter.PEOPLE -> R.string.search_people
         Filter.CHANNELS -> R.string.search_section_channels
-        Filter.DOCUMENTS -> R.string.doc_title
         Filter.WORKSPACES -> R.string.search_workspaces
     },
 )

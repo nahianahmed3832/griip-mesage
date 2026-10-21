@@ -61,9 +61,10 @@ private const val NAME_MAX = 80
 private const val DESCRIPTION_MAX = 500
 
 /**
- * Workspace settings (docs/WORKSPACE_ADMINISTRATION.md): the workspace's details and your role, editing its name and
- * description (owners and admins), and leaving it (everyone but the last owner). The server checks each action again.
- * [onChanged] reloads the caller's data; [onLeft] gets the workspace's name once you've left.
+ * Community settings (docs/WORKSPACE_ADMINISTRATION.md, docs/COMMUNITY_REBUILD_2026-10-21.md): its details and your
+ * role, editing its name, description and rules (owners and admins), who can find and join it (owners), and leaving it
+ * (everyone but the last owner). The server checks each action again. [onChanged] reloads the caller's data; [onLeft]
+ * gets the community's name once you've left.
  */
 @Composable
 fun WorkspaceSettingsSheet(detail: OrgDetailRes, onDismiss: () -> Unit, onChanged: () -> Unit, onLeft: (String) -> Unit) {
@@ -82,9 +83,10 @@ fun WorkspaceSettingsSheet(detail: OrgDetailRes, onDismiss: () -> Unit, onChange
     var photoBusy by remember { mutableStateOf(false) }
     var photosSupported by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { photosSupported = container.features.has(ServerFeatures.ORG_PHOTOS) == true }
-    var communities by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { communities = container.features.has(ServerFeatures.COMMUNITIES) == true }
-    var kind by remember(org.id, org.kind) { mutableStateOf(org.kind) }
+    var rules by rememberSaveable(org.id) { mutableStateOf(org.rules.orEmpty()) }
+    var visibility by remember(org.id, org.visibility) { mutableStateOf(org.visibility) }
+    var joinPolicy by remember(org.id, org.joinPolicy) { mutableStateOf(org.joinPolicy) }
+    val owner = org.myRole == "OWNER"
     val ctx = LocalContext.current
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) scope.launch {
@@ -95,7 +97,8 @@ fun WorkspaceSettingsSheet(detail: OrgDetailRes, onDismiss: () -> Unit, onChange
             photoBusy = false
         }
     }
-    val changed = name.trim() != org.name || description.trim() != org.description.orEmpty().trim()
+    val changed = name.trim() != org.name || description.trim() != org.description.orEmpty().trim() || rules.trim() != org.rules.orEmpty().trim() ||
+        visibility != org.visibility || joinPolicy != org.joinPolicy
 
     GlassSheet(onDismiss, title = stringResource(R.string.ws_settings_title)) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
@@ -117,7 +120,7 @@ fun WorkspaceSettingsSheet(detail: OrgDetailRes, onDismiss: () -> Unit, onChange
             Row {
                 StatTile(stringResource(R.string.ws_stat_members), "${detail.stats.members}", Modifier.weight(1f))
                 Spacer(Modifier.width(10.dp))
-                StatTile(stringResource(R.string.ws_stat_teams), "${detail.stats.teams}", Modifier.weight(1f))
+                StatTile(stringResource(R.string.cm_stat_categories), "${detail.categories.size}", Modifier.weight(1f))
                 Spacer(Modifier.width(10.dp))
                 StatTile(stringResource(R.string.ws_stat_channels), "${detail.stats.channels}", Modifier.weight(1f))
             }
@@ -159,12 +162,35 @@ fun WorkspaceSettingsSheet(detail: OrgDetailRes, onDismiss: () -> Unit, onChange
                     description, { description = it.take(DESCRIPTION_MAX); saved = false }, stringResource(R.string.ws_description),
                     singleLine = false, minLines = 2,
                 )
+                Spacer(Modifier.height(10.dp))
+                GriipTextField(rules, { rules = it.take(4000); saved = false }, stringResource(R.string.cs_rules), helper = stringResource(R.string.cs_rules_hint), singleLine = false, minLines = 3)
+                // Who can find and join it: owners only (the server checks).
+                SectionHeader(stringResource(R.string.cs_visibility), Modifier.padding(top = 12.dp, bottom = 6.dp))
+                com.meldiq.android.ui.components.SegmentedPills(
+                    listOf(stringResource(R.string.cs_private), stringResource(R.string.cs_public)),
+                    if (visibility == com.meldiq.android.data.api.CommunityAccess.PUBLIC) 1 else 0,
+                    { i -> if (owner) { visibility = if (i == 1) com.meldiq.android.data.api.CommunityAccess.PUBLIC else com.meldiq.android.data.api.CommunityAccess.PRIVATE; saved = false } },
+                    Modifier.fillMaxWidth(),
+                )
+                SectionHeader(stringResource(R.string.cs_join), Modifier.padding(top = 12.dp, bottom = 6.dp))
+                com.meldiq.android.ui.components.SegmentedPills(
+                    listOf(stringResource(R.string.cs_invite), stringResource(R.string.cs_open)),
+                    if (joinPolicy == com.meldiq.android.data.api.CommunityAccess.OPEN) 1 else 0,
+                    { i -> if (owner) { joinPolicy = if (i == 1) com.meldiq.android.data.api.CommunityAccess.OPEN else com.meldiq.android.data.api.CommunityAccess.INVITE; saved = false } },
+                    Modifier.fillMaxWidth(),
+                )
+                if (!owner) Text(stringResource(R.string.cs_owner_only), style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(top = 6.dp))
                 Spacer(Modifier.height(12.dp))
                 PillButton(stringResource(R.string.ws_save), {
                     busy = true
                     error = null
                     scope.launch {
-                        runCatching { container.orgs.updateOrg(org.id, name, description) }
+                        runCatching {
+                            container.orgs.updateOrg(
+                                org.id, name, description, rules,
+                                visibility.takeIf { owner && it != org.visibility }, joinPolicy.takeIf { owner && it != org.joinPolicy },
+                            )
+                        }
                             .onSuccess { saved = true; onChanged() }
                             .onFailure { error = it.friendly() }
                         busy = false
@@ -172,36 +198,6 @@ fun WorkspaceSettingsSheet(detail: OrgDetailRes, onDismiss: () -> Unit, onChange
                 }, Modifier.fillMaxWidth(), enabled = changed && name.isNotBlank(), loading = busy, height = 50.dp)
             } else {
                 Text(stringResource(R.string.ws_admin_only), style = Griip.type.bodySmall, color = c.textSecondary)
-            }
-
-            // Meldiq 2.0: team or community. Owners only; it changes what the apps show first, never members or data.
-            if (communities) {
-                SectionHeader(stringResource(R.string.m2_kind_setting), Modifier.padding(top = 16.dp, bottom = 6.dp))
-                val owner = org.myRole == "OWNER"
-                com.meldiq.android.ui.components.SegmentedPills(
-                    listOf(stringResource(R.string.m2_kind_team), stringResource(R.string.m2_kind_community)),
-                    if (kind == com.meldiq.android.data.api.OrgKind.COMMUNITY) 1 else 0,
-                    { i ->
-                        val next = if (i == 1) com.meldiq.android.data.api.OrgKind.COMMUNITY else com.meldiq.android.data.api.OrgKind.TEAM
-                        if (owner && next != kind && !busy) {
-                            val before = kind
-                            kind = next
-                            busy = true
-                            error = null
-                            scope.launch {
-                                runCatching { container.orgs.updateKind(org.id, next) }
-                                    .onSuccess { onChanged() }
-                                    .onFailure { kind = before; error = it.friendly() }
-                                busy = false
-                            }
-                        }
-                    },
-                    Modifier.fillMaxWidth(),
-                )
-                Text(
-                    stringResource(if (owner) R.string.m2_kind_setting_sub else R.string.m2_kind_owner_only), style = Griip.type.caption,
-                    color = c.textSecondary, modifier = Modifier.padding(top = 6.dp),
-                )
             }
 
             Spacer(Modifier.height(16.dp))

@@ -53,8 +53,12 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val ORG_DELETE = "org-delete"
         /** Deleting your own account, `DELETE /v2/account` (docs/ACCOUNT_DELETION.md). */
         const val ACCOUNT_DELETE = "account-delete"
-        /** Meldiq 2.0: communities as a kind of workspace (docs/product/MELDIQ_2_DECISIONS.md). */
-        const val COMMUNITIES = "communities"
+        /** Communities (docs/COMMUNITY_REBUILD_2026-10-21.md): categories, channel order, forums, channel permissions. */
+        const val COMMUNITY_CHANNELS = "community-channels"
+        /** Public communities in Discover and open joining. */
+        const val COMMUNITY_DISCOVERY = "community-discovery"
+        /** Bans. */
+        const val COMMUNITY_MODERATION = "community-moderation"
         /** Meldiq 2.0: experiments and content-free analytics counts (docs/product/EXPERIMENTS.md). */
         const val EXPERIMENTS = "experiments"
         const val ANALYTICS_EVENTS = "analytics-events"
@@ -78,8 +82,6 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val ORG_PHOTOS = "org-photos"
         /** Custom workspace roles and delegated permissions (2026-10-19, docs/WORKSPACE_ROLES.md). */
         const val CUSTOM_ROLES = "custom-roles"
-        /** The app directory, connected accounts and app notifications in channels (2026-10-19, docs/INTEGRATIONS.md). */
-        const val INTEGRATIONS = "integrations"
         private const val TTL_MS = 5 * 60_000L
     }
 }

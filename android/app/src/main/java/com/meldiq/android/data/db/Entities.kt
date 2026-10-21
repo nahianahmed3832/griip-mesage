@@ -47,6 +47,11 @@ data class ConversationEntity(
     @androidx.room.ColumnInfo(defaultValue = "0") val voice: Boolean = false,
     /** Voice rooms: the user ids in the room now (JSON list), from the server; null when nobody is in it. */
     val roomPeopleJson: String? = null,
+    /** Communities (2026-10-21): the channel's category (null: none), its order in it, and "text" or "forum". */
+    val categoryId: String? = null,
+    val categoryName: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "0") val position: Int = 0,
+    @androidx.room.ColumnInfo(defaultValue = "text") val format: String = "text",
 )
 
 @kotlinx.serialization.Serializable

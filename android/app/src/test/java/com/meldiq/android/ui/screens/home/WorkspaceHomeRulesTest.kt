@@ -25,17 +25,23 @@ class WorkspaceHomeRulesTest {
         removed: Boolean = false,
         joined: Boolean = true,
         draft: String? = null,
+        categoryId: String? = null,
+        categoryName: String? = null,
+        position: Int = 0,
     ) = ConversationEntity(
         id = id, type = type, orgId = orgId, scope = scope, scopeId = scopeId, scopeName = scopeName, kind = "PUBLIC", name = id,
         topic = null, archived = false, memberCount = 3, membersJson = "[]", joined = joined, myRole = null, canPost = true,
         canManage = false, activeCallId = null, activeCallVideo = false, serverUpdatedAt = 1, unreadCount = unread,
         mentionCount = mentions, muted = muted, draft = draft, removed = removed, archivedAt = archivedAt,
+        categoryId = categoryId, categoryName = categoryName, position = position,
     )
 
     @Test
-    fun aVoiceRoomIsListedOnceInItsOwnSectionNotAgainAmongTheChannels() {
-        val convs = listOf(conv("general"), conv("lounge").copy(voice = true))
-        assertEquals(listOf("general"), WorkspaceHomeRules.channelGroups(convs, "o1", "Acme").flatMap { g -> g.channels.map { it.id } })
+    fun aVoiceChannelIsListedOnceInItsCategoryWithTheTextChannels() {
+        val convs = listOf(conv("general", categoryId = "talk", categoryName = "Talk"), conv("lounge", categoryId = "talk", categoryName = "Talk", position = 1).copy(voice = true))
+        val groups = WorkspaceHomeRules.channelGroups(convs, "o1", "Channels")
+        assertEquals(listOf("general", "lounge"), groups.flatMap { g -> g.channels.map { it.id } })
+        assertEquals(listOf("Talk"), groups.map { it.title })
     }
 
     @Test
@@ -96,35 +102,40 @@ class WorkspaceHomeRulesTest {
     }
 
     @Test
-    fun channelsAreGroupedByOrganisationThenBranchThenTeamAndSortedByName() {
+    fun channelsAreGroupedByCategoryInTheCommunitysOrderUncategorisedFirst() {
+        val cats = listOf(
+            com.meldiq.android.data.api.CategoryDto("talk", "Talk", position = 1),
+            com.meldiq.android.data.api.CategoryDto("start", "Start here", position = 0),
+        )
         val convs = listOf(
-            conv("zeta", scope = "TEAM", scopeId = "t1", scopeName = "Mobile"),
-            conv("alpha", scope = "TEAM", scopeId = "t1", scopeName = "Mobile", unread = 2),
-            conv("announcements"), // organisation-wide, no scope name: the workspace's name
-            conv("dhaka-desk", scope = "BRANCH", scopeId = "b1", scopeName = "Dhaka"),
-            conv("api", scope = "TEAM", scopeId = "t2", scopeName = "Backend"),
-            conv("other-org", orgId = "o2"),
+            conv("zeta", categoryId = "talk", categoryName = "Talk", position = 1),
+            conv("alpha", categoryId = "talk", categoryName = "Talk", position = 0, unread = 2),
+            conv("lobby"), // no category: the first group, titled with the given name
+            conv("welcome", categoryId = "start", categoryName = "Start here"),
+            conv("other-org", orgId = "o2", categoryId = "talk"),
             conv("not-joined", joined = false),
             conv("archived", archivedAt = 1),
             conv("ann", type = "DM", unread = 1),
         )
-        val groups = WorkspaceHomeRules.channelGroups(convs, "o1", "Acme")
-        assertEquals(listOf("Acme", "Dhaka", "Backend", "Mobile"), groups.map { it.title })
-        assertEquals(listOf("ORG:o1", "BRANCH:b1", "TEAM:t2", "TEAM:t1"), groups.map { it.key })
+        val groups = WorkspaceHomeRules.channelGroups(convs, "o1", "Channels", categories = cats)
+        assertEquals(listOf("Channels", "Start here", "Talk"), groups.map { it.title })
+        assertEquals(listOf("category:none", "category:start", "category:talk"), groups.map { it.key })
         assertEquals(listOf("alpha", "zeta"), groups.last().channels.map { it.id })
         assertEquals(1, groups.last().unreadChannels)
-        assertTrue(WorkspaceHomeRules.channelGroups(convs, null, "Acme").isEmpty()) // no workspace: no channels
+        // Before the community's categories load, the names the channels carry are used.
+        assertEquals(listOf("Channels", "Start here", "Talk"), WorkspaceHomeRules.channelGroups(convs, "o1", "Channels").map { it.title })
+        assertTrue(WorkspaceHomeRules.channelGroups(convs, null, "Channels").isEmpty()) // no community: no channels
     }
 
     @Test
     fun unreadOnlyKeepsUnreadChannelsAndDropsEmptyGroups() {
         val convs = listOf(
-            conv("zeta", scope = "TEAM", scopeId = "t1", scopeName = "Mobile"),
-            conv("alpha", scope = "TEAM", scopeId = "t1", scopeName = "Mobile", unread = 2),
+            conv("zeta", categoryId = "talk", categoryName = "Talk"),
+            conv("alpha", categoryId = "talk", categoryName = "Talk", unread = 2),
             conv("announcements"),
         )
-        val groups = WorkspaceHomeRules.channelGroups(convs, "o1", "Acme", unreadOnly = true)
-        assertEquals(listOf("Mobile"), groups.map { it.title })
+        val groups = WorkspaceHomeRules.channelGroups(convs, "o1", "Channels", unreadOnly = true)
+        assertEquals(listOf("Talk"), groups.map { it.title })
         assertEquals(listOf("alpha"), groups.single().channels.map { it.id })
     }
 

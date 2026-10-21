@@ -90,15 +90,6 @@ internal fun GroupHit(g: ConversationDto, onClick: () -> Unit) {
 }
 
 @Composable
-internal fun DocumentHit(d: com.meldiq.android.data.api.DocumentDto, onClick: () -> Unit) {
-    val c = Griip.colors
-    ListCard(
-        d.title, rowPadding, subtitle = d.snippet?.ifBlank { null } ?: d.updatedBy?.name,
-        leading = { IconTile(Icons.Outlined.Description, c.primary, c.primarySoft, size = 44.dp) }, trailing = { ArrowKnob() }, onClick = onClick,
-    )
-}
-
-@Composable
 internal fun PersonHit(u: UserDto, onClick: () -> Unit) {
     ListCard(
         u.displayName, rowPadding, subtitle = "@${u.username}",

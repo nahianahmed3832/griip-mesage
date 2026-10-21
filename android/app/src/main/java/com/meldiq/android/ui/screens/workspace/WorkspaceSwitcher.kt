@@ -60,7 +60,6 @@ object WorkspaceList {
 
     /** The line under a workspace's name: what tells same-named workspaces apart (handle, then creation date). */
     fun subtitle(org: OrgDto, sameNameAsAnother: Boolean, date: (Long) -> String = TimeFmt::dayHeader): String = buildList {
-        if (org.isCommunity) add("Community")
         add("${org.memberCount} ${if (org.memberCount == 1) "member" else "members"}")
         if (sameNameAsAnother) {
             if (org.slug.isNotEmpty()) add("@${org.slug}")

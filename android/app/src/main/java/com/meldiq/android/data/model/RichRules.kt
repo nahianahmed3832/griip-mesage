@@ -55,9 +55,9 @@ object RichRules {
     fun fromPayload(p: Payload): RichContent? {
         val r = RichContent(
             clean(p.contact), clean(p.location), cleanEmoji(p.animoji), clean(p.link, p.text.orEmpty()),
-            poll = PollRules.clean(p.poll), sticker = cleanSticker(p.sticker),
+            poll = PollRules.clean(p.poll), sticker = cleanSticker(p.sticker), title = ForumRules.cleanTitle(p.title),
         )
-        return r.takeIf { it.contact != null || it.location != null || it.animoji != null || it.link != null || it.poll != null || it.sticker != null }
+        return r.takeIf { it.contact != null || it.location != null || it.animoji != null || it.link != null || it.poll != null || it.sticker != null || it.title != null }
     }
 
     private val STICKER_KEY = Regex("^[a-z0-9-]{1,32}$")

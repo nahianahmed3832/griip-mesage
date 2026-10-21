@@ -42,10 +42,12 @@ class ProductSignalsTest {
     }
 
     @Test
-    fun aWorkspaceIsATeamUnlessTheServerSaysCommunity() {
-        val old = GriipJson.decodeFromString(OrgDto.serializer(), """{"id":"o1","name":"Acme"}""")
-        assertEquals("team", old.kind)
-        assertFalse(old.isCommunity)
-        assertTrue(GriipJson.decodeFromString(OrgDto.serializer(), """{"id":"o2","name":"Makers","kind":"community"}""").isCommunity)
+    fun aCommunityIsPrivateAndInviteOnlyUnlessTheServerSaysOtherwise() {
+        val old = GriipJson.decodeFromString(OrgDto.serializer(), """{"id":"o1","name":"Acme","kind":"team"}""")
+        assertEquals("private", old.visibility)
+        assertEquals("invite", old.joinPolicy)
+        val open = GriipJson.decodeFromString(OrgDto.serializer(), """{"id":"o2","name":"Makers","visibility":"public","joinPolicy":"open","rules":"Be kind"}""")
+        assertTrue(open.visibility == "public" && open.joinPolicy == "open")
+        assertFalse(open.rules.isNullOrEmpty())
     }
 }

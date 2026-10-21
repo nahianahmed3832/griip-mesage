@@ -60,7 +60,7 @@ S = {
 "start_title": ("Get started with Meldiq", "开始使用 Meldiq", "Meldiq দিয়ে শুরু করুন"),
 "start_progress": ("%1$d of %2$d done", "已完成 %1$d/%2$d", "%2$d টির মধ্যে %1$d টি সম্পন্ন"),
 "start_profile": ("Add your name and photo", "添加你的名字和照片", "আপনার নাম ও ছবি যোগ করুন"),
-"start_workspace": ("Create or join a workspace", "创建或加入工作区", "একটি ওয়ার্কস্পেস তৈরি করুন বা যোগ দিন"),
+"start_workspace": ("Create or join a community", "创建或加入社区", "একটি কমিউনিটি তৈরি করুন বা যোগ দিন"),
 "start_invite": ("Invite your teammates", "邀请你的同事", "সহকর্মীদের আমন্ত্রণ জানান"),
 "start_apps": ("Connect the tools you use", "连接你常用的工具", "আপনার ব্যবহৃত টুল সংযুক্ত করুন"),
 "start_notifications": ("Turn on notifications", "开启通知", "নোটিফিকেশন চালু করুন"),

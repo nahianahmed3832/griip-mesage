@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Workspace administration strings (docs/LANGUAGES.md). Generated from strings_workspace.py. -->
 <resources>
-    <string name="ws_settings_title">ওয়ার্কস্পেস সেটিংস</string>
-    <string name="ws_settings_open">ওয়ার্কস্পেস সেটিংস</string>
+    <string name="ws_settings_title">কমিউনিটি সেটিংস</string>
+    <string name="ws_settings_open">কমিউনিটি সেটিংস</string>
     <string name="ws_your_role">আপনার ভূমিকা: %1$s</string>
     <string name="ws_members_count">%1$d জন সদস্য</string>
     <string name="ws_stat_members">সদস্য</string>
@@ -11,12 +11,12 @@
     <string name="ws_created">তৈরি %1$s</string>
     <string name="ws_no_description">কোনো বিবরণ নেই</string>
     <string name="ws_edit">নাম ও বিবরণ সম্পাদনা</string>
-    <string name="ws_name">ওয়ার্কস্পেসের নাম</string>
+    <string name="ws_name">কমিউনিটির নাম</string>
     <string name="ws_description">বিবরণ (ঐচ্ছিক)</string>
     <string name="ws_save">সংরক্ষণ</string>
     <string name="ws_saved">সংরক্ষিত</string>
     <string name="ws_admin_only">শুধু মালিক ও অ্যাডমিন এই তথ্য সম্পাদনা করতে পারেন।</string>
-    <string name="ws_leave">ওয়ার্কস্পেস ছাড়ুন</string>
+    <string name="ws_leave">কমিউনিটি ছাড়ুন</string>
     <string name="ws_leave_sub">সব ডিভাইসে এর শাখা, টিম ও চ্যানেল থেকে বেরিয়ে যাবেন। আপনার সরাসরি বার্তা থাকবে।</string>
     <string name="ws_leave_owner">আপনিই একমাত্র মালিক। ছাড়ার আগে অন্য কাউকে মালিক করুন।</string>
     <string name="ws_leave_confirm_title">%1$s ছাড়বেন?</string>
@@ -29,7 +29,7 @@
     <string name="role_admin">অ্যাডমিন</string>
     <string name="role_member">সদস্য</string>
     <string name="role_guest">অতিথি</string>
-    <string name="role_owner_sum">সব কিছু, অ্যাডমিন ও মালিকদের ভূমিকা এবং ওয়ার্কস্পেস মুছে ফেলাসহ।</string>
+    <string name="role_owner_sum">সব কিছু, অ্যাডমিন ও মালিকদের ভূমিকা এবং কমিউনিটি মুছে ফেলাসহ।</string>
     <string name="role_admin_sum">সদস্য, অতিথি, শাখা, টিম, চ্যানেল ও আমন্ত্রণ পরিচালনা করেন। অ্যাডমিন বা মালিক বানাতে পারেন না।</string>
     <string name="role_member_sum">নিজের শাখা ও টিমের পাবলিক চ্যানেলে পড়েন ও লেখেন। শাখা ম্যানেজার ও টিম লিড নিজেদের অংশ পরিচালনা করেন।</string>
     <string name="role_guest_sum">শুধু ম্যানেজার যে চ্যানেলে যোগ করেন সেগুলো দেখেন। ডিরেক্টরি দেখতে পারেন না।</string>
@@ -42,11 +42,11 @@
     <string name="member_step_down_title">%1$s পদে নামবেন?</string>
     <string name="member_step_down_body">%1$s-এ বর্তমান ভূমিকার অধিকার সঙ্গে সঙ্গে হারাবেন। শুধু উচ্চতর ভূমিকার কেউ তা ফিরিয়ে দিতে পারেন।</string>
     <string name="member_owner_title">%1$s-কে মালিক করবেন?</string>
-    <string name="member_owner_body">মালিক সব কিছু করতে পারেন, আপনার ভূমিকা বদলানো ও ওয়ার্কস্পেস মুছে ফেলাসহ।</string>
+    <string name="member_owner_body">মালিক সব কিছু করতে পারেন, আপনার ভূমিকা বদলানো ও কমিউনিটি মুছে ফেলাসহ।</string>
     <string name="member_guest_body">অতিথি %1$s-এর সব শাখা, টিম ও চ্যানেল হারান। পরে ম্যানেজার নির্দিষ্ট চ্যানেলে যোগ করেন।</string>
     <string name="member_make_guest_title">%1$s-কে অতিথি করবেন?</string>
     <string name="member_confirm">নিশ্চিত করুন</string>
-    <string name="member_remove">ওয়ার্কস্পেস থেকে সরান</string>
+    <string name="member_remove">কমিউনিটি থেকে সরান</string>
     <string name="member_title_label">পদবি</string>
     <string name="member_title_save">পদবি সংরক্ষণ</string>
     <string name="member_you">আপনি</string>
@@ -88,7 +88,7 @@
     <string name="scope_archived">%1$s আর্কাইভ করা হয়েছে</string>
     <string name="ch_about">সম্পর্কে</string>
     <string name="ch_topic_none">এখনো কোনো বিষয় নেই</string>
-    <string name="ch_scope_org">পুরো ওয়ার্কস্পেস: %1$s</string>
+    <string name="ch_scope_org">পুরো কমিউনিটি: %1$s</string>
     <string name="ch_scope_branch">শাখা: %1$s</string>
     <string name="ch_scope_team">টিম: %1$s</string>
     <string name="ch_access">গোপনীয়তা ও প্রবেশাধিকার</string>
@@ -101,7 +101,7 @@
     <string name="ch_mode_change">প্রবেশাধিকার বদলান</string>
     <string name="ch_mode_change_note">কাউকে যোগ বা বাদ দেওয়া হয় না। পাঠানো বার্তা প্রাপকদের কাছেই থাকে।</string>
     <string name="ch_mode_changed">#%1$s এখন %2$s</string>
-    <string name="ch_mode_who">শুধু এই চ্যানেলের ওয়ার্কস্পেস, শাখা বা টিমের ম্যানেজার এটি বদলাতে পারেন।</string>
+    <string name="ch_mode_who">শুধু এই চ্যানেলের কমিউনিটি, শাখা বা টিমের ম্যানেজার এটি বদলাতে পারেন।</string>
     <string name="ch_posting_you_can">আপনি এখানে পোস্ট করতে পারেন।</string>
     <string name="ch_posting_you_cannot">এখানে শুধু ম্যানেজার ও চ্যানেল অ্যাডমিন পোস্ট করেন।</string>
     <string name="ch_archived_note">আর্কাইভ করা: শুধু পড়া। আবার পোস্ট করতে ফিরিয়ে আনুন।</string>
@@ -120,10 +120,10 @@
     <string name="new_channel_sub">%1$s-এ</string>
     <string name="new_invite">লোকজনকে আমন্ত্রণ</string>
     <string name="new_invite_sub">%1$s-এর আমন্ত্রণ কোড</string>
-    <string name="new_workspace">ওয়ার্কস্পেসে যোগ দিন বা তৈরি করুন</string>
+    <string name="new_workspace">কমিউনিটিতে যোগ দিন বা তৈরি করুন</string>
     <string name="new_fab">নতুন</string>
     <string name="search_channels">%1$s-এর চ্যানেল</string>
-    <string name="search_workspaces">ওয়ার্কস্পেস</string>
+    <string name="search_workspaces">কমিউনিটি</string>
     <string name="search_join">যোগ দিন</string>
     <string name="search_switch">বদলান</string>
     <string name="search_current">বর্তমান</string>
