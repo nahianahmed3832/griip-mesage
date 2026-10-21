@@ -66,7 +66,7 @@ Meldiq differs from Discord by design in two ways:
 | COM-02 | Name, icon, description | I | I | I | I | P3 | Banner: deferred |
 | COM-03 | Visibility and join policy | IT | I | I | I | — | Invite only / public with invites / public and open |
 | COM-04 | Discover and preview | E2E | I | D | I | P1 (web) | |
-| COM-05 | Invites (expiry, uses, QR) | E2E | I | I | I | P1 (B4) | Server side complete and tested (expiry, uses, revoke, role safety, bans, races). **Gaps (round 3):** links are `meldiq://` only (not tappable in most apps), no https App Link, no signed-out web preview, pause invites, invite from a DM. `MELDIQ_COMMUNITY_INVITATION_SPEC.md` |
+| COM-05 | Invites (expiry, uses, QR) | E2E | I | I | I | P1 (B4) | Server side complete and tested (expiry, uses, revoke, role safety, bans, races). B4 2026-10-21: more choices (1, 10, 50, 100, 500 uses; 1 hour to 30 days) and pausing (MOD-13). **Still open (B4b):** links are `meldiq://` only, no https App Link, no signed-out web preview, invite from a DM. `MELDIQ_COMMUNITY_INVITATION_SPEC.md` |
 | COM-06 | Welcome screen | I | I | — | I | P2 | #welcome channel with welcome actions; no "recommended channels" card |
 | COM-07 | Onboarding questions | R | — | — | — | P2 | Not built. Plan: `community_onboarding` (prompts → options → role ids and channel ids), applied by the server when a member answers; channels follow from roles. `MELDIQ_FULLSTACK_SPEC.md` §5 |
 | COM-08 | Rules shown before joining | I | I | I | I | — | |
@@ -142,7 +142,7 @@ Meldiq differs from Discord by design in two ways:
 | DM-06 | Favourite, archive, mute DMs | I | I | I | I | — | |
 | DM-07 | Group photo | R | — | — | — | P2 (B6) | GDM-CTRL-002 |
 | DM-08 | Invite to community from a DM or profile | R | — | — | — | P2 (B4/B6) | INV-B-05 |
-| DM-09 | Report a person | R | — | — | — | P1 (B4) | FRIEND-CTRL-011, with MOD-07 |
+| DM-09 | Report a person | E2E (emulator) | I | — | I | — | B4: profile › Report (send to Meldiq's team or one of your communities' moderators; the server checks the person is in it), community member sheet › Report |
 
 ## G. Roles, permissions and moderation
 
@@ -154,13 +154,13 @@ Meldiq differs from Discord by design in two ways:
 | MOD-04 | Remove (kick) | IT | I | I | I | — | `members.remove` |
 | MOD-05 | Ban / unban | IT | I | I | I | — | |
 | MOD-06 | Timeout | E2E (Android) | I | D | I | — | 2026-10-21: `PUT /v1/orgs/:id/members/:userId/timeout` (≤ 28 days, reason in the audit log), permission `members.timeout` (in the Moderator template); takes posting, files, announcements and voice in every channel of the community (as a restriction no overwrite lifts), removes them from live voice calls; owners never, admins only by the owner. Android: Members › Time out (60 s – 1 week), Timed out tag, End timeout, composer says until when. Server `member_timeout.test.ts` (6); emulator screenshots `timeout-*.png`. Web: P2 |
-| MOD-07 | Report | R (observed: reasons → summary → submit) S | — | — | — | P1 | Report a message: the reporter's app sends the decrypted message they saw (the reporter's choice to disclose it), with the conversation and message ids, to the community's moderators (in-community) or to Meldiq's operators (platform). The server stores it in `reports` with status. Never automatic |
+| MOD-07 | Report | E2E (emulator) | I | — | I | — | B4 2026-10-21: message menu › Report: reason, then a review step (who reads it, what is shared: the message and up to 5 before it, as decrypted on the phone), optional note, Send. Channels go to the community's moderators (`reports.view`, Moderator template), DMs, groups and illegal content to Meldiq's team. Sealed at rest (`REPORTS_KEY` or `reports.key`), 10 an hour, a repeat returns the first, moderators never see who reported, a moderator can't close a report about themselves. Queue: Community settings › Reports (Open/Closed, handled/dismiss with a note, reopen). Store on SQLite or MongoDB (`reports` domain). Deleted 90 days after closing. Operator queue: not built (B4b or later). Phone test pending. Web: not yet |
 | MOD-08 | AutoMod | R | — | — | — | P3 | Text rules can't run on the server (encrypted). Possible: on-device keyword filter rules distributed by the community, mention-spam limits (the server sees mention counts), join-rate limits. Spec §6 |
-| MOD-09 | Audit log | I | I | I | I | — | `audit.view` |
+| MOD-09 | Audit log | E2E (emulator) | I | I | I | — | `audit.view`. B4: filters by kind of change (Members, Channels, Categories, Roles, Invites, Community, Reports) and by person (`actorId`) |
 | MOD-10 | Raid / abuse protection | I | — | — | I | P2 | Rate limits on joins, invites and sign-ups (`abuse.ts`); alerts to moderators: P2 (B4, Discord Activity Alerts, ADMIN-CTRL-002) |
 | MOD-11 | Explicit media filter | — | | | | | Server can't see media (encrypted); on-device options: P3 |
 | MOD-12 | 2FA for moderators | R | — | — | — | P3 | After AUTH-05 |
-| MOD-13 | Pause invites and member DMs for a time | R | — | — | — | P2 (B4) | ADMIN-CTRL-007 |
+| MOD-13 | Pause invites and member DMs for a time | E2E (emulator) | I | — | I | — | B4: Community settings › Security actions: pause joining (invites and open joins, `invites_paused`) and new DMs between members (`dms_paused`; existing DMs and moderators unaffected) for 1 h to 7 days, or resume; audited |
 
 ## H. Calls, voice and video
 

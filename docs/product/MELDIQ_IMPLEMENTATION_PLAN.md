@@ -23,7 +23,9 @@ go-ahead (`docs/DEPLOYMENT.md`).
 | B0 | Baseline, Discord research, inventory, batch plan | **Done 2026-10-21** (rounds 1–3) |
 | B1 | Sign-in and unlock polish: recovery choices behind help links, session restore | **Done: phone-tested and approved by the owner 2026-10-21** |
 | B2 | Community navigation and home | **Done: phone-tested and approved by the owner 2026-10-21** |
-| B3 | Channels and categories | **Built; APK ready; waiting for the owner's phone test** (2026-10-21) |
+| B3 | Channels and categories | **Done: phone-tested and approved by the owner 2026-10-21** |
+| B4 | Administration, part 1: reports, Security actions, audit filters, invite choices | **Built; APK ready; waiting for the owner's phone test** (2026-10-21) |
+| B4b | Administration, part 2: join applications, raid alerts, https invite links with a signed-out preview, invite from a DM, Meldiq's operator queue for reports | After B4 approval |
 | B3 to B13 | Below | Not started |
 
 Already built earlier the same day and included in the B1 APK (to be checked within their own batches later):

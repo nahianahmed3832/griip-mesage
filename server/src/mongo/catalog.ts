@@ -20,6 +20,7 @@ export type TableDomain =
   | "relay"
   | "files"
   | "history"
+  | "reports"
   | "federation";
 
 /**
@@ -127,6 +128,7 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   pending_blob_deletes: "files",
   history_accounts: "history",
   history_items: "history",
+  reports: "reports",
   federation_blocks: "federation",
   federation_domains: "federation",
   federation_inbox: "federation",

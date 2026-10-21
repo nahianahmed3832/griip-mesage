@@ -17,6 +17,10 @@ import { LiveKitService } from "./livekit.js";
 import type { MeldiqMongo } from "./mongo/client.js";
 import { openMongo } from "./mongo/index.js";
 import { MongoHistoryStore } from "./mongo/history.js";
+import { MongoReportStore } from "./mongo/reports.js";
+import { ReportSealer } from "./reports/seal.js";
+import { SqliteReportStore } from "./reports/store.js";
+import reportRoutes from "./routes/reports.js";
 import { MongoPreferenceStore } from "./mongo/preferences.js";
 import { type PushDeps, PushService } from "./push/service.js";
 import { createBlobStore } from "./storage/index.js";
@@ -49,7 +53,7 @@ import { Metrics } from "./ops/metrics.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
-export const VERSION = "0.16.0";
+export const VERSION = "0.17.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
@@ -128,6 +132,8 @@ export async function buildApp(
   ctx.accounts = new Accounts(ctx, { mailer: opts.mailer });
   ctx.prefs = ctx.mongo?.owns("preferences") ? new MongoPreferenceStore(ctx.mongo) : new SqlitePreferenceStore(db);
   ctx.history = ctx.mongo?.owns("history") ? new MongoHistoryStore(ctx.mongo) : new SqliteHistoryStore(db);
+  ctx.reports = ctx.mongo?.owns("reports") ? new MongoReportStore(ctx.mongo) : new SqliteReportStore(db);
+  ctx.reportSealer = ReportSealer.load(process.env, config.dataDir);
   ctx.entitlements = new Entitlements(config.entitlements, db);
   ctx.usage = new UsageMeter(db);
   ctx.reminders = new ReminderService(ctx);
@@ -278,7 +284,7 @@ export async function buildApp(
     push: config.push ? { unifiedPushHosts: config.push.unifiedPushHosts } : null,
   }));
 
-  for (const r of [authRoutes, userRoutes, orgRoutes, roleRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, preferenceRoutes, reminderRoutes, wsRoutes]) {
+  for (const r of [authRoutes, userRoutes, orgRoutes, roleRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, preferenceRoutes, reminderRoutes, reportRoutes, wsRoutes]) {
     await app.register(async (scope) => r(scope, ctx));
   }
   await app.register(async (scope) => opsRoutes(scope, ctx, VERSION));
@@ -346,6 +352,9 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     // Batch B3: slowmode (server-enforced), and timed mutes, category levels and hidden channels in the preferences.
     "slowmode",
     "channel-preferences",
+    // Batch B4: reports to moderators and operators, pausing invites and new DMs, audit log filters.
+    "reports",
+    "security-actions",
     // Round 7: end dates for guests and a community's guest policy (routes/community.ts).
     "guest-expiry",
     // Round 6: recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md).

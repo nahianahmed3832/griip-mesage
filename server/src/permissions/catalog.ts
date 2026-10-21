@@ -42,6 +42,7 @@ export const PERMISSION_KEYS = [
   "voice.speak",
   // Security and administration
   "audit.view",
+  "reports.view",
 ] as const;
 
 export type Permission = (typeof PERMISSION_KEYS)[number];
@@ -96,6 +97,7 @@ const DEFS: Record<Permission, Def> = {
   "voice.connect": { category: "voice", label: "Join voice channels", description: "Join the calls in voice channels.", restrictable: true, guestAllowed: true },
   "voice.speak": { category: "voice", label: "Speak in voice channels", description: "Talk, share video and share the screen in voice channels. Without it, people listen only.", restrictable: true, guestAllowed: true },
   "audit.view": { category: "security", label: "View the audit log", description: "See every administrative change in the community.", admin: true },
+  "reports.view": { category: "security", label: "Handle reports", description: "See what members reported to the moderators, and close reports.", admin: true },
 };
 
 export const PERMISSIONS: readonly PermissionDef[] = PERMISSION_KEYS.map((key) => {
@@ -162,7 +164,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     description: "Keeps conversations healthy: manages channels and their access, posts announcements, times out, removes and bans people.",
     color: "#E39B7B",
     icon: "shield",
-    permissions: ["channels.manage", "channels.visibility", "messages.announce", "messages.bypass_slowmode", "members.remove", "members.ban", "members.timeout"],
+    permissions: ["channels.manage", "channels.visibility", "messages.announce", "messages.bypass_slowmode", "members.remove", "members.ban", "members.timeout", "reports.view"],
     denies: [],
   },
   {

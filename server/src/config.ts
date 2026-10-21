@@ -33,6 +33,8 @@ export interface Config {
   host: string;
   port: number;
   databasePath: string;
+  /** The data folder (DATA_DIR): files the server keeps besides the database, e.g. reports.key (batch B4). */
+  dataDir: string;
   attachmentDir: string;
   /** How long a 1:1 call waits for someone whose media connection dropped before it ends as "lost" (ms). */
   callPeerGraceMs: number;
@@ -347,6 +349,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     host: env.HOST ?? "0.0.0.0",
     port: int("PORT", 8080),
     databasePath: env.DATABASE_PATH ?? path.join(dataDir, "griip.sqlite"),
+    dataDir,
     attachmentDir: env.ATTACHMENT_DIR ?? path.join(dataDir, "attachments"),
     profilePhotoDir: env.PROFILE_PHOTO_DIR ?? path.join(dataDir, "profile-photos"),
     callPeerGraceMs: int("CALL_PEER_GRACE_MS", 30_000),

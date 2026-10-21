@@ -517,6 +517,8 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
         before: z.coerce.number().int().min(1).optional(),
         limit: z.coerce.number().int().min(1).max(AUDIT_PAGE_MAX).default(50),
         action: z.string().regex(/^[a-z_.]{1,40}$/).optional(),
+        /** Batch B4: only changes made by this person (Discord's "Filter by User"). */
+        actorId: z.string().min(1).max(64).optional(),
       }),
       req.query,
     );
@@ -524,10 +526,10 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
     const rows = db
       .prepare(
         `SELECT a.*, u.display_name AS actor_name FROM audit_log a LEFT JOIN users u ON u.id = a.actor_id
-         WHERE a.org_id = ? AND a.id < ? AND (? IS NULL OR a.action = ? OR a.action LIKE ? ESCAPE '\\')
+         WHERE a.org_id = ? AND a.id < ? AND (? IS NULL OR a.action = ? OR a.action LIKE ? ESCAPE '\\') AND (? IS NULL OR a.actor_id = ?)
          ORDER BY a.id DESC LIMIT ?`,
       )
-      .all(orgId, q.before ?? Number.MAX_SAFE_INTEGER, q.action ?? null, q.action ?? null, q.action ? `${q.action.replace(/[%_\\]/g, (c) => "\\" + c)}.%` : null, q.limit + 1) as any[];
+      .all(orgId, q.before ?? Number.MAX_SAFE_INTEGER, q.action ?? null, q.action ?? null, q.action ? `${q.action.replace(/[%_\\]/g, (c) => "\\" + c)}.%` : null, q.actorId ?? null, q.actorId ?? null, q.limit + 1) as any[];
     const page = rows.slice(0, q.limit);
     return {
       entries: page.map((r) => ({ id: r.id, at: r.at, action: r.action, actorId: r.actor_id, actorName: r.actor_name ?? null, target: r.target, detail: r.detail })),

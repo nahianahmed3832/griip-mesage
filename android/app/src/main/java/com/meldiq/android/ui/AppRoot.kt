@@ -143,6 +143,7 @@ object Routes {
     fun permissions(category: Boolean, id: String, name: String) = "permissions/${if (category) "category" else "channel"}/$id?name=${android.net.Uri.encode(name)}"
     fun bans(orgId: String) = "bans/$orgId"
     fun audit(orgId: String) = "audit/$orgId"
+    fun reports(orgId: String) = "reports/$orgId"
     fun usage(orgId: String) = "usage/$orgId"
     fun user(id: String) = "user/$id"
     /**
@@ -298,6 +299,7 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
                 )
             }
             composable("audit/{orgId}") { com.meldiq.android.ui.screens.workspace.AuditScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
+            composable("reports/{orgId}") { com.meldiq.android.ui.screens.moderation.ReportsScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
             composable("usage/{orgId}") { com.meldiq.android.ui.screens.workspace.UsageScreen(nav, it.arguments?.getString("orgId").orEmpty()) }
             composable("user/{id}") { UserProfileScreen(nav, it.arguments!!.getString("id")!!) }
             composable(Routes.DEVICES) { DevicesScreen(nav) }

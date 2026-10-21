@@ -79,6 +79,8 @@ class AppContainer(
     val orgs = OrgRepository(api, db, conversations, users)
     /** Custom roles, ownership transfer, usage and the audit log (docs/WORKSPACE_ROLES.md). */
     val roles = com.meldiq.android.data.repo.RoleRepository(api)
+    /** Batch B4: reports and Security actions. */
+    val reports = com.meldiq.android.data.repo.ReportRepository(api)
     /** Starred, sections, collapsed groups and mutes, kept on the server for every device (docs/WORKSPACE_ADMINISTRATION.md). */
     val navPrefs = com.meldiq.android.data.repo.NavPreferences(api, db, features, scope).also { np ->
         messages.countsEveryoneOf = { conv -> np.countsEveryone(conv) }

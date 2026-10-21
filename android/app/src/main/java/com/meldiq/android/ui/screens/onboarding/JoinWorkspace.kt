@@ -188,6 +188,10 @@ fun JoinWorkspaceScreen(nav: NavHostController, initialCode: String?) {
                             }
                             RoleBadge(p.role)
                         }
+                        if (p.invitesPaused) {
+                            Spacer(Modifier.height(10.dp))
+                            StatusBanner(stringResource(R.string.inv_paused), BannerKind.Warning)
+                        }
                         if (p.alreadyMember) {
                             Spacer(Modifier.height(10.dp))
                             Text("You're already a member — accepting may give you its role.", style = Griip.type.caption, color = c.textTertiary)

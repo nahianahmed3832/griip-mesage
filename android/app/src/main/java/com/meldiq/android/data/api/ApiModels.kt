@@ -261,6 +261,9 @@ object ChannelFormat {
     val joinPolicy: String = CommunityAccess.INVITE,
     /** Rules shown before joining and on the community's home. */
     val rules: String? = null,
+    /** Batch B4 (servers with `security-actions`): running pauses of joining and of new DMs between members. */
+    val invitesPausedUntil: Long? = null,
+    val dmsPausedUntil: Long? = null,
 )
 
 /** Who can find a community and how people get in (docs/COMMUNITY_REBUILD_2026-10-21.md §5). */
@@ -352,7 +355,37 @@ object CommunityAccess {
 @Serializable data class InvitePreviewRes(
     val org: OrgDto, val role: String, val alreadyMember: Boolean = false,
     val grantRole: GrantRoleRef? = null, val banned: Boolean = false,
+    /** Batch B4: the community has paused new members for now. */
+    val invitesPaused: Boolean = false,
 )
+/** Batch B4: what a reporter chose to share (the decrypted message and a little context); see `ReportRules`. */
+@Serializable data class ReportAttachmentDto(val name: String, val size: Long? = null, val sha256: String? = null)
+@Serializable data class ReportContextDto(val senderUserId: String, val text: String, val sentAt: Long)
+@Serializable data class ReportContentDto(
+    val text: String? = null, val sentAt: Long? = null,
+    val attachments: List<ReportAttachmentDto>? = null, val context: List<ReportContextDto>? = null,
+)
+@Serializable data class ReportReq(
+    val targetUserId: String, val reason: String, val conversationId: String? = null, val messageId: String? = null,
+    val orgId: String? = null, val note: String? = null, val content: ReportContentDto? = null,
+)
+/** [to]: "community" (its moderators) or "meldiq" (Meldiq's team). */
+@Serializable data class ReportSentDto(val id: String, val status: String, val to: String, val repeated: Boolean = false)
+@Serializable data class ReportSentRes(val report: ReportSentDto)
+@Serializable data class ReportPersonDto(val id: String, val username: String? = null, val displayName: String? = null)
+/** A report as moderators see it: never who reported. */
+@Serializable data class ReportDto(
+    val id: String, val orgId: String? = null, val reason: String, val note: String? = null, val status: String,
+    val createdAt: Long, val handledAt: Long? = null, val handledBy: ReportPersonDto? = null, val handledNote: String? = null,
+    val target: ReportPersonDto? = null, val conversationId: String? = null, val conversationName: String? = null,
+    val messageId: String? = null, val content: ReportContentDto? = null,
+)
+@Serializable data class ReportsRes(val reports: List<ReportDto> = emptyList(), val open: Int = 0, val nextBefore: Long? = null)
+@Serializable data class ReportStatusReq(val status: String, val note: String? = null)
+@Serializable data class ReportRes(val report: ReportDto)
+/** Batch B4 Security actions: until when (epoch ms, at most 7 days ahead), or null to resume. Omitted: unchanged. */
+@Serializable data class SecurityReq(val invitesPausedUntil: Long? = null, val dmsPausedUntil: Long? = null)
+@Serializable data class SecurityRes(val invitesPausedUntil: Long? = null, val dmsPausedUntil: Long? = null)
 @Serializable data class ActivityDto(
     val id: Long, val at: Long, val action: String, val actorId: String? = null, val actorName: String? = null,
     val target: String? = null, val detail: String? = null,

@@ -10,6 +10,8 @@ import type { Entitlements } from "./entitlements.js";
 import type { LiveKitService } from "./livekit.js";
 import type { MeldiqMongo } from "./mongo/client.js";
 import type { HistoryStore } from "./history/store.js";
+import type { ReportSealer } from "./reports/seal.js";
+import type { ReportStore } from "./reports/store.js";
 import type { PreferenceStore } from "./preferences/store.js";
 import type { PushService } from "./push/service.js";
 import type { FcmService } from "./push/fcm.js";
@@ -40,6 +42,9 @@ export interface AppContext {
   prefs: PreferenceStore;
   /** Encrypted message history (docs/MESSAGE_HISTORY.md): SQLite, or MongoDB when MONGODB_DOMAINS includes "history". */
   history: HistoryStore;
+  /** Reports (batch B4): SQLite, or MongoDB when MONGODB_DOMAINS includes "reports"; their content sealed by [reportSealer]. */
+  reports: ReportStore;
+  reportSealer: ReportSealer;
   /** Present when MONGODB_URI is set: the domains in MONGODB_DOMAINS live there (docs/MONGODB.md). */
   mongo?: MeldiqMongo;
   /** Plan-based limits (src/entitlements.ts, docs/PLANS.md): none by default. */

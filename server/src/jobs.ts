@@ -1,4 +1,5 @@
 import type { AppContext } from "./context.js";
+import { REPORT_RETENTION_MS } from "./routes/reports.js";
 import { expireDirectUploads, processAbandonedUploads, processBlobDeletes, purgeExpiredAttachments } from "./routes/attachments.js";
 import { purgeRevokedPushEndpoints } from "./push/service.js";
 import { purgeHistory } from "./routes/history.js";
@@ -35,6 +36,8 @@ export interface CleanupResult {
   disabledDisconnected: number;
   callRecordsPruned: number;
   auditPruned: number;
+  /** Batch B4: closed reports past their 90 days. */
+  reportsPurged: number;
   /** Expired sign-in flows, webhook delivery ids, channel notifications from apps and old finished jobs. */
   /** Old reminder occurrence records and reminders finished more than 30 days ago. */
   reminders: number;
@@ -100,6 +103,7 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     disabledDisconnected,
     callRecordsPruned: 0,
     auditPruned: 0,
+    reportsPurged: 0,
     guestsExpired: 0,
   };
   // Usage gauges (seats, stored bytes, call minutes), at most every ten minutes (docs/USAGE_AND_PLANS.md).
@@ -134,6 +138,11 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     r.callRecordsPruned = oldCalls.length;
   }
   r.auditPruned = db.prepare("DELETE FROM audit_log WHERE at <= ?").run(t - ctx.config.auditRetentionDays * 86_400_000).changes;
+  // Reports may live in MongoDB: an unreachable store mustn't stop the rest of retention.
+  r.reportsPurged = await ctx.reports.purgeClosed(t - REPORT_RETENTION_MS).catch((e) => {
+    ctx.log.error({ err: e }, "report retention failed");
+    return 0;
+  });
   r.blobsDeleted = await processBlobDeletes(ctx);
   r.uploadsCleaned = await processAbandonedUploads(ctx);
   // Call membership: anyone no longer admitted (removed from the conversation, revoked device,

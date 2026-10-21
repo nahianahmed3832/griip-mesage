@@ -78,6 +78,7 @@ import com.meldiq.android.ui.Routes
 import com.meldiq.android.data.repo.GlobalAddress
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Cake
 import androidx.compose.material.icons.outlined.Phone
 import com.meldiq.android.ui.TimeFmt
@@ -317,6 +318,9 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
     val myKey = container.session.keys?.identityPublic
     LaunchedEffect(userId) { runCatching { container.users.fetch(userId) }.onSuccess { user = it }.onFailure { error = it.friendly() } }
     var blocked by remember { mutableStateOf<Boolean?>(null) }
+    var reporting by remember { mutableStateOf(false) }
+    var reportsAvailable by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { reportsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.REPORTS) == true }
     LaunchedEffect(userId) { blocked = runCatching { userId in container.federation.blocked() }.getOrNull() }
     val u = user
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
@@ -412,10 +416,21 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
                                 }
                             },
                         )
+                        // Batch B4: a person reported from their profile goes to Meldiq's team (from a community's
+                        // member list it goes to that community's moderators).
+                        if (reportsAvailable) MenuRow(
+                            Icons.Outlined.Flag, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.rp_title_person, u.displayName),
+                            tint = c.danger, tintBg = c.dangerSoft, trailing = null, onClick = { reporting = true },
+                        )
                     }
                 }
             }
         }
+    }
+    if (reporting) user?.let { who ->
+        com.meldiq.android.ui.screens.moderation.ReportSheet(
+            com.meldiq.android.ui.screens.moderation.ReportTarget(userId = userId, name = who.displayName), onDismiss = { reporting = false },
+        )
     }
 }
 

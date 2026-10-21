@@ -4,9 +4,10 @@ For the next session: where everything is, what was done and verified, what isn'
 batch plan and its approval gate are in `MELDIQ_IMPLEMENTATION_PLAN.md`; the status of every feature is in
 `MELDIQ_FEATURE_GAP_MATRIX.md`.
 
-> **Gate in force:** B1 and B2 were phone-tested and approved by the owner (every checklist step passed, 2026-10-21).
-> B3 is built and its APK is waiting for the owner's phone test. **Don't start B4, or make other UI or backend changes,
-> until the owner approves B3 or reports defects in it.** Answer questions and fix reported B3 defects only.
+> **Gate in force:** B1, B2 and B3 were phone-tested and approved by the owner (every checklist step passed,
+> 2026-10-21). B4 is built and its APK is waiting for the owner's phone test. **Don't start B4b, or make other UI or
+> backend changes, until the owner approves B4 or reports defects in it.** Answer questions and fix reported B4 defects
+> only.
 
 ## 1. Repositories and branches
 
@@ -62,137 +63,161 @@ To finish the blocked flows, the owner provides a Discord test server and spare 
 - **Camera:** a stage-by-stage trace plan for B10 (`MELDIQ_CALLING_SCREENSHARE_AUDIT.md` §3). The 2026-10-20 fixes
   are still unverified on a phone.
 - **New feature IDs:** NAV-11, COM-16–18, CH-17–18, MSG-19–21, DM-07–09, MOD-13, CALL-11.
-## 5. Batches B1 and B2: approved
+
+## 5. Batches B1 to B3: approved
 
 | Batch | What | Owner's phone test |
 |---|---|---|
 | B1 | Sign-in and unlock: recovery choices behind help links (`MELDIQ_AUTH_FLOW_AUDIT.md`) | Every step passed (production server) |
 | B2 | Community notification settings with Ignore @everyone, rail order, starter templates (API 0.15.0) | Every step passed (local test server) |
+| B3 | Slowmode, timed mutes, category levels, hidden channels and the channel browser (API 0.16.0, migration 035) | Every step passed (local test server) |
 
-Both are **physically verified**. Details of what they contain are in git history (`377d83c`, `edfb459`) and the
-matrix rows NAV-11, COM-01 and COM-13.
+All three are **physically verified**. Details are in git history (`377d83c`, `edfb459`, `457757a`) and the matrix.
 
-## 6. Batch B3: channels and categories (built 2026-10-21, waiting for the phone test)
+## 6. Batch B4: administration, part 1 (built 2026-10-21, waiting for the phone test)
+
+B4 as first planned was too large for one testable batch. It was split: this batch, and **B4b** (join applications,
+raid alerts, https invite links with a signed-out preview, invite from a DM, Meldiq's operator review tool).
 
 ### What's in it
 
 | Feature | What the person sees | Code |
 |---|---|---|
-| Slowmode (CH-14, Discord O1 channel settings, CHAN-CTRL-013) | <ul><li>Edit channel › **Slowmode**: Off, 5 s, 10 s, 30 s, 1 min, 5 min, 15 min, 1 h, 6 h;</li><li>members see "Slowmode is on: one message every 30 s" above the message box;</li><li>after posting, "you can post again in N s";</li><li>a message sent meanwhile waits (clock icon) and goes out when allowed</li></ul> | Server: migration `035_slowmode.sql`, `authz.ts` (`slowmodeExempt`, `nextPostAt`), `routes/messages.ts` (429 `slowmode`), `routes/conversations.ts` (PATCH `slowmodeSec`, view fields), permission `messages.bypass_slowmode` (Moderator template). Android: `ChannelEditSheets.kt`, `SlowmodeLine` in `ChannelControlSheets.kt`, `MessageRepository.kt` (waits instead of failing), `ConversationRepository.kt` (`slowmode` in memory) |
-| Timed mutes (CH-17, CHAN-CTRL-002) | Muting a channel, a category, the whole community, or a DM (long-press › **Mute for a while**) asks how long: 15 minutes, 1 hour, 3 hours, 8 hours, 24 hours, or until turned back on. A DM shows "Muted until …". Mutes end by themselves | `mutedUntil` in the preferences; `NavPrefsRules.level`, `NavPreferences.muteFor` (+ expiry timer), `MuteForSheet` |
-| Category level (CHAN-CTRL-003) | Long-press a category › **Notification settings**: follow the community, All, Mentions only, Off. Its channels follow it unless they have their own | `categoryNotify`; channel → category → community; `CategoryLevelSheet` |
-| Hide channels and Browse channels (COM-16, COMM-CTRL-007, CHAN-CTRL-005) | <ul><li>Channel menu › **Hide from channel list** or **Show in channel list**;</li><li>a "N hidden · Browse channels" row at the bottom;</li><li>community sheet › **Browse channels**: a switch per channel, and Show all;</li><li>hidden channels still appear while they mention you or are open</li></ul> | `hidden`; `CommunityPanelRules.sections(hidden)`, `BrowseChannelsSheet` |
+| Report a message (MOD-07, Discord CHAT-MSG-003 §6.1) | <ul><li>Long-press someone else's message › **Report**;</li><li>six reasons, with "Just don't want to see them? Block …" below them;</li><li>a **Review your report** step saying who reads it ("the moderators of X. They won't see that it was you", or "Meldiq's team") and exactly what's shared (this message and up to 5 before it);</li><li>an optional note;</li><li>**Send report**, then a confirmation</li></ul> | Android `moderation/ReportSheet.kt`, `ReportRules.kt`, `ConversationScreen.kt`. Server `routes/reports.ts`, `reports/store.ts`, `mongo/reports.ts`, `reports/seal.ts`, migration 036, permission `reports.view` (Moderator template) |
+| Report a person (DM-09) | Profile › **Report** (send to Meldiq's team or one of your communities); community member sheet › **Report** (to that community) | `ProfileScreens.kt`, `OrgScreens.kt` |
+| Moderators' queue | Community settings › Moderation › **Reports**: Open (n) / Closed; each report shows the reason, who was reported, where, what was shared and the note. Mark as handled or Dismiss (with a note for other moderators), Reopen. A report about you says another moderator handles it | `moderation/ReportsScreen.kt` |
+| Security actions (MOD-13, ADMIN-CTRL-007) | Community settings › **Security actions**: pause joining, and new DMs between members, for 1 hour, 6 hours, 24 hours or 7 days; "Paused until …" with Resume. A joiner sees "This community has paused new members" | Android `moderation/SecuritySheet.kt`, `JoinWorkspace.kt`. Server `PUT /v1/orgs/:id/security`, `invites.ts`, `community.ts`, `conversations.ts` (new DMs) |
+| Audit log filters (MOD-09, ADMIN-CTRL-004) | Audit log: All / Members / Channels / Categories / Roles / Invites / Community / Reports, and "Anyone" › a person | `AdminScreens.kt` (`AuditFilters`); server `actorId` filter |
+| Invite choices (INV-B-03) | Uses 1, 10, 50, 100, 500; expires 1 hour, 1 day, 3 days, 7 days, 30 days | `OrgScreens.kt` (`InviteChoices`) |
 
 **Server and API:**
-- API **0.16.0**, with new features `slowmode` and `channel-preferences`.
-- **Migration 035** adds two columns (additive). It was applied to the existing local test database without problems.
-- Older apps and the web keep working: they leave the new preference fields out and the stored values are kept.
+- API **0.17.0**, with new features `reports` and `security-actions`.
+- **Migration 036:** a `reports` table and two pause columns on `orgs` (additive). It was applied to the existing local
+  test database without problems.
+- **New MongoDB domain `reports`.**
+- **Report content key, for any shared deployment:**
+  - The content is sealed with **`REPORTS_KEY`** (32 bytes, base64). Without it, a single server creates
+    `reports.key` in its data folder, owner-only.
+  - **Back that key up with the database:** without it, existing report content can't be read.
+  - Where several servers share one database (the AWS plan), set `REPORTS_KEY`.
+- **Retention:** closed reports are deleted 90 days after they were handled. Account and community deletion remove
+  their reports.
 
-**New Android strings** in three languages: `mf_*`, `cl_*`, `hc_*`, `sm_*`.
+**New Android strings** in three languages: `rp_*`, `rq_*`, `sa_*`, `au_*`, `inv_exp_*`, `inv_paused`.
 
 ### How it was checked
 
 - **Server:**
-  - `channel_controls.test.ts` (10):
-    - who may set slowmode, and only the offered intervals;
-    - a member's second message is refused with `retryAfter`;
-    - edits and reactions are free;
-    - a retry of an accepted message is a duplicate, not a refusal;
-    - managers and `messages.bypass_slowmode` are exempt;
-    - turning it off;
-    - timed mutes (ended ones and other people's dropped);
-    - category levels (other communities' dropped, "all" kept under a quieter category);
-    - hidden channels (only this community's visible channels);
-    - older-client writes;
-    - the personal document.
-  - Full suite **648 passed**, 10 skipped. The preference tests also pass with MongoDB.
-- **Android:** `ChannelControlsRulesTest` (7), full unit suite **587 passed**, lint clean.
-- **Emulator** (local server 0.16.0, Ada in the main app as an admin, Erin in "Meldiq Test" as an ordinary member):
-  - Ada set 30 s slowmode on #general (stored on the server).
-  - Erin saw the slowmode line. Her second message waited with a countdown and reached the server **30.3 s** after the
-    first. Ada (admin) saw no slowmode line.
-  - Ada muted #introductions for 15 minutes: stored on the server with 15.0 minutes left, and the channel menu said
-    Unmute.
-  - The Talk category was set to All: #general in Talk became unmuted, while #introductions stayed muted during its
-    timed mute. The server dropped the now-redundant "All" override.
-  - #lounge was hidden: it left the panel and the "1 hidden · Browse channels" row appeared. Browse channels listed
-    it switched off; switching it on brought it back.
-  - A DM with Carol muted for 1 hour: the sheet said "Muted until 10:29 PM".
-  - **Defect found and fixed:** at the end of the 15 minutes, #introductions stayed muted. The end-of-mute timer
-    reapplied the mutes, and the rescheduling inside that cancelled the timer's own job, so later communities were
-    never reapplied. The job now lets go of itself first (`NavPreferences.scheduleMuteExpiry`). After the fix, an
-    ended mute is ignored at start-up (#introductions unmuted).
-    Then #lounge was muted for 15 minutes at 21:46 and, at 22:02 without restarting the app, its menu said **Mute channel** again: the timer works.
-  - Screenshots: `docs/product/screens-2026-10-21/b3-*.png`.
+  - `reports_security.test.ts` (14):
+    - where reports go;
+    - content sealed at rest;
+    - a repeat report returns the first;
+    - the sender check;
+    - who sees and closes reports;
+    - a moderator can't close their own report;
+    - the hourly limit;
+    - the 90-day retention;
+    - who may pause and for how long;
+    - joining and new DMs refused while paused, with existing DMs and moderators unaffected;
+    - the audit person filter.
+  - Full suite **662 passed**, 10 skipped. The B2 to B4 tests also pass with reports, preferences, history and
+    accounts in MongoDB.
+- **Android:** `ReportRulesTest` (6), full unit suite **593 passed**, lint clean.
+- **Emulator** (local server 0.17.0; Ada an admin in the main app, Erin a member in "Meldiq Test"):
+  - **Message report:**
+    - Erin reported Ada's message: reasons, then the review ("Goes to the moderators of Mod Lab…", the message text,
+      the 5-message line), a note, Send.
+    - Stored with community scope and sealed (`r1.`).
+  - **Person report:** Erin reported Dave from his profile, choosing Mod Lab: it went to the moderators.
+  - **Queue:**
+    - Ada's Reports showed "Open (2)" with no reporter shown.
+    - The report about Ada said "another moderator handles it" (found and fixed during the walk; see below).
+    - Ada marked Dave's report handled with a note: Closed showed "Handled by Ada · warned".
+  - **Audit log:** the Reports filter showed "report actioned".
+  - **Security actions:** pausing joining for 1 hour showed "Paused until 11:59 PM". A new account with a valid invite
+    was refused (`invites_paused`), and its preview said so. Resume worked.
+  - **Invite form:** shows the new use and expiry choices.
+  - Screenshots: `docs/product/screens-2026-10-21/b4-*.png`.
+- **Found and fixed during the walk:**
+  1. A moderator could close a report about themselves. The server now refuses (`own_report`) unless they're the
+     owner, and the app shows a note instead of the buttons.
+  2. Ordinary members open profiles, not the member sheet, so they couldn't report a person to a community. The profile
+     report now offers "Send to: Meldiq's team / your communities".
+- **Emulator storage:** to fit the install, the stale `com.griipbuddy.Orbit.test` and
+  `com.griipbuddy.orbit.androidtest` builds (this project's old test variants) were uninstalled. Nothing else was
+  touched.
 - **Physical phone:** **not yet tested.**
 
-### B3 APK
+### B4 APK
 
-- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b3-debug.apk`
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b4-debug.apk`
   (147 MB, git-ignored).
-- **SHA-256:** `3418be283e117d1c629657cbf536d44a9e91e1d3a48053628b0083f1e11e4cc5` (rebuilt after the timer fix below).
+- **SHA-256:** `2627390bef636ed63da08d9c2c0cbc78d98144ec166bf7f75c1235ef9449c915`.
 - **Variant:** debug, side by side: `com.meldiq.android.test`, "Meldiq Test", versionCode 19 / `0.5.0-beta`.
-- **Server:** `http://localhost:8080`, the local test server over USB, as for B2.
+- **Server:** `http://localhost:8080`, the local test server over USB, as for B2 and B3.
 
-### Owner's phone checklist (B3)
+### Owner's phone checklist (B4)
 
 **Before you start:**
-1. **Server:** from `/Volumes/code_files/meldiq_android`, start the test server again with
-   `server/scripts/phone-test-server.sh`. It's now API 0.16.0 and updates the test data from B2 by itself.
-2. **Install over B2:** `adb install -r android/app/build/outputs/apk/debug/meldiq-test-b3-debug.apk`. You stay signed
-   in.
-3. **Second account, for slowmode only:**
-   - As the community's owner you're never slowed down, so add a second account: You › Settings › **Add account**.
-     Get its code with `server/scripts/phone-test-server.sh code`.
-   - Join your test community with an invite as a member.
+1. **Server:** start the test server again from `/Volumes/code_files/meldiq_android` with
+   `server/scripts/phone-test-server.sh`. It's now API 0.17.0 and updates the test data by itself.
+2. **Install over B3:** `adb install -r android/app/build/outputs/apk/debug/meldiq-test-b4-debug.apk`.
+3. **Accounts:** use your owner account and the second (member) account from B3 (You › Settings › Add account, then
+   switch between them).
 
 **Checks:**
-1. **Slowmode:**
-   - As the owner, long-press a text channel › **Edit channel** › Slowmode **30 s** › Save.
-   - Switch to the second account and open that channel.
-   - **Expected:** "Slowmode is on: one message every 30 s".
-   - Send two messages quickly.
-   - **Expected:** the second shows a clock and "you can post again in N s", then goes out after about 30 s.
-   - Switch back to the owner. **Expected:** no slowmode line; you can post freely.
-2. **Mute for a while:**
-   - Long-press a channel › **Mute channel**.
-   - **Expected:** the choices 15 minutes, 1 hour, 3 hours, 8 hours, 24 hours, Until I turn it back on.
-   - Pick **15 minutes**. **Expected:** its menu now says **Unmute channel**.
-   - **After 15 minutes:** it says **Mute channel** again, without you doing anything.
-3. **Whole community and category:**
-   - Community name › **Mute** asks how long too. Pick "Until I turn it back on", then Unmute.
-   - Long-press a category › **Mute category** asks the same.
-4. **Category level:**
-   - Long-press a category › **Notification settings** › **All new messages**.
-   - **Expected:** the sheet shows your choice when reopened.
-5. **Hide and browse:**
-   - Long-press a channel › **Hide from channel list**.
-   - **Expected:** it disappears and "1 hidden · Browse channels" appears at the bottom.
-   - Tap that row. **Expected:** the channel is listed with its switch off.
-   - Switch it on. **Expected:** it's back in the list.
-   - Also open Browse channels from the community menu.
-6. **DM:**
-   - In DMs, long-press a conversation › **Mute for a while** › 1 hour.
-   - Long-press again. **Expected:** "Muted until …".
-7. **Languages:** switch to 中文 or বাংলা and open the Mute for and Browse channels sheets: the text is translated.
-8. **Report back:** pass or fail per step, a screenshot of anything wrong, and the phone model.
+1. **Report a message:**
+   - As the member, long-press a message from your owner account › **Report** › Harassment or bullying.
+   - **Expected:** the review step says "Goes to the moderators of …" and shows the message.
+   - Add a note › **Send report**. **Expected:** "Report sent to the moderators".
+2. **Report again:** report the same message. **Expected:** "You already reported this message".
+3. **Report a person:**
+   - As the member, open the owner's profile › **Report** › Spam.
+   - Under "Send to", pick your community. **Expected:** the line changes to "Goes to the moderators of …".
+   - Send.
+4. **Queue:**
+   - Switch to the owner › community name › Settings › Moderation › **Reports**.
+   - **Expected:** "Open (2)", the reason, who was reported, the message text and the note, and **no** sign of who
+     reported.
+   - Mark one as handled with a note. **Expected:** it moves to Closed with "Handled by …".
+   - Reopen it.
+5. **Audit log:** Settings › Audit log › swipe the filters › **Reports**. **Expected:** only report entries. Tap
+   "Anyone" and pick a person: only their changes.
+6. **Security actions:**
+   - Settings › **Security actions** › Pause joining › **1 hour**. **Expected:** "Paused until …".
+   - As the member, try a new invite code in Join or create. **Expected:** "This community has paused new members".
+   - Resume.
+7. **Pause new DMs:**
+   - Pause new DMs. As the member, try to start a new DM with someone in the community you haven't messaged before.
+   - **Expected:** a message that new DMs are paused. An existing DM still works.
+   - Resume.
+8. **Invite choices:** Invite › **New invite**. **Expected:** uses up to 500, expiry from 1 hour to 30 days.
+9. **Languages:** switch to 中文 or বাংলা and open the report sheet and the Reports screen: the text is translated.
+10. **Report back:** pass or fail per step, a screenshot of anything wrong, and the phone model.
 
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
    call).
 2. **The AWS tools use the root user's access key:** move them off it (`MELDIQ_AWS_ARCHITECTURE.md` §5).
-3. **Server 0.16.0 isn't deployed** (production runs 0.13.0): 0.14.0 added migration 034 (timeouts); 0.15.0 B2's preference fields and templates; 0.16.0 migration 035 (slowmode) and B3's preference fields.
+3. **Server 0.17.0 isn't deployed** (production runs 0.13.0): 0.14.0 migration 034 (timeouts); 0.15.0 B2's preference fields and templates; 0.16.0 migration 035 (slowmode) and B3's fields; 0.17.0 migration 036 (reports, pauses). For deployment, set `REPORTS_KEY` (or back up `reports.key` with the database).
 4. **Android database version 11:** a forward migration.
 
 ## 8. Next, exactly
 
-1. **Owner:** the B3 phone test (§6), then approve or report.
+1. **Owner:** the B4 phone test (§6), then approve or report.
 2. **Owner:** decisions listed in `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions" (connections model, fingerprints,
    test accounts).
-3. **Engineering, only after B3 approval:** B4 (administration and invitations): reports, pause invites and member
-   DMs, join applications, raid alerts, audit log filters, https invite links (`MELDIQ_COMMUNITY_INVITATION_SPEC.md`).
-4. **Don't change before B3 feedback:** `ChannelControlSheets.kt`, `ChannelEditSheets.kt`, `CommunityMenuRules.kt`,
-   `CommunityMenus.kt`, `CommunityHomeScreen.kt`, `CommunityPanelRules.kt`, `ChatActionsSheet.kt`, `NavPrefsRules.kt`,
-   `NavPreferences.kt`, `MessageRepository.kt`'s outbox; the server's `preferences/`, `routes/messages.ts` slowmode,
-   `authz.ts` slowmode. Only reported defects get fixed there.
+3. **Engineering, only after B4 approval:** B4b:
+   - join applications (COM-18);
+   - raid alerts to moderators (MOD-10);
+   - https invite links with a signed-out preview and invite from a DM (`MELDIQ_COMMUNITY_INVITATION_SPEC.md`
+     INV-B-01/02/05);
+   - Meldiq's operator review tool for reports sent to Meldiq.
+4. **Don't change before B4 feedback:**
+   - Android: `moderation/*`, the report entry in `ConversationScreen.kt`, `ProfileScreens.kt`, `OrgScreens.kt`'s
+     member sheet and invite form, `AdminScreens.kt`'s audit filters, `CommunitySettingsScreen.kt`'s moderation
+     group;
+   - server: `routes/reports.ts`, `reports/`, `mongo/reports.ts`, the security route and its checks.
+
+   Only reported defects get fixed there.

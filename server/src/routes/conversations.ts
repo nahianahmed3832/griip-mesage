@@ -225,6 +225,13 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
     const t = now();
     let c = db.prepare("SELECT * FROM conversations WHERE dm_key = ?").get(key) as ConversationRow | undefined;
     if (!c) {
+      // Batch B4: a community can pause new DMs between its members. It applies when every community the two share
+      // has paused them, and neither of them moderates one of those communities (moderators can still reach people).
+      const shared = (db.prepare("SELECT a.org_id FROM org_members a JOIN org_members b ON a.org_id = b.org_id WHERE a.user_id = ? AND b.user_id = ?").all(userId, other) as { org_id: string }[]).map((r) => r.org_id);
+      const t0 = now();
+      const paused = shared.length > 0 && shared.every((o) => authz.pausedUntil(o, "dms", t0) !== null);
+      const moderator = shared.some((o) => authz.can(o, userId, "members.timeout") || authz.can(o, other, "members.timeout"));
+      if (paused && !moderator) throw new ApiError(403, "dms_paused", "New direct messages between members of your community are paused for now");
       // With someone on another server, both servers derive the same conversation id from the two user ids.
       if (target.home_server_id && !ctx.federation) throw new ApiError(503, "federation_disabled", "This server doesn't federate");
       const id = target.home_server_id ? fedDmId(key) : newId("c");

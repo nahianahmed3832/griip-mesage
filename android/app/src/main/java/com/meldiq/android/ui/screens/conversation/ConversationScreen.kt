@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Headset
 import androidx.compose.material.icons.outlined.MarkChatUnread
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Share
 import android.widget.Toast
@@ -316,6 +317,10 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     // Received photos download by themselves when Settings › Chats › media allows (videos and files wait for a tap).
     LaunchedEffect(messages.firstOrNull()?.id, chatSettings.autoDownload) { vm.autoDownloadPhotos(messages.take(40), ctx) }
     var forwardFor by remember { mutableStateOf<MessageEntity?>(null) }
+    // Batch B4: reporting someone else's message (servers with `reports`).
+    var reportFor by remember { mutableStateOf<MessageEntity?>(null) }
+    var reportsAvailable by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { reportsAvailable = vm.c.features.has(com.meldiq.android.data.repo.ServerFeatures.REPORTS) == true }
     var forwardTo by remember { mutableStateOf<com.meldiq.android.data.db.ConversationEntity?>(null) }
     // Photos and videos open in the in-app viewer; other files are opened explicitly with another app.
     var viewerFor by rememberSaveable { mutableStateOf<String?>(null) }
@@ -876,6 +881,10 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             }
             if (!m.deleted && m.kind == "text" && m.status != MessageStatus.SENDING && vm.c.messages.attachments(m).none { it.id == "pending" }) {
                 MenuRow(Icons.AutoMirrored.Outlined.Forward, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.menu_forward), onClick = { forwardFor = m; actionFor = null }, trailing = null)
+                if (reportsAvailable && !m.outgoing && !m.deleted) MenuRow(
+                    Icons.Outlined.Flag, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.rp_menu), tint = c.danger, tintBg = c.dangerSoft,
+                    onClick = { reportFor = m; actionFor = null }, trailing = null,
+                )
             }
             if (m.outgoing && (m.status == MessageStatus.SENDING || m.status == MessageStatus.FAILED) && vm.c.messages.attachments(m).any { it.id == "pending" }) {
                 MenuRow(Icons.Outlined.Close, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.menu_cancel_upload), subtitle = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.menu_cancel_upload_sub), tint = c.danger, tintBg = c.dangerSoft, onClick = { vm.cancelUpload(m); actionFor = null }, trailing = null)
@@ -984,6 +993,17 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             current = saved.firstOrNull { it.messageId == m.id }?.remindAt,
             onPick = { at -> vm.remind(m, at); remindFor = null },
             onDismiss = { remindFor = null },
+        )
+    }
+    reportFor?.let { m ->
+        val line = { e: MessageEntity -> com.meldiq.android.data.model.ReportRules.Line(e.id, e.senderUserId, e.text, e.sentAt, vm.c.messages.attachments(e)) }
+        com.meldiq.android.ui.screens.moderation.ReportSheet(
+            com.meldiq.android.ui.screens.moderation.ReportTarget(
+                userId = m.senderUserId, name = users[m.senderUserId]?.displayName ?: "",
+                conversationId = m.conversationId, conversationType = conv?.type, messageId = m.id, orgId = conv?.orgId,
+                content = com.meldiq.android.data.model.ReportRules.content(line(m), messages.map(line)),
+            ),
+            onDismiss = { reportFor = null },
         )
     }
     forwardFor?.let { m ->

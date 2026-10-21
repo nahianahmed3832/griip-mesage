@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,16 +61,34 @@ fun AuditScreen(nav: NavHostController, orgId: String) {
     var next by remember { mutableStateOf<Long?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    // Batch B4 (Discord reference ADMIN-CTRL-004): filter by kind of change and by the person who made it.
+    var group by remember { mutableStateOf<String?>(null) }
+    var actor by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var pickActor by remember { mutableStateOf(false) }
+    val actors = remember { mutableStateMapOf<String, String>() }
     fun load(before: Long?) = scope.launch {
         busy = true
-        runCatching { container.roles.audit(orgId, before) }
-            .onSuccess { r -> entries = (if (before == null) emptyList() else entries.orEmpty()) + r.entries; next = r.nextBefore; error = null }
+        runCatching { container.roles.audit(orgId, before, group, actor?.first) }
+            .onSuccess { r ->
+                entries = (if (before == null) emptyList() else entries.orEmpty()) + r.entries; next = r.nextBefore; error = null
+                r.entries.forEach { e -> val id = e.actorId; val name = e.actorName; if (id != null && name != null) actors[id] = name }
+            }
             .onFailure { error = it.friendly() }
         busy = false
     }
-    LaunchedEffect(Unit) { load(null) }
+    LaunchedEffect(group, actor) { entries = null; load(null) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item { GriipTopBar(stringResource(R.string.audit_title), onBack = { nav.popBackStack() }) }
+        item {
+            com.meldiq.android.ui.components.ChipRow {
+                AuditFilters.GROUPS.forEach { (key, label) -> com.meldiq.android.ui.components.PillChip(stringResource(label), group == key, { group = key }) }
+            }
+            com.meldiq.android.ui.components.ChipRow {
+                com.meldiq.android.ui.components.PillChip(
+                    actor?.let { stringResource(R.string.au_by, it.second) } ?: stringResource(R.string.au_anyone), actor != null, { pickActor = true },
+                )
+            }
+        }
         error?.let { item { StatusBanner(it, BannerKind.Warning, Modifier.padding(horizontal = Space.gutter)) } }
         val list = entries
         if (list == null) item { ShimmerList(6) }
@@ -84,6 +103,20 @@ fun AuditScreen(nav: NavHostController, orgId: String) {
             PillButton(stringResource(R.string.audit_more), { load(next) }, Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 12.dp), tone = ButtonTone.Glass, loading = busy)
         }
     }
+    if (pickActor) com.meldiq.android.ui.components.GlassSheet({ pickActor = false }, title = stringResource(R.string.au_pick_person)) {
+        ListCard(stringResource(R.string.au_anyone), Modifier.padding(vertical = 2.dp), onClick = { actor = null; pickActor = false })
+        actors.entries.sortedBy { it.value.lowercase() }.forEach { (id, name) ->
+            ListCard(name, Modifier.padding(vertical = 2.dp), onClick = { actor = id to name; pickActor = false })
+        }
+    }
+}
+
+/** Batch B4: the audit log's kinds of change, as action-key prefixes (null: everything). */
+object AuditFilters {
+    val GROUPS = listOf(
+        null to R.string.au_all, "member" to R.string.au_members, "channel" to R.string.au_channels, "category" to R.string.au_categories,
+        "role" to R.string.au_roles, "invite" to R.string.au_invites, "community" to R.string.au_community, "report" to R.string.au_reports,
+    )
 }
 
 /** Plain words for an audit action key ("integration.subscription.create" → "integration subscription create"). */

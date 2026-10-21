@@ -46,8 +46,8 @@ class RoleRepository(private val api: ApiClient) {
     suspend fun usage(orgId: String): UsageRes = api.get("/v1/orgs/${enc(orgId)}/usage")
 
     /** A page of the audit log, newest first; [before] is the last id of the previous page. */
-    suspend fun audit(orgId: String, before: Long? = null, action: String? = null): AuditRes {
-        val q = listOfNotNull(before?.let { "before=$it" }, action?.let { "action=${enc(it)}" }, "limit=50").joinToString("&")
+    suspend fun audit(orgId: String, before: Long? = null, action: String? = null, actorId: String? = null): AuditRes {
+        val q = listOfNotNull(before?.let { "before=$it" }, action?.let { "action=${enc(it)}" }, actorId?.let { "actorId=${enc(it)}" }, "limit=50").joinToString("&")
         return api.get("/v1/orgs/${enc(orgId)}/audit?$q")
     }
 }

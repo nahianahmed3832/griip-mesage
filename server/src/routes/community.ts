@@ -23,6 +23,8 @@ import { CHANNEL_LIMITS, notifyConversation, notifyOrg, orgSummary, removeFromWo
  * Every write is checked here on the server; the app only mirrors the rules to hide controls.
  */
 
+/** The longest Security actions pause (batch B4). */
+export const SECURITY_PAUSE_MAX_MS = 7 * 86_400_000;
 /** The longest timeout, as on other community platforms. */
 export const TIMEOUT_MAX_MS = 28 * 86_400_000;
 /** At most this many categories in one community. */
@@ -355,6 +357,7 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
     if (o.join_policy !== "open") throw forbidden("This community is invite-only: ask a member for an invitation");
     if (authz.isBanned(id, userId)) throw new ApiError(403, "banned", "You've been banned from this community");
     const t = now();
+    if (authz.pausedUntil(id, "invites", t)) throw new ApiError(403, "invites_paused", "This community has paused new members for now. Try again later.");
     db.transaction(() => {
       ctx.entitlements.check("members", (db.prepare("SELECT COUNT(*) n FROM org_members WHERE org_id = ?").get(id) as { n: number }).n, id);
       db.prepare("INSERT OR IGNORE INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, 'MEMBER', ?)").run(id, userId, t);
@@ -446,6 +449,38 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
     db.prepare("UPDATE org_members SET expires_at = ? WHERE org_id = ? AND user_id = ?").run(expiresAt, p.orgId, p.userId);
     ctx.audit({ actorId: actor, orgId: p.orgId, action: "member.expiry", target: p.userId });
     return { expiresAt };
+  });
+
+  // ───────────── Security actions (batch B4, Discord reference ADMIN-CTRL-007) ─────────────
+  /**
+   * Pauses joining (by invitation or openly) and new direct messages between members, until a time at most 7 days
+   * ahead; null resumes. For people who edit the community or ban members.
+   */
+  app.put("/v1/orgs/:orgId/security", auth, async (req) => {
+    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const actor = me(req).userId;
+    const body = parse(
+      z.object({ invitesPausedUntil: z.number().int().nullable().optional(), dmsPausedUntil: z.number().int().nullable().optional() }).strict(),
+      req.body,
+    );
+    authz.requireOrgMember(orgId, actor);
+    if (!authz.can(orgId, actor, "workspace.edit") && !authz.can(orgId, actor, "members.ban")) throw forbidden("Your role doesn't include security actions");
+    const t = now();
+    for (const until of [body.invitesPausedUntil, body.dmsPausedUntil]) {
+      if (until === undefined || until === null) continue;
+      if (until <= t) throw badRequest("Pick a time in the future, or resume instead");
+      if (until > t + SECURITY_PAUSE_MAX_MS) throw badRequest("A pause lasts at most 7 days");
+    }
+    if (body.invitesPausedUntil !== undefined) {
+      db.prepare("UPDATE orgs SET invites_paused_until = ? WHERE id = ?").run(body.invitesPausedUntil, orgId);
+      ctx.audit({ actorId: actor, orgId, action: body.invitesPausedUntil === null ? "community.invites_resume" : "community.invites_pause", target: orgId });
+    }
+    if (body.dmsPausedUntil !== undefined) {
+      db.prepare("UPDATE orgs SET dms_paused_until = ? WHERE id = ?").run(body.dmsPausedUntil, orgId);
+      ctx.audit({ actorId: actor, orgId, action: body.dmsPausedUntil === null ? "community.dms_resume" : "community.dms_pause", target: orgId });
+    }
+    notifyOrg(ctx, orgId);
+    return { invitesPausedUntil: authz.pausedUntil(orgId, "invites", t), dmsPausedUntil: authz.pausedUntil(orgId, "dms", t) };
   });
 
   // ───────────── Timeouts (docs/product/MELDIQ_FEATURE_GAP_MATRIX.md MOD-06) ─────────────

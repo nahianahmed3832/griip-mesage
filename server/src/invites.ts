@@ -135,6 +135,8 @@ export function joinOrgByInvite(ctx: AppContext, inv: OrgInviteRow, userId: stri
   const rank: Record<string, number> = { GUEST: 0, MEMBER: 1, ADMIN: 2, OWNER: 3 };
   if (authz.isBanned(inv.org_id, userId)) throw new ApiError(403, "banned", "You've been banned from this community");
   if (!existing) {
+    // Batch B4: a community can pause joining for a while (Security actions).
+    if (authz.pausedUntil(inv.org_id, "invites", t)) throw new ApiError(403, "invites_paused", "This community has paused new members for now. Try again later.");
     // Round 7: the workspace's member limit, if one applies (docs/USAGE_AND_PLANS.md).
     ctx.entitlements.check("members", (db.prepare("SELECT COUNT(*) n FROM org_members WHERE org_id = ?").get(inv.org_id) as { n: number }).n, inv.org_id);
     // A guest invitation can carry an end date for the membership (round 7, docs/WORKSPACE_C5.md).

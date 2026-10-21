@@ -71,6 +71,10 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val SLOWMODE = "slowmode"
         /** Batch B3: timed mutes, category levels and hidden channels in the preferences documents. */
         const val CHANNEL_PREFERENCES = "channel-preferences"
+        /** Batch B4: reports to moderators and to Meldiq's team. */
+        const val REPORTS = "reports"
+        /** Batch B4: pausing joining and new DMs between members; the audit log's person filter. */
+        const val SECURITY_ACTIONS = "security-actions"
         /** Meldiq 2.0: experiments and content-free analytics counts (docs/product/EXPERIMENTS.md). */
         const val EXPERIMENTS = "experiments"
         const val ANALYTICS_EVENTS = "analytics-events"

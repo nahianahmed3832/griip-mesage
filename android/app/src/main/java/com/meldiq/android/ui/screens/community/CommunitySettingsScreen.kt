@@ -19,6 +19,8 @@ import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.ManageAccounts
 import androidx.compose.material.icons.outlined.Policy
@@ -71,7 +73,7 @@ import com.meldiq.android.ui.theme.Shapes
 import com.meldiq.android.ui.theme.Space
 import kotlinx.coroutines.launch
 
-private enum class SettingsSheet { Overview, Transfer, Delete, Leave }
+private enum class SettingsSheet { Overview, Transfer, Delete, Leave, Security }
 
 /**
  * Community settings in groups (docs/product/MELDIQ_COMMUNITY_CHAT_SPEC.md §4): Community, People, Channels,
@@ -89,7 +91,14 @@ fun CommunitySettingsScreen(nav: NavHostController) {
     val error by vm.error.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     var sheet by remember { mutableStateOf<SettingsSheet?>(null) }
-    LaunchedEffect(Unit) { vm.refresh() }
+    // Batch B4: reports and Security actions, on servers that have them.
+    var reportsAvailable by remember { mutableStateOf(false) }
+    var securityAvailable by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        vm.refresh()
+        reportsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.REPORTS) == true
+        securityAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.SECURITY_ACTIONS) == true
+    }
     val d = detail
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -136,7 +145,18 @@ fun CommunitySettingsScreen(nav: NavHostController) {
         group(R.string.nv_group_channels) {
             MenuRow(Icons.Outlined.Tag, stringResource(R.string.nv_channels_categories), subtitle = stringResource(R.string.nv_channels_categories_sub, d.stats.channels, d.categories.size), onClick = { nav.navigate(Routes.CHANNELS_MANAGE) })
         }
-        if (p.canBan || p.canViewAudit || p.canViewDirectory) group(R.string.nv_group_moderation) {
+        val canReports = reportsAvailable && (p.isOwner || "reports.view" in p.effective)
+        val canSecurity = securityAvailable && (p.isOwner || "workspace.edit" in p.effective || p.canBan)
+        if (p.canBan || p.canViewAudit || p.canViewDirectory || canReports || canSecurity) group(R.string.nv_group_moderation) {
+            if (canReports) MenuRow(Icons.Outlined.Flag, stringResource(R.string.rq_title), subtitle = stringResource(R.string.rq_sub), tint = c.danger, tintBg = c.dangerSoft, onClick = { nav.navigate(Routes.reports(d.org.id)) })
+            if (canSecurity) MenuRow(
+                Icons.Outlined.Shield, stringResource(R.string.sa_title),
+                subtitle = listOfNotNull(
+                    d.org.invitesPausedUntil?.let { stringResource(R.string.sa_invites) + " · " + stringResource(R.string.sa_paused_until, com.meldiq.android.ui.screens.workspace.TimeoutRules.untilText(it)) },
+                    d.org.dmsPausedUntil?.let { stringResource(R.string.sa_dms) + " · " + stringResource(R.string.sa_paused_until, com.meldiq.android.ui.screens.workspace.TimeoutRules.untilText(it)) },
+                ).joinToString("\n").ifEmpty { stringResource(R.string.sa_sub) },
+                tint = c.warning, tintBg = c.warningSoft, onClick = { sheet = SettingsSheet.Security },
+            )
             if (p.canBan) MenuRow(Icons.Outlined.Block, stringResource(R.string.cm_bans), subtitle = stringResource(R.string.cm_bans_sub), tint = c.danger, tintBg = c.dangerSoft, onClick = { nav.navigate(Routes.bans(d.org.id)) })
             if (p.canViewAudit) MenuRow(Icons.Outlined.Policy, stringResource(R.string.manage_audit), subtitle = stringResource(R.string.manage_audit_sub), tint = c.lavender, tintBg = c.lavenderSoft, onClick = { nav.navigate(Routes.audit(d.org.id)) })
             if (p.canViewDirectory) MenuRow(Icons.Outlined.History, stringResource(R.string.activity_workspace_log), tint = c.lavender, tintBg = c.lavenderSoft, onClick = { nav.navigate(Routes.activity(d.org.id)) })
@@ -153,6 +173,9 @@ fun CommunitySettingsScreen(nav: NavHostController) {
     }
 
     if (d != null) when (sheet) {
+        SettingsSheet.Security -> com.meldiq.android.ui.screens.moderation.SecuritySheet(
+            d.org.id, d.org.invitesPausedUntil, d.org.dmsPausedUntil, onDismiss = { sheet = null }, onChanged = { vm.refresh() },
+        )
         SettingsSheet.Overview -> WorkspaceSettingsSheet(d, onDismiss = { sheet = null }, onChanged = { vm.refresh() }, onLeft = { name ->
             sheet = null
             Toast.makeText(ctx, ctx.getString(R.string.ws_left, name), Toast.LENGTH_SHORT).show()

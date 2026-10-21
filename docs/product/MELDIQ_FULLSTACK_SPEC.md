@@ -34,7 +34,16 @@ realtime event, Android, web and tests.
 
 See matrix MOD-06.
 
-### 2.2 Reports (MOD-07)
+### 2.2 Reports (MOD-07): built 2026-10-21 (batch B4)
+
+Built as below, with these decisions from the Discord inspection and the emulator walk-through:
+- **Reporter hidden:** moderators never see who reported.
+- **Own reports:** a moderator can't close a report about themselves (the owner can).
+- **Illegal content** always goes to Meldiq's team.
+- **Person reports** from a profile let the reporter choose the destination.
+- **Rate limit:** 10 an hour, counted in the store rather than by IP.
+- **Not built:** the operators' review tool for Meldiq's queue (B4b).
+
 
 - **What:** a member reports a message or a person to the community's moderators (in-community) or, for illegal
   content and spam, to the server operators (platform).

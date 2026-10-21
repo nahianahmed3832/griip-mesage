@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.TimerOff
 import androidx.compose.material.icons.outlined.Edit
@@ -182,6 +183,9 @@ private fun MemberSheet(d: OrgDetailRes, u: UserDto, ownerCount: Int?, onDismiss
     var confirmRemove by remember { mutableStateOf(false) }
     var banning by remember { mutableStateOf(false) }
     var timingOut by remember { mutableStateOf(false) }
+    var reporting by remember { mutableStateOf(false) }
+    var reportsAvailable by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { reportsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.REPORTS) == true }
     val me = container.session.session?.userId
     val ctx = androidx.compose.ui.platform.LocalContext.current
     fun act(block: suspend () -> Unit, after: () -> Unit = {}) = scope.launch {
@@ -214,6 +218,11 @@ private fun MemberSheet(d: OrgDetailRes, u: UserDto, ownerCount: Int?, onDismiss
                 Spacer(Modifier.height(10.dp))
                 PillButton(stringResource(R.string.bn_ban), { banning = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, showKnob = false, leadingIcon = Icons.Outlined.Block, height = 48.dp)
             }
+            // Batch B4: anyone can report another member to this community's moderators.
+            if (reportsAvailable && u.id != me) item {
+                Spacer(Modifier.height(10.dp))
+                PillButton(stringResource(R.string.rp_title_person, u.displayName), { reporting = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, showKnob = false, leadingIcon = Icons.Outlined.Flag, height = 48.dp)
+            }
             // Timeouts (MOD-06): read-only in the community for a while; the server checks who may time out whom.
             if (TimeoutRules.canOffer(d.org.myRole, d.permissions.effective.toSet(), role, self = u.id == me)) item {
                 Spacer(Modifier.height(10.dp))
@@ -235,6 +244,10 @@ private fun MemberSheet(d: OrgDetailRes, u: UserDto, ownerCount: Int?, onDismiss
     }
     if (banning) BanSheet(d.org.id, u.id, u.displayName, onDismiss = { banning = false }, onDone = { onChanged(); onDismiss() })
     if (timingOut) TimeoutSheet(d.org.id, u.id, u.displayName, onDismiss = { timingOut = false }, onDone = { onChanged(); onDismiss() })
+    if (reporting) com.meldiq.android.ui.screens.moderation.ReportSheet(
+        com.meldiq.android.ui.screens.moderation.ReportTarget(userId = u.id, name = u.displayName, orgId = d.org.id, communityName = d.org.name),
+        onDismiss = { reporting = false },
+    )
     if (confirmRemove) ConfirmDialog(
         "Remove ${u.displayName}?", "They lose access to every channel in ${d.org.name} immediately. They can come back with a new invitation.", "Remove",
         onConfirm = { confirmRemove = false; act({ container.orgs.removeFromOrg(d.org.id, u.id) }) { onDismiss() } }, onDismiss = { confirmRemove = false }, destructive = true,
@@ -297,14 +310,15 @@ fun InvitesScreen(nav: NavHostController, orgId: String) {
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Uses", style = Griip.type.label, color = c.textSecondary, modifier = Modifier.width(56.dp))
-                    listOf(1, 10, 50).forEach { n -> PillChip("$n", uses == n, { uses = n }) }
+                // Batch B4: more choices (Discord reference INV-CTRL-002); the server allows 1 to 500 uses and 1 hour to 30 days.
+                Text("Uses", style = Griip.type.label, color = c.textSecondary)
+                ChipRow(Modifier.padding(horizontal = 0.dp)) {
+                    InviteChoices.USES.forEach { n -> PillChip("$n", uses == n, { uses = n }) }
                 }
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Expires", style = Griip.type.label, color = c.textSecondary, modifier = Modifier.width(56.dp))
-                    listOf(24 to "1 day", 72 to "3 days", 168 to "7 days").forEach { (h, l) -> PillChip(l, hours == h, { hours = h }) }
+                Text("Expires", style = Griip.type.label, color = c.textSecondary)
+                ChipRow(Modifier.padding(horizontal = 0.dp)) {
+                    InviteChoices.HOURS.forEach { (h, label) -> PillChip(stringResource(label), hours == h, { hours = h }) }
                 }
                 // Round 7: a guest's membership can end on its own (the workspace's guest policy may cap it).
                 if (role == "GUEST") {
@@ -467,4 +481,10 @@ private fun describe(a: ActivityDto): Pair<androidx.compose.ui.graphics.vector.I
         "org.photo" -> Icons.Outlined.Image to if (a.detail == "removed") "Removed the community photo" else "Changed the community photo"
         else -> Icons.Outlined.History to a.action.replace('.', ' ')
     }
+}
+
+/** Batch B4: how long an invitation lasts and how many people it lets in. */
+object InviteChoices {
+    val USES = listOf(1, 10, 50, 100, 500)
+    val HOURS = listOf(1 to R.string.inv_exp_1h, 24 to R.string.inv_exp_1d, 72 to R.string.inv_exp_3d, 168 to R.string.inv_exp_7d, 720 to R.string.inv_exp_30d)
 }

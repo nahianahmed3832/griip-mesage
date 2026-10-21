@@ -290,6 +290,18 @@ export class Authz {
   }
 
   /**
+   * Batch B4: until when a community has paused [what] (joining by invitation or openly; new DMs between its
+   * members), or null when it hasn't (or the pause ended).
+   */
+  pausedUntil(orgId: string, what: "invites" | "dms", at: number): number | null {
+    const row = this.db.prepare("SELECT invites_paused_until AS invites, dms_paused_until AS dms FROM orgs WHERE id = ?").get(orgId) as
+      | { invites: number | null; dms: number | null }
+      | undefined;
+    const until = row?.[what] ?? null;
+    return until !== null && until > at ? until : null;
+  }
+
+  /**
    * Whether slowmode leaves this user alone in [conv] (batch B3): people who manage the channel, and holders of
    * `messages.bypass_slowmode` in its community.
    */

@@ -67,6 +67,9 @@ export function orgSummary(ctx: AppContext, org: any, userId: string) {
     visibility: org.visibility === "public" ? "public" : "private",
     joinPolicy: org.join_policy === "open" ? "open" : "invite",
     rules: org.rules ?? null,
+    // Batch B4: Security actions that are running (null otherwise).
+    invitesPausedUntil: ctx.authz.pausedUntil(org.id, "invites", Date.now()),
+    dmsPausedUntil: ctx.authz.pausedUntil(org.id, "dms", Date.now()),
   };
 }
 
@@ -368,6 +371,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       .immediate();
     if (!result) return replay();
     await ctx.prefs.deleteForWorkspace(orgId);
+    await ctx.reports.deleteForOrg(orgId);
 
     ctx.audit({
       actorId: actor,
@@ -620,6 +624,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
       grantRole: inv.grant_role_id ? ((db.prepare("SELECT id, name, color FROM org_roles WHERE id = ? AND archived_at IS NULL").get(inv.grant_role_id) as { id: string; name: string; color: string | null } | undefined) ?? null) : null,
       alreadyMember: !!authz.orgRole(inv.org_id, me(req).userId),
       banned: authz.isBanned(inv.org_id, me(req).userId),
+      invitesPaused: !!authz.pausedUntil(inv.org_id, "invites", now()),
     };
   });
 
