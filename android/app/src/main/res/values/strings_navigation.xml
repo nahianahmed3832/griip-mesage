@@ -548,4 +548,19 @@
     <string name="b9_name">Name</string>
     <string name="b9_name_help">2–32 lowercase letters, digits or _</string>
     <string name="b9_bad_image">That picture can\'t be used. Pick a PNG, GIF, WebP or photo.</string>
+    <string name="b10_deafen">Deafen</string>
+    <string name="b10_deafened">Deafened</string>
+    <string name="b10_undeafen">Undeafen</string>
+    <string name="b10_noise">Noise reduction</string>
+    <string name="b10_noise_on">On: background noise is reduced</string>
+    <string name="b10_noise_off">Off: music and quiet sounds come through as they are</string>
+    <string name="b10_check">Check microphone and camera</string>
+    <string name="b10_check_sub">Before a call: see your level and your picture</string>
+    <string name="b10_mic_level">Microphone: speak, the bar should move</string>
+    <string name="b10_camera_preview">Camera</string>
+    <string name="b10_use_back">Use the back camera</string>
+    <string name="b10_use_front">Use the front camera</string>
+    <string name="b10_need_mic">Allow the microphone to check it.</string>
+    <string name="b10_need_camera">Allow the camera to check it.</string>
+    <string name="b10_check_private">Nothing is recorded or sent.</string>
 </resources>

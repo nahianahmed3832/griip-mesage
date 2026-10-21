@@ -548,4 +548,19 @@
     <string name="b9_name">名称</string>
     <string name="b9_name_help">2–32 个小写字母、数字或 _</string>
     <string name="b9_bad_image">无法使用这张图片。请选择 PNG、GIF、WebP 或照片。</string>
+    <string name="b10_deafen">静音全部</string>
+    <string name="b10_deafened">已静音全部</string>
+    <string name="b10_undeafen">取消静音全部</string>
+    <string name="b10_noise">降噪</string>
+    <string name="b10_noise_on">已开启：减少背景噪音</string>
+    <string name="b10_noise_off">已关闭：音乐和轻声保持原样</string>
+    <string name="b10_check">检查麦克风和摄像头</string>
+    <string name="b10_check_sub">通话前：查看音量和画面</string>
+    <string name="b10_mic_level">麦克风：说话时进度条应会跳动</string>
+    <string name="b10_camera_preview">摄像头</string>
+    <string name="b10_use_back">使用后置摄像头</string>
+    <string name="b10_use_front">使用前置摄像头</string>
+    <string name="b10_need_mic">允许使用麦克风才能检查。</string>
+    <string name="b10_need_camera">允许使用摄像头才能检查。</string>
+    <string name="b10_check_private">不会录制或发送任何内容。</string>
 </resources>

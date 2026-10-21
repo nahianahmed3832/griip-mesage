@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.GraphicEq
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.AutoStories
@@ -391,6 +392,8 @@ fun CallSettingsScreen(nav: NavHostController) {
     val container = LocalContainer.current
     val s by container.settings.state.collectAsStateWithLifecycle()
     fun update(f: (Settings) -> Settings) = container.settings.update(f)
+    var checking by remember { mutableStateOf(false) }
+    if (checking) com.meldiq.android.ui.screens.calls.PreCallCheckSheet(onDismiss = { checking = false })
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item { GriipTopBar(stringResource(R.string.settings_calls), onBack = { nav.popBackStack() }) }
         item {
@@ -405,6 +408,14 @@ fun CallSettingsScreen(nav: NavHostController) {
                     subtitle = stringResource(if (s.hardwareEchoCanceller) R.string.call_hw_aec_on else R.string.call_hw_aec_off),
                     trailing = { GriipSwitch(s.hardwareEchoCanceller, { v -> update { it.copy(hardwareEchoCanceller = v) } }) },
                 )
+                // Batch B10: noise reduction, off for music.
+                MenuRow(
+                    Icons.Outlined.GraphicEq, stringResource(R.string.b10_noise),
+                    subtitle = stringResource(if (s.noiseReduction) R.string.b10_noise_on else R.string.b10_noise_off),
+                    trailing = { GriipSwitch(s.noiseReduction, { v -> update { it.copy(noiseReduction = v) } }) },
+                )
+                // Batch B10: check the microphone and camera before a call.
+                MenuRow(Icons.Outlined.Mic, stringResource(R.string.b10_check), subtitle = stringResource(R.string.b10_check_sub), onClick = { checking = true })
             }
         }
     }

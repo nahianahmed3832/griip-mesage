@@ -6,6 +6,8 @@ import androidx.compose.material.icons.rounded.SignalCellularConnectedNoInternet
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PanTool
+import androidx.compose.material.icons.rounded.HeadsetOff
+import androidx.compose.material.icons.rounded.Headset
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.Layout
@@ -18,6 +20,7 @@ import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.util.Log
 import android.widget.Toast
+import com.meldiq.android.R
 import com.meldiq.android.BuildConfig
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -89,6 +92,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
@@ -124,7 +128,9 @@ fun rememberCallPermission(): (video: Boolean, onGranted: () -> Unit) -> Unit {
     val ctx = LocalContext.current
     var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
-        if (res[Manifest.permission.RECORD_AUDIO] == true) pending?.invoke()
+        // Only what was asked is in [res]: a microphone allowed earlier isn't, and declining "nearby devices" (Bluetooth
+        // headsets) or the camera mustn't stop the call (batch B10 fix).
+        if (CallPermissionRules.canCall(res[Manifest.permission.RECORD_AUDIO], ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)) pending?.invoke()
         else Toast.makeText(ctx, "Microphone permission is required for calls", Toast.LENGTH_LONG).show()
         pending = null
     }
@@ -139,6 +145,12 @@ fun rememberCallPermission(): (video: Boolean, onGranted: () -> Unit) -> Unit {
             launcher.launch(needed.toTypedArray())
         }
     }
+}
+
+/** Whether a call can start after the permission dialog (unit-tested). */
+object CallPermissionRules {
+    /** [answered]: the microphone's answer if it was asked now (null if it wasn't asked); [granted]: allowed now. */
+    fun canCall(answered: Boolean?, granted: Boolean): Boolean = answered == true || granted
 }
 
 @Composable
@@ -322,6 +334,19 @@ fun CallOverlay() {
                     CallControlButton(if (s.video) Icons.Rounded.Videocam else Icons.Rounded.Call, "Accept", { permission(s.video) { scope.launch { calls.accept() } } }, positive = true)
                 }
             } else if (s.phase != CallPhase.Ended) {
+                // Batch B10: deafen (hear nobody, be heard by nobody), beside Raise hand in voice rooms.
+                if (s.phase == CallPhase.Connected || s.phase == CallPhase.Reconnecting) {
+                    Row(
+                        Modifier.padding(bottom = 10.dp).clip(Shapes.pill).background(if (s.deafened) Griip.colors.danger.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.16f))
+                            .pressable({ calls.toggleDeafen() }, onClickLabel = stringResource(if (s.deafened) R.string.b10_undeafen else R.string.b10_deafen))
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(if (s.deafened) Icons.Rounded.HeadsetOff else Icons.Rounded.Headset, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(if (s.deafened) R.string.b10_deafened else R.string.b10_deafen), style = Griip.type.button, color = Color.White)
+                    }
+                }
                 // Voice rooms (round 6): ask to speak; everyone sees the hands in order in the People list.
                 if (s.voiceRoom && s.phase == CallPhase.Connected) {
                     val me = container.session.session?.userId

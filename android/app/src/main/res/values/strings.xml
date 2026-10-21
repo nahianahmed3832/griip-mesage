@@ -15,7 +15,7 @@
     <string name="settings_notifications">Notifications &amp; Sounds</string>
     <string name="settings_notifications_sub">Messages, groups, calls, sounds and vibration</string>
     <string name="settings_calls">Calls</string>
-    <string name="settings_calls_sub">Call encryption and echo cancellation</string>
+    <string name="settings_calls_sub">Encryption, echo and noise, check your mic and camera</string>
     <string name="settings_storage">Data &amp; Storage</string>
     <string name="settings_storage_sub">Message history on the server, encrypted backup, storage on this phone</string>
     <string name="settings_language">Language</string>

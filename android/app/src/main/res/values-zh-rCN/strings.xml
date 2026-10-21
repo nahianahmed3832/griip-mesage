@@ -13,7 +13,7 @@
     <string name="settings_notifications">通知与声音</string>
     <string name="settings_notifications_sub">消息、群组、通话、声音和振动</string>
     <string name="settings_calls">通话</string>
-    <string name="settings_calls_sub">通话加密与回声消除</string>
+    <string name="settings_calls_sub">加密、回声与降噪，检查麦克风和摄像头</string>
     <string name="settings_storage">数据与存储</string>
     <string name="settings_storage_sub">服务器上的消息记录、加密备份、本机存储</string>
     <string name="settings_language">语言</string>

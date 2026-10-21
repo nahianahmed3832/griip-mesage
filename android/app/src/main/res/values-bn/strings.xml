@@ -13,7 +13,7 @@
     <string name="settings_notifications">নোটিফিকেশন ও শব্দ</string>
     <string name="settings_notifications_sub">মেসেজ, গ্রুপ, কল, শব্দ ও ভাইব্রেশন</string>
     <string name="settings_calls">কল</string>
-    <string name="settings_calls_sub">কল এনক্রিপশন ও ইকো বাতিল</string>
+    <string name="settings_calls_sub">এনক্রিপশন, ইকো ও নয়েজ, মাইক ও ক্যামেরা যাচাই</string>
     <string name="settings_storage">ডেটা ও স্টোরেজ</string>
     <string name="settings_storage_sub">সার্ভারে বার্তার ইতিহাস, এনক্রিপ্টেড ব্যাকআপ, এই ফোনের স্টোরেজ</string>
     <string name="settings_language">ভাষা</string>

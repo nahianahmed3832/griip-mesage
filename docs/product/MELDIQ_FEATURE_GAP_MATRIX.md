@@ -57,6 +57,7 @@ Meldiq differs from Discord by design in two ways:
 | NAV-09 | Settings | I | I | I | — | — | |
 | NAV-10 | Back behaviour | E2E | I | — | — | — | |
 | NAV-11 | Reorder communities in the rail | E2E (emulator) | I | — | I | — | B2 2026-10-21: long-press the rail or community sheet › Arrange communities; `railOrder` in the personal document (`community_navigation.test.ts`, `CommunityNavigationRulesTest`). Phone test pending. Web: not yet |
+| NAV-12 | Motion system, smooth tab switching with kept state, transitions and micro-interactions, reduced motion | S | — | — | — | P2 (B16) | Owner request 2026-10-22: `MELDIQ_BACKLOG_B14_B16_B15.md` §B16. After B14, before B15 |
 
 ## C. Communities and discovery
 
@@ -143,6 +144,7 @@ Meldiq differs from Discord by design in two ways:
 | DM-07 | Group photo | E2E (emulator) | I | — | I | — | B6b 2026-10-22 (GDM-CTRL-002): group info › Add / Change / Remove group photo for the group's admins; every member sees it in the chat list and header. A JPEG like community photos, not end-to-end encrypted (like the group's name). `PUT/DELETE/GET /v1/conversations/:id/photo` |
 | DM-08 | Invite to community from a DM or profile | E2E (emulator) | I | — | I | — | B4b 2026-10-21: profile › **Invite** › pick a community (not ones where you're a guest): a one-use invitation valid 7 days, sent as the https link in your DM with them. The server checks your role may invite |
 | DM-09 | Report a person | E2E (emulator) | I | — | I | — | B4: profile › Report (send to Meldiq's team or one of your communities' moderators; the server checks the person is in it), community member sheet › Report |
+| DM-10 | Minimal DM screen and conversation details (header, timeline, composer, Members / Media / Pins / Links / Files) | S | I (today's crowded screen) | — | — | P2 (B14) | Owner request 2026-10-22: `MELDIQ_BACKLOG_B14_B16_B15.md` §B14. Today's header carries video, voice, pin, lock and search, so the name is cut to a few letters; a separate Files chip row. Starts after B13 is approved |
 
 ## G. Roles, permissions and moderation
 
@@ -169,14 +171,14 @@ Meldiq differs from Discord by design in two ways:
 | CALL-01 | 1:1 voice and video | I | I | I | I | P1 | End-to-end encrypted media (LiveKit with frame encryption) |
 | CALL-02 | Group calls | I | I | I | I | P1 | Group-call tiles; phone validation open |
 | CALL-03 | Voice channels | E2E | I | I | I | — | |
-| CALL-04 | Camera switch, mute | I (fixed in code) | I | I | — | P1 | Rear-camera mirroring and switch race fixed 2026-10-20 (`docs/MELDIQ_CALL_BUGS_2026-10-20.md`); **awaiting phone validation**. B10 traces it stage by stage (`MELDIQ_CALLING_SCREENSHARE_AUDIT.md` §3) |
+| CALL-04 | Camera switch, mute | I (fixed in code) | I | I | — | P1 | Rear-camera mirroring and switch race fixed 2026-10-20 (`docs/MELDIQ_CALL_BUGS_2026-10-20.md`); **awaiting phone validation**. B10 logs every switch (side, id, size, time) for the phone test (`MELDIQ_CALLING_SCREENSHARE_AUDIT.md` §3) |
 | CALL-05 | Screen share | I | I | I | — | P1 | Android MediaProjection with display-rotation following; awaiting phone validation |
 | CALL-06 | Game streaming ("Go Live") | S (B11) | — | — | — | P2 | Screen share at up to 1080p is the base; high-frame-rate encoding, system audio capture (Android 10+ `AudioPlaybackCapture`, with consent) and viewer quality choice are specified in `MELDIQ_REALTIME_MEDIA_PLAN.md` |
 | CALL-07 | Stage (raise hand) | I (calls) | I | I | I | P3 | Raise hand and host moderation in calls |
 | CALL-08 | Noise suppression | I | I | I | — | — | WebRTC NS/AEC/AGC; hardware NS off |
-| CALL-09 | Reconnect | I | I | I | — | P2 | Measure on phones |
+| CALL-09 | Reconnect | I | I | I | — | P2 | B10 logs each reconnect's time (`CallDiag`); measure on phones |
 | CALL-10 | Soundboard, activities | — | | | | | Not planned |
-| CALL-11 | Deafen, pre-call mic and camera check | R | — | — | — | P2 (B10) | CALL-CTRL-004/005/006 |
+| CALL-11 | Deafen, pre-call mic and camera check | I (B10) | — | — | — | P2 | Deafen, noise reduction, pre-call check built 2026-10-22; **awaiting phone validation** |
 
 ## I. Expression
 
@@ -200,3 +202,4 @@ Meldiq differs from Discord by design in two ways:
 | PLAT-04 | Infrastructure as code | S | `MELDIQ_AWS_ARCHITECTURE.md` |
 | PLAT-05 | AI service boundary | S | `MELDIQ_AI_ARCHITECTURE.md`; nothing reads encrypted content |
 | PLAT-06 | Workplace modules removed | I | Android and server (API 0.12.0); **web still has AI, workflows, documents and inbox screens**, to remove in the web community rebuild |
+| PLAT-07 | Final quality gate: coverage audit, journeys, security, MongoDB and AWS, hardware calls, performance, release readiness (no deploy) | S | Owner request 2026-10-22: `MELDIQ_BACKLOG_B14_B16_B15.md` §B15. Always the last batch |

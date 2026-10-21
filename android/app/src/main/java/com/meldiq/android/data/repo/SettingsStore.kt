@@ -26,6 +26,8 @@ data class Settings(
      * by phone (physical-device report 2026-10-16: the other person heard their own voice).
      */
     val hardwareEchoCanceller: Boolean = false,
+    /** Batch B10: calls reduce background noise (on); off keeps music and quiet sounds as they are. */
+    val noiseReduction: Boolean = true,
     // Chats (2026-10-17, docs/SETTINGS.md).
     /** Animated emoji move in chats (still when off, or when the system's animations are off). */
     val animatedEmoji: Boolean = true,
@@ -89,6 +91,7 @@ class SettingsStore(
         typingIndicators = prefs.getBoolean("typingIndicators", true),
         mediaE2ee = prefs.getBoolean("mediaE2ee", true),
         hardwareEchoCanceller = prefs.getBoolean("hardwareEchoCanceller", false),
+        noiseReduction = prefs.getBoolean("noiseReduction", true),
         animatedEmoji = prefs.getBoolean("animatedEmoji", true),
         linkOpening = runCatching { LinkOpening.valueOf(prefs.getString("linkOpening", null)!!) }.getOrDefault(LinkOpening.IN_APP),
         linkPreviews = prefs.getBoolean("linkPreviews", false),
@@ -121,6 +124,7 @@ class SettingsStore(
             .putBoolean("typingIndicators", n.typingIndicators)
             .putBoolean("mediaE2ee", n.mediaE2ee)
             .putBoolean("hardwareEchoCanceller", n.hardwareEchoCanceller)
+            .putBoolean("noiseReduction", n.noiseReduction)
             .putBoolean("animatedEmoji", n.animatedEmoji)
             .putString("linkOpening", n.linkOpening.name)
             .putBoolean("linkPreviews", n.linkPreviews)

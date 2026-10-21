@@ -629,6 +629,70 @@ workspace domain; images are profile-photos blobs, removed with the emoji or the
 5. **Permissions:** with a member account, Community settings has no Emoji & stickers row.
 6. **Report back:** pass or fail per step, with screenshots.
 
+## 6j. Batch B10: voice, video and camera (built 2026-10-22, not phone-tested)
+
+### What's in it
+
+| Feature | What the person sees | Code |
+|---|---|---|
+| Deafen (CALL-11, CALL-CTRL-004) | A **Deafen** pill above the call buttons. Deafened: you hear nobody (people who join later too) and your microphone is muted; **Deafened** again puts both back, and the microphone only comes back on if it was on before | `CallManager.toggleDeafen`, `applyDeafen`; `CallOverlay.kt` |
+| Noise reduction (CALL-CTRL-006) | Settings › Calls › **Noise reduction** (on by default): background noise reduction and automatic level on the microphone. Applies from the next call | `SettingsStore.noiseReduction`; `CallManager` audio options |
+| Pre-call check (CALL-CTRL-005) | Settings › Calls › **Check microphone and camera**: a level bar that moves when you speak, your camera picture, and **Use the back/front camera**. Nothing is recorded or sent; the camera is released when the sheet closes | `ui/screens/calls/PreCallCheck.kt` (`PreCallCheckSheet`, `MicMeter`) |
+| Camera trace (CALL-04) | Nothing visible: each camera switch writes one diagnostics line with the side, camera id, track, size and the time it took, or "not confirmed" if the new camera never sent a frame | `CallManager` (`CallDiag` "camera switch: …") |
+| Reconnect measurement (CALL-09) | Nothing visible: a short drop logs "reconnected in N ms"; a full rejoin logs "rejoined after N ms (k attempts)" | `CallManager` |
+| **Fix:** "connection dropped" stuck after a reconnect | After a full reconnect the other person comes back without a "joined" event, so "…'s connection dropped. Waiting for them to reconnect…" stayed on screen although they were back. It now clears when the call reconnects with them present or their media arrives | `CallManager.peerBack` |
+| **Fix:** calls blocked by the Bluetooth question | Declining Android's "nearby devices" question (used for Bluetooth headsets) no longer stops the call. Before, if the microphone had been allowed earlier, the call never started and the question came back on every tap | `CallPermissionRules.canCall` in `CallOverlay.kt` |
+
+**Already there (checked, not rebuilt):** group-call layout (`CallTiles`, fixed 2026-10-17, `CallTilesTest`).
+
+**Not built:** per-person volume; push-to-talk; a noise-reduction model of our own (this uses the phone's).
+
+**Server:** no change (API 0.23.0).
+
+### How it was checked
+
+- **Android:** `PreCallCheckTest` (level meter maths) and `CallPermissionRulesTest`, and the full suite (see the
+  B10 APK section for the count); lint 0 errors.
+- **Emulator** (Ada → Erin, both apps on one emulator, local LiveKit): video call started after **Don't allow** on the
+  nearby-devices question (failed before the fix: found during this check); Erin accepted; **Deafen** → "Deafened",
+  diagnostics "deafen on", the microphone button showed **Unmute**; tapping again → "deafen off" and **Mute**; camera
+  flip on Erin's side → "camera switch: facing back id 10 … 1280x720 done in 1748 ms"; the chat shows "Outgoing video
+  call · 1 min 1 s". Pre-call check: front and back camera pictures shown, and the camera released on close.
+- **Reconnect** (LiveKit paused for 30 s, then resumed): both apps showed Reconnecting and came back, "reconnected in
+  4374 ms" and "4171 ms"; the call went on, "End-to-end encrypted". On the first try Erin's screen kept "Ada's
+  connection dropped…" after the reconnect: fixed (table above) and checked again: gone.
+- **Not checked on the emulator:**
+  - the far side's picture: two apps on one emulator share one camera, so frames arrived in one run and not in the
+    next;
+  - whether deafen silences real sound;
+  - the microphone level bar moving (the emulator microphone is silent);
+  - a phone losing its own network: the test above froze the media server instead.
+
+### B10 APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b10-debug.apk`
+  (148 MB, git-ignored). **SHA-256:** `b769e08977ae01bed51e47339c8fb4818003579009ba2366d0ab4cfc0b335766`.
+- **Variant:** debug, side by side, server `http://localhost:8080` (API 0.23.0, unchanged). It contains everything
+  since B4: **the one APK to install for testing B4 to B10 together.**
+- **Checks:** 632 Android unit tests, 0 failures; lint 0 errors.
+
+### Owner's phone checklist (B10) — two phones, two accounts
+
+1. **Bluetooth question:** on a phone that never answered it, start a call and tap **Don't allow** on "nearby
+   devices". **Expected:** the call still starts.
+2. **Deafen:** in a call, tap **Deafen**. **Expected:** you hear nothing, the other phone hears nothing from you, and
+   the pill reads **Deafened**. Tap again: sound comes back, and your microphone only comes back if it was on before.
+3. **Camera switch:** in a video call, flip the camera several times (front, back, front). **Expected:** the other
+   phone sees each switch within about 2 seconds, never a frozen or mirrored back camera. If it fails, run
+   `adb logcat -s CallDiag` and send the "camera switch:" lines.
+4. **Noise reduction:** Settings › Calls › Noise reduction off, then a call near music or a fan, then on. **Expected:**
+   with it on, background noise is quieter on the other phone.
+5. **Pre-call check:** Settings › Calls › **Check microphone and camera**. **Expected:** the bar moves when you speak;
+   your picture shows; **Use the back camera** switches; closing it turns the camera light off.
+6. **Network drop:** in a call, turn Wi-Fi off for 10 seconds and back on, on one phone. **Expected:** "Reconnecting…",
+   then the call goes on, with no "connection dropped" message left on the other phone.
+7. **Report back:** pass or fail per step, with screenshots.
+
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
@@ -646,10 +710,15 @@ workspace domain; images are profile-photos blobs, removed with the emoji or the
 
 ## 8. Next, exactly
 
-1. **Engineering (in progress overnight):** B10 (voice, video, camera), then B11 to B13 in order, each committed with
+1. **Engineering (in progress overnight):** B11 (screen share and game streaming), then B12 and B13 in order, each committed with
    its own APK and checklist in this file.
-2. **Owner, when back:** phone-test the batches together using the per-batch checklists (B4, B4b, then later ones),
+2. **Backlog added by the owner 2026-10-22** (`MELDIQ_BACKLOG_B14_B16_B15.md`): **B14** minimal DM screen and
+   conversation details, then **B16** transitions and interaction polish, then **B15** the final quality gate (always
+   last). The overnight rule ends at B13: B14 starts only after the owner approves B13, and each of the three stops
+   for the owner's phone test. The owner's reference screenshots show private chats, so they're described in that
+   file, not stored in the repository.
+3. **Owner, when back:** phone-test the batches together using the per-batch checklists (B4, B4b, then later ones),
    and report pass or fail per batch.
-3. **Owner decisions:** `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions" (fingerprint and meldiq.app hosting for invite
+4. **Owner decisions:** `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions" (fingerprint and meldiq.app hosting for invite
    links, test accounts and a second device for calls, deploy).
-4. Reported defects are fixed in the batch they belong to.
+5. Reported defects are fixed in the batch they belong to.

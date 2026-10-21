@@ -548,4 +548,19 @@
     <string name="b9_name">নাম</string>
     <string name="b9_name_help">২–৩২টি ছোট হাতের অক্ষর, সংখ্যা বা _</string>
     <string name="b9_bad_image">ছবিটি ব্যবহার করা যাবে না। PNG, GIF, WebP বা ফটো বেছে নিন।</string>
+    <string name="b10_deafen">সব নীরব</string>
+    <string name="b10_deafened">সব নীরব করা</string>
+    <string name="b10_undeafen">আবার শুনুন</string>
+    <string name="b10_noise">শব্দ কমানো</string>
+    <string name="b10_noise_on">চালু: পেছনের শব্দ কমানো হয়</string>
+    <string name="b10_noise_off">বন্ধ: গান ও মৃদু শব্দ যেমন তেমন যায়</string>
+    <string name="b10_check">মাইক্রোফোন ও ক্যামেরা পরীক্ষা</string>
+    <string name="b10_check_sub">কলের আগে: আওয়াজ ও ছবি দেখুন</string>
+    <string name="b10_mic_level">মাইক্রোফোন: কথা বলুন, দাগ নড়বে</string>
+    <string name="b10_camera_preview">ক্যামেরা</string>
+    <string name="b10_use_back">পেছনের ক্যামেরা</string>
+    <string name="b10_use_front">সামনের ক্যামেরা</string>
+    <string name="b10_need_mic">পরীক্ষা করতে মাইক্রোফোনের অনুমতি দিন।</string>
+    <string name="b10_need_camera">পরীক্ষা করতে ক্যামেরার অনুমতি দিন।</string>
+    <string name="b10_check_private">কিছুই রেকর্ড বা পাঠানো হয় না।</string>
 </resources>

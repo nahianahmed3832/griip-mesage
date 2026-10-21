@@ -11,7 +11,7 @@ S = {
 "settings_notifications": ("Notifications & Sounds", "通知与声音", "নোটিফিকেশন ও শব্দ"),
 "settings_notifications_sub": ("Messages, groups, calls, sounds and vibration", "消息、群组、通话、声音和振动", "মেসেজ, গ্রুপ, কল, শব্দ ও ভাইব্রেশন"),
 "settings_calls": ("Calls", "通话", "কল"),
-"settings_calls_sub": ("Call encryption and echo cancellation", "通话加密与回声消除", "কল এনক্রিপশন ও ইকো বাতিল"),
+"settings_calls_sub": ("Encryption, echo and noise, check your mic and camera", "加密、回声与降噪，检查麦克风和摄像头", "এনক্রিপশন, ইকো ও নয়েজ, মাইক ও ক্যামেরা যাচাই"),
 "settings_storage": ("Data & Storage", "数据与存储", "ডেটা ও স্টোরেজ"),
 "settings_storage_sub": ("Message history on the server, encrypted backup, storage on this phone", "服务器上的消息记录、加密备份、本机存储", "সার্ভারে বার্তার ইতিহাস, এনক্রিপ্টেড ব্যাকআপ, এই ফোনের স্টোরেজ"),
 "settings_language": ("Language", "语言", "ভাষা"),

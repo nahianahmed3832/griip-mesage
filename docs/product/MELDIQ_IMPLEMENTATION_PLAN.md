@@ -33,12 +33,17 @@ go-ahead (`docs/DEPLOYMENT.md`).
 | B8 | Forums and polls: guidelines, tag matching, post-card reactions, follow; poll duration and answer emoji | **Built; APK ready; owner tests it with the rest** (2026-10-22) |
 | B8b | Event recurrence, community guide, onboarding questions (split from B8) | **Built; APK ready; owner tests it with the rest** (2026-10-22) |
 | B9 | Community emoji and stickers | **Built; APK ready; owner tests it with the rest** (2026-10-22) |
-| B10 to B13 | Below | Not started |
+| B10 | Voice, video, camera: deafen, noise reduction, pre-call check, camera and reconnect timing, a call-permission fix | **Built; APK ready; owner tests it with the rest** (2026-10-22) |
+| B11 to B13 | Below | Not started |
+| B14, B16, B15 | Added by the owner 2026-10-22 (`MELDIQ_BACKLOG_B14_B16_B15.md`) | Backlog: B14 after B13 is **approved**, then B16, then B15 last; each stops for the owner's phone test |
 
 > **Gate changed 2026-10-21 23:13:** the owner asked for the remaining batches to be built one after another without
 > waiting, and to phone-test them all together at the end. Each batch is still committed on its own, with its own APK
 > and checklist in the handoff, so a defect can be traced to its batch. Nothing is marked phone-verified until the
 > owner has tested it.
+>
+> **Added 2026-10-22:** the overnight rule ends at B13. B14, B16 and B15 each wait for the owner's phone approval of
+> the batch before them, and B15 is always the final quality gate.
 
 Already built earlier the same day and included in the B1 APK (to be checked within their own batches later):
 - full emoji picker (B9);
@@ -64,6 +69,9 @@ Each batch lists what's in it (feature and control IDs), and what the phone test
 | **B11** Screen share and game streaming | Lifecycle, Android 14 capture rules, game mode (frame rate, H.264, game audio), viewer, measurements | CALL-05, CALL-06 | Share a landscape game to a second device; stop, leave and rejoin |
 | **B12** Remaining gaps | What the matrix still lists as P2/P3 after B1–B11 | — | Per item |
 | **B13** Integration and stability | <ul><li>MongoDB domains (files, then the rest);</li><li>AWS (staging);</li><li>notifications, realtime;</li><li>web parity (W1);</li><li>security and performance review</li></ul> | PLAT-01–06 | Full regression on the phone |
+| **B14** Minimal DM chat and conversation details | <ul><li>Header: back, avatar, name and presence, voice, video, search; the rest moves to details or overflow;</li><li>timeline grouping, voice notes, media sizes, captions;</li><li>one-row composer with an action sheet;</li><li>details tabs Members / Media / Pins / Links / Files backed by real data</li></ul> | DM-UI (new) | Every header, timeline, composer and details control on a small and a large phone |
+| **B16** Transitions and interaction polish | <ul><li>Shared motion tokens;</li><li>tab switching that keeps each tab's state;</li><li>community, channel, DM and call transitions;</li><li>sheets and dialogs;</li><li>timeline motion; reduced motion</li></ul> | MOTION (new) | Tabs, rapid taps, categories, sheets, keyboard, calls during navigation |
+| **B15** Final quality gate | Coverage audit, end-to-end journeys, security and privacy, MongoDB and AWS checks, hardware calls, performance, regression, release preparation (no deploy) | QA-GATE (new) | Full regression and the release checklist |
 
 **Rules carried through every batch:**
 - Server permissions are enforced on the server.

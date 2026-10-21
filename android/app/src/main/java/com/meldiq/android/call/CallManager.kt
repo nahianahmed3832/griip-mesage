@@ -100,6 +100,8 @@ data class CallUiState(
     val video: Boolean = false,
     val isGroup: Boolean = false,
     val micOn: Boolean = true,
+    /** Batch B10: you hear nobody and nobody hears you (the microphone comes back as it was when you undeafen). */
+    val deafened: Boolean = false,
     val cameraOn: Boolean = false,
     val screenSharing: Boolean = false,
     /** The call's sound is on the speaker now (from [audioRoute]; kept for the picture-in-picture and older callers). */
@@ -201,6 +203,8 @@ class CallManager(
     private val shareRotation = ScreenShareRotation(context, diag::log)
     /** A camera switch in progress: further taps wait for it (round 7, bug 3). */
     @Volatile private var cameraSwitching = false
+    /** Batch B10: whether the microphone was on when you deafened, so undeafening puts it back. */
+    private var micBeforeDeafen = false
     /** Call-setup timings, stage names and milliseconds only (round 7, bug 7). */
     private val timeline = CallTimeline()
 
@@ -770,7 +774,8 @@ class CallManager(
             e2eeOptions = e2ee,
             // Microphone processing and Opus settings, explicit (round 7, [CallMediaPolicy]).
             audioTrackCaptureDefaults = LocalAudioTrackOptions(
-                noiseSuppression = true, echoCancellation = true, autoGainControl = true, highPassFilter = true,
+                // Batch B10: "Noise reduction" off keeps music and quiet sounds (noise suppression and level control off).
+                noiseSuppression = settings.current.noiseReduction, echoCancellation = true, autoGainControl = settings.current.noiseReduction, highPassFilter = true,
                 typingNoiseDetection = CallMediaPolicy.TYPING_NOISE_DETECTION,
             ),
             audioTrackPublishDefaults = AudioTrackPublishDefaults(audioBitrate = CallMediaPolicy.AUDIO_MAX_BITRATE, dtx = true, red = true),
@@ -791,9 +796,8 @@ class CallManager(
         when (ev) {
             is RoomEvent.ParticipantConnected -> {
                 stage("peer joined")
-                peerWait?.cancel()
-                peerWait = null
-                _state.update { if (it.phase == CallPhase.Outgoing) it.copy(phase = CallPhase.Connected, connectedAt = System.currentTimeMillis(), peerReconnecting = false) else it.copy(peerReconnecting = false) }
+                peerBack()
+                _state.update { if (it.phase == CallPhase.Outgoing) it.copy(phase = CallPhase.Connected, connectedAt = System.currentTimeMillis()) else it }
                 scope.launch { db.calls().getLog(_state.value.callId ?: "")?.let { db.calls().upsertLog(it.copy(answeredAt = System.currentTimeMillis())) } }
             }
             is RoomEvent.ParticipantDisconnected -> {
@@ -810,8 +814,19 @@ class CallManager(
                     }
                 }
             }
-            is RoomEvent.Reconnecting -> _state.update { it.copy(phase = CallPhase.Reconnecting) }
-            is RoomEvent.Reconnected -> _state.update { it.copy(phase = CallPhase.Connected) }
+            is RoomEvent.Reconnecting -> {
+                reconnectingSince = System.currentTimeMillis()
+                _state.update { it.copy(phase = CallPhase.Reconnecting) }
+            }
+            is RoomEvent.Reconnected -> {
+                // Batch B10: how long the media library's own reconnect took (the full rejoin logs its own time).
+                reconnectingSince?.let { diag.log("reconnected in ${System.currentTimeMillis() - it} ms") }
+                reconnectingSince = null
+                _state.update { it.copy(phase = CallPhase.Connected) }
+                // A full reconnect re-syncs the other person without a "joined" event (found in B10's emulator test):
+                // clear "connection dropped" when they're there.
+                if (room?.remoteParticipants?.isNotEmpty() == true) peerBack()
+            }
             is RoomEvent.Disconnected -> if (_state.value.phase != CallPhase.Idle && _state.value.phase != CallPhase.Ended) {
                 val reason = ev.reason?.name
                 Log.i(TAG, "room disconnected: $reason")
@@ -824,8 +839,12 @@ class CallManager(
                 if (ev.publication.kind == Track.Kind.AUDIO) {
                     stage("remote audio subscribed")
                     watchFirstAudio(ev.room, ev.track)
+                    // Batch B10: someone joining while you're deafened stays silent.
+                    if (_state.value.deafened) (ev.track as? io.livekit.android.room.track.RemoteAudioTrack)?.setVolume(0.0)
                 }
                 if (ev.publication.kind == Track.Kind.VIDEO) stage("remote video subscribed")
+                // Their media arriving means they're back, also when the re-sync came without a "joined" event.
+                if (_state.value.peerReconnecting) peerBack()
                 trackChanged { it.trackAdded(trackKey(ev.participant, ev.publication), remote = true, muted = ev.publication.muted) }
                 cryptorGuard?.guard(ev.room, ev.publication, ev.participant)
             }
@@ -923,6 +942,30 @@ class CallManager(
         refreshParticipants()
     }
 
+    /** Batch B10 (Discord's deafen): silences everyone for you and mutes you; undeafening restores your microphone. */
+    fun toggleDeafen() = scope.launch {
+        val r = room ?: return@launch
+        val deafen = !_state.value.deafened
+        if (deafen) {
+            micBeforeDeafen = r.localParticipant.isMicrophoneEnabled
+            if (micBeforeDeafen) runCatching { r.localParticipant.setMicrophoneEnabled(false) }
+        } else if (micBeforeDeafen && !_state.value.listenOnly) {
+            runCatching { r.localParticipant.setMicrophoneEnabled(true) }
+        }
+        _state.update { it.copy(deafened = deafen) }
+        applyDeafen(r)
+        diag.log("deafen ${if (deafen) "on" else "off"}")
+        refreshParticipants()
+    }
+
+    /** Every remote voice at volume 0 while deafened (and new ones as they arrive), back to 1 otherwise. */
+    private fun applyDeafen(r: Room) {
+        val volume = if (_state.value.deafened) 0.0 else 1.0
+        r.remoteParticipants.values.forEach { p ->
+            p.audioTrackPublications.forEach { (_, track) -> (track as? io.livekit.android.room.track.RemoteAudioTrack)?.setVolume(volume) }
+        }
+    }
+
     fun toggleCamera() = scope.launch {
         val r = room ?: return@launch
         if (_state.value.listenOnly) { _state.update { it.copy(notice = CallFailure.LISTEN_ONLY) }; return@launch }
@@ -958,7 +1001,14 @@ class CallManager(
                 val t0 = System.currentTimeMillis()
                 runCatching { track.switchCamera(position = target) }.onFailure { _state.update { s -> s.copy(error = CallFailure.CAMERA) } }
                 while (room === r && track.options.position != target && System.currentTimeMillis() - t0 < CAMERA_SWITCH_TIMEOUT_MS) delay(50)
-                diag.log("camera switch to ${target.name.lowercase()} ${if (track.options.position == target) "done" else "not confirmed"} in ${System.currentTimeMillis() - t0} ms")
+                // Batch B10 trace (docs/product/MELDIQ_CALLING_SCREENSHARE_AUDIT.md §3, stages 1 and 3): which camera opened,
+                // which published track carries it, at what size. `adb logcat -s CallDiag` on both phones.
+                val pub = r.localParticipant.videoTrackPublications.firstOrNull { it.first.source == Track.Source.CAMERA }?.first
+                diag.log(
+                    "camera switch: facing ${track.options.position?.name?.lowercase()} id ${track.options.deviceId ?: "?"} track ${pub?.sid ?: "?"} " +
+                        "size ${track.dimensions.width}x${track.dimensions.height} " +
+                        "${if (track.options.position == target) "done" else "not confirmed"} in ${System.currentTimeMillis() - t0} ms",
+                )
             } finally {
                 cameraSwitching = false
                 refreshParticipants()
@@ -1132,6 +1182,14 @@ class CallManager(
      */
     private var peerWait: kotlinx.coroutines.Job? = null
     private var rejoinJob: kotlinx.coroutines.Job? = null
+    private var reconnectingSince: Long? = null
+
+    /** The other person is in the room again: stop waiting for them and drop the "connection dropped" notice. */
+    private fun peerBack() {
+        peerWait?.cancel()
+        peerWait = null
+        _state.update { it.copy(peerReconnecting = false) }
+    }
 
     /**
      * After this phone's media connection dropped (the SDK's own reconnect gave up): new media credentials from the
