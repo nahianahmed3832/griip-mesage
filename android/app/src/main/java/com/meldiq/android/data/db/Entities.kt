@@ -59,6 +59,8 @@ data class ConversationEntity(
     @androidx.room.ColumnInfo(defaultValue = "1") val canSpeak: Boolean = true,
     /** While you're timed out in the channel's community: when it ends (null: not timed out). From the server. */
     val timedOutUntil: Long? = null,
+    /** Batch B6: a message request, "incoming" (to you: listed under Requests, silent) or "outgoing"; null: none. */
+    val request: String? = null,
 )
 
 @kotlinx.serialization.Serializable

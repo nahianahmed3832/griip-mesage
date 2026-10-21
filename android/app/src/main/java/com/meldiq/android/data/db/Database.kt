@@ -71,6 +71,10 @@ interface ConversationDao {
     @Query("UPDATE conversations SET removed = 1, canPost = 0 WHERE id = :id")
     suspend fun markRemoved(id: String)
 
+    /** Batch B6: a message request you declined leaves this phone entirely. */
+    @Query("DELETE FROM conversations WHERE id = :id")
+    suspend fun deleteLocal(id: String)
+
     /** A deleted organization's channels: kept on this phone as left, so their history stays readable. */
     @Query("UPDATE conversations SET removed = 1, canPost = 0, activeCallId = NULL WHERE orgId = :orgId")
     suspend fun markOrgRemoved(orgId: String)
@@ -81,7 +85,7 @@ interface ConversationDao {
     @Query("UPDATE conversations SET unreadCount = unreadCount + :unreadInc, mentionCount = mentionCount + :mentionInc WHERE id = :id")
     suspend fun bumpUnread(id: String, unreadInc: Int, mentionInc: Int)
 
-    @Query("SELECT COALESCE(SUM(unreadCount), 0) FROM conversations WHERE muted = 0 AND removed = 0 AND archivedAt IS NULL")
+    @Query("SELECT COALESCE(SUM(unreadCount), 0) FROM conversations WHERE muted = 0 AND removed = 0 AND archivedAt IS NULL AND (request IS NULL OR request != 'incoming')")
     fun observeTotalUnread(): Flow<Int>
 }
 
@@ -154,6 +158,10 @@ interface MessageDao {
     /** Removes a message only from this phone (an unsent upload the person cancelled). */
     @Query("DELETE FROM messages WHERE id = :id")
     suspend fun deleteLocal(id: String)
+
+    /** Batch B6: the messages of a declined message request. */
+    @Query("DELETE FROM messages WHERE conversationId = :cid")
+    suspend fun deleteConversationLocal(cid: String)
 
     @Query("UPDATE messages SET status = :status, serverTs = COALESCE(:serverTs, serverTs), errorText = :error WHERE id = :id")
     suspend fun setStatus(id: String, status: String, serverTs: Long?, error: String?)
@@ -384,7 +392,7 @@ abstract class GriipDatabase : RoomDatabase() {
          * Schema version. Raising it needs a matching step in [Migrations] and the exported schema
          * committed under `app/schemas` (docs/DECISIONS.md D-13); `MigrationsTest` enforces both.
          */
-        const val VERSION = 11
+        const val VERSION = 12
 
         /**
          * The database file is encrypted with SQLCipher (AES-256) using a random passphrase that is

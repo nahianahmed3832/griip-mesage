@@ -29,6 +29,7 @@ import com.meldiq.android.data.db.GriipDatabase
 import com.meldiq.android.data.db.MessageEntity
 import com.meldiq.android.data.db.OutboxEntity
 import com.meldiq.android.data.db.QuarantineEntity
+import com.meldiq.android.data.model.RequestRules
 import com.meldiq.android.data.model.AttachmentRef
 import com.meldiq.android.voice.VoiceNote
 import com.meldiq.android.data.model.CallInfo
@@ -136,6 +137,10 @@ class MessageRepository(
     private val _meetingUpdates = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val meetingUpdates: SharedFlow<String> = _meetingUpdates
     val orgEvents: SharedFlow<String> = _orgEvents
+    private val _connectionsChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+
+    /** Batch B6: someone sent, accepted, cancelled or removed a connection with you (screens reload their lists). */
+    val connectionsChanged: SharedFlow<Unit> = _connectionsChanged
     private val _orgDeleted = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val orgDeleted: SharedFlow<String> = _orgDeleted
     private val _reminderEvents = MutableSharedFlow<String>(extraBufferCapacity = 16)
@@ -804,7 +809,8 @@ class MessageRepository(
                     db.outbox().put(item.copy(nextAttemptAt = next + 250, lastError = e.message))
                     return
                 }
-                val transient = e.isNetwork || e.status >= 500 || e.status == 429 || e.status == 401 || e.code == "decode"
+                // Batch B6: a message request's limit isn't transient: the message fails with the server's explanation.
+                val transient = (e.isNetwork || e.status >= 500 || e.status == 429 || e.status == 401 || e.code == "decode") && e.code != "request_limit"
                 if (transient && item.attempts < MAX_ATTEMPTS) {
                     val backoff = BACKOFF.getOrElse(item.attempts) { BACKOFF.last() }
                     db.outbox().put(item.copy(attempts = item.attempts + 1, nextAttemptAt = System.currentTimeMillis() + backoff, lastError = e.message))
@@ -855,6 +861,8 @@ class MessageRepository(
                 _orgEvents.tryEmit(id)
             }
             "devices.changed" -> f.userId?.let { directory.invalidateUser(it) }
+            // Batch B6: a connection request, acceptance or removal involving you.
+            "connections.updated" -> _connectionsChanged.tryEmit(Unit)
             "prefs.updated" -> f.workspaceId?.let { _prefsUpdated.tryEmit(it) }
             "reminder.due", "reminders.changed" -> f.id?.let { _reminderEvents.tryEmit(it) }
             // Round 7 meetings (docs/WORKSPACE_C5.md).
@@ -974,7 +982,9 @@ class MessageRepository(
                 if (viewing && !mine) scope.launch { markConversationRead(item.conversationId) }
                 val muted = conv?.muted == true
                 val level = conv?.let { notifyLevelOf(it) } ?: com.meldiq.android.data.model.NotifyLevel.ALL
-                if (!mine && !viewing && MentionNotify.shouldNotify(settings.current.notifications, level, muted, mention, personalMention)) {
+                // Batch B6: a message request never notifies; it waits under Requests.
+                val request = conv?.request == RequestRules.INCOMING
+                if (!mine && !viewing && !request && MentionNotify.shouldNotify(settings.current.notifications, level, muted, mention, personalMention)) {
                     val title = conv?.let { ConversationRepository.title(it, me) } ?: senderName
                     notify(Notice(item.conversationId, if (conv?.type == "CHANNEL") "#$title" else title, senderName, preview(pl), mention, conv?.type != "DM", canReply = conv?.canPost != false))
                 }

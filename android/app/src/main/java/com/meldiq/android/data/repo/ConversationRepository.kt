@@ -8,6 +8,7 @@ import com.meldiq.android.data.api.DmReq
 import com.meldiq.android.data.api.GriipJson
 import com.meldiq.android.data.api.GroupReq
 import com.meldiq.android.data.api.OkRes
+import com.meldiq.android.data.model.RequestRules
 import com.meldiq.android.data.api.PatchConversationReq
 import com.meldiq.android.data.api.RoleReq
 import com.meldiq.android.data.api.UsersRes
@@ -66,7 +67,8 @@ class ConversationRepository(
             id = d.id, type = d.type, orgId = d.orgId, scope = d.scope, scopeId = d.scopeId, scopeName = d.scopeName, kind = d.kind,
             name = d.name, topic = d.topic, archived = d.archived, memberCount = d.memberCount,
             membersJson = if (d.members != null) GriipJson.encodeToString(ListSerializer(MemberSummary.serializer()), members) else local?.membersJson ?: "[]",
-            joined = d.joined, myRole = d.myRole, canPost = d.canPost, canManage = d.canManage,
+            // Batch B6: an incoming request is read-only until you accept it (no replies, reactions or read receipts).
+            joined = d.joined, myRole = d.myRole, canPost = d.canPost && d.request?.incoming != true, canManage = d.canManage,
             activeCallId = d.activeCall?.id, activeCallVideo = d.activeCall?.video ?: false, serverUpdatedAt = d.updatedAt,
             lastMessageId = local?.lastMessageId, lastMessagePreview = local?.lastMessagePreview, lastMessageAt = local?.lastMessageAt ?: 0,
             lastSenderName = local?.lastSenderName, unreadCount = local?.unreadCount ?: 0, mentionCount = local?.mentionCount ?: 0,
@@ -77,7 +79,9 @@ class ConversationRepository(
             categoryId = d.categoryId, categoryName = d.categoryName, position = d.position, format = d.format,
             forumTagsJson = d.forumTags.takeIf { it.isNotEmpty() }?.let { GriipJson.encodeToString(ListSerializer(com.meldiq.android.data.api.ForumTagDto.serializer()), it) },
             canConnect = d.canConnect, canSpeak = d.canSpeak, timedOutUntil = d.timedOutUntil,
+            request = d.request?.let { if (it.incoming) RequestRules.INCOMING else RequestRules.OUTGOING },
         )
+        _requestSent.update { m -> d.request?.takeIf { !it.incoming }?.let { m + (d.id to ((it.sent ?: 0) to it.limit)) } ?: (m - d.id) }
         if (d.joined || local != null) db.conversations().upsert(e)
         return e
     }
@@ -88,6 +92,21 @@ class ConversationRepository(
         upsertFromServer(api.post<GroupReq, ConversationRes>("/v1/conversations/group", GroupReq(name, memberIds)).conversation)
 
     suspend fun members(id: String) = api.get<UsersRes>("/v1/conversations/$id/members").members.also { it.forEach { u -> users.remember(u) } }
+
+    private val _requestSent = MutableStateFlow<Map<String, Pair<Int, Int>>>(emptyMap())
+
+    /** Batch B6: your message requests waiting for an answer: messages sent so far and the limit (kept in memory). */
+    val requestSent: StateFlow<Map<String, Pair<Int, Int>>> = _requestSent
+
+    /** Answers a message request you received: "accept", "decline" or "block". Declined ones leave this phone. */
+    suspend fun answerRequest(id: String, action: String) {
+        api.post<com.meldiq.android.data.api.RequestAnswerReq, OkRes>("/v1/conversations/$id/request", com.meldiq.android.data.api.RequestAnswerReq(action))
+        if (action == "accept") refreshOne(id)
+        else {
+            db.messages().deleteConversationLocal(id)
+            db.conversations().deleteLocal(id)
+        }
+    }
 
     private val _mentionAll = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     private val _slowmode = MutableStateFlow<Map<String, com.meldiq.android.data.model.Slowmode>>(emptyMap())

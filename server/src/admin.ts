@@ -35,6 +35,8 @@
  *   community-migration [--verify] convert branches and teams into roles and categories (also runs at start-up);
  *                                  --verify compares everyone's visible channels with the old structure
  */
+import { MongoRelationshipStore } from "./mongo/relationships.js";
+import { type RelationshipStore, SqliteRelationshipStore } from "./relationships/store.js";
 import { Accounts } from "./accounts/index.js";
 import { Authz } from "./authz.js";
 import { backupDatabase, verifyBackup } from "./backup.js";
@@ -60,6 +62,8 @@ import { type ReportStore, SqliteReportStore } from "./reports/store.js";
 
 /** Reports live where MONGODB_DOMAINS says. */
 const reportStore = (ctx: AppContext): ReportStore => (ctx.mongo?.owns("reports") ? new MongoReportStore(ctx.mongo) : new SqliteReportStore(ctx.db));
+const relationshipStore = (ctx: AppContext): RelationshipStore =>
+  ctx.mongo?.owns("relationships") ? new MongoRelationshipStore(ctx.mongo) : new SqliteRelationshipStore(ctx.db);
 
 const [cmd, ...rest] = process.argv.slice(2);
 // verify-backup only reads the snapshot: it must not open (or migrate) the live database.
@@ -214,6 +218,7 @@ switch (cmd) {
     if (cfg.mongo) ctx.mongo = await openMongo(cfg.mongo, db);
     ctx.accounts = new Accounts(ctx);
     ctx.reports = reportStore(ctx);
+    ctx.relationships = relationshipStore(ctx);
     try {
       const r = await runCleanup(ctx);
       console.table(r);

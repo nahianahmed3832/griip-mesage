@@ -127,6 +127,9 @@ object Routes {
     const val SERVICE_HEALTH = "settings/health"
     const val CONNECTORS = "settings/connectors"
     const val CONTACTS = "contacts"
+    /** Batch B6: message requests waiting for you, and your connections. */
+    const val REQUESTS = "requests"
+    const val PEOPLE = "people"
     /** Public communities to find and join (docs/COMMUNITY_REBUILD_2026-10-21.md). */
     const val DISCOVER = "discover"
     const val PRIVACY = "privacy"
@@ -283,6 +286,8 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             composable(Routes.WORKSPACE) { com.meldiq.android.ui.screens.community.CommunitySettingsScreen(nav) }
             composable(Routes.CHANNELS_MANAGE) { WorkspaceScreen(nav) }
             composable(Routes.CONTACTS) { com.meldiq.android.ui.screens.contacts.ContactsScreen(nav) }
+            composable(Routes.REQUESTS) { com.meldiq.android.ui.screens.contacts.RequestsScreen(nav) }
+            composable(Routes.PEOPLE) { com.meldiq.android.ui.screens.contacts.PeopleScreen(nav) }
             composable(Routes.PROFILE) { com.meldiq.android.ui.screens.profile.SettingsHub(nav) }
             composable(Routes.JOIN + "?code={code}") { JoinWorkspaceScreen(nav, it.arguments?.getString("code")) }
             composable(Routes.NEW_CHAT + "?mode={mode}") { NewChatScreen(nav, it.arguments?.getString("mode")) }

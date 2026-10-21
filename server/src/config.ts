@@ -47,6 +47,11 @@ export interface Config {
   profilePhotoDir: string;
   /** Delivery queue TTL in seconds. Hard-capped at 7 days. */
   queueTtlSeconds: number;
+  /**
+   * Batch B6: who may open a DM with someone who hasn't chosen (DEFAULT_DM_POLICY). "everyone" until apps that show
+   * message requests are common; then "communities", so strangers' DMs wait as requests.
+   */
+  defaultDmPolicy: "everyone" | "communities" | "connections";
   /** How often due reminders are fired (docs/REMINDERS.md); 0 turns the loop off (tests fire them by hand). */
   reminderTickMs: number;
   /** How often background schedules (meeting "starting soon" notices) are checked; 0 stops them (tests drive them). */
@@ -333,6 +338,12 @@ export function effectiveFileMaxBytes(c: Pick<Config, "fileMaxBytes" | "attachme
   return Math.max(Math.min(c.fileMaxBytes, c.attachmentMaxBytes - overhead), 0);
 }
 
+function dmPolicyFrom(v: string | undefined): Config["defaultDmPolicy"] {
+  if (v === undefined || v === "") return "everyone";
+  if (v === "everyone" || v === "communities" || v === "connections") return v;
+  throw new Error(`DEFAULT_DM_POLICY must be everyone, communities or connections (got "${v}")`);
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const int = (name: string, def: number) => intFrom(env, name, def);
   const dataDir = env.DATA_DIR ?? path.resolve("data");
@@ -355,6 +366,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     callPeerGraceMs: int("CALL_PEER_GRACE_MS", 30_000),
     callMaxParticipants: Math.max(int("CALL_MAX_PARTICIPANTS", 12), 2),
     queueTtlSeconds: Math.max(queueTtl, 1),
+    defaultDmPolicy: dmPolicyFrom(env.DEFAULT_DM_POLICY),
     reminderTickMs: Math.min(Math.max(int("REMINDER_TICK_MS", 15_000), 0), 300_000),
     workflowTickMs: Math.min(Math.max(int("WORKFLOW_TICK_MS", 3_000), 0), 300_000),
     attachmentTtlSeconds: Math.min(int("ATTACHMENT_TTL_SECONDS", SEVEN_DAYS_S), SEVEN_DAYS_S),

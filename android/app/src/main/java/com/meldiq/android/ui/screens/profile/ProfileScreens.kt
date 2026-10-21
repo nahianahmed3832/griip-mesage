@@ -323,9 +323,12 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
     // Batch B4b: inviting this person to one of your communities.
     var inviteLinks by remember { mutableStateOf(false) }
     var inviting by remember { mutableStateOf(false) }
+    // Batch B6: the connection button.
+    var connectionsAvailable by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         reportsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.REPORTS) == true
         inviteLinks = container.features.has(com.meldiq.android.data.repo.ServerFeatures.INVITE_LINKS) == true
+        connectionsAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.CONNECTIONS) == true
     }
     LaunchedEffect(userId) { blocked = runCatching { userId in container.federation.blocked() }.getOrNull() }
     val u = user
@@ -355,6 +358,9 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
                             PillButton("Message", {
                                 scope.launch { runCatching { container.conversations.openDm(u.id) }.onSuccess { nav.navigate(Routes.conversation(it.id)) }.onFailure { error = it.friendly() } }
                             }, Modifier.weight(1f), height = 48.dp)
+                            if (connectionsAvailable && !GlobalAddress.isRemote(u.username, u.homeServer)) {
+                                com.meldiq.android.ui.screens.contacts.ConnectionButton(u.id, Modifier.weight(1f)) { error = it }
+                            }
                             if (inviteLinks && !GlobalAddress.isRemote(u.username, u.homeServer)) PillButton(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.pi_invite), { inviting = true }, Modifier.weight(1f), tone = ButtonTone.Glass, height = 48.dp)
                         }
                     }

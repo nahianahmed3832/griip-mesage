@@ -133,6 +133,8 @@ fun PrivacyScreen(nav: NavHostController) {
                 MenuRow(Icons.Outlined.Block, "Blocked people", subtitle = "Their messages and calls don't reach you", onClick = { nav.navigate(Routes.BLOCKED) })
             }
         }
+        // Batch B6: who can message you directly, and who can send you requests.
+        item { MessagingPrivacyCard() }
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 14.dp)) {
                 MenuRow(

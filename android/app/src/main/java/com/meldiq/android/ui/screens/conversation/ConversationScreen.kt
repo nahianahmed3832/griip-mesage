@@ -166,6 +166,7 @@ import com.meldiq.android.data.model.MessageStatus
 import com.meldiq.android.data.repo.ConversationRepository
 import com.meldiq.android.data.repo.GlobalAddress
 import com.meldiq.android.ui.Routes
+import com.meldiq.android.ui.friendly
 import com.meldiq.android.ui.TimeFmt
 import com.meldiq.android.ui.components.BannerKind
 import com.meldiq.android.ui.components.CircleIconButton
@@ -537,7 +538,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             // Text channels have no call buttons (round 7): a workspace's calls happen in its voice rooms. DMs and
             // groups still call each other.
             val textChannel = conv?.type == "CHANNEL"
-            if (threadRoot == null && conv?.removed != true && canCall && conv?.voice != true && !textChannel) {
+            // Batch B6: no calls through a message request, either way (the server refuses them too).
+            if (threadRoot == null && conv?.removed != true && canCall && conv?.voice != true && !textChannel && conv?.request == null) {
                 CircleIconButton(Icons.Rounded.Videocam, stringResource(R.string.b5_video_call), { permission(true) { vm.startCall(true) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
                 CircleIconButton(Icons.Rounded.Call, stringResource(R.string.b5_voice_call), { permission(false) { vm.startCall(false) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
             }
@@ -795,7 +797,26 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
 
         // Composer
         error?.let { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), action = stringResource(R.string.b5_ok), onAction = { vm.error.value = null }) }
-        if (conv?.format == "forum" && threadRoot == null) {
+        // Batch B6: your message request waiting for an answer, with how many more you may send.
+        val requestSent by vm.c.conversations.requestSent.collectAsStateWithLifecycle()
+        if (conv?.request == com.meldiq.android.data.model.RequestRules.OUTGOING) requestSent[conversationId]?.let { (sent, limit) ->
+            StatusBanner(
+                stringResource(R.string.b6_request_waiting, com.meldiq.android.data.model.RequestRules.remaining(sent, limit)),
+                BannerKind.Info, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+        if (conv?.request == com.meldiq.android.data.model.RequestRules.INCOMING && threadRoot == null) {
+            MessageRequestBar(
+                peerName = peerUser?.displayName ?: peer?.displayName.orEmpty(),
+                onAnswer = { action ->
+                    scope.launch {
+                        runCatching { vm.c.conversations.answerRequest(conversationId, action) }
+                            .onSuccess { if (action != "accept") nav.popBackStack() }
+                            .onFailure { vm.error.value = it.friendly() }
+                    }
+                },
+            )
+        } else if (conv?.format == "forum" && threadRoot == null) {
             Box(Modifier.fillMaxWidth().background(c.surface).navigationBarsPadding()) { ForumComposerBar(conv?.canPost == true) { newPostSheet = true } }
         } else if (conv != null && !conv!!.canPost) {
             // Timed out in the community (MOD-06): says until when, instead of a bare "can't post".
@@ -1327,4 +1348,25 @@ private fun Modifier.observeTouches(onTouch: () -> Unit): Modifier = pointerInpu
         awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
         onTouch()
     }
+}
+
+
+/** Batch B6: under a message request you received: who it's from, and Accept, Decline or Block. */
+@Composable
+private fun MessageRequestBar(peerName: String, onAnswer: (String) -> Unit) {
+    val c = Griip.colors
+    var confirmBlock by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().background(c.surface).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Text(stringResource(R.string.b6_request_from, peerName), style = Griip.type.bodyMedium, color = c.textPrimary)
+        Text(stringResource(R.string.b6_request_explain), style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(top = 2.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.meldiq.android.ui.components.PillButton(stringResource(R.string.b6_accept), { onAnswer("accept") }, Modifier.weight(1f), height = 44.dp, showKnob = false)
+            com.meldiq.android.ui.components.PillButton(stringResource(R.string.b6_decline), { onAnswer("decline") }, Modifier.weight(1f), tone = com.meldiq.android.ui.components.ButtonTone.Glass, height = 44.dp, showKnob = false)
+            com.meldiq.android.ui.components.PillButton(stringResource(R.string.b6_block), { confirmBlock = true }, Modifier.weight(1f), tone = com.meldiq.android.ui.components.ButtonTone.Danger, height = 44.dp, showKnob = false)
+        }
+    }
+    if (confirmBlock) com.meldiq.android.ui.components.ConfirmDialog(
+        stringResource(R.string.b6_block_q, peerName), stringResource(R.string.b6_block_body), stringResource(R.string.b6_block),
+        onConfirm = { confirmBlock = false; onAnswer("block") }, onDismiss = { confirmBlock = false }, destructive = true,
+    )
 }

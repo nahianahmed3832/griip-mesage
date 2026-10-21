@@ -82,8 +82,11 @@ object WorkspaceHomeRules {
     /** In the selected workspace's view: its own channels, and every conversation that has no workspace. */
     fun inWorkspace(c: ConversationEntity, orgId: String?) = c.orgId == null || c.orgId == orgId
 
-    /** Listed on Home: still a member, and not archived on this phone (archived chats are under DMs › Archived). */
-    private fun listed(c: ConversationEntity) = !c.removed && !ChatListRules.isArchived(c)
+    /**
+     * Listed on Home: still a member, and not archived on this phone (archived chats are under DMs › Archived), and not
+     * a message request to you (batch B6: those wait under DMs › Message requests and count nowhere else).
+     */
+    private fun listed(c: ConversationEntity) = !c.removed && !ChatListRules.isArchived(c) && c.request != com.meldiq.android.data.model.RequestRules.INCOMING
 
     /** Unread direct messages and groups, in the chat list's order (newest message first). */
     fun unreadDms(convs: List<ConversationEntity>): List<ConversationEntity> =

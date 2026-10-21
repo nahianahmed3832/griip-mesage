@@ -163,10 +163,11 @@ export class Hub {
    * Push freshly queued items to a device's sockets whose backlog has drained (fire and forget). A device with no
    * socket is offered a wake-up instead, for envelopes only: delivery receipts wait until the app next connects.
    */
-  pushQueued(deviceId: string, rows: QueueItemRow[]): void {
+  /** [wake]: false keeps an offline device asleep (batch B6: a message request sends no push). */
+  pushQueued(deviceId: string, rows: QueueItemRow[], opts: { wake?: boolean } = {}): void {
     if (rows.length === 0) return;
     if (!this.isDeviceOnline(deviceId)) {
-      if (rows.some((r) => r.kind === "envelope")) this.onQueuedOffline(deviceId);
+      if (opts.wake !== false && rows.some((r) => r.kind === "envelope")) this.onQueuedOffline(deviceId);
       return;
     }
     const data = JSON.stringify({ t: "queue", items: rows.map(queueItemToWire), more: false });

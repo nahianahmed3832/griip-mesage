@@ -27,7 +27,9 @@ go-ahead (`docs/DEPLOYMENT.md`).
 | B4 | Administration, part 1: reports, Security actions, audit filters, invite choices | **Built; APK ready; owner tests it with the rest** (2026-10-21) |
 | B4b | Administration, part 2: join applications, activity alerts, https invite links with a signed-out page, invite from a profile, Meldiq's operator commands for reports | **Built; APK ready; owner tests it with the rest** (2026-10-21) |
 | B5 | Chat interface: thread list, message links, translated menus, Unreads | **Built; APK ready; owner tests it with the rest** (2026-10-22) |
-| B6 to B13 | Below | Not started |
+| B6 | Connections, message requests, DM permissions | **Built; APK ready; owner tests it with the rest** (2026-10-22) |
+| B6b | Group photo and presence choices (split from B6) | Next |
+| B7 to B13 | Below | Not started |
 
 > **Gate changed 2026-10-21 23:13:** the owner asked for the remaining batches to be built one after another without
 > waiting, and to phone-test them all together at the end. Each batch is still committed on its own, with its own APK

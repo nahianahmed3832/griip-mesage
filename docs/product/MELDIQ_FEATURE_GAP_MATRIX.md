@@ -136,11 +136,11 @@ Meldiq differs from Discord by design in two ways:
 |---|---|---|---|---|---|---|---|
 | DM-01 | One-to-one DM | E2E | I | IT | I | — | |
 | DM-02 | Group DM | I | I | I | I | — | |
-| DM-03 | Message requests and DM permissions | R (observed) S | — | — | — | P1 (B6) | **Gap found:** `POST /v1/conversations/dm` creates a DM with anyone; only blocking stops delivery. Spec `MELDIQ_FRIENDS_AND_DMS_SPEC.md` |
-| DM-04 | Connections (request, accept, decline, cancel, remove) | R (observed) S | — | — | — | P1 (B6) | **Proposed reversal of "no friend graph", needs the owner's approval:** a small `connections` model (no suggestions, no contact mining). `MELDIQ_FRIENDS_AND_DMS_SPEC.md` |
+| DM-03 | Message requests and DM permissions | E2E (emulator) | I | — | I | — | B6 2026-10-22: a new DM from someone your settings don't let message you directly becomes a **message request**: listed under DMs › Message requests, no notification or push, read-only with Accept / Decline / Block; the sender may send 3 messages until then and always sees it pending (a decline isn't revealed); decline drops what was queued for you. Settings › Privacy: who can message you directly (everyone / your communities / only connections) and who can send requests (everyone / your communities / nobody). Blocked, unknown and disabled people get the same answer. The server default for people who never chose is `DEFAULT_DM_POLICY` (shipped as `everyone` so released apps keep working; owner flips it to `communities` later). API 0.19.0, migration 038, MongoDB domain `relationships` |
+| DM-04 | Connections (request, accept, decline, cancel, remove) | E2E (emulator) | I | — | I | — | B6 2026-10-22 (the "no friend graph" reversal, built under the owner's overnight go-ahead): request by profile or username, accept, decline, cancel, remove; crossed requests accept each other; nobody is told of a decline or removal; no suggestions, no mutual lists. DMs › menu › **Connections**; the profile's Connect / Request sent / Accept / Connected button. 20 new requests an hour |
 | DM-05 | Block | I | I | I | I | — | |
 | DM-06 | Favourite, archive, mute DMs | I | I | I | I | — | |
-| DM-07 | Group photo | R | — | — | — | P2 (B6) | GDM-CTRL-002 |
+| DM-07 | Group photo | R | — | — | — | P2 (B6b) | GDM-CTRL-002. Moved out of B6 to keep it testable: with presence choices (NAV-08) in B6b |
 | DM-08 | Invite to community from a DM or profile | E2E (emulator) | I | — | I | — | B4b 2026-10-21: profile › **Invite** › pick a community (not ones where you're a guest): a one-use invitation valid 7 days, sent as the https link in your DM with them. The server checks your role may invite |
 | DM-09 | Report a person | E2E (emulator) | I | — | I | — | B4: profile › Report (send to Meldiq's team or one of your communities' moderators; the server checks the person is in it), community member sheet › Report |
 

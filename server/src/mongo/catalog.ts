@@ -21,6 +21,7 @@ export type TableDomain =
   | "files"
   | "history"
   | "reports"
+  | "relationships"
   | "federation";
 
 /**
@@ -130,6 +131,10 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   history_accounts: "history",
   history_items: "history",
   reports: "reports",
+  // Batch B6: connections, message requests and who may message you.
+  connections: "relationships",
+  dm_requests: "relationships",
+  messaging_settings: "relationships",
   federation_blocks: "federation",
   federation_domains: "federation",
   federation_inbox: "federation",

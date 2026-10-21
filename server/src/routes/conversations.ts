@@ -1,4 +1,6 @@
 import type { FastifyInstance } from "fastify";
+import { availableUser, blockedEitherWay, dmDecision, notAvailable, REQUEST_MESSAGE_LIMIT, requireRequestBudget } from "../relationships/rules.js";
+import type { DmRequestRow } from "../relationships/store.js";
 import { mentionAllPermission } from "../mentions.js";
 import { z } from "zod";
 import type { ConversationRow } from "../authz.js";
@@ -144,19 +146,38 @@ function federationInfo(ctx: AppContext, convId: string) {
   };
 }
 
+/**
+ * Batch B6: how a message request looks to [userId]: null for none; the recipient sees "pending" (or nothing once they
+ * declined: the conversation is hidden from them), the sender always sees "pending" until it's accepted, so a decline
+ * isn't revealed. [sent]: the sender's messages so far (at most REQUEST_MESSAGE_LIMIT before an answer).
+ */
+export function requestView(r: DmRequestRow | null | undefined, userId: string) {
+  if (!r) return null;
+  const incoming = r.recipient === userId;
+  return { state: "pending" as const, incoming, sent: incoming ? undefined : Math.min(r.sent, REQUEST_MESSAGE_LIMIT), limit: REQUEST_MESSAGE_LIMIT };
+}
+
 export default async function conversationRoutes(app: FastifyInstance, ctx: AppContext) {
   const auth = { preHandler: requireAuth(ctx) };
   const { db, authz } = ctx;
 
   app.get("/v1/conversations", auth, async (req) => {
     const { userId } = me(req);
+    const { requests } = parse(z.object({ requests: z.enum(["0", "1"]).optional() }), req.query);
     const rows = db
       .prepare(
         `SELECT c.* FROM conversations c JOIN conversation_members m ON m.conversation_id = c.id
          WHERE m.user_id = ? ORDER BY c.updated_at DESC`,
       )
       .all(userId) as ConversationRow[];
-    return { conversations: rows.map((c) => conversationView(ctx, c, userId)) };
+    // Batch B6: message requests are marked; ones you declined are left out; ?requests=1 lists only those waiting for you.
+    const byConv = new Map((await ctx.relationships.requestsIn(rows.filter((c) => c.type === "DM").map((c) => c.id))).map((r) => [r.conversation_id, r]));
+    const shown = rows.filter((c) => {
+      const r = byConv.get(c.id);
+      if (r && r.recipient === userId && r.state === "declined") return false;
+      return requests === "1" ? r?.recipient === userId && r.state === "pending" : true;
+    });
+    return { conversations: shown.map((c) => ({ ...conversationView(ctx, c, userId), request: requestView(byConv.get(c.id), userId) })) };
   });
 
   /**
@@ -182,7 +203,9 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
     if (!c) throw notFound("Conversation not found");
     const visible = c.type === "CHANNEL" ? authz.canViewChannel(c, userId) : authz.isMember(c.id, userId);
     if (!visible) throw notFound("Conversation not found");
-    return { conversation: conversationView(ctx, c, userId) };
+    const r = c.type === "DM" ? await ctx.relationships.request(c.id) : null;
+    if (r && r.recipient === userId && r.state === "declined") throw notFound("Conversation not found");
+    return { conversation: { ...conversationView(ctx, c, userId), request: requestView(r, userId) } };
   });
 
   app.get("/v1/conversations/:id/members", auth, async (req) => {
@@ -219,12 +242,24 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
     const { userId } = me(req);
     const { userId: other } = parse(z.object({ userId: z.string().max(64) }), req.body);
     if (other === userId) throw badRequest("You can't start a direct conversation with yourself");
-    const target = db.prepare("SELECT id, home_server_id FROM users WHERE id = ? AND disabled_at IS NULL").get(other) as { id: string; home_server_id: string | null } | undefined;
-    if (!target) throw notFound("User not found");
+    const target = availableUser(ctx, other);
+    // Batch B6: unknown, disabled and blocked (either way) all answer the same, so a block isn't revealed.
+    if (!target || blockedEitherWay(ctx, userId, other)) throw notAvailable();
     const key = [userId, other].sort().join("|");
     const t = now();
     let c = db.prepare("SELECT * FROM conversations WHERE dm_key = ?").get(key) as ConversationRow | undefined;
+    let request: DmRequestRow | null = c ? await ctx.relationships.request(c.id) : null;
+    // Opening a DM with someone whose request you had: it's yours now too, a normal DM.
+    if (c && request && request.recipient === userId) {
+      await ctx.relationships.deleteRequest(c.id);
+      request = null;
+      notifyConversation(ctx, c.id);
+    }
     if (!c) {
+      // People on other servers keep their settings there: their server decides.
+      const decision = target.home_server_id ? "direct" : await dmDecision(ctx, userId, other);
+      if (decision === "refused") throw new ApiError(403, "dm_not_allowed", "This person only accepts messages from people they're connected with");
+      if (decision === "request") await requireRequestBudget(ctx, userId, t);
       // Batch B4: a community can pause new DMs between its members. It applies when every community the two share
       // has paused them, and neither of them moderates one of those communities (moderators can still reach people).
       const shared = (db.prepare("SELECT a.org_id FROM org_members a JOIN org_members b ON a.org_id = b.org_id WHERE a.user_id = ? AND b.user_id = ?").all(userId, other) as { org_id: string }[]).map((r) => r.org_id);
@@ -242,9 +277,13 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
         ins.run(id, other, t);
       })();
       c = authz.conversation(id)!;
+      if (decision === "request") {
+        request = { conversation_id: id, recipient: other, sender: userId, state: "pending", sent: 0, created_at: t, answered_at: null };
+        await ctx.relationships.createRequest(request);
+      }
       notifyConversation(ctx, id);
     }
-    return { conversation: conversationView(ctx, c, userId) };
+    return { conversation: { ...conversationView(ctx, c, userId), request: requestView(request, userId) } };
   });
 
   app.post("/v1/conversations/group", auth, async (req) => {

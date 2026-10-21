@@ -79,6 +79,9 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val JOIN_APPLICATIONS = "join-applications"
         const val ACTIVITY_ALERTS = "activity-alerts"
         const val INVITE_LINKS = "invite-links"
+        /** Batch B6: connections, message requests and who may message you. */
+        const val CONNECTIONS = "connections"
+        const val MESSAGE_REQUESTS = "message-requests"
         /** Meldiq 2.0: experiments and content-free analytics counts (docs/product/EXPERIMENTS.md). */
         const val EXPERIMENTS = "experiments"
         const val ANALYTICS_EVENTS = "analytics-events"

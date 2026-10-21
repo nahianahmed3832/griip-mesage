@@ -409,6 +409,10 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
     const body = parse(z.object({ conversationId: z.string().max(64), video: z.boolean().default(false) }), req.body);
     const conv = authz.requireMember(body.conversationId, userId);
     if (conv.archived_at) throw conflict("This channel is archived");
+    // Batch B6: nobody rings through a message request; the recipient accepts it first.
+    if (conv.type === "DM" && (await ctx.relationships.request(conv.id))) {
+      throw new ApiError(403, "request_pending", "Calls start once the message request is accepted");
+    }
     // One live call per conversation: starting while one exists joins it instead (also one hosted by another server).
     const existing = db.prepare("SELECT * FROM calls WHERE conversation_id = ? AND state != 'ENDED' ORDER BY created_at DESC LIMIT 1").get(conv.id) as
       | CallRow

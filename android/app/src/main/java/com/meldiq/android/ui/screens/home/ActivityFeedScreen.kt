@@ -234,10 +234,12 @@ object ActivityRules {
 
     /**
      * Batch B5 (Discord reference NAV-CTRL-005, the inbox's Unreads): conversations with unread messages, except muted,
-     * archived, hidden and left ones, newest first; DMs and groups first, then each community.
+     * archived, hidden and left ones and message requests (B6), newest first; DMs and groups first, then each community.
      */
     fun unreads(convs: List<ConversationEntity>, hidden: Set<String>): List<UnreadGroup> {
-        val unread = convs.filter { it.unreadCount > 0 && !it.muted && !it.removed && it.archivedAt == null && it.id !in hidden }
+        val unread = convs.filter {
+            it.unreadCount > 0 && !it.muted && !it.removed && it.archivedAt == null && it.id !in hidden && it.request != com.meldiq.android.data.model.RequestRules.INCOMING
+        }
             .sortedByDescending { it.lastMessageAt }
         val direct = unread.filter { it.type != "CHANNEL" }
         val byOrg = unread.filter { it.type == "CHANNEL" }.groupBy { it.orgId }

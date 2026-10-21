@@ -83,6 +83,8 @@ class AppContainer(
     val reports = com.meldiq.android.data.repo.ReportRepository(api)
     /** Batch B4b: join applications and activity alerts. */
     val applications = com.meldiq.android.data.repo.ApplicationRepository(api)
+    /** Batch B6: connections and messaging settings. */
+    val connections = com.meldiq.android.data.repo.ConnectionRepository(api)
     /** Starred, sections, collapsed groups and mutes, kept on the server for every device (docs/WORKSPACE_ADMINISTRATION.md). */
     val navPrefs = com.meldiq.android.data.repo.NavPreferences(api, db, features, scope).also { np ->
         messages.countsEveryoneOf = { conv -> np.countsEveryone(conv) }

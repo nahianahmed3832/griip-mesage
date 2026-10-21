@@ -150,6 +150,8 @@ async function eraseIdentity(ctx: AppContext, userId: string, actorId: string | 
   await ctx.prefs.deleteForUser(userId);
   // Batch B4: reports the person made, and reports about them.
   await ctx.reports.deleteForUser(userId);
+  // Batch B6: connections, message requests and messaging settings.
+  await ctx.relationships.deleteForUser(userId);
   await deleteHistoryAfterCommit(ctx, userId, "account deleted");
 
   ctx.hub.disconnectUser(userId, "account deleted");

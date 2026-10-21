@@ -11,6 +11,8 @@ import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.MarkChatUnread
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.Brush
@@ -130,7 +132,9 @@ private fun ChatsHome(nav: NavHostController, request: DmListRequest) {
     // frame had no rows and the list jumped back to the top every time a chat was closed.)
     val vm = com.meldiq.android.ui.containerViewModel { ChatsViewModel(it) }
     val loaded by vm.conversations.collectAsStateWithLifecycle()
-    val convs = loaded.orEmpty()
+    // Batch B6: message requests wait under their own row, not in the list.
+    val requests = remember(loaded) { com.meldiq.android.data.model.RequestRules.incoming(loaded.orEmpty()) }
+    val convs = remember(loaded) { com.meldiq.android.data.model.RequestRules.notRequests(loaded.orEmpty()) }
     val users by vm.users.collectAsStateWithLifecycle()
     val typing by container.messages.typing.collectAsStateWithLifecycle()
     val conn by container.realtime.state.collectAsStateWithLifecycle()
@@ -175,6 +179,7 @@ private fun ChatsHome(nav: NavHostController, request: DmListRequest) {
         HomeMenuItem(stringResource(R.string.home_start_call), Icons.Outlined.Call) { nav.navigate(Routes.NEW_CHAT + "?mode=call") },
         HomeMenuItem(stringResource(R.string.home_call_history), Icons.Outlined.History) { nav.navigate(Routes.CALLS) },
         HomeMenuItem(stringResource(R.string.contacts_title), Icons.Outlined.People) { nav.navigate(Routes.CONTACTS) },
+        HomeMenuItem(stringResource(R.string.b6_connections), Icons.Outlined.PersonAdd) { nav.navigate(Routes.PEOPLE) },
         HomeMenuItem(stringResource(R.string.contacts_invite), Icons.Outlined.QrCodeScanner) { nav.navigate(Routes.JOIN + "?code=") },
     )
     val list = rememberLazyListState()
@@ -213,6 +218,15 @@ private fun ChatsHome(nav: NavHostController, request: DmListRequest) {
                     "${if (liveCall.activeCallVideo) "Video" else "Voice"} call in progress · $title", BannerKind.Success,
                     Modifier.padding(horizontal = Space.gutter, vertical = 4.dp), icon = Icons.Rounded.Call, action = "Join",
                     onAction = { permission(liveCall.activeCallVideo) { scope.launch { container.calls.join(liveCall.id, liveCall.activeCallId!!, liveCall.activeCallVideo) } } },
+                )
+            }
+            if (!archivedView && query.isBlank() && requests.isNotEmpty()) item(key = "requests") {
+                ListCard(
+                    stringResource(R.string.b6_requests), Modifier.padding(horizontal = 8.dp, vertical = 2.dp).animateItem(),
+                    subtitle = stringResource(R.string.b6_requests_sub, requests.size),
+                    leading = { com.meldiq.android.ui.components.IconTile(Icons.Outlined.MarkChatUnread, c.peach, c.peachSoft, size = 44.dp) },
+                    trailing = { ArrowKnob() },
+                    onClick = { nav.navigate(Routes.REQUESTS) },
                 )
             }
             if (!archivedView && query.isBlank() && archivedInfo.chats > 0) item(key = "archived") {

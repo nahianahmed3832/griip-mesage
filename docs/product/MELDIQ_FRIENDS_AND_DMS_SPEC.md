@@ -1,5 +1,16 @@
 # Connections, message requests and DM permissions: specification (2026-10-21)
 
+> **Built in batch B6 (2026-10-22)**, with these differences from the text below, each for a reason:
+> - **Default for people who never chose:** a server setting, `DEFAULT_DM_POLICY`, shipped as `everyone`. Apps released
+>   before B6 don't know message requests: their users couldn't reply to one, and wouldn't be told why. Switch it to
+>   `communities` (the default this spec intends) once most people run an app with B6.
+> - **Settings live in the relationships domain** (`messaging_settings`), not on the account, so the accounts store
+>   doesn't change.
+> - **Declined requests aren't deleted after 30 days:** the declined row is what keeps the conversation out of the
+>   recipient's list. It goes with either account.
+> - **Push:** no push for a request at all (rather than a content-free "New message request" push).
+> - **Not built yet:** shared communities shown on a request, Activity items for requests, and a request note.
+
 Batch B6. Evidence: `MELDIQ_SOCIAL_AND_COMMUNICATION_AUDIT.md`. **Needs the owner's approval before it is built**,
 because it reverses the earlier decision in matrix row DM-04 ("no friend graph").
 

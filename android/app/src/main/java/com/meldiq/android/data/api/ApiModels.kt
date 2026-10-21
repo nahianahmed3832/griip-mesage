@@ -162,7 +162,19 @@ import kotlinx.serialization.json.JsonObject
     val slowmodeExempt: Boolean = true,
     /** When you may post your next message under slowmode; null: now. */
     val nextPostAt: Long? = null,
+    /** Batch B6 (servers with `message-requests`): this DM is a message request ([DmRequestDto.incoming]: to you). */
+    val request: DmRequestDto? = null,
 )
+/** A DM waiting for its recipient's answer. The sender sees it pending until it's accepted, so a decline isn't shown. */
+@Serializable data class DmRequestDto(val state: String = "pending", val incoming: Boolean = false, val sent: Int? = null, val limit: Int = 3)
+/** Batch B6: GET /v1/connections. */
+@Serializable data class ConnectionEntryDto(val user: UserDto, val at: Long = 0)
+@Serializable data class ConnectionsRes(val connected: List<UserDto> = emptyList(), val incoming: List<ConnectionEntryDto> = emptyList(), val outgoing: List<ConnectionEntryDto> = emptyList())
+@Serializable data class ConnectReq(val userId: String? = null, val username: String? = null)
+@Serializable data class ConnectRes(val state: String, val userId: String? = null)
+@Serializable data class RequestAnswerReq(val action: String)
+/** Who can message you directly, and who can send you requests (Settings › Privacy). */
+@Serializable data class MessagingSettingsDto(val dmPolicy: String = "everyone", val requestPolicy: String = "everyone")
 /** Times a community member out until [until] (epoch ms, at most 28 days ahead), or ends their timeout (null). */
 @Serializable data class TimeoutReq(val until: Long?, val reason: String? = null)
 @Serializable data class TimeoutRes(val userId: String, val timeoutUntil: Long? = null)

@@ -314,13 +314,97 @@ No server change in B5.
    info.
 6. **Report back:** pass or fail per step, with screenshots.
 
+## 6d. Batch B6: connections, message requests and DM permissions (built 2026-10-22, not phone-tested)
+
+The connections model reverses matrix row DM-04's "no friend graph". It was built under the owner's overnight
+go-ahead ("you can keep working all the steps one by one"); **say so if you'd rather not have it**, and it can be
+switched off by not showing the screens (the server keeps working without them).
+
+### What's in it
+
+| Feature | What the person sees | Code |
+|---|---|---|
+| Who can message you (DM-03) | Settings › Privacy & Security › Messages: **Who can message you directly** (Everyone / People in your communities / Only your connections) and **Who can send you requests** (Everyone / People in your communities / Nobody) | Android `profile/MessagingPrivacy.kt`. Server `PUT /v1/users/me/messaging`, `relationships/rules.ts` |
+| Message requests | A DM from someone your first setting doesn't allow (but the second does) arrives under DMs › **Message requests (n)**, with no notification and no badge; it opens read-only: "X wants to message you", **Accept** / **Decline** / **Block**. Accept moves it to your DMs and connects you; Decline removes it from this phone; Block also blocks. The sender sees "Message request sent… You can send N more" (3 in all) and never learns of a decline. No calls through a request, either way. Someone your settings refuse gets "This person only accepts messages from people they're connected with"; blocked and unknown people get the same "You can't message this person" | Android `contacts/ConnectionsScreens.kt` (`RequestsScreen`), `ConversationScreen.kt` (`MessageRequestBar`, outgoing banner), `ChatsScreen.kt`, `RequestRules`. Server `routes/conversations.ts` (DM creation, `?requests=1`), `routes/messages.ts` (limit, no push, nothing delivered after a decline), `routes/calls.ts` |
+| Connections (DM-04) | DMs › ⋯ › **Connections**: Requests for you (Accept / Decline), Sent (Cancel), Connected, and **Add by username**. A profile's button: **Connect** / **Request sent** (tap to cancel) / **Accept** / **Connected** (tap to remove, with a confirmation). Crossed requests connect at once. Nobody is told of a decline or removal | `ConnectionsScreens.kt` (`PeopleScreen`, `ConnectionButton`), `ConnectionRules`, `ConnectionRepository`. Server `routes/connections.ts` |
+
+**Server and API:** API **0.19.0**, features `connections` and `message-requests`. **Migration 038** (additive):
+`connections`, `dm_requests`, `messaging_settings`, all in the new MongoDB domain **`relationships`** (SQLite and
+MongoDB stores, tests on both). 20 new requests an hour per person. Account deletion removes a person's rows.
+
+**Default for people who never chose:** `DEFAULT_DM_POLICY`, shipped as **`everyone`** (today's behaviour). Apps
+released before B6 can't show message requests: a person on an old app couldn't reply to one and wouldn't know why.
+Once most people run an app with B6, set `DEFAULT_DM_POLICY=communities` (strangers' DMs then become requests).
+
+**Android database version 12** (adds `conversations.request`, a forward migration).
+
+**Moved to B6b** (to keep this batch testable): group photo (DM-07) and presence choices (NAV-08).
+
+### How it was checked
+
+- **Server:** full suite **685 passed**, 10 skipped; `connections_requests.test.ts` (15 tests: defaults, direct DMs
+  between community members, a guest isn't "in the community", requests and `?requests=1`, refusals, blocked and
+  unknown answering the same, the 3-message limit with no push, the recipient can't reply or call, decline hides it and
+  drops queued envelopes, reopening the DM yourself after declining, accept connects, block, the hourly limit,
+  connections by id and username, nobody else can accept, crossed requests, remove, connections making DMs direct,
+  request settings, account deletion, the server default). The same file passes with
+  `MELDIQ_TEST_MONGO_DOMAINS=relationships` (MongoDB store).
+- **Android:** unit tests (new `ConnectionRulesTest`; `MigrationsTest` covers v12) and lint, in the B6 build below.
+- **Emulator** (Ada in the main app, Erin in "Meldiq Test", two scripted strangers):
+  - Ada › Privacy › Who can message you directly › Only your connections (stored on the server);
+  - two strangers each sent a DM: **no notification**; DMs showed "Message requests · 2 waiting"; the list showed
+    both with their first message;
+  - Quinn's request opened read-only with the request bar; **Accept** brought back the composer; Ada's reply was
+    accepted by the server; Quinn appeared under Connected;
+  - Rory's request › **Decline**: gone from Requests and DMs (server: declined);
+  - Connections › Add by username `erinsender4910` › "Request sent", listed under Sent; on Erin's app, Connections
+    showed "Requests for you: Ada", and Ada's profile showed **Accept**; accepting connected them (server: accepted).
+- **Found and fixed during the check:** the DMs tab badge and Home counted requests (now they don't); the profile
+  button could fall back to "Connect" after accepting (a cancelled reload blanked it); call buttons showed on a request
+  and the server would have let the sender ring (both closed).
+- **Not checked on the emulator:** the sender's "You can send N more" banner (unit-tested state, server-tested limit).
+- **Emulator note:** the emulator's storage is too small for two 147 MB debug builds; the copies installed there had
+  the two unused CPU architectures removed and were re-signed with the same debug key. The phone APK below is the full
+  build.
+
+### B6 APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b6-debug.apk`
+  (147 MB, git-ignored). **SHA-256:** `5756ceda8aad992f15169aa16e80105fde38a3942bd7689631bcb870256f00b3`.
+- **Variant:** debug, side by side (`com.meldiq.android.test`, versionCode 19 / `0.5.0-beta`), server
+  `http://localhost:8080`. It contains B4 to B5 as well.
+- **Checks:** `testDebugUnitTest` 609 tests, 0 failures; `lintDebug` 0 errors.
+- **Server for this APK:** `server/scripts/phone-test-server.sh` from the main folder (API 0.19.0; it applies
+  migration 038 to the test data by itself).
+
+### Owner's phone checklist (B6)
+
+You need two accounts on two phones, or your two accounts on one phone (Meldiq Test lets you switch).
+
+1. **Settings:** on account A, You › Settings › Privacy & Security › **Who can message you directly** › Only your
+   connections.
+2. **A request arrives:** from account B (not connected with A), open A's profile (search by username) › Message ›
+   send "hello". **Expected on B:** "Message request sent… You can send 2 more". **Expected on A:** no notification;
+   DMs shows **Message requests · 1 waiting**.
+3. **Answer it:** on A, open the request. **Expected:** "B wants to message you" with Accept, Decline, Block, and no call
+   buttons. Tap **Accept**. **Expected:** you can reply, and B is under DMs › ⋯ › Connections › Connected.
+4. **Decline (needs a third account C):** from C, send A a DM. On A, open the request › **Decline**. **Expected:** it
+   disappears from A; C still sees "Message request sent".
+5. **Connections:** on A › DMs › ⋯ › Connections › Add by username › B's username › Send. **Expected:** "Request sent".
+   On B, the profile of A shows **Accept**; tap it. **Expected:** both show Connected.
+6. **Refusal:** on A set **Who can send you requests** › Nobody. From a third account, try to message A. **Expected:**
+   "This person only accepts messages from people they're connected with".
+7. **Languages:** 中文 or বাংলা on the Connections screen and the request bar.
+8. **Report back:** pass or fail per step, with screenshots.
+
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
    call).
 2. **The AWS tools use the root user's access key:** move them off it (`MELDIQ_AWS_ARCHITECTURE.md` §5).
-3. **Server 0.18.0 isn't deployed** (production runs 0.13.0): 0.18.0 adds migration 037 (applications, alerts); 0.14.0 migration 034 (timeouts); 0.15.0 B2's preference fields and templates; 0.16.0 migration 035 (slowmode) and B3's fields; 0.17.0 migration 036 (reports, pauses). For deployment, set `REPORTS_KEY` (or back up `reports.key` with the database).
-4. **Android database version 11:** a forward migration.
+3. **Server 0.19.0 isn't deployed** (production runs 0.13.0): 0.19.0 adds migration 038 (connections, requests) and
+   `DEFAULT_DM_POLICY`; 0.18.0 adds migration 037 (applications, alerts); 0.14.0 migration 034 (timeouts); 0.15.0 B2's preference fields and templates; 0.16.0 migration 035 (slowmode) and B3's fields; 0.17.0 migration 036 (reports, pauses). For deployment, set `REPORTS_KEY` (or back up `reports.key` with the database).
+4. **Android database version 12:** forward migrations (v12 in B6).
 5. **For https invite links (B4b):** serve `https://meldiq.app/.well-known/assetlinks.json` from
    `orbit_web/deploy/app-links/assetlinks.template.json` with the release signing-certificate SHA-256 (from your signing
    key; Claude never reads it), and route `meldiq.app/invite/*` to the web server's invite page (or serve the web app
@@ -328,8 +412,8 @@ No server change in B5.
 
 ## 8. Next, exactly
 
-1. **Engineering (in progress overnight):** B5 (thread list per channel, message links, translated message menus, an
-   Unreads view in Activity), then B6 to B13 in order, each committed with its own APK and checklist in this file.
+1. **Engineering (in progress overnight):** B6b (group photo, presence choices), then B7 to B13 in order, each committed
+   with its own APK and checklist in this file.
 2. **Owner, when back:** phone-test the batches together using the per-batch checklists (B4, B4b, then later ones),
    and report pass or fail per batch.
 3. **Owner decisions:** `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions" (fingerprint and meldiq.app hosting for invite

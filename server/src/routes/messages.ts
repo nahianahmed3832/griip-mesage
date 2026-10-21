@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { REQUEST_MESSAGE_LIMIT } from "../relationships/rules.js";
 import { z } from "zod";
 import { type AppContext, me, parse, requireAuth, zB64, zKey, zSig } from "../context.js";
 import { canonical, verifyEd25519 } from "../crypto.js";
@@ -84,6 +85,18 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
       }
     }
 
+    // Batch B6: a message request. Until the recipient answers, the sender may send REQUEST_MESSAGE_LIMIT messages and
+    // the recipient can't post; their devices get the messages without a push. Once declined, nothing reaches them.
+    const request = conv.type === "DM" ? await ctx.relationships.request(conv.id) : null;
+    if (request?.state === "pending" && request.recipient === userId) {
+      throw new ApiError(403, "request_pending", "Accept the message request to reply");
+    }
+    if (request?.state === "pending" && request.sender === userId && e.cls === "message" && request.sent >= REQUEST_MESSAGE_LIMIT) {
+      throw new ApiError(429, "request_limit", "You can send more once they accept your message request");
+    }
+    const quietFor = new Set<string>(request && request.sender === userId ? [request.recipient] : []);
+    const dropFor = new Set<string>(request?.state === "declined" && request.sender === userId ? [request.recipient] : []);
+
     // @everyone: only for messages, only where the policy allows, at most mentionAllPerHour new ones an hour. A retry of
     // an accepted message returned above (duplicate) and is never counted twice.
     const mentionAll = e.mentionAll === true && e.cls === "message";
@@ -132,6 +145,7 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
       );
       for (const r of e.recipients) {
         if (blockedBy.has(ownerOf.get(r.deviceId) ?? "")) continue;
+        if (dropFor.has(ownerOf.get(r.deviceId) ?? "")) continue;
         const payload = JSON.stringify({
           v: 1,
           cls: e.cls,
@@ -168,7 +182,8 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
         db.prepare("UPDATE conversation_members SET last_post_at = ? WHERE conversation_id = ? AND user_id = ?").run(t, conv.id, userId);
       }
     })();
-    for (const row of inserted) ctx.hub.pushQueued(row.recipient_device_id, [row]);
+    for (const row of inserted) ctx.hub.pushQueued(row.recipient_device_id, [row], { wake: !quietFor.has(ownerOf.get(row.recipient_device_id) ?? "") });
+    if (request?.state === "pending" && e.cls === "message") await ctx.relationships.countSent(conv.id);
     return { messageId: e.messageId, serverTs: t, recipientCount: e.recipients.length, duplicate: false };
   });
 
