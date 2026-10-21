@@ -80,6 +80,8 @@ import kotlinx.serialization.json.JsonObject
     val role: String? = null, val orgRole: String? = null, val title: String? = null,
     /** A guest's membership end date in the workspace directory (round 7), null without one. */
     val expiresAt: Long? = null,
+    /** Community member lists: their timeout's end while one runs (servers with member timeouts), null otherwise. */
+    val timeoutUntil: Long? = null,
     // Federation (2026-10-16): set for people on another server (their username is then "name:server").
     val homeServer: String? = null, val address: String? = null,
     // Profile (server ≥ 2026-10-17, docs/PROFILE_AND_PRIVACY.md). Absent: not set, or not visible to you.
@@ -152,7 +154,12 @@ import kotlinx.serialization.json.JsonObject
     /** Voice channels (servers with `voice-permissions`): may you join the call, and talk in it. */
     val canConnect: Boolean = true,
     val canSpeak: Boolean = true,
+    /** While you're timed out in the channel's community: when it ends (you can read but not post or join voice). */
+    val timedOutUntil: Long? = null,
 )
+/** Times a community member out until [until] (epoch ms, at most 28 days ahead), or ends their timeout (null). */
+@Serializable data class TimeoutReq(val until: Long?, val reason: String? = null)
+@Serializable data class TimeoutRes(val userId: String, val timeoutUntil: Long? = null)
 /** A label a forum offers for its posts. The server knows the names; a post's own tags are inside its encrypted message. */
 @Serializable data class ForumTagDto(val id: String, val name: String)
 /** Text channels hold a conversation; forum channels hold posts with titles, each with its replies (threads). */

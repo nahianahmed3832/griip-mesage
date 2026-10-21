@@ -63,6 +63,8 @@ export function conversationView(ctx: AppContext, c: ConversationRow, userId: st
     joined: myRole !== null,
     myRole,
     canPost: authz.canPost(c, userId),
+    // While this person is timed out in the community: when it ends (the app says why it can't post).
+    ...(c.org_id && authz.timeoutUntil(c.org_id, userId) ? { timedOutUntil: authz.timeoutUntil(c.org_id, userId) } : {}),
     canAttach: authz.canAttach(c, userId),
     canManage: authz.canManageConversation(c, userId),
     // Whether this person may switch the channel between public, private and announcement (scope managers only).

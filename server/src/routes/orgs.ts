@@ -399,7 +399,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     const like = q ? `%${q.toLowerCase().replace(/[%_\\]/g, (c) => "\\" + c)}%` : "%";
     const rows = db
       .prepare(
-        `SELECT u.*, m.role AS org_role, m.title, m.expires_at FROM org_members m JOIN users u ON u.id = m.user_id
+        `SELECT u.*, m.role AS org_role, m.title, m.expires_at, m.timeout_until FROM org_members m JOIN users u ON u.id = m.user_id
          WHERE m.org_id = ? AND (lower(u.display_name) LIKE ? ESCAPE '\\' OR u.username LIKE ? ESCAPE '\\')
          ORDER BY CASE m.role WHEN 'OWNER' THEN 0 WHEN 'ADMIN' THEN 1 WHEN 'MEMBER' THEN 2 ELSE 3 END, u.display_name LIMIT 500`,
       )
@@ -419,6 +419,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
           title: u.title,
           // Round 7: a guest's membership end date (docs/WORKSPACE_C5.md), null without one.
           expiresAt: u.expires_at ?? null,
+          // A timeout still running (docs/product/MELDIQ_FEATURE_GAP_MATRIX.md MOD-06), null without one.
+          timeoutUntil: u.timeout_until && u.timeout_until > now() ? u.timeout_until : null,
           // Empty since branches and teams became roles; kept for apps that read them.
           branches: [],
           teams: [],

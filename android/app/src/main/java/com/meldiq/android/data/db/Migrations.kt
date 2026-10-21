@@ -59,6 +59,10 @@ object Migrations {
             "ALTER TABLE `conversations` ADD COLUMN `canConnect` INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE `conversations` ADD COLUMN `canSpeak` INTEGER NOT NULL DEFAULT 1",
         ),
+        // v11 (2026-10-21, member timeouts): when your timeout in the channel's community ends; none until the server says.
+        10 to listOf(
+            "ALTER TABLE `conversations` ADD COLUMN `timedOutUntil` INTEGER",
+        ),
         6 to listOf(
             "CREATE TABLE IF NOT EXISTS `history_outbox` (`key` TEXT NOT NULL, `queuedAt` INTEGER NOT NULL, PRIMARY KEY(`key`))",
             "CREATE INDEX IF NOT EXISTS `index_history_outbox_queuedAt` ON `history_outbox` (`queuedAt`)",

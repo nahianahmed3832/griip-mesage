@@ -75,7 +75,7 @@ class ConversationRepository(
             roomPeopleJson = d.activeCall?.participantIds?.let { GriipJson.encodeToString(ListSerializer(String.serializer()), it) },
             categoryId = d.categoryId, categoryName = d.categoryName, position = d.position, format = d.format,
             forumTagsJson = d.forumTags.takeIf { it.isNotEmpty() }?.let { GriipJson.encodeToString(ListSerializer(com.meldiq.android.data.api.ForumTagDto.serializer()), it) },
-            canConnect = d.canConnect, canSpeak = d.canSpeak,
+            canConnect = d.canConnect, canSpeak = d.canSpeak, timedOutUntil = d.timedOutUntil,
         )
         if (d.joined || local != null) db.conversations().upsert(e)
         return e

@@ -159,15 +159,19 @@ export async function endCallRow(ctx: AppContext, c: CallRow, reason: string): P
 
 /**
  * Whether a device may be in a conversation's call: the user is still a member, the device is
- * theirs and not revoked, and the account isn't disabled.
+ * theirs and not revoked, and the account isn't disabled. In a community voice channel they must
+ * also still hold `voice.connect` there (a timeout or a changed permission takes it away).
  */
 export function callAdmission(ctx: AppContext, conversationId: string): (userId: string, deviceId: string) => boolean {
   const member = ctx.db.prepare("SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?");
   const device = ctx.db.prepare(
     "SELECT d.revoked_at, u.disabled_at FROM devices d JOIN users u ON u.id = d.user_id WHERE d.id = ? AND d.user_id = ?",
   );
+  const conv = ctx.authz.conversation(conversationId);
+  const voiceChannel = conv && conv.voice && conv.type === "CHANNEL" && conv.org_id ? conv : null;
   return (userId, deviceId) => {
     if (!member.get(conversationId, userId)) return false;
+    if (voiceChannel && !ctx.authz.canConnectVoice(voiceChannel, userId)) return false;
     const d = device.get(deviceId, userId) as { revoked_at: number | null; disabled_at: number | null } | undefined;
     return !!d && !d.revoked_at && !d.disabled_at;
   };

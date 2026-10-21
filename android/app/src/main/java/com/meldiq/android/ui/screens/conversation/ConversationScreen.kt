@@ -744,6 +744,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         if (conv?.format == "forum" && threadRoot == null) {
             Box(Modifier.fillMaxWidth().background(c.surface).navigationBarsPadding()) { ForumComposerBar(conv?.canPost == true) { newPostSheet = true } }
         } else if (conv != null && !conv!!.canPost) {
+            // Timed out in the community (MOD-06): says until when, instead of a bare "can't post".
+            val timedOutUntil = conv?.timedOutUntil?.takeIf { com.meldiq.android.ui.screens.workspace.TimeoutRules.running(it) }
             Row(
                 Modifier.fillMaxWidth().background(c.surface).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -753,6 +755,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 Text(
                     when {
                         conv?.removed == true -> "You're no longer a member of this conversation."
+                        timedOutUntil != null ->
+                            androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.to_composer, com.meldiq.android.ui.screens.workspace.TimeoutRules.untilText(timedOutUntil))
                         conv?.archived == true -> "This channel is archived."
                         conv?.kind == "ANNOUNCEMENT" -> "Only managers can post in this announcement channel."
                         else -> "You can't post here."

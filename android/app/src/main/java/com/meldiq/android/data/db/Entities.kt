@@ -57,6 +57,8 @@ data class ConversationEntity(
     /** Voice channels: may you join the call, and talk in it (listen-only otherwise)? True outside communities. */
     @androidx.room.ColumnInfo(defaultValue = "1") val canConnect: Boolean = true,
     @androidx.room.ColumnInfo(defaultValue = "1") val canSpeak: Boolean = true,
+    /** While you're timed out in the channel's community: when it ends (null: not timed out). From the server. */
+    val timedOutUntil: Long? = null,
 )
 
 @kotlinx.serialization.Serializable

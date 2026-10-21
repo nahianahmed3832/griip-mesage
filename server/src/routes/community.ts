@@ -12,9 +12,9 @@ import {
   overwriteRefusal,
   USER_PREFIX,
 } from "../permissions/channel.js";
-import { banAllowed } from "../roles.js";
+import { banAllowed, timeoutAllowed } from "../roles.js";
 import { ApiError, badRequest, conflict, forbidden, newId, notFound, now } from "../util.js";
-import { evictRemovedMember } from "./calls.js";
+import { evictFromCall, evictRemovedMember, type CallRow } from "./calls.js";
 import { CHANNEL_LIMITS, notifyConversation, notifyOrg, orgSummary, removeFromWorkspace } from "./orgs.js";
 
 /**
@@ -23,6 +23,8 @@ import { CHANNEL_LIMITS, notifyConversation, notifyOrg, orgSummary, removeFromWo
  * Every write is checked here on the server; the app only mirrors the rules to hide controls.
  */
 
+/** The longest timeout, as on other community platforms. */
+export const TIMEOUT_MAX_MS = 28 * 86_400_000;
 /** At most this many categories in one community. */
 export const CATEGORY_LIMIT = 50;
 /** Discovery pages. */
@@ -444,6 +446,47 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
     db.prepare("UPDATE org_members SET expires_at = ? WHERE org_id = ? AND user_id = ?").run(expiresAt, p.orgId, p.userId);
     ctx.audit({ actorId: actor, orgId: p.orgId, action: "member.expiry", target: p.userId });
     return { expiresAt };
+  });
+
+  // ───────────── Timeouts (docs/product/MELDIQ_FEATURE_GAP_MATRIX.md MOD-06) ─────────────
+  /**
+   * Times a member out until [until] (at most 28 days ahead), or ends the timeout (null). While it lasts they can read
+   * but not post, share files, or join and talk in voice channels; they are removed from the community's live calls.
+   */
+  app.put("/v1/orgs/:orgId/members/:userId/timeout", auth, async (req) => {
+    const p = parse(z.object({ orgId: z.string().max(64), userId: z.string().max(64) }), req.params);
+    const actor = me(req).userId;
+    const body = parse(z.object({ until: z.number().int().nullable(), reason: z.string().trim().max(300).nullish() }), req.body);
+    authz.requireOrgMember(p.orgId, actor);
+    if (p.userId === actor) throw badRequest("You can't time yourself out");
+    const targetRole = authz.orgRole(p.orgId, p.userId);
+    if (!targetRole) throw notFound("Member not found");
+    if (!timeoutAllowed(authz.actor(p.orgId, actor)!, targetRole, authz.permissions(p.orgId, p.userId))) {
+      throw forbidden(targetRole === "OWNER" ? "Owners can't be timed out" : "You can't time out this person");
+    }
+    const t = now();
+    if (body.until !== null && body.until <= t) throw badRequest("Pick a time in the future, or end the timeout instead");
+    if (body.until !== null && body.until > t + TIMEOUT_MAX_MS) throw badRequest("A timeout lasts at most 28 days");
+    db.prepare("UPDATE org_members SET timeout_until = ? WHERE org_id = ? AND user_id = ?").run(body.until, p.orgId, p.userId);
+    ctx.audit({
+      actorId: actor,
+      orgId: p.orgId,
+      action: body.until === null ? "member.timeout_end" : "member.timeout",
+      target: p.userId,
+      detail: body.until === null ? null : `${new Date(body.until).toISOString()}${body.reason ? ` ${body.reason}` : ""}`,
+    });
+    // Out of the community's live voice calls at once; every app reloads what it may do.
+    const voice = db
+      .prepare("SELECT c.* FROM calls c JOIN conversations v ON v.id = c.conversation_id WHERE v.org_id = ? AND v.voice = 1 AND c.state != 'ENDED'")
+      .all(p.orgId) as CallRow[];
+    for (const c of voice) await evictFromCall(ctx, c);
+    notifyOrg(ctx, p.orgId);
+    // Only the person's own view of each channel changes (posting, voice), so only their devices reload them.
+    const channels = db
+      .prepare("SELECT c.id FROM conversations c JOIN conversation_members m ON m.conversation_id = c.id WHERE c.org_id = ? AND m.user_id = ?")
+      .all(p.orgId, p.userId) as { id: string }[];
+    for (const c of channels) ctx.hub.sendToUser(p.userId, { t: "conv.updated", conversationId: c.id });
+    return { userId: p.userId, timeoutUntil: authz.timeoutUntil(p.orgId, p.userId) };
   });
 
 }

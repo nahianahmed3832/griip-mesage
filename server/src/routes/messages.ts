@@ -40,6 +40,8 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
     const e = parse(zEnvelope, req.body);
     const conv = authz.requireMember(e.conversationId, userId);
     if (!authz.canPost(conv, userId)) {
+      const timedOut = conv.org_id ? authz.timeoutUntil(conv.org_id, userId) : null;
+      if (timedOut) throw new ApiError(403, "timed_out", `You're timed out in this community until ${new Date(timedOut).toISOString()}`, { until: timedOut });
       throw forbidden(
         conv.archived_at ? "This channel is archived" : conv.kind === "ANNOUNCEMENT" ? "Only managers can post in announcement channels" : "You can't post in this channel",
       );

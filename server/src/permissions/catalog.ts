@@ -21,6 +21,7 @@ export const PERMISSION_KEYS = [
   "members.titles",
   "members.remove",
   "members.ban",
+  "members.timeout",
   // Roles
   "roles.view",
   "roles.manage",
@@ -78,6 +79,7 @@ const DEFS: Record<Permission, Def> = {
   "members.titles": { category: "members", label: "Edit titles", description: "Change the short title shown next to members' names.", admin: true },
   "members.remove": { category: "members", label: "Remove people", description: "Remove members and guests from the community (they can come back with an invitation).", admin: true },
   "members.ban": { category: "members", label: "Ban people", description: "Remove people and keep them out until the ban is lifted, and see the ban list.", admin: true },
+  "members.timeout": { category: "members", label: "Time out people", description: "Stop someone posting, sharing files and joining voice channels for up to 28 days.", admin: true },
   "roles.view": { category: "roles", label: "View roles", description: "See the community's roles and what each one allows." },
   "roles.manage": { category: "roles", label: "Create and edit roles", description: "Create, edit, clone and archive custom roles (only with powers you hold).", admin: true },
   "roles.assign": { category: "roles", label: "Assign roles", description: "Give custom roles to people and take them away (only roles within your own powers).", admin: true },
@@ -155,10 +157,10 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   {
     key: "moderator",
     name: "Moderator",
-    description: "Keeps conversations healthy: manages channels and their access, posts announcements, removes and bans people.",
+    description: "Keeps conversations healthy: manages channels and their access, posts announcements, times out, removes and bans people.",
     color: "#E39B7B",
     icon: "shield",
-    permissions: ["channels.manage", "channels.visibility", "messages.announce", "members.remove", "members.ban"],
+    permissions: ["channels.manage", "channels.visibility", "messages.announce", "members.remove", "members.ban", "members.timeout"],
     denies: [],
   },
   {

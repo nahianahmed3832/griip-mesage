@@ -18,6 +18,8 @@ import com.meldiq.android.data.api.OrgDetailRes
 import com.meldiq.android.data.api.OrgRes
 import com.meldiq.android.data.api.OrgRoleReq
 import com.meldiq.android.data.api.OrgsRes
+import com.meldiq.android.data.api.TimeoutReq
+import com.meldiq.android.data.api.TimeoutRes
 import com.meldiq.android.data.api.UsersRes
 import com.meldiq.android.data.api.UpdateOrgReq
 import com.meldiq.android.data.api.OrgTitleReq
@@ -177,4 +179,7 @@ class OrgRepository(
     suspend fun ban(orgId: String, userId: String, reason: String?) =
         api.post<BanReq, OkRes>("/v1/orgs/$orgId/bans", BanReq(userId, reason?.trim()?.takeIf { it.isNotEmpty() }))
     suspend fun unban(orgId: String, userId: String) = api.delete<OkRes>("/v1/orgs/$orgId/bans/$userId")
+    /** Times [userId] out until [until] (epoch ms), or ends their timeout (null); the server checks who may. */
+    suspend fun timeout(orgId: String, userId: String, until: Long?, reason: String?) =
+        api.put<TimeoutReq, TimeoutRes>("/v1/orgs/$orgId/members/$userId/timeout", TimeoutReq(until, reason?.trim()?.takeIf { it.isNotEmpty() }))
 }

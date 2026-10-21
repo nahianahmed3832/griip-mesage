@@ -373,7 +373,7 @@ abstract class GriipDatabase : RoomDatabase() {
          * Schema version. Raising it needs a matching step in [Migrations] and the exported schema
          * committed under `app/schemas` (docs/DECISIONS.md D-13); `MigrationsTest` enforces both.
          */
-        const val VERSION = 10
+        const val VERSION = 11
 
         /**
          * The database file is encrypted with SQLCipher (AES-256) using a random passphrase that is

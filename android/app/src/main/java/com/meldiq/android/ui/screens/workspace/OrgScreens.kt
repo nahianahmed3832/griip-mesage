@@ -25,6 +25,8 @@ import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.outlined.TimerOff
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.Groups
@@ -152,6 +154,7 @@ fun MembersScreen(nav: NavHostController, orgId: String) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         RoleBadge(u.orgRole)
                         u.expiresAt?.let { TagPill(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.guest_until, com.meldiq.android.ui.TimeFmt.dayHeader(it)), c.warning, c.warningSoft) }
+                        if (TimeoutRules.running(u.timeoutUntil)) TagPill(stringResource(R.string.to_tag), c.danger, c.dangerSoft)
                         u.customRoles.take(2).forEach { r -> TagPill(r.name, c.primaryDeep, c.primarySoft) }
                         if (u.customRoles.size > 2) TagPill("+${u.customRoles.size - 2}", c.textSecondary, c.surfaceVariant)
                     }
@@ -178,7 +181,9 @@ private fun MemberSheet(d: OrgDetailRes, u: UserDto, ownerCount: Int?, onDismiss
     var role by remember { mutableStateOf(u.orgRole) }
     var confirmRemove by remember { mutableStateOf(false) }
     var banning by remember { mutableStateOf(false) }
+    var timingOut by remember { mutableStateOf(false) }
     val me = container.session.session?.userId
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     fun act(block: suspend () -> Unit, after: () -> Unit = {}) = scope.launch {
         runCatching { block() }.onSuccess { after(); onChanged() }.onFailure { error = it.friendly() }
     }
@@ -209,9 +214,27 @@ private fun MemberSheet(d: OrgDetailRes, u: UserDto, ownerCount: Int?, onDismiss
                 Spacer(Modifier.height(10.dp))
                 PillButton(stringResource(R.string.bn_ban), { banning = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, showKnob = false, leadingIcon = Icons.Outlined.Block, height = 48.dp)
             }
+            // Timeouts (MOD-06): read-only in the community for a while; the server checks who may time out whom.
+            if (TimeoutRules.canOffer(d.org.myRole, d.permissions.effective.toSet(), role, self = u.id == me)) item {
+                Spacer(Modifier.height(10.dp))
+                val until = u.timeoutUntil
+                if (until != null && TimeoutRules.running(until)) {
+                    StatusBanner(stringResource(R.string.to_until, TimeoutRules.untilText(until)), BannerKind.Warning)
+                    Spacer(Modifier.height(8.dp))
+                    PillButton(stringResource(R.string.to_end), {
+                        act({ container.orgs.timeout(d.org.id, u.id, null, null) }) {
+                            android.widget.Toast.makeText(ctx, ctx.getString(R.string.to_ended, u.displayName), android.widget.Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        }
+                    }, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, showKnob = false, leadingIcon = Icons.Outlined.TimerOff, height = 48.dp)
+                } else {
+                    PillButton(stringResource(R.string.to_action), { timingOut = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, showKnob = false, leadingIcon = Icons.Outlined.Timer, height = 48.dp)
+                }
+            }
         }
     }
     if (banning) BanSheet(d.org.id, u.id, u.displayName, onDismiss = { banning = false }, onDone = { onChanged(); onDismiss() })
+    if (timingOut) TimeoutSheet(d.org.id, u.id, u.displayName, onDismiss = { timingOut = false }, onDone = { onChanged(); onDismiss() })
     if (confirmRemove) ConfirmDialog(
         "Remove ${u.displayName}?", "They lose access to every channel in ${d.org.name} immediately. They can come back with a new invitation.", "Remove",
         onConfirm = { confirmRemove = false; act({ container.orgs.removeFromOrg(d.org.id, u.id) }) { onDismiss() } }, onDismiss = { confirmRemove = false }, destructive = true,

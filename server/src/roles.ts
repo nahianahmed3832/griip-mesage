@@ -76,3 +76,15 @@ export function banAllowed(actorLike: ActorLike, targetRole: OrgRole | null, tar
   if (!actor.perms.has("members.ban")) return false;
   return targetRole === null || (isLow(targetRole) && canActOn(actor, targetOf(targetRole, false, targetPerms)));
 }
+
+/**
+ * Timing someone out (docs/product/MELDIQ_FEATURE_GAP_MATRIX.md MOD-06): like a ban, with `members.timeout`, but only
+ * for current members, and never an owner.
+ */
+export function timeoutAllowed(actorLike: ActorLike, targetRole: OrgRole | null, targetPerms?: ReadonlySet<Permission>): boolean {
+  const actor = asActor(actorLike);
+  if (targetRole === null || targetRole === "OWNER") return false;
+  if (actor.base === "OWNER") return true;
+  if (!actor.perms.has("members.timeout")) return false;
+  return isLow(targetRole) && canActOn(actor, targetOf(targetRole, false, targetPerms));
+}

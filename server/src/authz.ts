@@ -9,6 +9,10 @@ import { forbidden, notFound } from "./util.js";
  * merely mirrors the same rules to hide controls. Communities, roles and channel permissions:
  * docs/COMMUNITY_REBUILD_2026-10-21.md §5.
  */
+
+/** What a timeout takes away in a community's channels. */
+export const TIMEOUT_TAKES: readonly Permission[] = ["messages.post", "messages.attach", "messages.announce", "voice.connect", "voice.speak"];
+
 export type OrgRole = "OWNER" | "ADMIN" | "MEMBER" | "GUEST";
 
 export interface ConversationRow {
@@ -191,7 +195,24 @@ export class Authz {
     const roles = this.assignedRoles(orgId, userId);
     const restricted = new Set<Permission>();
     if (base !== "OWNER") for (const r of roles) for (const d of r.denies) if (permissionDef(d).restrictable) restricted.add(d);
-    return { base, userId, perms: effectivePermissions(base, roles), roleIds: roles.map((r) => r.id), restricted };
+    const perms = new Set(effectivePermissions(base, roles));
+    // A timeout takes posting, files and voice away everywhere in the community; like a role's restriction, no channel
+    // overwrite gives them back (docs/product/MELDIQ_FEATURE_GAP_MATRIX.md MOD-06).
+    if (base !== "OWNER" && this.timeoutUntil(orgId, userId) !== null) {
+      for (const p of TIMEOUT_TAKES) {
+        perms.delete(p);
+        restricted.add(p);
+      }
+    }
+    return { base, userId, perms, roleIds: roles.map((r) => r.id), restricted };
+  }
+
+  /** When this member's timeout ends, or null when they aren't timed out. */
+  timeoutUntil(orgId: string, userId: string): number | null {
+    const r = this.db.prepare("SELECT timeout_until FROM org_members WHERE org_id = ? AND user_id = ?").get(orgId, userId) as
+      | { timeout_until: number | null }
+      | undefined;
+    return r?.timeout_until && r.timeout_until > Date.now() ? r.timeout_until : null;
   }
 
   /** Permissions inside a category (its overwrites applied): what creating channels there and editing it need. */

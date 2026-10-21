@@ -117,4 +117,20 @@
     <string name="emoji_cat_flags">旗帜</string>
     <string name="react_more">更多回应</string>
     <string name="react_title">添加回应</string>
+    <string name="to_action">禁言</string>
+    <string name="to_end">解除禁言</string>
+    <string name="to_title">禁言 %1$s？</string>
+    <string name="to_body">对方仍可阅读，但在结束前无法在此社区发消息、分享文件或加入语音频道。</string>
+    <string name="to_reason">原因（可选，记录在审计日志中）</string>
+    <string name="to_60s">60 秒</string>
+    <string name="to_5m">5 分钟</string>
+    <string name="to_10m">10 分钟</string>
+    <string name="to_1h">1 小时</string>
+    <string name="to_1d">1 天</string>
+    <string name="to_1w">1 周</string>
+    <string name="to_done">已禁言 %1$s</string>
+    <string name="to_ended">已解除 %1$s 的禁言</string>
+    <string name="to_tag">已禁言</string>
+    <string name="to_until">禁言至 %1$s</string>
+    <string name="to_composer">你在此社区被禁言至 %1$s。你可以阅读，但不能发消息或加入语音。</string>
 </resources>

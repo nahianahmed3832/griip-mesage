@@ -117,4 +117,20 @@
     <string name="emoji_cat_flags">পতাকা</string>
     <string name="react_more">আরও প্রতিক্রিয়া</string>
     <string name="react_title">প্রতিক্রিয়া যোগ করুন</string>
+    <string name="to_action">টাইম আউট</string>
+    <string name="to_end">টাইম আউট শেষ করুন</string>
+    <string name="to_title">%1$s-কে টাইম আউট করবেন?</string>
+    <string name="to_body">তাঁরা পড়তে পারবেন, কিন্তু শেষ না হওয়া পর্যন্ত এই কমিউনিটিতে পোস্ট, ফাইল শেয়ার বা ভয়েস চ্যানেলে যোগ দিতে পারবেন না।</string>
+    <string name="to_reason">কারণ (ঐচ্ছিক, অডিট লগে থাকবে)</string>
+    <string name="to_60s">৬০ সেকেন্ড</string>
+    <string name="to_5m">৫ মিনিট</string>
+    <string name="to_10m">১০ মিনিট</string>
+    <string name="to_1h">১ ঘণ্টা</string>
+    <string name="to_1d">১ দিন</string>
+    <string name="to_1w">১ সপ্তাহ</string>
+    <string name="to_done">%1$s টাইম আউট হয়েছেন</string>
+    <string name="to_ended">%1$s-এর টাইম আউট শেষ হয়েছে</string>
+    <string name="to_tag">টাইম আউট</string>
+    <string name="to_until">%1$s পর্যন্ত টাইম আউট</string>
+    <string name="to_composer">আপনি %1$s পর্যন্ত এই কমিউনিটিতে টাইম আউট। পড়তে পারবেন, কিন্তু পোস্ট বা ভয়েসে যোগ দিতে পারবেন না।</string>
 </resources>

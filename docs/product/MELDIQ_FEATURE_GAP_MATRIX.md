@@ -141,7 +141,7 @@ Meldiq differs from Discord by design in two ways:
 | MOD-03 | Assign roles | IT | I | I | I | — | |
 | MOD-04 | Remove (kick) | IT | I | I | I | — | `members.remove` |
 | MOD-05 | Ban / unban | IT | I | I | I | — | |
-| MOD-06 | Timeout | S | — | — | — | P1 | Server: `muted_until` on membership, enforced in `authz` for posting, reacting (where the server sees it), voice speak and joining; permission `members.timeout`; not on owners or higher roles; 28 days max. Android: Members › Timeout |
+| MOD-06 | Timeout | E2E (Android) | I | D | I | — | 2026-10-21: `PUT /v1/orgs/:id/members/:userId/timeout` (≤ 28 days, reason in the audit log), permission `members.timeout` (in the Moderator template); takes posting, files, announcements and voice in every channel of the community (as a restriction no overwrite lifts), removes them from live voice calls; owners never, admins only by the owner. Android: Members › Time out (60 s – 1 week), Timed out tag, End timeout, composer says until when. Server `member_timeout.test.ts` (6); emulator screenshots `timeout-*.png`. Web: P2 |
 | MOD-07 | Report | S | — | — | — | P1 | Report a message: the reporter's app sends the decrypted message they saw (the reporter's choice to disclose it), with the conversation and message ids, to the community's moderators (in-community) or to Meldiq's operators (platform). The server stores it in `reports` with status. Never automatic |
 | MOD-08 | AutoMod | R | — | — | — | P3 | Text rules can't run on the server (encrypted). Possible: on-device keyword filter rules distributed by the community, mention-spam limits (the server sees mention counts), join-rate limits. Spec §6 |
 | MOD-09 | Audit log | I | I | I | I | — | `audit.view` |
