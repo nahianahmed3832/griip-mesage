@@ -7,7 +7,7 @@
 | VPS | Hostinger VM 1245833, `srv1245833.hstgr.cloud`, **72.60.107.88** (Ubuntu 24.04, 2 vCPU, 8 GB) |
 | Compose project | **`griip-internal-messaging`** |
 | Directory | **`/opt/griip-internal-messaging`** (root, 0750; `.env` 0600) |
-| Services | `api` (`griip-internal-messaging-api:0.11.0` since 2026-10-21 02:55 UTC, built on the VPS; `0.10.0-rollback`, `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
+| Services | `api` (`griip-internal-messaging-api:0.12.0` since 2026-10-21 05:31 UTC, built on the VPS; `0.11.0-rollback`, `0.10.0-rollback`, `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
 | Volume / network | `griip-internal-messaging_api-data`, `griip-internal-messaging_default` |
 | Public URLs | `https://msg.griipbuddy.cloud` (API + WebSocket), `wss://rtc.griipbuddy.cloud` (LiveKit signalling) |
 | TLS | host nginx (`/etc/nginx/sites-available/griip-message.conf`) with certbot certificate `griip-message`, which renews automatically |
@@ -114,6 +114,31 @@ Branch `api-0.8.1-web-return`. No migrations (schema stays 28).
 Not verifiable on production yet: no one can connect an app there (`integrations-status`: no `INTEGRATIONS_TOKEN_KEY`, no
 provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
 `up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
+
+### API 0.12.0 (2026-10-21, 05:31 UTC, owner's go-ahead)
+
+Community rebuild (`internal-beta` at `944ec4b`, docs/COMMUNITY_REBUILD_2026-10-21.md): categories, channel permissions,
+forum channels, discovery, bans; branches and teams converted to roles and categories; workplace modules and optional
+connectors removed (migration 032). Meldiq Web was not updated: its screens for the removed features (inbox, webhooks,
+API keys, AI, groups, documents, workflows, branches and teams) no longer work against this API, as the owner accepted.
+
+| Step | Result |
+|---|---|
+| Checks before | server 604 passed / 10 skipped; Android 537 passed, lint and debug build ok; 1 GiB acceptance 12/12 |
+| Pre-flight | running 0.11.0, healthy; VPS `server/` sources identical to `61b63d7` (checksum); `compose.yaml` identical to the repository's; 52 GB free |
+| Backup | `backups/pre-0.12.0-20261021T052648Z`: integrity ok, schema 31, 33 users, `.env` + `compose.yaml` copies; image tagged `0.11.0-rollback`; sources kept as `server.pre-0.12.0` |
+| Sources | rsync with `--delete` (the 64 removed module files went); VPS `server/` identical to `944ec4b` (checksum) |
+| Rehearsal | 0.12.0 on a copy of the snapshot, `--network none` (env copy without the FCM lines: the key file is in the live volume): migration 32 applied; `community-migration --verify` converted 1 team (1 channel into 1 category), no visibility differences; a second run converted nothing; a full start was healthy with no warnings. Copy deleted afterwards |
+| Switch | `validate-env.sh` 0 errors (the 2 usual warnings), `config -q`, `up -d --no-deps --no-build api`; healthy; LiveKit and ntfy not restarted |
+| Checks after | `/healthz` 0.12.0; restarts 0; no warnings or errors in the log; `verify.sh` OK, 51 GB free; `community-migration --verify` no differences; server-info lists `community-channels`, `community-discovery`, `community-moderation`, `guest-expiry`, `files-1g`, file limit 1 GiB, no `integrations` or `ai`; new routes answer 401 without a session |
+| Retired data | `retired-data` report: everything 0 except 1 row in `api_keys`. Not purged |
+
+Not done: phone acceptance of the community app, the retired settings cleanup (`INTEGRATIONS_WEB_RETURN_URLS` is still
+in `.env` and ignored) and `retired-data --purge`.
+
+Rollback: `image: griip-internal-messaging-api:0.11.0-rollback`, then `up -d --no-deps --no-build api`. Migration 032
+only adds tables and columns and the old branch/team tables are untouched, so 0.11.0 starts on the same database;
+categories, overwrites and bans made under 0.12.0 are ignored by it.
 
 ### API 0.11.0 and Meldiq Web 7d48f85 (2026-10-21, 02:55 UTC, owner's go-ahead)
 
