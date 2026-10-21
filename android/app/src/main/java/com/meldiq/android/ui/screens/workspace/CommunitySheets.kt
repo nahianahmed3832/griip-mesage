@@ -126,13 +126,18 @@ fun ChannelArrangeSheet(
 
 /** Picks the category a channel moves to (it takes that category's permissions). */
 @Composable
-fun MoveToCategorySheet(channel: ConversationDto, categories: List<CategoryDto>, onDismiss: () -> Unit, onPick: (String?) -> Unit) {
+fun MoveToCategorySheet(channel: ConversationDto, categories: List<CategoryDto>, onDismiss: () -> Unit, onPick: (String?) -> Unit) =
+    MoveToCategorySheet(channel.categoryId, categories, onDismiss, onPick)
+
+/** Picks the category a channel in [currentCategoryId] moves to (it takes that category's permissions). */
+@Composable
+fun MoveToCategorySheet(currentCategoryId: String?, categories: List<CategoryDto>, onDismiss: () -> Unit, onPick: (String?) -> Unit) {
     val c = Griip.colors
     GlassSheet(onDismiss, title = stringResource(R.string.cm_move_to)) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             GlassCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(6.dp)) {
-                if (channel.categoryId != null) MenuRow(Icons.Outlined.Tag, stringResource(R.string.cm_no_category), tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { onDismiss(); onPick(null) })
-                categories.filter { it.id != channel.categoryId }.forEach { cat ->
+                if (currentCategoryId != null) MenuRow(Icons.Outlined.Tag, stringResource(R.string.cm_no_category), tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { onDismiss(); onPick(null) })
+                categories.filter { it.id != currentCategoryId }.forEach { cat ->
                     MenuRow(Icons.Outlined.FolderOpen, cat.name, tint = c.peach, tintBg = c.peachSoft, onClick = { onDismiss(); onPick(cat.id) })
                 }
             }

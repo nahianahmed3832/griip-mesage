@@ -255,7 +255,7 @@
     <string name="setup_count">%1$d of %2$d done</string>
     <string name="setup_describe">Add a description</string>
     <string name="setup_photo">Add a community photo</string>
-    <string name="setup_invite">Invite your team</string>
+    <string name="setup_invite">Invite people</string>
     <string name="setup_channels">Create a channel</string>
     <string name="setup_teams">Create a team</string>
     <string name="setup_apps">Install an app</string>

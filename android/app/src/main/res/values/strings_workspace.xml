@@ -17,10 +17,10 @@
     <string name="ws_saved">Saved</string>
     <string name="ws_admin_only">Only owners and admins can edit these details.</string>
     <string name="ws_leave">Leave community</string>
-    <string name="ws_leave_sub">You leave its branches, teams and channels on every device. Your direct messages stay.</string>
+    <string name="ws_leave_sub">You leave its channels on every device. Your direct messages stay.</string>
     <string name="ws_leave_owner">You\'re the only owner. Make someone else an owner before you leave.</string>
     <string name="ws_leave_confirm_title">Leave %1$s?</string>
-    <string name="ws_leave_confirm_body">You\'ll leave every branch, team and channel in it. Messages already on this phone stay readable. To come back you need a new invite.</string>
+    <string name="ws_leave_confirm_body">You\'ll leave every channel in it. Messages already on this phone stay readable. To come back you need a new invite.</string>
     <string name="ws_leave_confirm">Leave</string>
     <string name="ws_left">You left %1$s</string>
     <string name="ws_cancel">Cancel</string>
@@ -30,8 +30,8 @@
     <string name="role_member">Member</string>
     <string name="role_guest">Guest</string>
     <string name="role_owner_sum">Everything, including admins\' and owners\' roles and deleting the community.</string>
-    <string name="role_admin_sum">Manages members, guests, branches, teams, channels and invitations. Can\'t create admins or owners.</string>
-    <string name="role_member_sum">Reads and posts in the public channels of their branches and teams. Branch managers and team leads run what they manage.</string>
+    <string name="role_admin_sum">Manages members, guests, channels, categories and invitations. Can\'t create admins or owners.</string>
+    <string name="role_member_sum">Reads and posts in the channels their roles let them see.</string>
     <string name="role_guest_sum">Sees only the channels a manager adds them to. Can\'t browse the directory.</string>
     <string name="roles_guide_title">What each role can do</string>
     <string name="roles_guide_note">The server checks every change. Buttons you don\'t see are hidden only for convenience.</string>
@@ -43,7 +43,7 @@
     <string name="member_step_down_body">You lose your current role\'s rights in %1$s straight away. Only someone with a higher role can give them back.</string>
     <string name="member_owner_title">Make %1$s an owner?</string>
     <string name="member_owner_body">Owners can do everything, including changing your role and deleting the community.</string>
-    <string name="member_guest_body">Guests lose every branch, team and channel in %1$s. Managers then add them to specific channels.</string>
+    <string name="member_guest_body">Guests lose every channel in %1$s. Managers then add them to specific channels.</string>
     <string name="member_make_guest_title">Make %1$s a guest?</string>
     <string name="member_confirm">Confirm</string>
     <string name="member_remove">Remove from community</string>
@@ -101,7 +101,7 @@
     <string name="ch_mode_change">Change access</string>
     <string name="ch_mode_change_note">Nobody is added or removed. Messages already sent stay with the people who received them.</string>
     <string name="ch_mode_changed">#%1$s is now %2$s</string>
-    <string name="ch_mode_who">Only the managers of this channel\'s community, branch or team can change this.</string>
+    <string name="ch_mode_who">Only people who can change channel access in this community can change this.</string>
     <string name="ch_posting_you_can">You can post here.</string>
     <string name="ch_posting_you_cannot">Only managers and channel admins post here.</string>
     <string name="ch_archived_note">Archived: read-only. Restore it to post again.</string>

@@ -223,7 +223,7 @@ class MessageRepository(
             type = "text", text = body, replyTo = replyTo, threadRoot = threadRoot, mentions = m.ids.ifEmpty { null },
             mentionAll = if (m.all) true else null, attachments = attachments.ifEmpty { null },
             contact = rich?.contact, location = rich?.location, animoji = rich?.animoji, forwarded = if (forwarded) true else null,
-            link = rich?.link, poll = rich?.poll, sticker = rich?.sticker, title = rich?.title,
+            link = rich?.link, poll = rich?.poll, sticker = rich?.sticker, title = rich?.title, tags = rich?.tags?.ifEmpty { null },
         )
         val existing = db.messages().get(id)
         val msg = MessageEntity(

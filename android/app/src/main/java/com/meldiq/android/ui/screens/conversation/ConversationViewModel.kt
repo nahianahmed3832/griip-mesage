@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -194,10 +195,30 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
         if (messages.value.size >= limit.value) limit.value += 60
     }
 
+    /**
+     * How many messages were unread when the conversation opened (null until known): the "New messages" line goes above
+     * the oldest of them. Read before the conversation is marked read, and kept until the screen goes.
+     */
+    val unreadAtOpen = MutableStateFlow<Int?>(null)
+    private val unreadCapture = viewModelScope.async {
+        (if (threadRoot != null) 0 else c.db.conversations().get(conversationId)?.unreadCount ?: 0).also { unreadAtOpen.value = it }
+    }
+
     fun onVisible() {
         c.appState.viewingConversation.value = conversationId
         c.notifier.clear(conversationId)
-        viewModelScope.launch { c.messages.markConversationRead(conversationId) }
+        viewModelScope.launch {
+            unreadCapture.await()
+            c.messages.markConversationRead(conversationId)
+        }
+    }
+
+    /** Mark unread from [m] (message menu): the messages from it to the newest count as unread again on this phone. */
+    fun markUnreadFrom(m: MessageEntity, loaded: List<MessageEntity>) = viewModelScope.launch {
+        val lines = loaded.map { com.meldiq.android.data.model.ConversationMarkers.Line(it.id, it.outgoing, it.kind == "text" && !it.deleted) }
+        val n = com.meldiq.android.data.model.ConversationMarkers.unreadFrom(lines, m.id).coerceAtLeast(1)
+        onHidden()
+        c.db.conversations().setUnread(conversationId, n)
     }
 
     fun onHidden() {
@@ -384,10 +405,13 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
 
     /** A contact card, a one-time location or an animated emoji, with the reply target chosen now. */
     /** A forum post: its title travels inside the encrypted message; the text starts with it for apps without forums. */
-    fun sendForumPost(title: String, body: String) = viewModelScope.launch {
+    fun sendForumPost(title: String, body: String, tags: List<String> = emptyList()) = viewModelScope.launch {
         val clean = com.meldiq.android.data.model.ForumRules.cleanTitle(title) ?: return@launch
         runCatching {
-            c.messages.sendText(conversationId, com.meldiq.android.data.model.ForumRules.text(clean, body), rich = com.meldiq.android.data.model.RichContent(title = clean))
+            c.messages.sendText(
+                conversationId, com.meldiq.android.data.model.ForumRules.text(clean, body),
+                rich = com.meldiq.android.data.model.RichContent(title = clean, tags = com.meldiq.android.data.model.ForumRules.cleanTags(tags).ifEmpty { null }),
+            )
         }.onSuccess { c.analytics.track("message.sent", mapOf("surface" to "channel")) }.onFailure { error.value = it.friendly() }
     }
 

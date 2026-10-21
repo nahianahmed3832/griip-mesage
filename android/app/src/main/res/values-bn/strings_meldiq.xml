@@ -56,7 +56,7 @@
     <string name="start_progress">%2$d টির মধ্যে %1$d টি সম্পন্ন</string>
     <string name="start_profile">আপনার নাম ও ছবি যোগ করুন</string>
     <string name="start_workspace">একটি কমিউনিটি তৈরি করুন বা যোগ দিন</string>
-    <string name="start_invite">সহকর্মীদের আমন্ত্রণ জানান</string>
+    <string name="start_invite">আপনার কমিউনিটিতে মানুষকে আমন্ত্রণ জানান</string>
     <string name="start_apps">আপনার ব্যবহৃত টুল সংযুক্ত করুন</string>
     <string name="start_notifications">নোটিফিকেশন চালু করুন</string>
     <string name="start_hide">লুকান</string>

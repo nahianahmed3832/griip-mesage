@@ -255,7 +255,7 @@
     <string name="setup_count">%2$dটির মধ্যে %1$dটি সম্পন্ন</string>
     <string name="setup_describe">একটি বিবরণ যোগ করুন</string>
     <string name="setup_photo">কমিউনিটির ছবি যোগ করুন</string>
-    <string name="setup_invite">আপনার দলকে আমন্ত্রণ জানান</string>
+    <string name="setup_invite">মানুষকে আমন্ত্রণ জানান</string>
     <string name="setup_channels">একটি চ্যানেল তৈরি করুন</string>
     <string name="setup_teams">একটি টিম তৈরি করুন</string>
     <string name="setup_apps">একটি অ্যাপ ইনস্টল করুন</string>

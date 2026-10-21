@@ -97,6 +97,8 @@ class AppContainer(
     /** Encrypted message history on the server (docs/MESSAGE_HISTORY.md). */
     val history = com.meldiq.android.data.repo.HistorySync(api, db, session, features, conversations, scope)
     val profiles = com.meldiq.android.data.repo.ProfileRepository(app, api, users, session, profile.id)
+    /** Home's per-community view on this phone: last channel, hide muted, unread only (Discord reference round). */
+    val communityView = com.meldiq.android.data.repo.CommunityViewPrefs(app, profile.id)
     val translator by lazy { com.meldiq.android.data.repo.MessageTranslator(app) }
     val backups = com.meldiq.android.data.repo.BackupManager(app, db, session, java.io.File(app.filesDir, profile.attachmentsDir), profile.id)
     val calls = CallManager(app, api, db, session, messages, conversations, settings, scope)

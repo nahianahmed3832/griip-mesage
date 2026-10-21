@@ -255,7 +255,7 @@
     <string name="setup_count">已完成 %1$d / %2$d</string>
     <string name="setup_describe">添加描述</string>
     <string name="setup_photo">添加社区头像</string>
-    <string name="setup_invite">邀请你的团队</string>
+    <string name="setup_invite">邀请成员</string>
     <string name="setup_channels">创建频道</string>
     <string name="setup_teams">创建团队</string>
     <string name="setup_apps">安装应用</string>

@@ -164,8 +164,9 @@ private sealed interface CommunitySheet {
 }
 
 /**
- * The selected community (docs/COMMUNITY_REBUILD_2026-10-21.md): its channels in categories, in order, with joining and
- * (for the people who may) arranging, permissions and new channels or categories; its About; and its administration.
+ * Channels & categories (Community settings › Channels): the selected community's whole channel list in categories,
+ * in order, with joining and (for the people who may) arranging, permissions and new channels or categories. Day to
+ * day, Home's channel panel does the same from long-press menus (docs/product/MELDIQ_COMMUNITY_CHAT_SPEC.md).
  */
 @Composable
 fun WorkspaceScreen(nav: NavHostController) {
@@ -179,13 +180,9 @@ fun WorkspaceScreen(nav: NavHostController) {
     val notice by vm.notice.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val selectedOrg by vm.selectedOrg.collectAsStateWithLifecycle()
-    var tab by rememberSaveable { mutableStateOf(0) }
     var sheet by remember { mutableStateOf<CommunitySheet?>(null) }
-    // Discover exists only on servers with communities (an older one answers 404).
-    var discovery by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         vm.refresh()
-        discovery = vm.c.features.has(com.meldiq.android.data.repo.ServerFeatures.COMMUNITY_DISCOVERY) == true
     }
     LaunchedEffect(notice) { notice?.let { android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_LONG).show(); vm.notice.value = null } }
     val movedMessage = { n: Int -> ctx.getString(R.string.cm_moved, n) }
@@ -200,137 +197,38 @@ fun WorkspaceScreen(nav: NavHostController) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
-            com.meldiq.android.ui.components.GriipTopBar(stringResource(R.string.cm_title), subtitle = d?.org?.name, onBack = { nav.popBackStack() }) {
-                if (discovery) CircleIconButton(Icons.Outlined.Explore, stringResource(R.string.cm_discover), { nav.navigate(Routes.DISCOVER) })
-                if ((orgs?.size ?: 0) > 0) CircleIconButton(Icons.Outlined.SwapHoriz, "Switch community", { sheet = CommunitySheet.Switcher })
-            }
-        }
-        // More than one community: switch with one tap, like a server rail.
-        if ((orgs?.size ?: 0) > 1) item(key = "rail") {
-            WorkspaceRail(orgs.orEmpty(), d?.org?.id ?: selectedOrg, { vm.switchOrg(it) }, { nav.navigate(Routes.JOIN + "?code=") }, Modifier.padding(bottom = 6.dp))
+            com.meldiq.android.ui.components.GriipTopBar(stringResource(R.string.nv_channels_categories), subtitle = d?.org?.name, onBack = { nav.popBackStack() })
         }
         error?.let { item { StatusBanner(it, BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp), action = "Retry", onAction = { vm.refresh() }) } }
         if (d == null) {
-            item {
-                if (loading && orgs == null) ShimmerList(4)
-                else Column {
-                    EmptyState(
-                        Icons.Outlined.Workspaces, stringResource(R.string.cm_none_title), stringResource(R.string.cm_none_body),
-                        action = if (discovery) stringResource(R.string.cm_discover) else null, onAction = if (discovery) ({ nav.navigate(Routes.DISCOVER) }) else null,
-                    )
-                    PillButton(stringResource(R.string.cm_join_or_create), { nav.navigate(Routes.JOIN + "?code=") }, Modifier.fillMaxWidth().padding(horizontal = Space.gutter), tone = ButtonTone.Glass, height = 50.dp)
-                }
-            }
+            item { if (loading && orgs == null) ShimmerList(4) else EmptyState(Icons.Outlined.Workspaces, stringResource(R.string.cm_none_title), stringResource(R.string.cm_none_body)) }
             return@LazyColumn
         }
-        item {
-            GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), shape = Shapes.hero) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    com.meldiq.android.ui.components.OrgMark(d.org.id, d.org.name, WorkspaceList.colorSeed(d.org), d.org.photoRev, size = 56.dp)
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(d.org.name, style = Griip.type.title, color = c.textPrimary)
-                        Text(d.org.description ?: "@${d.org.slug}", style = Griip.type.bodySmall, color = c.textSecondary, maxLines = 2)
-                    }
-                    RoleBadge(d.org.myRole)
-                }
-                Spacer(Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StatTile(stringResource(R.string.cm_stat_members), "${d.stats.members}", Modifier.weight(1f))
-                    StatTile(stringResource(R.string.cm_stat_channels), "${d.stats.channels}", Modifier.weight(1f))
-                    StatTile(stringResource(R.string.cm_stat_categories), "${d.categories.size}", Modifier.weight(1f))
-                }
+        if (sections.isEmpty()) item { EmptyState(Icons.Outlined.Tag, stringResource(R.string.cm_empty_category), stringResource(R.string.cm_none_body)) }
+        sections.forEach { section ->
+            val category = d.categories.firstOrNull { it.id == section.categoryId }
+            item(key = "header-" + section.key) {
+                CategoryHeader(
+                    section.title ?: stringResource(R.string.cm_channels), section.categoryId != null,
+                    onMore = category?.takeIf { it.canManage }?.let { { sheet = CommunitySheet.CategoryActions(it) } },
+                )
+            }
+            if (section.channels.isEmpty()) item(key = "empty-" + section.key) {
+                Text(stringResource(R.string.cm_empty_category), style = Griip.type.caption, color = c.textTertiary, modifier = Modifier.padding(horizontal = Space.gutter + 8.dp, vertical = 4.dp))
+            }
+            items(section.channels, key = { "ch-" + it.id }) { ch ->
+                ChannelRow(
+                    ch,
+                    onOpen = { if (ch.joined) nav.navigate(Routes.conversation(ch.id)) else vm.join(ch) { id -> nav.navigate(Routes.conversation(id)) } },
+                    onJoin = { vm.join(ch) { id -> nav.navigate(Routes.conversation(id)) } },
+                    onMore = if (ch.canManage || canArrange) ({ sheet = CommunitySheet.ChannelActions(ch) }) else null,
+                )
             }
         }
         item {
-            SegmentedPills(
-                listOf(stringResource(R.string.cm_channels), stringResource(R.string.cm_about), stringResource(R.string.cm_manage)), tab, { tab = it },
-                Modifier.padding(horizontal = Space.gutter, vertical = 10.dp),
-            )
-        }
-
-        when (tab) {
-            0 -> {
-                if (sections.isEmpty()) item { EmptyState(Icons.Outlined.Tag, stringResource(R.string.cm_empty_category), stringResource(R.string.cm_none_body)) }
-                sections.forEach { section ->
-                    val category = d.categories.firstOrNull { it.id == section.categoryId }
-                    item(key = "header-" + section.key) {
-                        CategoryHeader(
-                            section.title ?: stringResource(R.string.cm_channels), section.categoryId != null,
-                            onMore = category?.takeIf { it.canManage }?.let { { sheet = CommunitySheet.CategoryActions(it) } },
-                        )
-                    }
-                    if (section.channels.isEmpty()) item(key = "empty-" + section.key) {
-                        Text(stringResource(R.string.cm_empty_category), style = Griip.type.caption, color = c.textTertiary, modifier = Modifier.padding(horizontal = Space.gutter + 8.dp, vertical = 4.dp))
-                    }
-                    items(section.channels, key = { "ch-" + it.id }) { ch ->
-                        ChannelRow(
-                            ch,
-                            onOpen = { if (ch.joined) nav.navigate(Routes.conversation(ch.id)) else vm.join(ch) { id -> nav.navigate(Routes.conversation(id)) } },
-                            onJoin = { vm.join(ch) { id -> nav.navigate(Routes.conversation(id)) } },
-                            onMore = if (ch.canManage || canArrange) ({ sheet = CommunitySheet.ChannelActions(ch) }) else null,
-                        )
-                    }
-                }
-                item {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (d.permissions.canCreateChannels) PillButton(stringResource(R.string.cm_new_channel), { sheet = CommunitySheet.NewChannel(null) }, Modifier.weight(1f), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.PostAdd)
-                        if (canCreateCategory) PillButton(stringResource(R.string.cm_new_category), { sheet = CommunitySheet.NewCategory }, Modifier.weight(1f), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.CreateNewFolder)
-                    }
-                }
-            }
-            1 -> item { CommunityAbout(d, onInvite = if (d.permissions.canInvite) ({ nav.navigate(Routes.invites(d.org.id)) }) else null) }
-            else -> {
-                // Honest setup progress for the people who run the community (hidden once every step is done).
-                if (d.permissions.canManageOrg) item(key = "setup") { WorkspaceSetupCard(d) }
-                item {
-                    GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), contentPadding = PaddingValues(6.dp)) {
-                        MenuRow(
-                            Icons.Outlined.Settings, stringResource(R.string.ws_settings_open),
-                            subtitle = stringResource(R.string.ws_your_role, roleLabel(d.org.myRole)),
-                            onClick = { sheet = CommunitySheet.Settings },
-                        )
-                        if (d.permissions.canViewDirectory) MenuRow(Icons.Outlined.ManageAccounts, stringResource(R.string.cm_stat_members), subtitle = stringResource(R.string.manage_roles_sub), onClick = { nav.navigate(Routes.members(d.org.id)) })
-                        if (d.permissions.canInvite) MenuRow(Icons.Outlined.GroupAdd, "Invitations", subtitle = "Create invite codes & QR, revoke", tint = c.peach, tintBg = c.peachSoft, onClick = { nav.navigate(Routes.invites(d.org.id)) })
-                        if (d.permissions.canViewRoles) MenuRow(
-                            Icons.Outlined.AdminPanelSettings, stringResource(R.string.manage_roles),
-                            subtitle = stringResource(R.string.manage_roles_sub), onClick = { nav.navigate(Routes.roles(d.org.id)) },
-                        )
-                        if (d.permissions.canBan) MenuRow(Icons.Outlined.Block, stringResource(R.string.cm_bans), subtitle = stringResource(R.string.cm_bans_sub), tint = c.danger, tintBg = c.dangerSoft, onClick = { nav.navigate(Routes.bans(d.org.id)) })
-                        MenuRow(
-                            Icons.Outlined.Event, stringResource(R.string.cm_events), subtitle = stringResource(R.string.cm_events_sub), tint = c.peach, tintBg = c.peachSoft,
-                            onClick = { nav.navigate(Routes.meetings(d.org.id, canSchedule = d.org.myRole != "GUEST")) },
-                        )
-                        if (d.permissions.canViewDirectory) MenuRow(Icons.Outlined.History, stringResource(R.string.activity_workspace_log), tint = c.lavender, tintBg = c.lavenderSoft, onClick = { nav.navigate(Routes.activity(d.org.id)) })
-                        if (d.permissions.canViewAudit) MenuRow(
-                            Icons.Outlined.Policy, stringResource(R.string.manage_audit),
-                            subtitle = stringResource(R.string.manage_audit_sub), tint = c.lavender, tintBg = c.lavenderSoft,
-                            onClick = { nav.navigate(Routes.audit(d.org.id)) },
-                        )
-                        if (d.permissions.canViewUsage) MenuRow(
-                            Icons.Outlined.Insights, stringResource(R.string.manage_usage),
-                            subtitle = stringResource(R.string.manage_usage_sub), onClick = { nav.navigate(Routes.usage(d.org.id)) },
-                        )
-                        if (discovery) MenuRow(Icons.Outlined.Explore, stringResource(R.string.cm_discover), tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.DISCOVER) })
-                        MenuRow(Icons.Outlined.Workspaces, stringResource(R.string.cm_join_or_create), tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.JOIN + "?code=") })
-                    }
-                }
-                // Owner only, at the very end of Manage: far from switching communities, so a tap there can't reach it.
-                if (DeleteWorkspaceRules.visible(d.org.myRole)) {
-                    item { Text("Danger zone", style = Griip.type.section, color = c.danger, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 10.dp)) }
-                    item {
-                        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), contentPadding = PaddingValues(6.dp)) {
-                            if (d.permissions.canTransferOwnership) MenuRow(
-                                Icons.Outlined.SwapHoriz, stringResource(R.string.owner_transfer), subtitle = stringResource(R.string.owner_transfer_sub),
-                                tint = c.warning, tintBg = c.warningSoft, onClick = { sheet = CommunitySheet.Transfer },
-                            )
-                            MenuRow(
-                                Icons.Outlined.DeleteForever, "Delete community", subtitle = "For every member. Can't be undone.",
-                                tint = c.danger, tintBg = c.dangerSoft, onClick = { sheet = CommunitySheet.Delete },
-                            )
-                        }
-                    }
-                }
+            Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (d.permissions.canCreateChannels) PillButton(stringResource(R.string.cm_new_channel), { sheet = CommunitySheet.NewChannel(null) }, Modifier.weight(1f), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.PostAdd)
+                if (canCreateCategory) PillButton(stringResource(R.string.cm_new_category), { sheet = CommunitySheet.NewCategory }, Modifier.weight(1f), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.CreateNewFolder)
             }
         }
     }
@@ -434,29 +332,4 @@ private fun ChannelRow(ch: ConversationDto, onOpen: () -> Unit, onJoin: () -> Un
             }
         },
     )
-}
-
-/** About: the community's description, rules and how people find and join it. */
-@Composable
-private fun CommunityAbout(d: OrgDetailRes, onInvite: (() -> Unit)?) {
-    val c = Griip.colors
-    Column(Modifier.padding(horizontal = Space.gutter)) {
-        GlassCard(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-            Text(d.org.name, style = Griip.type.title, color = c.textPrimary)
-            d.org.description?.let { Spacer(Modifier.height(6.dp)); Text(it, style = Griip.type.body, color = c.textSecondary) }
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TagPill(stringResource(if (d.org.visibility == CommunityAccess.PUBLIC) R.string.cs_public else R.string.cs_private), c.primaryDeep, c.primarySoft)
-                TagPill(stringResource(if (d.org.joinPolicy == CommunityAccess.OPEN) R.string.dc_open else R.string.dc_invite_only), c.textSecondary, c.surfaceVariant)
-            }
-        }
-        d.org.rules?.takeIf { it.isNotBlank() }?.let { rules ->
-            GlassCard(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                Text(stringResource(R.string.cm_rules), style = Griip.type.section, color = c.textPrimary)
-                Spacer(Modifier.height(6.dp))
-                Text(rules, style = Griip.type.body, color = c.textSecondary)
-            }
-        }
-        onInvite?.let { PillButton("Invite people", it, Modifier.fillMaxWidth().padding(vertical = 10.dp), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.GroupAdd) }
-    }
 }

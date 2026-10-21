@@ -1,5 +1,9 @@
 package com.meldiq.android.ui.screens.conversation
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.outlined.Search
+import com.meldiq.android.data.api.ForumTagDto
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -58,33 +62,58 @@ fun ForumPostList(
     body: (MessageEntity) -> String,
     onOpen: (MessageEntity) -> Unit,
     modifier: Modifier = Modifier,
+    /** The forum's tags (servers with `forum-tags`), and a post's tag ids (from inside its encrypted message). */
+    forumTags: List<ForumTagDto> = emptyList(),
+    postTags: (MessageEntity) -> List<String> = { emptyList() },
 ) {
     val c = Griip.colors
     var sort by rememberSaveable { mutableStateOf(ForumRules.Sort.LATEST_ACTIVITY) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var selected by rememberSaveable { mutableStateOf(emptySet<String>()) }
     val posts = remember(roots, replies, sort) { ForumRules.posts(roots, replies, sort, id = { it.id }, time = { it.sortTs }, visible = { !it.deleted && it.kind == "text" }) }
+    val shown = remember(posts, query, selected) { ForumRules.filter(posts, query, selected, title, body, postTags) }
+    val tagNames = remember(forumTags) { forumTags.associate { it.id to it.name } }
     if (posts.isEmpty()) {
         EmptyState(Icons.Outlined.Forum, stringResource(R.string.ch_forum), stringResource(R.string.fm_empty), modifier)
         return
     }
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 12.dp)) {
-        item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item(key = "search") {
+            GriipTextField(
+                query, { query = it.take(80) }, stringResource(R.string.nv_search_posts), Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp),
+                leadingIcon = Icons.Outlined.Search,
+            )
+        }
+        item(key = "filters") {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.gutter, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PillChip(stringResource(R.string.fm_sort_latest), sort == ForumRules.Sort.LATEST_ACTIVITY, { sort = ForumRules.Sort.LATEST_ACTIVITY })
                 PillChip(stringResource(R.string.fm_sort_new), sort == ForumRules.Sort.NEWEST, { sort = ForumRules.Sort.NEWEST })
+                if (forumTags.isNotEmpty()) {
+                    PillChip(stringResource(R.string.nv_all_tags), selected.isEmpty(), { selected = emptySet() })
+                    forumTags.forEach { t -> PillChip(t.name, t.id in selected, { selected = if (t.id in selected) selected - t.id else selected + t.id }) }
+                }
             }
         }
-        items(posts, key = { it.root.id }) { post ->
+        if (shown.isEmpty()) item(key = "no-match") {
+            Text(stringResource(R.string.nv_no_matching_posts), style = Griip.type.bodySmall, color = c.textSecondary, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 16.dp))
+        }
+        items(shown, key = { it.root.id }) { post ->
             val m = post.root
             val author = if (m.senderUserId == me) "You" else users[m.senderUserId]?.displayName ?: "Someone"
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 5.dp), onClick = { onOpen(m) }) {
                 Text(title(m), style = Griip.type.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                val labels = postTags(m).mapNotNull { tagNames[it] }
+                if (labels.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { labels.forEach { TagPill(it, c.primaryDeep, c.primarySoft) } }
+                }
                 body(m).takeIf { it.isNotBlank() }?.let {
                     Spacer(Modifier.height(4.dp))
                     Text(it, style = Griip.type.bodySmall, color = c.textSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(author, users[m.senderUserId]?.avatarColor ?: m.senderUserId.hashCode(), size = 20.dp)
+                    Avatar(users[m.senderUserId]?.displayName ?: author, users[m.senderUserId]?.avatarColor ?: m.senderUserId.hashCode(), size = 20.dp)
                     Spacer(Modifier.width(6.dp))
                     Text("$author · ${TimeFmt.listStamp(post.lastActivity)}", style = Griip.type.caption, color = c.textTertiary, modifier = Modifier.weight(1f))
                     TagPill(
@@ -112,14 +141,31 @@ fun ForumComposerBar(canPost: Boolean, onNewPost: () -> Unit) {
 }
 
 @Composable
-fun NewPostSheet(onDismiss: () -> Unit, onPost: (String, String) -> Unit) {
+fun NewPostSheet(onDismiss: () -> Unit, forumTags: List<ForumTagDto> = emptyList(), onPost: (String, String, List<String>) -> Unit) {
     var title by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
+    var tags by remember { mutableStateOf(emptyList<String>()) }
     GlassSheet(onDismiss, title = stringResource(R.string.fm_new_post)) {
         GriipTextField(title, { title = it.take(ForumRules.MAX_TITLE) }, stringResource(R.string.fm_title))
         Spacer(Modifier.height(10.dp))
         GriipTextField(body, { body = it.take(4000) }, stringResource(R.string.fm_body), singleLine = false, minLines = 4)
+        if (forumTags.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Text(stringResource(R.string.nv_tags), style = Griip.type.label, color = Griip.colors.textSecondary)
+            Spacer(Modifier.height(6.dp))
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                forumTags.forEach { t ->
+                    PillChip(t.name, t.id in tags, {
+                        tags = when {
+                            t.id in tags -> tags - t.id
+                            tags.size < ForumRules.MAX_TAGS_PER_POST -> tags + t.id
+                            else -> tags
+                        }
+                    })
+                }
+            }
+        }
         Spacer(Modifier.height(16.dp))
-        PillButton(stringResource(R.string.fm_post), { onPost(title, body); onDismiss() }, Modifier.fillMaxWidth().padding(bottom = 8.dp), enabled = ForumRules.cleanTitle(title) != null, height = 50.dp)
+        PillButton(stringResource(R.string.fm_post), { onPost(title, body, tags); onDismiss() }, Modifier.fillMaxWidth().padding(bottom = 8.dp), enabled = ForumRules.cleanTitle(title) != null, height = 50.dp)
     }
 }

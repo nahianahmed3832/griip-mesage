@@ -116,7 +116,7 @@
     <string name="chats_archived_title">Archived chats</string>
     <string name="chats_archived_sub">Only on this phone. They still notify you unless muted.</string>
     <string name="chats_empty">No conversations yet</string>
-    <string name="chats_empty_body">Message someone, or join your team\'s channels.</string>
+    <string name="chats_empty_body">Message someone, or start a group.</string>
     <string name="swipe_mark_read">Mark read</string>
     <string name="swipe_mark_unread">Mark unread</string>
     <string name="swipe_archive">Archive</string>
@@ -172,7 +172,7 @@
     <string name="auth_error_unknown">Something went wrong. Please try again.</string>
     <string name="welcome_title_1">Private by design.</string>
     <string name="welcome_title_2">Connected by everyone.</string>
-    <string name="welcome_body">Messages, team channels and calls, encrypted on your phone before they leave it.</string>
+    <string name="welcome_body">Messages, community channels and calls, encrypted on your phone before they leave it.</string>
     <string name="welcome_trust">End-to-end encrypted · Your keys stay on this phone</string>
     <string name="welcome_sign_up">Sign up</string>
     <string name="welcome_log_in">Log in</string>

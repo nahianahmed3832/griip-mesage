@@ -71,8 +71,12 @@ fun CallControlBar(
         modifier.widthIn(max = 520.dp).fillMaxWidth().clip(Shapes.hero).background(Color.Black.copy(alpha = 0.35f)).padding(vertical = 12.dp, horizontal = 4.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        CallControlButton(if (s.micOn) Icons.Rounded.Mic else Icons.Rounded.MicOff, if (s.micOn) "Mute" else "Unmute", onMic, active = !s.micOn)
-        CallControlButton(if (s.cameraOn) Icons.Rounded.Videocam else Icons.Rounded.VideocamOff, "Camera", onCamera, active = s.cameraOn)
+        // A listener (voice channel without speaking rights) can't turn the microphone or camera on: the buttons say so.
+        CallControlButton(
+            if (s.micOn) Icons.Rounded.Mic else Icons.Rounded.MicOff, if (s.listenOnly) "Listening" else if (s.micOn) "Mute" else "Unmute", onMic,
+            active = !s.micOn, enabled = !s.listenOnly,
+        )
+        CallControlButton(if (s.cameraOn) Icons.Rounded.Videocam else Icons.Rounded.VideocamOff, "Camera", onCamera, active = s.cameraOn, enabled = !s.listenOnly)
         AudioRouteButton(s.audioRoute, s.audioRoutes, onAudio)
         CallControlButton(
             if (s.screenSharing) Icons.Rounded.StopScreenShare else Icons.Rounded.ScreenShare, if (s.screenSharing) "Stop share" else "Share", onShare,
@@ -154,7 +158,7 @@ object CallControlsRules {
     fun endLabel(s: CallUiState): String = if (s.isGroup && s.participants.count { !it.isLocal } > 0) "Leave" else "End"
 
     /** Sharing starts once the call is connected (and can always be stopped). */
-    fun canShare(s: CallUiState): Boolean = s.screenSharing || s.phase == CallPhase.Connected
+    fun canShare(s: CallUiState): Boolean = s.screenSharing || (s.phase == CallPhase.Connected && !s.listenOnly)
 
     /** Someone else's microphone is on but no sound bytes arrive: worth saying when sound is "missing". */
     fun noSoundArriving(s: CallUiState): Boolean =

@@ -114,7 +114,7 @@
     <string name="chats_archived_title">已归档的聊天</string>
     <string name="chats_archived_sub">仅限本机。除非静音，仍会通知你。</string>
     <string name="chats_empty">还没有对话</string>
-    <string name="chats_empty_body">给某人发消息，或加入团队的频道。</string>
+    <string name="chats_empty_body">给某人发消息，或创建群组。</string>
     <string name="swipe_mark_read">标为已读</string>
     <string name="swipe_mark_unread">标为未读</string>
     <string name="swipe_archive">归档</string>
@@ -170,7 +170,7 @@
     <string name="auth_error_unknown">出了点问题，请重试。</string>
     <string name="welcome_title_1">设计即隐私。</string>
     <string name="welcome_title_2">连接每一个人。</string>
-    <string name="welcome_body">消息、团队频道和通话在离开你的手机之前就已加密。</string>
+    <string name="welcome_body">消息、社区频道和通话在离开你的手机之前就已加密。</string>
     <string name="welcome_trust">端到端加密 · 密钥只保存在这部手机上</string>
     <string name="welcome_sign_up">注册</string>
     <string name="welcome_log_in">登录</string>

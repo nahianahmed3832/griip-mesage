@@ -13,6 +13,8 @@ import com.meldiq.android.ui.media.MediaViewer
 import com.meldiq.android.data.model.AttachmentRef
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Headset
+import androidx.compose.material.icons.outlined.MarkChatUnread
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Share
 import android.widget.Toast
@@ -334,6 +336,11 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     }
     val openAttachment: (AttachmentRef) -> Unit = { ref -> if (MediaGallery.kindOf(ref) != null) viewerFor = ref.id else vm.openAttachment(ctx, ref) }
     val showJump by remember { derivedStateOf { listState.firstVisibleItemIndex > 4 } }
+    // The "New messages" line (docs/product/MELDIQ_COMMUNITY_CHAT_SPEC.md §5): placed once, above the oldest message
+    // that was unread when the conversation opened, and the list starts there.
+    val unreadAtOpen by vm.unreadAtOpen.collectAsStateWithLifecycle()
+    var unreadMarker by rememberSaveable { mutableStateOf<String?>(null) }
+    var unreadMarkerPlaced by rememberSaveable { mutableStateOf(false) }
     val permission = com.meldiq.android.ui.screens.calls.rememberCallPermission()
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) vm.startVoice() else vm.error.value = VoiceDraftController.PERMISSION
@@ -367,6 +374,19 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         if (messages.isNotEmpty()) {
             if (listState.firstVisibleItemIndex <= 2) listState.animateScrollToItem(0)
             vm.onVisible()
+        }
+    }
+    LaunchedEffect(unreadAtOpen, messages.isNotEmpty()) {
+        val n = unreadAtOpen ?: return@LaunchedEffect
+        if (unreadMarkerPlaced || messages.isEmpty()) return@LaunchedEffect
+        unreadMarkerPlaced = true
+        val lines = messages.map { com.meldiq.android.data.model.ConversationMarkers.Line(it.id, it.outgoing, it.kind == "text" && !it.deleted) }
+        unreadMarker = com.meldiq.android.data.model.ConversationMarkers.firstUnread(lines, n)
+        val idx = unreadMarker?.let { id -> messages.indexOfFirst { it.id == id } } ?: -1
+        if (idx > 2) {
+            // Reverse layout: the item lands at the bottom; move it up so the unread messages after it fit below.
+            listState.scrollToItem(idx)
+            listState.scrollBy(-(listState.layoutInfo.viewportSize.height * 0.6f))
         }
     }
     LaunchedEffect(listState) {
@@ -438,6 +458,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         callMediaE2ee = chatSettings.mediaE2ee,
     )
     val subtitle = when {
+        threadRoot != null && conv?.type == "CHANNEL" -> androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nv_thread_in, conv?.name.orEmpty())
         threadRoot != null -> "Thread"
         typing.isNotEmpty() -> if (isGroup) "${typing.first()} is typing…" else "typing…"
         conv?.type == "DM" && peer != null && remoteMembers.isNotEmpty() -> "@${peer.username}"
@@ -447,11 +468,11 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             listOfNotNull(peer?.statusEmoji, peer?.statusText).joinToString(" ").ifBlank { null },
         ).joinToString(" · ")
         conv?.type == "CHANNEL" -> listOfNotNull(
-            conv?.scopeName, "${conv?.memberCount ?: 0} members",
+            conv?.scopeName, com.meldiq.android.ui.screens.community.memberCountLabel(conv?.memberCount ?: 0),
             // Round 3 (the reference's "2 Online"): servers with conversation-presence.
             onlineCount?.takeIf { it > 0 }?.let { onlineLabel(it) },
         ).joinToString(" · ")
-        else -> "${conv?.memberCount ?: 0} members"
+        else -> com.meldiq.android.ui.screens.community.memberCountLabel(conv?.memberCount ?: 0)
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
@@ -477,7 +498,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 conv?.let { ConversationAvatar(it, me, size = 40.dp, online = peerUser?.online) }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(if (conv?.type == "CHANNEL") "#$title" else title, style = Griip.type.titleSmall, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val postTitle = if (threadRoot != null && conv?.format == "forum") root?.let { r -> com.meldiq.android.data.model.ForumRules.titleOf(vm.c.messages.rich(r)?.title, r.text) } else null
+                    Text(postTitle ?: if (conv?.type == "CHANNEL") "#$title" else title, style = Griip.type.titleSmall, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(subtitle, style = Griip.type.caption, color = if (typing.isNotEmpty() || peerUser?.online == true) c.primary else c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
@@ -548,7 +570,16 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         }
         val activeCall = conv?.activeCallId
         // A voice room (round 6): who's in it, and Join (which opens it when nobody is there yet).
-        if (conv?.voice == true && call.phase == CallPhase.Idle && threadRoot == null) {
+        if (conv?.voice == true && conv?.canConnect == false && threadRoot == null) {
+            StatusBanner(
+                androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nv_no_voice), BannerKind.Info,
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Outlined.Headset,
+            )
+        } else if (conv?.voice == true && call.phase == CallPhase.Idle && threadRoot == null) {
+            if (conv?.canSpeak == false) StatusBanner(
+                androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nv_listen_only), BannerKind.Info,
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Outlined.Headset,
+            )
             val here = conv?.let { com.meldiq.android.ui.screens.home.roomPeople(it).size } ?: 0
             StatusBanner(
                 if (here > 0) androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.vr_banner_here, here)
@@ -577,6 +608,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     title = { m -> com.meldiq.android.data.model.ForumRules.titleOf(vm.c.messages.rich(m)?.title, m.text) },
                     body = { m -> com.meldiq.android.data.model.ForumRules.body(vm.c.messages.rich(m)?.title ?: m.text.lineSequence().firstOrNull(), m.text) },
                     onOpen = { m -> nav.navigate(Routes.conversation(conversationId, m.id)) },
+                    forumTags = conv?.let { vm.c.conversations.forumTags(it) }.orEmpty(),
+                    postTags = { m -> vm.c.messages.rich(m)?.tags.orEmpty() },
                 )
                 return@Box
             }
@@ -627,6 +660,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                         },
                     ) {
                         if (older == null || !TimeFmt.sameDay(older.sortTs, m.sortTs)) DayDivider(m.sortTs)
+                        if (m.id == unreadMarker) NewMessagesDivider()
                         SwipeToReply(canSwipeReply && selected == null, onReply = { vm.replyTo.value = m; vm.editing.value = null; focusComposer() }) {
                         MessageBubble(
                             BubbleModel(
@@ -644,6 +678,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                                 mediaCards = chatSettings.mediaCards,
                                 canVote = conv?.canPost != false,
                                 saved = m.id in savedIds,
+                                mentionsYou = com.meldiq.android.data.model.ConversationMarkers.mentionsYou(m.outgoing, MentionRules.fromStored(vm.c.messages.mentions(m)), me),
                             ),
                             me = me,
                             transfer = vm.c.messages.attachments(m).firstNotNullOfOrNull { transfers[it.id] } ?: transfers[m.id],
@@ -796,6 +831,12 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     vm.editing.value = m; vm.replyTo.value = null; setText(m.text); actionFor = null
                 }, trailing = null)
                 if (interactive) MenuRow(Icons.Outlined.PushPin, if (m.pinned) "Unpin" else "Pin for everyone", tint = c.peach, tintBg = c.peachSoft, onClick = { vm.pin(m); actionFor = null }, trailing = null)
+                if (!m.outgoing && threadRoot == null) MenuRow(Icons.Outlined.MarkChatUnread, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nv_mark_unread), onClick = {
+                    actionFor = null
+                    vm.markUnreadFrom(m, messages)
+                    Toast.makeText(ctx, ctx.getString(com.meldiq.android.R.string.nv_marked_unread), Toast.LENGTH_SHORT).show()
+                    nav.popBackStack()
+                }, trailing = null)
                 if (vm.c.messages.attachments(m).isNotEmpty()) MenuRow(Icons.Outlined.CheckCircle, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.bulk_menu_select), onClick = { selected = setOf(m.id); actionFor = null }, trailing = null)
                 val pollOpen = vm.c.messages.rich(m)?.let { it.poll != null && it.pollClosed != true } == true
                 if (interactive && m.outgoing && pollOpen) MenuRow(Icons.Outlined.Lock, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.poll_close), onClick = { vm.closePoll(m); actionFor = null }, trailing = null)
@@ -914,7 +955,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             onSendSticker = { s -> vm.sendSticker(s); emojiSheet = false },
         )
     }
-    if (newPostSheet) NewPostSheet(onDismiss = { newPostSheet = false }, onPost = { t, b -> vm.sendForumPost(t, b) })
+    if (newPostSheet) NewPostSheet(onDismiss = { newPostSheet = false }, forumTags = conv?.let { vm.c.conversations.forumTags(it) }.orEmpty(), onPost = { t, b, tags -> vm.sendForumPost(t, b, tags) })
     if (pollSheet) PollComposerSheet(onSend = { poll -> vm.sendRich(com.meldiq.android.data.model.RichContent(poll = poll)); pollSheet = false }, onDismiss = { pollSheet = false })
     remindFor?.let { m ->
         com.meldiq.android.ui.screens.home.RemindSheet(
@@ -994,6 +1035,20 @@ private fun InfoLine(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Text(label, style = Griip.type.label, color = c.textTertiary, modifier = Modifier.width(130.dp))
         Text(value, style = Griip.type.bodySmall, color = c.textPrimary, modifier = Modifier.weight(1f))
+    }
+}
+
+/** The "New messages" line above the oldest message that was unread when the conversation opened. */
+@Composable
+private fun NewMessagesDivider() {
+    val c = Griip.colors
+    val label = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nv_new_messages)
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).semantics { contentDescription = label }, verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f).height(1.dp).background(c.badge))
+        Text(
+            label.uppercase(), style = Griip.type.caption.copy(fontWeight = FontWeight.Bold), color = c.onBadge,
+            modifier = Modifier.padding(start = 8.dp).clip(Shapes.small).background(c.badge).padding(horizontal = 6.dp, vertical = 1.dp),
+        )
     }
 }
 

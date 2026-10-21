@@ -61,6 +61,10 @@ interface ConversationDao {
     @Query("UPDATE conversations SET unreadCount = CASE WHEN unreadCount = 0 THEN 1 ELSE unreadCount END WHERE id = :id")
     suspend fun markUnread(id: String)
 
+    /** Mark unread from a message (the conversation's menu): [n] messages count as unread again. */
+    @Query("UPDATE conversations SET unreadCount = :n WHERE id = :id")
+    suspend fun setUnread(id: String, n: Int)
+
     @Query("UPDATE conversations SET draft = :draft WHERE id = :id")
     suspend fun setDraft(id: String, draft: String?)
 
@@ -369,7 +373,7 @@ abstract class GriipDatabase : RoomDatabase() {
          * Schema version. Raising it needs a matching step in [Migrations] and the exported schema
          * committed under `app/schemas` (docs/DECISIONS.md D-13); `MigrationsTest` enforces both.
          */
-        const val VERSION = 9
+        const val VERSION = 10
 
         /**
          * The database file is encrypted with SQLCipher (AES-256) using a random passphrase that is

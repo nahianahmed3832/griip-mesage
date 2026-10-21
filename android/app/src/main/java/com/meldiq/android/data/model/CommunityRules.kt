@@ -92,6 +92,15 @@ object OverwriteRules {
     fun ordered(list: List<OverwriteDto>): List<OverwriteDto> =
         list.sortedWith(compareBy({ when (it.kind) { "everyone" -> 0; "role" -> 1; else -> 2 } }, { it.label.lowercase() }))
 
+    /**
+     * A channel with no rules of its own follows its category exactly (the reference's "synced"): Meldiq applies the
+     * category's overwrites first and the channel's on top, so a channel without any is in sync by definition.
+     */
+    fun synced(channelOverwrites: List<OverwriteDto>): Boolean = channelOverwrites.all { it.allow.isEmpty() && it.deny.isEmpty() }
+
+    /** The rules "Sync with category" removes: every subject with something set on the channel itself. */
+    fun syncTargets(channelOverwrites: List<OverwriteDto>): List<String> = channelOverwrites.filter { it.allow.isNotEmpty() || it.deny.isNotEmpty() }.map { it.subject }
+
     /** True when the channel or category is hidden from people without a role (the lock on its name). */
     fun gated(list: List<OverwriteDto>): Boolean = list.any { it.subject == EVERYONE && "channels.view" in it.deny }
 }

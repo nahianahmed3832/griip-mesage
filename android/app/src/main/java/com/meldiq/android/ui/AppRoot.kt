@@ -26,6 +26,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Notifications
@@ -57,12 +59,10 @@ import com.meldiq.android.ui.components.FloatingNavBar
 import com.meldiq.android.ui.components.NavItem
 import com.meldiq.android.ui.screens.calls.CallOverlay
 import com.meldiq.android.ui.screens.calls.CallsScreen
-import com.meldiq.android.ui.screens.chats.ChatListRules
 import com.meldiq.android.ui.screens.chats.ChatsScreen
 import com.meldiq.android.ui.screens.chats.DmListRequest
 import com.meldiq.android.ui.screens.home.ActivityFeedScreen
 import com.meldiq.android.ui.screens.home.WorkspaceHomeRules
-import com.meldiq.android.ui.screens.home.WorkspaceHomeScreen
 import com.meldiq.android.ui.screens.chats.NewChatScreen
 import com.meldiq.android.ui.screens.conversation.ConversationInfoScreen
 import com.meldiq.android.ui.screens.conversation.ConversationScreen
@@ -91,6 +91,8 @@ object Routes {
     const val CHATS = "chats"
     /** The Activity tab: @mentions, missed calls, the workspace change log. Not [activity], one workspace's log. */
     const val ACTIVITY = "activity"
+    /** The You tab: your profile, status, Later, reminders, drafts, calls and settings (Discord reference round). */
+    const val YOU = "you"
     /** Call history and new calls; opens from Home's Calls card, Activity, the DMs menu and the profile menu. */
     const val CALLS = "calls"
     /** Messages saved for later, with reminders (Home's Later card, 2026-10-19). */
@@ -99,7 +101,10 @@ object Routes {
     const val INTRO = "intro"
     /** Reminders: upcoming, overdue and done (round 6, docs/REMINDERS.md). */
     const val REMINDERS = "reminders"
+    /** Community settings, in groups (Discord reference round). */
     const val WORKSPACE = "workspace"
+    /** Channels & categories: arranging the selected community's channel list. */
+    const val CHANNELS_MANAGE = "workspace/channels"
     /** Settings (profile, account, privacy, appearance, notifications, calls, about), from your avatar on Home. */
     const val PROFILE = "profile"
     const val JOIN = "join"
@@ -141,10 +146,9 @@ object Routes {
     fun usage(orgId: String) = "usage/$orgId"
     fun user(id: String) = "user/$id"
     /**
-     * The bottom bar (UI-002): exactly Home, DMs and Activity. Calls, Contacts, Settings and the Workspace screen open
-     * from Home, its menus and the DMs menu, with Back.
+     * The bottom bar (2026-10-21): Home (communities), DMs, Activity and You. Everything else opens over them, with Back.
      */
-    val tabs = setOf(HOME, CHATS, ACTIVITY)
+    val tabs = setOf(HOME, CHATS, ACTIVITY, YOU)
 }
 
 @Composable
@@ -260,19 +264,16 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             popEnterTransition = { motion.enter(this, forward = false) },
             popExitTransition = { motion.exit(this, forward = false) },
         ) {
-            composable(Routes.HOME) {
-                WorkspaceHomeScreen(nav, onSeeAllUnreadDms = {
-                    dmRequest.open(ChatListRules.UNREAD)
-                    nav.switchTab(Routes.CHATS)
-                })
-            }
+            composable(Routes.HOME) { com.meldiq.android.ui.screens.community.CommunityHomeScreen(nav) }
+            composable(Routes.YOU) { com.meldiq.android.ui.screens.you.YouScreen(nav) }
             composable(Routes.CHATS) { ChatsScreen(nav, dmRequest) }
             composable(Routes.ACTIVITY) { ActivityFeedScreen(nav) }
             composable(Routes.CALLS) { CallsScreen(nav) }
             composable(Routes.LATER) { com.meldiq.android.ui.screens.home.LaterScreen(nav) }
             composable(Routes.INTRO) { com.meldiq.android.ui.screens.onboarding.IntroScreen(onDone = { nav.popBackStack() }) }
             composable(Routes.REMINDERS) { com.meldiq.android.ui.screens.reminders.RemindersScreen(nav) }
-            composable(Routes.WORKSPACE) { WorkspaceScreen(nav) }
+            composable(Routes.WORKSPACE) { com.meldiq.android.ui.screens.community.CommunitySettingsScreen(nav) }
+            composable(Routes.CHANNELS_MANAGE) { WorkspaceScreen(nav) }
             composable(Routes.CONTACTS) { com.meldiq.android.ui.screens.contacts.ContactsScreen(nav) }
             composable(Routes.PROFILE) { com.meldiq.android.ui.screens.profile.SettingsHub(nav) }
             composable(Routes.JOIN + "?code={code}") { JoinWorkspaceScreen(nav, it.arguments?.getString("code")) }
@@ -327,6 +328,7 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
                     NavItem(Routes.HOME, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nav_home), Icons.Outlined.Home, Icons.Rounded.Home, badge = homeBadge),
                     NavItem(Routes.CHATS, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nav_dms), Icons.AutoMirrored.Outlined.Chat, Icons.AutoMirrored.Rounded.Chat, badge = dmBadge),
                     NavItem(Routes.ACTIVITY, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nav_activity), Icons.Outlined.Notifications, Icons.Rounded.Notifications, badge = activityBadge),
+                    NavItem(Routes.YOU, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nv_you), Icons.Outlined.AccountCircle, Icons.Rounded.AccountCircle),
                 ),
                 selectedRoute = route,
                 onSelect = { item -> nav.switchTab(item.route) },

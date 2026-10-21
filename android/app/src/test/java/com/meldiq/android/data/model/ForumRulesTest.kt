@@ -36,4 +36,29 @@ class ForumRulesTest {
         val newest = ForumRules.posts(roots, replies, ForumRules.Sort.NEWEST, id = { it.id }, time = { it.ts }, visible = { !it.deleted })
         assertEquals(listOf("b", "a"), newest.map { it.root.id })
     }
+
+    @Test
+    fun `a post's tags are well-formed, distinct and at most five`() {
+        assertEquals(listOf("tag_a", "tag_b"), ForumRules.cleanTags(listOf("tag_a", "tag_a", "bad id!", "tag_b")))
+        assertEquals(ForumRules.MAX_TAGS_PER_POST, ForumRules.cleanTags((1..9).map { "t$it" }).size)
+        assertEquals(emptyList<String>(), ForumRules.cleanTags(null))
+    }
+
+    @Test
+    fun `a forum's tag names are trimmed, bounded and not repeated`() {
+        assertEquals(listOf("Bug", "Idea"), ForumRules.cleanTagNames(listOf("  Bug ", "Idea", "bug", " ")))
+        assertEquals(ForumRules.MAX_TAG_NAME, ForumRules.cleanTagNames(listOf("x".repeat(40))).single().length)
+    }
+
+    @Test
+    fun `search and tag filters run over this phone's posts`() {
+        data class P(val title: String, val body: String, val tags: List<String>)
+        val posts = listOf(P("Lens advice", "which one?", listOf("q")), P("Star party", "Friday night", listOf("event")), P("Untagged", "", emptyList()))
+            .map { ForumRules.Post(it, 0, 0L) }
+        fun run(q: String, sel: Set<String>) = ForumRules.filter(posts, q, sel, { it.title }, { it.body }, { it.tags }).map { it.root.title }
+        assertEquals(listOf("Lens advice", "Star party", "Untagged"), run("", emptySet()))
+        assertEquals(listOf("Star party"), run("FRIDAY", emptySet()))
+        assertEquals(listOf("Lens advice", "Star party"), run("", setOf("q", "event")))
+        assertEquals(emptyList<String>(), run("lens", setOf("event")))
+    }
 }

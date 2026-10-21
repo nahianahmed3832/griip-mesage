@@ -13,10 +13,11 @@ from strings_meldiq2 import S as MELDIQ2
 from strings_round3 import S as ROUND3
 from strings_keybackup import S as KEYBACKUP
 from strings_community import S as COMMUNITY
+from strings_navigation import S as NAVIGATION
 res = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "src", "main", "res")
 # Every key must be unique across the tables (Android merges them into one namespace).
 _seen = {}
-for _name, _table in [("strings", S), ("strings_account", ACCOUNT), ("strings_workspace", WORKSPACE), ("strings_apps", APPS), ("strings_meldiq", MELDIQ), ("strings_round6", ROUND6), ("strings_round7", ROUND7), ("strings_meldiq2", MELDIQ2), ("strings_round3", ROUND3), ("strings_keybackup", KEYBACKUP), ("strings_community", COMMUNITY)]:
+for _name, _table in [("strings", S), ("strings_account", ACCOUNT), ("strings_workspace", WORKSPACE), ("strings_apps", APPS), ("strings_meldiq", MELDIQ), ("strings_round6", ROUND6), ("strings_round7", ROUND7), ("strings_meldiq2", MELDIQ2), ("strings_round3", ROUND3), ("strings_keybackup", KEYBACKUP), ("strings_community", COMMUNITY), ("strings_navigation", NAVIGATION)]:
     for _k in _table:
         if _k in _seen:
             raise SystemExit(f"duplicate string key {_k!r} in {_name} and {_seen[_k]}")
@@ -114,3 +115,10 @@ for lang, folder, idx in [("en", "values", 0), ("zh", "values-zh-rCN", 1), ("bn"
     cm.append('</resources>')
     open(f"{res}/{folder}/strings_community.xml", "w").write("\n".join(cm) + "\n")
     print(folder, "community", len(COMMUNITY))
+    # Navigation strings (2026-10-21, Discord reference round): strings_navigation.py.
+    nv = ['<?xml version="1.0" encoding="utf-8"?>', '<!-- Navigation and community strings (docs/LANGUAGES.md). Generated from strings_navigation.py. -->', '<resources>']
+    for k, v in NAVIGATION.items():
+        nv.append(f'    <string name="{k}">{esc(v[idx])}</string>')
+    nv.append('</resources>')
+    open(f"{res}/{folder}/strings_navigation.xml", "w").write("\n".join(nv) + "\n")
+    print(folder, "navigation", len(NAVIGATION))

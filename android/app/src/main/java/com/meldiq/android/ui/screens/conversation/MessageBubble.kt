@@ -50,6 +50,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -113,7 +114,24 @@ data class BubbleModel(
     val canVote: Boolean = true,
     /** Saved for later (Home › Later). */
     val saved: Boolean = false,
+    /** It mentions you (or @everyone reached you): the row is tinted with an accent bar at its start. */
+    val mentionsYou: Boolean = false,
 )
+
+/** A message that mentions you: a soft tint behind the whole row and a bar at its start edge, in both layouts. */
+@Composable
+private fun Modifier.mentionHighlight(on: Boolean): Modifier {
+    if (!on) return this
+    val c = Griip.colors
+    val tint = c.warningSoft.copy(alpha = 0.55f)
+    val bar = c.warning
+    return this.drawBehind {
+        drawRect(tint)
+        val w = 3.dp.toPx()
+        val x = if (layoutDirection == androidx.compose.ui.unit.LayoutDirection.Ltr) 0f else size.width - w
+        drawRect(bar, topLeft = androidx.compose.ui.geometry.Offset(x, 0f), size = androidx.compose.ui.geometry.Size(w, size.height))
+    }
+}
 
 /** What a message can do when touched; one set shared by both layouts. */
 private class MessageCallbacks(
@@ -188,7 +206,7 @@ private fun BubbleMessage(b: BubbleModel, me: String?, transfer: Float?, localFi
     val shape = if (out) RoundedCornerShape(r, if (b.firstInGroup) tail else r, r, r) else RoundedCornerShape(if (b.firstInGroup) tail else r, r, r, r)
     val sub = if (out) c.bubbleOutgoingMeta else c.textSecondary
     Row(
-        Modifier.fillMaxWidth().padding(start = if (out) 56.dp else 10.dp, end = if (out) 10.dp else 48.dp, top = if (b.firstInGroup) 8.dp else 2.dp),
+        Modifier.fillMaxWidth().mentionHighlight(b.mentionsYou).padding(start = if (out) 56.dp else 10.dp, end = if (out) 10.dp else 48.dp, top = if (b.firstInGroup) 8.dp else 2.dp),
         horizontalArrangement = if (out) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Bottom,
     ) {
@@ -246,6 +264,7 @@ private fun StreamMessage(b: BubbleModel, me: String?, transfer: Float?, localFi
     val out = m.outgoing
     Row(
         Modifier.fillMaxWidth()
+            .mentionHighlight(b.mentionsYou)
             .combinedClickable(onClick = { if (m.status == MessageStatus.FAILED) cb.onRetry() }, onLongClick = cb.onLongPress, onLongClickLabel = "Message actions")
             .padding(start = 14.dp, end = 12.dp, top = if (b.firstInGroup) 10.dp else 1.dp, bottom = 1.dp),
         verticalAlignment = Alignment.Top,

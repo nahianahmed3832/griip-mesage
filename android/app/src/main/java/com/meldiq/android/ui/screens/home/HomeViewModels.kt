@@ -70,6 +70,9 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     private val _detail = MutableStateFlow<OrgDetailRes?>(null)
     /** The selected workspace's structure and your permissions in it (null: none selected, or not loaded yet). */
     val detail: StateFlow<OrgDetailRes?> = _detail.asStateFlow()
+    private val _serverChannels = MutableStateFlow<List<com.meldiq.android.data.api.ConversationDto>>(emptyList())
+    /** The selected community's channels as the server lists them for you (to show the ones you haven't joined). */
+    val serverChannels: StateFlow<List<com.meldiq.android.data.api.ConversationDto>> = _serverChannels.asStateFlow()
 
     init {
         refresh()
@@ -78,9 +81,11 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         viewModelScope.launch {
             selectedOrg.collectLatest { id ->
                 _detail.value = null
+                _serverChannels.value = emptyList()
                 if (id == null) return@collectLatest
                 c.orgs.cachedDetail(id)?.let { _detail.value = it }
                 runCatching { c.orgs.detail(id) }.onSuccess { if (selectedOrg.value == id) _detail.value = it }
+                loadChannels(id)
             }
         }
         viewModelScope.launch { c.messages.orgEvents.collect { id -> if (id == selectedOrg.value) reloadDetail() } }
@@ -114,6 +119,18 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     fun reloadDetail() = viewModelScope.launch {
         val id = selectedOrg.value ?: return@launch
         runCatching { c.orgs.detail(id) }.onSuccess { if (selectedOrg.value == id) _detail.value = it }
+        loadChannels(id)
+    }
+
+    private suspend fun loadChannels(orgId: String) {
+        runCatching { c.orgs.channels(orgId) }.onSuccess { if (selectedOrg.value == orgId) _serverChannels.value = it }
+    }
+
+    /** Joins a channel you may see but aren't in, then [then] (opens it); [onError] says why it failed. */
+    fun join(id: String, then: (String) -> Unit, onError: (String) -> Unit) = viewModelScope.launch {
+        runCatching { c.conversations.join(id) }
+            .onSuccess { then(id); selectedOrg.value?.let { loadChannels(it) } }
+            .onFailure { onError(it.friendly()) }
     }
 
     /** Switches the workspace Home shows, through the same saved selection the Workspace screen uses. */

@@ -52,6 +52,13 @@ object Migrations {
             "ALTER TABLE `conversations` ADD COLUMN `position` INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE `conversations` ADD COLUMN `format` TEXT NOT NULL DEFAULT 'text'",
         ),
+        // v10 (2026-10-21, Discord reference round): a forum's tags (JSON, from the server), and whether you may join and
+        // talk in a voice channel. Existing conversations have no tags and keep both until the server says otherwise.
+        9 to listOf(
+            "ALTER TABLE `conversations` ADD COLUMN `forumTagsJson` TEXT",
+            "ALTER TABLE `conversations` ADD COLUMN `canConnect` INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE `conversations` ADD COLUMN `canSpeak` INTEGER NOT NULL DEFAULT 1",
+        ),
         6 to listOf(
             "CREATE TABLE IF NOT EXISTS `history_outbox` (`key` TEXT NOT NULL, `queuedAt` INTEGER NOT NULL, PRIMARY KEY(`key`))",
             "CREATE INDEX IF NOT EXISTS `index_history_outbox_queuedAt` ON `history_outbox` (`queuedAt`)",

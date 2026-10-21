@@ -59,6 +59,10 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val COMMUNITY_DISCOVERY = "community-discovery"
         /** Bans. */
         const val COMMUNITY_MODERATION = "community-moderation"
+        /** 2026-10-21 Discord reference round: forum tags, deleting a channel, voice join/speak permissions. */
+        const val FORUM_TAGS = "forum-tags"
+        const val CHANNEL_DELETE = "channel-delete"
+        const val VOICE_PERMISSIONS = "voice-permissions"
         /** Meldiq 2.0: experiments and content-free analytics counts (docs/product/EXPERIMENTS.md). */
         const val EXPERIMENTS = "experiments"
         const val ANALYTICS_EVENTS = "analytics-events"

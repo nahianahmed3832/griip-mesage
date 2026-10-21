@@ -68,9 +68,17 @@ fun ChannelPermissionsScreen(nav: NavHostController, category: Boolean, id: Stri
     var busy by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf(false) }
     var orgId by remember { mutableStateOf<String?>(null) }
+    // A channel's category and its rules: what the channel inherits, and what "Sync with category" returns it to.
+    var parent by remember { mutableStateOf<Pair<String, OverwritesRes?>?>(null) }
+    var confirmSync by remember { mutableStateOf(false) }
     fun load() = scope.launch {
         runCatching { if (category) container.orgs.categoryOverwrites(id) else container.orgs.channelOverwrites(id) }
             .onSuccess { data = it; error = null }.onFailure { error = it.friendly() }
+        if (!category) {
+            val conv = container.db.conversations().get(id)
+            val catId = conv?.categoryId
+            parent = if (catId == null) null else (conv.categoryName ?: "") to runCatching { container.orgs.categoryOverwrites(catId) }.getOrNull()
+        }
     }
     LaunchedEffect(id) {
         load()
@@ -108,13 +116,22 @@ fun ChannelPermissionsScreen(nav: NavHostController, category: Boolean, id: Stri
             Text(stringResource(R.string.perm_hint), style = Griip.type.caption, color = c.textTertiary, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 6.dp))
         }
         if (!d.canManage) item { StatusBanner(stringResource(R.string.perm_readonly), BannerKind.Info, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) }
+        parent?.let { (catName, _) ->
+            item(key = "sync") {
+                if (OverwriteRules.synced(d.overwrites)) StatusBanner(stringResource(R.string.nv_synced_with, catName), BannerKind.Success, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp))
+                else StatusBanner(
+                    stringResource(R.string.nv_not_synced, catName), BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp),
+                    action = if (d.canManage) stringResource(R.string.nv_sync_now) else null, onAction = if (d.canManage) ({ confirmSync = true }) else null,
+                )
+            }
+        }
         // @everyone is always listed, even without a rule yet, so its defaults can be changed.
         val everyone = d.overwrites.firstOrNull { it.subject == OverwriteRules.EVERYONE }
             ?: OverwriteDto(OverwriteRules.EVERYONE, "everyone", "@everyone")
         val rules = listOf(everyone) + OverwriteRules.ordered(d.overwrites.filter { it.subject != OverwriteRules.EVERYONE })
         items(rules, key = { it.subject }) { o ->
             OverwriteCard(
-                o, d, enabled = d.canManage && !busy,
+                o, d, enabled = d.canManage && !busy, inherited = parent?.second?.overwrites?.firstOrNull { it.subject == o.subject },
                 onChange = { cap, state -> val (allow, deny) = OverwriteRules.with(o, cap, state); save(o.subject, allow, deny) },
                 onRemove = if (o.subject != OverwriteRules.EVERYONE && (o.allow.isNotEmpty() || o.deny.isNotEmpty())) ({ save(o.subject, emptyList(), emptyList()) }) else null,
             )
@@ -124,6 +141,22 @@ fun ChannelPermissionsScreen(nav: NavHostController, category: Boolean, id: Stri
         }
     }
 
+    if (confirmSync && d != null) com.meldiq.android.ui.components.ConfirmDialog(
+        stringResource(R.string.nv_sync_title), stringResource(R.string.nv_sync_body, parent?.first.orEmpty()), stringResource(R.string.nv_sync_now),
+        onConfirm = {
+            confirmSync = false
+            busy = true
+            scope.launch {
+                // One rule at a time, as the server checks each against the writer's own powers; stops at the first refusal.
+                runCatching { OverwriteRules.syncTargets(d.overwrites).forEach { subject -> container.orgs.setOverwrite(false, id, OverwriteReq(subject, emptyList(), emptyList())) } }
+                    .onSuccess { android.widget.Toast.makeText(ctx, ctx.getString(R.string.nv_synced_toast), android.widget.Toast.LENGTH_SHORT).show() }
+                    .onFailure { error = it.friendly() }
+                load()
+                busy = false
+            }
+        },
+        onDismiss = { confirmSync = false },
+    )
     if (adding && d != null) AddSubjectSheet(
         d, orgId,
         onDismiss = { adding = false },
@@ -136,7 +169,7 @@ fun ChannelPermissionsScreen(nav: NavHostController, category: Boolean, id: Stri
 }
 
 @Composable
-private fun OverwriteCard(o: OverwriteDto, d: OverwritesRes, enabled: Boolean, onChange: (String, OverwriteState) -> Unit, onRemove: (() -> Unit)?) {
+private fun OverwriteCard(o: OverwriteDto, d: OverwritesRes, enabled: Boolean, inherited: OverwriteDto?, onChange: (String, OverwriteState) -> Unit, onRemove: (() -> Unit)?) {
     val c = Griip.colors
     GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -150,6 +183,14 @@ private fun OverwriteCard(o: OverwriteDto, d: OverwritesRes, enabled: Boolean, o
             Spacer(Modifier.height(10.dp))
             Text(cap.label, style = Griip.type.label, color = c.textSecondary)
             val state = OverwriteRules.state(o, cap.key)
+            // Default on the channel: say what the category sets for the same people, if anything.
+            val fromCategory = OverwriteRules.state(inherited, cap.key)
+            if (state == OverwriteState.INHERIT && fromCategory != OverwriteState.INHERIT) {
+                Text(
+                    stringResource(R.string.nv_from_category, stringResource(if (fromCategory == OverwriteState.ALLOW) R.string.perm_allow else R.string.perm_deny)),
+                    style = Griip.type.caption, color = c.textTertiary,
+                )
+            }
             Row(Modifier.padding(top = 4.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
                 PillChip(stringResource(R.string.perm_allow), state == OverwriteState.ALLOW, { if (enabled) onChange(cap.key, OverwriteState.ALLOW) })
                 PillChip(stringResource(R.string.perm_default), state == OverwriteState.INHERIT, { if (enabled) onChange(cap.key, OverwriteState.INHERIT) })

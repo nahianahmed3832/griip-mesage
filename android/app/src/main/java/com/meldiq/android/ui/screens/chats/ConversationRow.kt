@@ -80,7 +80,7 @@ fun ConversationAvatar(conv: ConversationEntity, myUserId: String?, size: androi
                 "PRIVATE" -> c.lavender to c.lavenderSoft
                 else -> c.primaryDeep to c.primarySoft
             }
-            IconTile(channelIcon(conv.kind), fg, bg, size = size, modifier = Modifier.semantics { contentDescription = "Channel" })
+            IconTile(channelIcon(conv.kind, conv.voice, conv.format), fg, bg, size = size, modifier = Modifier.semantics { contentDescription = "Channel" })
         }
     }
 }

@@ -41,6 +41,8 @@ data class Payload(
      * without forums still show it; omitted on every other message.
      */
     val title: String? = null,
+    /** A forum post's tags: ids from the forum's tag list (Discord reference round, 2026-10-21); omitted elsewhere. */
+    val tags: List<String>? = null,
 )
 
 /**
@@ -94,6 +96,8 @@ data class RichContent(
     val sticker: StickerRef? = null,
     /** A forum post's title; the post's text still starts with it ([ForumRules.body] strips it for display). */
     val title: String? = null,
+    /** A forum post's tag ids (the forum's tags name them). */
+    val tags: List<String>? = null,
 ) {
     /** Replaces the text (a card, a poll, a sticker or an animated emoji) rather than accompanying it (a link preview). */
     val structured: Boolean get() = contact != null || location != null || animoji != null || poll != null || sticker != null

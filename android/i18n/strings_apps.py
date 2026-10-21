@@ -273,7 +273,7 @@ S = {
 "setup_count": ("%1$d of %2$d done", "已完成 %1$d / %2$d", "%2$dটির মধ্যে %1$dটি সম্পন্ন"),
 "setup_describe": ("Add a description", "添加描述", "একটি বিবরণ যোগ করুন"),
 "setup_photo": ("Add a community photo", "添加社区头像", "কমিউনিটির ছবি যোগ করুন"),
-"setup_invite": ("Invite your team", "邀请你的团队", "আপনার দলকে আমন্ত্রণ জানান"),
+"setup_invite": ("Invite people", "邀请成员", "মানুষকে আমন্ত্রণ জানান"),
 "setup_channels": ("Create a channel", "创建频道", "একটি চ্যানেল তৈরি করুন"),
 "setup_teams": ("Create a team", "创建团队", "একটি টিম তৈরি করুন"),
 "setup_apps": ("Install an app", "安装应用", "একটি অ্যাপ ইনস্টল করুন"),

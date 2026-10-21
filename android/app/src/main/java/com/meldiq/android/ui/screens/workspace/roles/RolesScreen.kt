@@ -227,10 +227,10 @@ fun categoryName(cat: String): String = when (cat) {
     "workspace" -> stringResource(R.string.roles_cat_workspace)
     "members" -> stringResource(R.string.roles_cat_members)
     "roles" -> stringResource(R.string.roles_cat_roles)
-    "teams" -> stringResource(R.string.roles_cat_teams)
     "channels" -> stringResource(R.string.roles_cat_channels)
     "messaging" -> stringResource(R.string.roles_cat_messaging)
-    "integrations" -> stringResource(R.string.roles_cat_integrations)
+    // Voice channels: joining and speaking (2026-10-21).
+    "voice" -> stringResource(R.string.nv_roles_cat_voice)
     "security" -> stringResource(R.string.roles_cat_security)
     else -> cat
 }

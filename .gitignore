@@ -35,3 +35,7 @@ __pycache__/
 .DS_Store
 .idea/
 *.iml
+
+# Discord reference captures: real people's names and messages, kept local only (docs/product/MELDIQ_DISCORD_REFERENCE_AUDIT.md)
+research/
+tools/emulator/accounts.local.json

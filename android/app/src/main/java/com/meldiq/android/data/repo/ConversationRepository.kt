@@ -74,6 +74,8 @@ class ConversationRepository(
             voice = d.voice,
             roomPeopleJson = d.activeCall?.participantIds?.let { GriipJson.encodeToString(ListSerializer(String.serializer()), it) },
             categoryId = d.categoryId, categoryName = d.categoryName, position = d.position, format = d.format,
+            forumTagsJson = d.forumTags.takeIf { it.isNotEmpty() }?.let { GriipJson.encodeToString(ListSerializer(com.meldiq.android.data.api.ForumTagDto.serializer()), it) },
+            canConnect = d.canConnect, canSpeak = d.canSpeak,
         )
         if (d.joined || local != null) db.conversations().upsert(e)
         return e
@@ -110,8 +112,26 @@ class ConversationRepository(
         return ConversationRepository.members(conv).map { com.meldiq.android.data.model.MentionMember(it.id, it.username, it.displayName) }
     }
 
-    suspend fun update(id: String, name: String? = null, topic: String? = null, archived: Boolean? = null, kind: String? = null, format: String? = null) =
-        upsertFromServer(api.patch<PatchConversationReq, ConversationRes>("/v1/conversations/$id", PatchConversationReq(name, topic, archived, kind, format)).conversation)
+    suspend fun update(
+        id: String, name: String? = null, topic: String? = null, archived: Boolean? = null, kind: String? = null, format: String? = null,
+        forumTags: List<com.meldiq.android.data.api.ForumTagReq>? = null,
+    ) = upsertFromServer(api.patch<PatchConversationReq, ConversationRes>("/v1/conversations/$id", PatchConversationReq(name, topic, archived, kind, format, forumTags)).conversation)
+
+    /**
+     * Deletes a community channel for everyone (servers with `channel-delete`), after the person typed its name. The
+     * local copy goes with it: its messages and files on this phone are removed too.
+     */
+    suspend fun deleteChannel(id: String, confirmName: String): com.meldiq.android.data.api.DeleteChannelRes {
+        val r = api.delete<com.meldiq.android.data.api.DeleteChannelReq, com.meldiq.android.data.api.DeleteChannelRes>(
+            "/v1/conversations/$id", com.meldiq.android.data.api.DeleteChannelReq(confirmName),
+        )
+        db.conversations().markRemoved(id)
+        return r
+    }
+
+    /** A forum's tags as stored with the conversation. */
+    fun forumTags(conv: ConversationEntity): List<com.meldiq.android.data.api.ForumTagDto> =
+        conv.forumTagsJson?.let { runCatching { GriipJson.decodeFromString(ListSerializer(com.meldiq.android.data.api.ForumTagDto.serializer()), it) }.getOrNull() }.orEmpty()
 
     /** The server's current view of a conversation, with fields the local table doesn't keep (who may change its access). */
     suspend fun fetch(id: String): ConversationDto = api.get<ConversationRes>("/v1/conversations/$id").conversation.also { upsertFromServer(it) }

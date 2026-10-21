@@ -145,7 +145,16 @@ import kotlinx.serialization.json.JsonObject
     val categoryName: String? = null,
     val position: Int = 0,
     val format: String = ChannelFormat.TEXT,
+    /** Forum channels: the tags posts can carry (servers with `forum-tags`). */
+    val forumTags: List<ForumTagDto> = emptyList(),
+    /** May you share files here (false where a permission takes it away; older servers: follow [canPost]). */
+    val canAttach: Boolean? = null,
+    /** Voice channels (servers with `voice-permissions`): may you join the call, and talk in it. */
+    val canConnect: Boolean = true,
+    val canSpeak: Boolean = true,
 )
+/** A label a forum offers for its posts. The server knows the names; a post's own tags are inside its encrypted message. */
+@Serializable data class ForumTagDto(val id: String, val name: String)
 /** Text channels hold a conversation; forum channels hold posts with titles, each with its replies (threads). */
 object ChannelFormat {
     const val TEXT = "text"
@@ -171,7 +180,12 @@ object ChannelFormat {
     val name: String? = null, val topic: String? = null, val archived: Boolean? = null, val kind: String? = null,
     /** Communities: "text" or "forum" (text channels only). */
     val format: String? = null,
+    /** Forum channels: the whole list of tags (an id keeps an existing tag; no id: a new one). */
+    val forumTags: List<ForumTagReq>? = null,
 )
+@Serializable data class ForumTagReq(val id: String? = null, val name: String)
+@Serializable data class DeleteChannelReq(val confirmName: String)
+@Serializable data class DeleteChannelRes(val deleted: Boolean = false, val id: String = "", val members: Int = 0, val files: Int = 0)
 @Serializable data class RoleReq(val role: String)
 
 // ───────── Messages & queue ─────────
@@ -406,7 +420,8 @@ object CommunityAccess {
     val hands: List<String> = emptyList(),
 )
 @Serializable data class CallAttendanceDto(val userId: String, val joinedAt: Long, val leftAt: Long, val seconds: Long)
-@Serializable data class MediaGrant(val url: String, val token: String, val room: String)
+/** [canSpeak] false: a voice channel where you may only listen (the token can't publish). Older servers: true. */
+@Serializable data class MediaGrant(val url: String, val token: String, val room: String, val canSpeak: Boolean = true)
 @Serializable data class CallRes(val call: CallDto, val media: MediaGrant? = null, val joinedExisting: Boolean = false)
 @Serializable data class CallsRes(val calls: List<CallDto>)
 @Serializable data class StartCallReq(val conversationId: String, val video: Boolean)

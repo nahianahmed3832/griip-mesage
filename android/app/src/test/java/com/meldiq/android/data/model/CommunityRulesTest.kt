@@ -81,4 +81,14 @@ class CommunityRulesTest {
         // Moving into a category puts the channel last there, once.
         assertEquals(listOf(LayoutChannel("a", null, 0), LayoutChannel("c", null, 1)), LayoutRules.moveTo("c", null, listOf("a", "c")))
     }
+
+    @Test
+    fun `a channel without rules of its own is in sync with its category`() {
+        val none = com.meldiq.android.data.api.OverwriteDto("everyone", "everyone", "@everyone")
+        val own = com.meldiq.android.data.api.OverwriteDto("role_a", "role", "Staff", allow = listOf("messages.post"))
+        assertEquals(true, OverwriteRules.synced(emptyList()))
+        assertEquals(true, OverwriteRules.synced(listOf(none)))
+        assertEquals(false, OverwriteRules.synced(listOf(none, own)))
+        assertEquals(listOf("role_a"), OverwriteRules.syncTargets(listOf(none, own)))
+    }
 }

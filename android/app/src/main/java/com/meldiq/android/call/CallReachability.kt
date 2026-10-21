@@ -102,10 +102,14 @@ object MediaPath {
 object CallFailure {
     const val MICROPHONE = "Couldn't start the microphone. Check that Meldiq may use it."
     const val CAMERA = "Couldn't start the camera. Check that Meldiq may use it."
+    /** A voice channel where your roles don't include speaking (`voice.speak`). */
+    const val LISTEN_ONLY = "You can listen in this voice channel, but not speak."
+    const val NO_VOICE = "You can't join this voice channel."
 
     fun forApi(e: com.meldiq.android.data.api.ApiException): String = when {
         e.status == 410 -> "This call has already ended."
         e.status == 404 -> "This call no longer exists."
+        e.status == 403 && "voice channel" in e.message -> NO_VOICE
         e.status == 401 || e.status == 403 -> "You're not allowed to join this call."
         e.status == 503 || e.code == "media_unavailable" -> "Calling isn't set up on this server."
         e.code == "no_key" -> e.message

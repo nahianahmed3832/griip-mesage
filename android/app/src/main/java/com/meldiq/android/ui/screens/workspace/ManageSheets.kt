@@ -54,7 +54,14 @@ internal fun Label(text: String) {
  * checks again.
  */
 @Composable
-fun CreateChannelSheet(d: OrgDetailRes, preselectCategory: String?, onDismiss: () -> Unit, onDone: (String) -> Unit) {
+fun CreateChannelSheet(
+    d: OrgDetailRes,
+    preselectCategory: String?,
+    onDismiss: () -> Unit,
+    /** A private channel starts with only you: [onPrivateCreated] opens its member list to add people (like the reference's second step). */
+    onPrivateCreated: ((String) -> Unit)? = null,
+    onDone: (String) -> Unit,
+) {
     val container = LocalContainer.current
     val scope = rememberCoroutineScope()
     val communityWide = "channels.create" in d.permissions.effective || d.permissions.canManageOrg
@@ -117,7 +124,7 @@ fun CreateChannelSheet(d: OrgDetailRes, preselectCategory: String?, onDismiss: (
                 scope.launch {
                     runCatching {
                         container.orgs.createChannel(d.org.id, CreateChannelReq(name.trim(), topic.trim().ifEmpty { null }, kind, voice = voice, categoryId = categoryId, format = format))
-                    }.onSuccess { onDismiss(); onDone(it.id) }.onFailure { error = it.friendly() }
+                    }.onSuccess { onDismiss(); if (kind == "PRIVATE" && onPrivateCreated != null) onPrivateCreated(it.id) else onDone(it.id) }.onFailure { error = it.friendly() }
                     busy = false
                 }
             }, Modifier.fillMaxWidth().padding(bottom = 8.dp), enabled = name.isNotBlank() && (communityWide || categoryId != null), loading = busy, height = 50.dp)

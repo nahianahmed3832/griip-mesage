@@ -136,6 +136,11 @@ data class CallUiState(
     val notice: String? = null,
     /** A voice room's call (round 6): people raise hands, and the room's managers can moderate. */
     val voiceRoom: Boolean = false,
+    /**
+     * A voice channel where you may only listen (no `voice.speak`): the server's media token can't publish, so the
+     * microphone, camera and screen sharing stay off and their buttons say why.
+     */
+    val listenOnly: Boolean = false,
     /** Voice rooms: who raised a hand, in order. */
     val hands: List<String> = emptyList(),
     /** Voice rooms: whether you manage this room (mute, lower hands, remove from the call). */
@@ -430,7 +435,12 @@ class CallManager(
     }
 
     private suspend fun connect(callId: String, media: MediaGrant, key: String?, video: Boolean) {
-        _state.update { it.copy(phase = if (it.phase == CallPhase.Outgoing) CallPhase.Outgoing else CallPhase.Connecting, callId = callId) }
+        _state.update {
+            it.copy(
+                phase = if (it.phase == CallPhase.Outgoing) CallPhase.Outgoing else CallPhase.Connecting, callId = callId,
+                listenOnly = !media.canSpeak, micOn = media.canSpeak && it.micOn,
+            )
+        }
         // A call right after another: let the previous room finish releasing its audio device first.
         releaseJob?.let { if (it.isActive) diag.log("waiting for the previous call's media to release") ; it.join() }
         val r = try {
@@ -486,8 +496,10 @@ class CallManager(
         diag.log("media room joined in ${System.currentTimeMillis() - t0} ms")
         stage("media joined")
         startMediaMonitor(r)
-        // Microphone and camera publish side by side (LiveKit locks each source on its own; round 7, bug 7).
-        coroutineScope {
+        // Microphone and camera publish side by side (LiveKit locks each source on its own; round 7, bug 7). A listener
+        // publishes nothing: the token would refuse it anyway.
+        if (!media.canSpeak) _state.update { it.copy(notice = CallFailure.LISTEN_ONLY) }
+        if (media.canSpeak) coroutineScope {
             launch {
                 try {
                     r.localParticipant.setMicrophoneEnabled(true)
@@ -906,12 +918,14 @@ class CallManager(
 
     fun toggleMic() = scope.launch {
         val r = room ?: return@launch
+        if (_state.value.listenOnly) { _state.update { it.copy(notice = CallFailure.LISTEN_ONLY) }; return@launch }
         runCatching { r.localParticipant.setMicrophoneEnabled(!r.localParticipant.isMicrophoneEnabled) }
         refreshParticipants()
     }
 
     fun toggleCamera() = scope.launch {
         val r = room ?: return@launch
+        if (_state.value.listenOnly) { _state.update { it.copy(notice = CallFailure.LISTEN_ONLY) }; return@launch }
         val turningOn = !r.localParticipant.isCameraEnabled
         runCatching { r.localParticipant.setCameraEnabled(turningOn) }
             .onSuccess {
@@ -1011,6 +1025,7 @@ class CallManager(
      */
     fun startScreenShare(resultData: Intent) = scope.launch {
         val r = room ?: return@launch
+        if (_state.value.listenOnly) { _state.update { it.copy(notice = CallFailure.LISTEN_ONLY) }; return@launch }
         if (_state.value.phase != CallPhase.Connected) {
             _state.update { it.copy(error = "Screen sharing can start once the call is connected.") }
             return@launch

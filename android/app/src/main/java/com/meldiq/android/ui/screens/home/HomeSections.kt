@@ -1,5 +1,7 @@
 package com.meldiq.android.ui.screens.home
 
+import com.meldiq.android.ui.screens.chats.ConversationAvatar
+import com.meldiq.android.data.db.ConversationEntity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
@@ -439,4 +441,24 @@ fun ComposeFab(label: String, onCompose: () -> Unit, modifier: Modifier = Modifi
             contentAlignment = Alignment.Center,
         ) { Icon(Icons.Rounded.Edit, null, tint = c.onAction, modifier = Modifier.size(24.dp)) }
     }
+}
+
+/** A channel's type as an icon (#, lock, megaphone, forum bubbles); people and groups as avatars. */
+@Composable
+internal fun ChannelOrAvatar(conv: ConversationEntity, me: String?) {
+    val c = Griip.colors
+    if (conv.type != "CHANNEL") {
+        ConversationAvatar(conv, me, size = 32.dp)
+        return
+    }
+    val description = when {
+        conv.format == "forum" -> "Forum channel"
+        conv.kind == "PRIVATE" -> "Private channel"
+        conv.kind == "ANNOUNCEMENT" -> "Announcement channel"
+        else -> null
+    }
+    Icon(
+        com.meldiq.android.ui.screens.chats.channelIcon(conv.kind, conv.voice, conv.format), description, tint = if (conv.unreadCount > 0 && !conv.muted) c.textPrimary else c.textSecondary,
+        modifier = Modifier.size(20.dp),
+    )
 }

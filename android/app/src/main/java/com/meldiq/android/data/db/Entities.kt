@@ -52,6 +52,11 @@ data class ConversationEntity(
     val categoryName: String? = null,
     @androidx.room.ColumnInfo(defaultValue = "0") val position: Int = 0,
     @androidx.room.ColumnInfo(defaultValue = "text") val format: String = "text",
+    /** A forum's tags, JSON [{id, name}] from the server (null: none). Which tags a post has is inside the post. */
+    val forumTagsJson: String? = null,
+    /** Voice channels: may you join the call, and talk in it (listen-only otherwise)? True outside communities. */
+    @androidx.room.ColumnInfo(defaultValue = "1") val canConnect: Boolean = true,
+    @androidx.room.ColumnInfo(defaultValue = "1") val canSpeak: Boolean = true,
 )
 
 @kotlinx.serialization.Serializable

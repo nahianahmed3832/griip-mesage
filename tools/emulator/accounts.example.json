@@ -1,0 +1,18 @@
+{
+  "_note": "Test-only accounts for a throwaway local server (DATA_DIR in a scratch folder, REGISTRATION_MODE=open, MAIL_TRANSPORT=file) used by the emulator checks in docs/product/MELDIQ_COMMUNITY_CHAT_SPEC.md. Never valid anywhere else. Copy to accounts.local.json (git-ignored) with real throwaway passwords.",
+  "server": "http://localhost:8080 (adb reverse tcp:8080 tcp:8080)",
+  "accounts": [
+    {
+      "email": "emu-owner@meldiq.test",
+      "username": "emuowner",
+      "displayName": "Emu Owner",
+      "password": "<generate one; keep it in accounts.local.json>"
+    },
+    {
+      "email": "emu-member@meldiq.test",
+      "username": "emumember",
+      "displayName": "Emu Member",
+      "password": "<generate one; keep it in accounts.local.json>"
+    }
+  ]
+}

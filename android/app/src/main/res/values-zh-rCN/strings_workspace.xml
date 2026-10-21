@@ -17,10 +17,10 @@
     <string name="ws_saved">已保存</string>
     <string name="ws_admin_only">只有所有者和管理员可以编辑这些信息。</string>
     <string name="ws_leave">退出社区</string>
-    <string name="ws_leave_sub">你将在所有设备上退出它的分部、团队和频道。私信不受影响。</string>
+    <string name="ws_leave_sub">你将在所有设备上退出其频道。你的私信会保留。</string>
     <string name="ws_leave_owner">你是唯一的所有者。退出前请先让其他人成为所有者。</string>
     <string name="ws_leave_confirm_title">退出 %1$s？</string>
-    <string name="ws_leave_confirm_body">你将退出其中所有分部、团队和频道。此手机上已有的消息仍可阅读。要重新加入需要新的邀请。</string>
+    <string name="ws_leave_confirm_body">你将退出其中所有频道。此手机上已有的消息仍可阅读。要重新加入需要新的邀请。</string>
     <string name="ws_leave_confirm">退出</string>
     <string name="ws_left">你已退出 %1$s</string>
     <string name="ws_cancel">取消</string>
@@ -30,8 +30,8 @@
     <string name="role_member">成员</string>
     <string name="role_guest">访客</string>
     <string name="role_owner_sum">拥有全部权限，包括管理管理员和所有者的角色以及删除社区。</string>
-    <string name="role_admin_sum">管理成员、访客、分部、团队、频道和邀请。不能设置管理员或所有者。</string>
-    <string name="role_member_sum">可阅读并在所属分部和团队的公开频道发言。分部经理和团队负责人管理各自负责的部分。</string>
+    <string name="role_admin_sum">管理成员、访客、频道、分类和邀请。不能创建管理员或所有者。</string>
+    <string name="role_member_sum">在其角色可见的频道中阅读和发言。</string>
     <string name="role_guest_sum">只能看到管理者添加的频道。不能浏览成员目录。</string>
     <string name="roles_guide_title">各角色的权限</string>
     <string name="roles_guide_note">服务器会检查每项更改。你看不到的按钮只是为了方便而隐藏。</string>
@@ -43,7 +43,7 @@
     <string name="member_step_down_body">你将立即失去在 %1$s 中当前角色的权限。只有更高角色的人才能恢复。</string>
     <string name="member_owner_title">让 %1$s 成为所有者？</string>
     <string name="member_owner_body">所有者拥有全部权限，包括更改你的角色和删除社区。</string>
-    <string name="member_guest_body">访客将失去 %1$s 中的所有分部、团队和频道。之后由管理者将其添加到指定频道。</string>
+    <string name="member_guest_body">访客将失去 %1$s 中的所有频道，之后由管理员把他们加入特定频道。</string>
     <string name="member_make_guest_title">将 %1$s 设为访客？</string>
     <string name="member_confirm">确认</string>
     <string name="member_remove">从社区移除</string>
@@ -101,7 +101,7 @@
     <string name="ch_mode_change">更改访问权限</string>
     <string name="ch_mode_change_note">不会添加或移除任何人。已发送的消息仍保留在收到它们的人那里。</string>
     <string name="ch_mode_changed">#%1$s 现在是%2$s频道</string>
-    <string name="ch_mode_who">只有该频道所属社区、分部或团队的管理者可以更改。</string>
+    <string name="ch_mode_who">只有在此社区中可以更改频道访问权限的人才能更改此项。</string>
     <string name="ch_posting_you_can">你可以在这里发言。</string>
     <string name="ch_posting_you_cannot">只有管理者和频道管理员可以在这里发言。</string>
     <string name="ch_archived_note">已归档：只读。恢复后才能再次发言。</string>

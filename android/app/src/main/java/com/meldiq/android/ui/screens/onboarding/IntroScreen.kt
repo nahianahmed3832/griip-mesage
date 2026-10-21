@@ -24,8 +24,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Apps
-import androidx.compose.material.icons.outlined.Badge
+import androidx.compose.material.icons.outlined.Workspaces
+import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Headset
 import androidx.compose.material.icons.outlined.NotificationsActive
@@ -65,8 +65,9 @@ private val Pages = listOf(
     IntroPage(Icons.Outlined.Forum, R.string.intro_talk_title, R.string.intro_talk_body),
     IntroPage(Icons.Outlined.NotificationsActive, R.string.intro_remind_title, R.string.intro_remind_body),
     IntroPage(Icons.Outlined.Headset, R.string.intro_voice_title, R.string.intro_voice_body),
-    IntroPage(Icons.Outlined.Apps, R.string.intro_apps_title, R.string.intro_apps_body),
-    IntroPage(Icons.Outlined.Badge, R.string.intro_people_title, R.string.intro_people_body, soon = true),
+    // 2026-10-21: communities replaced the connector and HR pages (both features were removed).
+    IntroPage(Icons.Outlined.Workspaces, R.string.nv_intro_communities_title, R.string.nv_intro_communities_body),
+    IntroPage(Icons.Outlined.AdminPanelSettings, R.string.nv_intro_roles_title, R.string.nv_intro_roles_body),
 )
 
 private val MaxIntroWidth = 520.dp
