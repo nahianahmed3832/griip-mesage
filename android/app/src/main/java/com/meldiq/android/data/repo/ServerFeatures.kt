@@ -82,6 +82,9 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         /** Batch B6: connections, message requests and who may message you. */
         const val CONNECTIONS = "connections"
         const val MESSAGE_REQUESTS = "message-requests"
+        /** Batch B6b: a group's photo; appearing idle, do not disturb or invisible. */
+        const val GROUP_PHOTOS = "group-photos"
+        const val PRESENCE_MODES = "presence-modes"
         /** Meldiq 2.0: experiments and content-free analytics counts (docs/product/EXPERIMENTS.md). */
         const val EXPERIMENTS = "experiments"
         const val ANALYTICS_EVENTS = "analytics-events"

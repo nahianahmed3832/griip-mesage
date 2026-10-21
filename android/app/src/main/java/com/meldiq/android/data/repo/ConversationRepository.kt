@@ -80,6 +80,7 @@ class ConversationRepository(
             forumTagsJson = d.forumTags.takeIf { it.isNotEmpty() }?.let { GriipJson.encodeToString(ListSerializer(com.meldiq.android.data.api.ForumTagDto.serializer()), it) },
             canConnect = d.canConnect, canSpeak = d.canSpeak, timedOutUntil = d.timedOutUntil,
             request = d.request?.let { if (it.incoming) RequestRules.INCOMING else RequestRules.OUTGOING },
+            photoRev = d.photoRev,
         )
         _requestSent.update { m -> d.request?.takeIf { !it.incoming }?.let { m + (d.id to ((it.sent ?: 0) to it.limit)) } ?: (m - d.id) }
         if (d.joined || local != null) db.conversations().upsert(e)
@@ -90,6 +91,15 @@ class ConversationRepository(
 
     suspend fun createGroup(name: String, memberIds: List<String>): ConversationEntity =
         upsertFromServer(api.post<GroupReq, ConversationRes>("/v1/conversations/group", GroupReq(name, memberIds)).conversation)
+
+    /** Batch B6b: a group's photo (a JPEG the phone prepared), or none. */
+    suspend fun setGroupPhoto(id: String, jpeg: ByteArray): Long? =
+        api.sendBytes("PUT", "/v1/conversations/$id/photo", jpeg, com.meldiq.android.data.api.PhotoRes.serializer()).photoRev.also { refreshOne(id) }
+
+    suspend fun removeGroupPhoto(id: String) {
+        api.delete<com.meldiq.android.data.api.PhotoRes>("/v1/conversations/$id/photo")
+        refreshOne(id)
+    }
 
     suspend fun members(id: String) = api.get<UsersRes>("/v1/conversations/$id/members").members.also { it.forEach { u -> users.remember(u) } }
 

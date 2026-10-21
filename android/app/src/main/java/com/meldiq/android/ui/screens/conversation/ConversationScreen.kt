@@ -493,7 +493,12 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         typing.isNotEmpty() -> if (isGroup) stringResource(R.string.b5_typing_named, typing.first()) else stringResource(R.string.b5_typing)
         conv?.type == "DM" && peer != null && remoteMembers.isNotEmpty() -> "@${peer.username}"
         conv?.type == "DM" -> listOfNotNull(
-            if (peerUser?.online == true) stringResource(R.string.b5_online) else stringResource(R.string.b5_last_seen, TimeFmt.relative(peerUser?.lastSeenAt)),
+            when {
+                peerUser?.online != true -> stringResource(R.string.b5_last_seen, TimeFmt.relative(peerUser?.lastSeenAt))
+                peerUser.presence == com.meldiq.android.data.model.PresenceRules.IDLE -> stringResource(R.string.b6b_idle)
+                peerUser.presence == com.meldiq.android.data.model.PresenceRules.DND -> stringResource(R.string.b6b_dnd)
+                else -> stringResource(R.string.b5_online)
+            },
             // Round 3: their status as they show it to you.
             listOfNotNull(peer?.statusEmoji, peer?.statusText).joinToString(" ").ifBlank { null },
         ).joinToString(" · ")
@@ -525,7 +530,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 Modifier.weight(1f).clip(Shapes.small).pressable({ nav.navigate(Routes.info(conversationId)) }, onClickLabel = stringResource(R.string.b5_open_info)).padding(vertical = 6.dp, horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                conv?.let { ConversationAvatar(it, me, size = 40.dp, online = peerUser?.online) }
+                conv?.let { ConversationAvatar(it, me, size = 40.dp, online = peerUser?.online, presence = peerUser?.presence) }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     val postTitle = if (threadRoot != null && conv?.format == "forum") root?.let { r -> com.meldiq.android.data.model.ForumRules.titleOf(vm.c.messages.rich(r)?.title, r.text) } else null

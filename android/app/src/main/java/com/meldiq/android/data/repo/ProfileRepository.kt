@@ -9,6 +9,7 @@ import com.meldiq.android.data.api.UpdateMeReq
 import com.meldiq.android.data.api.UserDto
 import com.meldiq.android.data.api.UserRes
 import com.meldiq.android.data.model.Audience
+import com.meldiq.android.data.model.PresenceRules
 import com.meldiq.android.data.model.PrivacyField
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -102,6 +103,25 @@ class ProfileRepository(
 
     /** An organisation's avatar at [rev] (members only), cached like people's photos (ids never clash: "o_…" vs "u_…"). */
     suspend fun orgPhoto(orgId: String, rev: Long): File? = cachedPhoto(orgId, rev, "/v1/orgs/$orgId/photo")
+
+    /** Batch B6b: a group's photo, cached per revision like people's and communities'. */
+    suspend fun groupPhoto(conversationId: String, rev: Long): File? = cachedPhoto(conversationId, rev, "/v1/conversations/$conversationId/photo")
+
+    /**
+     * Batch B6b: appear online automatically, idle, do not disturb or invisible, until [until] (null: until changed).
+     * Do not disturb also pauses notifications on every device for as long (at most [PresenceRules.PAUSE_MAX_MS]);
+     * leaving it resumes them.
+     */
+    suspend fun setPresence(mode: String, until: Long?) {
+        val wasDnd = _mine.value?.presenceMode == PresenceRules.DND
+        api.put<com.meldiq.android.data.api.PresenceReq, com.meldiq.android.data.api.PresenceModeRes>("/v1/users/me/presence", com.meldiq.android.data.api.PresenceReq(mode, until))
+        when {
+            mode == PresenceRules.DND -> setNotificationsPaused(PresenceRules.pauseUntil(until, System.currentTimeMillis()))
+            wasDnd -> setNotificationsPaused(null)
+            // Updates what the You screen shows (refreshMe alone leaves [mine] as it was).
+            else -> runCatching { remember(me()) }
+        }
+    }
 
     private suspend fun cachedPhoto(ownerId: String, rev: Long, path: String): File? = withContext(Dispatchers.IO) {
         val safe = ownerId.replace(Regex("[^A-Za-z0-9_-]"), "_")

@@ -80,7 +80,7 @@ import com.meldiq.android.ui.theme.Shapes
 import com.meldiq.android.ui.theme.Space
 
 /** The sheets You can show. */
-private enum class YouSheet { Status, Pause, Drafts }
+private enum class YouSheet { Status, Pause, Drafts, Presence }
 
 /**
  * The You tab (docs/product/MELDIQ_COMMUNITY_CHAT_SPEC.md §1): your profile and status, pausing notifications, your own
@@ -102,6 +102,8 @@ fun YouScreen(nav: NavHostController) {
     val orgs by vm.orgs.collectAsStateWithLifecycle()
     val settings by container.settings.state.collectAsStateWithLifecycle()
     val myStatus by container.profiles.mine.collectAsStateWithLifecycle()
+    var presenceModes by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { presenceModes = container.features.has(com.meldiq.android.data.repo.ServerFeatures.PRESENCE_MODES) == true }
     val reminderList by container.reminders.reminders.collectAsStateWithLifecycle()
     val remindersOn by container.reminders.available.collectAsStateWithLifecycle()
     val me = container.session.session?.userId
@@ -202,6 +204,8 @@ fun YouScreen(nav: NavHostController) {
                     pausedUntil?.let { stringResource(R.string.r3_paused_until, TimeFmt.clock(it)) } ?: stringResource(R.string.r3_pause),
                     tint = c.peach, tintBg = c.peachSoft, onClick = { sheet = YouSheet.Pause },
                 )
+                // Batch B6b: online automatically, idle, do not disturb or invisible.
+                if (presenceModes) com.meldiq.android.ui.screens.profile.PresenceRow(myStatus?.presenceMode, myStatus?.presenceUntil, now) { sheet = YouSheet.Presence }
             }
         }
         item(key = "cards") { QuickAccessRow(cards, Modifier.padding(vertical = 8.dp)) }
@@ -233,6 +237,7 @@ fun YouScreen(nav: NavHostController) {
     when (sheet) {
         YouSheet.Status -> com.meldiq.android.ui.screens.profile.StatusSheet(myStatus, onDismiss = { sheet = null })
         YouSheet.Pause -> com.meldiq.android.ui.screens.profile.PauseSheet(myStatus?.notificationsPausedUntil, onDismiss = { sheet = null })
+        YouSheet.Presence -> com.meldiq.android.ui.screens.profile.PresenceSheet(myStatus?.presenceMode, onDismiss = { sheet = null })
         YouSheet.Drafts -> DraftsSentSheet(drafts, recentSent, convs, me, onDismiss = { sheet = null }) { id -> sheet = null; nav.navigate(Routes.conversation(id)) }
         null -> Unit
     }

@@ -77,6 +77,11 @@ import kotlinx.serialization.json.JsonObject
     /** Someone else, when their last-seen setting lets you see it: they have paused notifications. */
     val notificationsPaused: Boolean? = null,
     val online: Boolean? = null, val lastSeenAt: Long? = null, val identityKey: String? = null, val fingerprint: String? = null,
+    /**
+     * Batch B6b (servers with `presence-modes`): how they appear ("online", "idle", "dnd", "offline"), when you may see
+     * it; your own profile: what you chose ("auto", "idle", "dnd", "invisible") and until when.
+     */
+    val presence: String? = null, val presenceMode: String? = null, val presenceUntil: Long? = null,
     val role: String? = null, val orgRole: String? = null, val title: String? = null,
     /** A guest's membership end date in the workspace directory (round 7), null without one. */
     val expiresAt: Long? = null,
@@ -120,7 +125,10 @@ import kotlinx.serialization.json.JsonObject
     val revokedAt: Long? = null, val current: Boolean = false,
 )
 @Serializable data class DevicesRes(val devices: List<MyDeviceDto>)
-@Serializable data class PresenceDto(val userId: String, val online: Boolean, val lastSeenAt: Long? = null)
+@Serializable data class PresenceDto(val userId: String, val online: Boolean, val lastSeenAt: Long? = null, val presence: String? = null)
+/** Batch B6b: PUT /v1/users/me/presence. */
+@Serializable data class PresenceReq(val mode: String, val until: Long? = null)
+@Serializable data class PresenceModeRes(val mode: String, val until: Long? = null)
 @Serializable data class PresenceRes(val presence: List<PresenceDto>)
 
 // ───────── Conversations ─────────
@@ -164,6 +172,8 @@ import kotlinx.serialization.json.JsonObject
     val nextPostAt: Long? = null,
     /** Batch B6 (servers with `message-requests`): this DM is a message request ([DmRequestDto.incoming]: to you). */
     val request: DmRequestDto? = null,
+    /** Batch B6b (servers with `group-photos`): a group's photo revision; null without one. */
+    val photoRev: Long? = null,
 )
 /** A DM waiting for its recipient's answer. The sender sees it pending until it's accepted, so a decline isn't shown. */
 @Serializable data class DmRequestDto(val state: String = "pending", val incoming: Boolean = false, val sent: Int? = null, val limit: Int = 3)
@@ -560,6 +570,8 @@ object CommunityAccess {
     val userId: String? = null,
     val online: Boolean? = null,
     val lastSeenAt: Long? = null,
+    /** Batch B6b: "online", "idle", "dnd" or "offline" (servers with `presence-modes`). */
+    val presence: String? = null,
     val event: String? = null,
     val call: CallDto? = null,
     val from: JsonObject? = null,

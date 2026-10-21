@@ -54,6 +54,8 @@ export class Hub {
   onPresenceChange: (userId: string, online: boolean) => void = () => {};
   /** An envelope was queued for a device with no open socket (src/push sends it a wake-up). */
   onQueuedOffline: (deviceId: string) => void = () => {};
+  /** Batch B6b: false for someone who appears offline, so leaving doesn't move their "last seen" time. */
+  recordsLastSeen: (userId: string) => boolean = () => true;
   /** A device's last socket closed; [openedAt] is when that socket opened. */
   onDeviceOffline: (deviceId: string, openedAt: number) => void = () => {};
 
@@ -96,7 +98,7 @@ export class Hub {
         devs?.delete(conn.deviceId);
         if (devs && devs.size === 0) {
           this.byUser.delete(conn.userId);
-          this.lastSeen.set(conn.userId, now());
+          if (this.recordsLastSeen(conn.userId)) this.lastSeen.set(conn.userId, now());
           this.onPresenceChange(conn.userId, false);
         }
         this.onDeviceOffline(conn.deviceId, conn.openedAt);

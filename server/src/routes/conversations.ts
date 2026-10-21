@@ -5,11 +5,12 @@ import { mentionAllPermission } from "../mentions.js";
 import { z } from "zod";
 import type { ConversationRow } from "../authz.js";
 import { type AppContext, me, parse, requireAuth, zText } from "../context.js";
-import { canSeeLastSeen, memberView, type ProfileRow } from "../profile.js";
+import { appearsOnline, canSeeLastSeen, memberView, type ProfileRow } from "../profile.js";
 import { ApiError, badRequest, conflict, forbidden, newId, notFound, now } from "../util.js";
 import { fedDmId } from "../federation/service.js";
 import { userSummary } from "./auth.js";
-import { processBlobDeletes, queueBlobDelete } from "./attachments.js";
+import { deleteBlobNow, processBlobDeletes, queueBlobDelete } from "./attachments.js";
+import { photoBlobId, readJpegBody, storePhoto } from "../photos.js";
 import { evictRemovedMember } from "./calls.js";
 import { reconcileAccess } from "./community.js";
 import { notifyConversation } from "./orgs.js";
@@ -61,6 +62,8 @@ export function conversationView(ctx: AppContext, c: ConversationRow, userId: st
     name: c.name,
     topic: c.topic,
     archived: !!c.archived_at,
+    // Batch B6b: a group's photo revision (GET /v1/conversations/:id/photo); null without one.
+    photoRev: c.type === "GROUP" ? ((c as { photo_rev?: number | null }).photo_rev ?? null) : null,
     createdAt: c.created_at,
     updatedAt: c.updated_at,
     memberCount,
@@ -192,7 +195,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
     const members = ctx.db
       .prepare("SELECT u.* FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? AND u.disabled_at IS NULL")
       .all(id) as ProfileRow[];
-    const online = members.filter((u) => (u.id === userId || canSeeLastSeen(ctx, userId, u)) && ctx.hub.isUserOnline(u.id)).length;
+    const online = members.filter((u) => (u.id === userId || canSeeLastSeen(ctx, userId, u)) && appearsOnline(ctx, u)).length;
     return { online, members: members.length };
   });
 
@@ -284,6 +287,54 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
       notifyConversation(ctx, id);
     }
     return { conversation: { ...conversationView(ctx, c, userId), request: requestView(request, userId) } };
+  });
+
+  // ───────────── Group photo (batch B6b, Discord reference GDM-CTRL-002) ─────────────
+  // A JPEG like a community's photo: not end-to-end encrypted (the server can see it, as it sees the group's name).
+  // People who can rename the group set or remove it; every member can see it.
+  const groupFor = (id: string, userId: string, manage: boolean) => {
+    const c = authz.conversation(id);
+    if (!c || c.type !== "GROUP" || !authz.isMember(id, userId)) throw notFound("Group not found");
+    if (manage && !authz.canManageConversation(c, userId)) throw forbidden("Only the group's admins can change its photo");
+    return c as ConversationRow & { photo_rev?: number | null };
+  };
+
+  app.put("/v1/conversations/:id/photo", auth, async (req) => {
+    const { userId } = me(req);
+    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const c = groupFor(id, userId, true);
+    const buf = await readJpegBody(req, "Group photos");
+    const previous = c.photo_rev ?? null;
+    const rev = Math.max(now(), (previous ?? 0) + 1);
+    await storePhoto(ctx, photoBlobId(id, rev), buf);
+    if (db.prepare("UPDATE conversations SET photo_rev = ?, updated_at = ? WHERE id = ?").run(rev, now(), id).changes === 0) {
+      await deleteBlobNow(ctx, "profile-photos", photoBlobId(id, rev));
+      throw notFound("Group not found");
+    }
+    if (previous) await deleteBlobNow(ctx, "profile-photos", photoBlobId(id, previous));
+    notifyConversation(ctx, id);
+    return { photoRev: rev };
+  });
+
+  app.delete("/v1/conversations/:id/photo", auth, async (req) => {
+    const { userId } = me(req);
+    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const c = groupFor(id, userId, true);
+    if (c.photo_rev) {
+      db.prepare("UPDATE conversations SET photo_rev = NULL, updated_at = ? WHERE id = ?").run(now(), id);
+      await deleteBlobNow(ctx, "profile-photos", photoBlobId(id, c.photo_rev));
+      notifyConversation(ctx, id);
+    }
+    return { photoRev: null };
+  });
+
+  app.get("/v1/conversations/:id/photo", auth, async (req, reply) => {
+    const { userId } = me(req);
+    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const c = groupFor(id, userId, false);
+    const stream = c.photo_rev ? await ctx.blobs.get("profile-photos", photoBlobId(id, c.photo_rev)) : null;
+    if (!stream) throw notFound("No photo");
+    return reply.header("content-type", "image/jpeg").header("cache-control", "private, max-age=3600").header("etag", `"${c.photo_rev}"`).send(stream);
   });
 
   app.post("/v1/conversations/group", auth, async (req) => {

@@ -460,4 +460,21 @@
     <string name="b6_policy_communities">People in your communities</string>
     <string name="b6_policy_connections">Only your connections</string>
     <string name="b6_policy_nobody">Nobody</string>
+    <string name="b6b_add_photo">Add a group photo</string>
+    <string name="b6b_change_photo">Change group photo</string>
+    <string name="b6b_remove_photo">Remove group photo</string>
+    <string name="b6b_photo_sub">Everyone in the group sees it. Like the group\'s name, it isn\'t end-to-end encrypted.</string>
+    <string name="b6b_photo_uploading">Uploading…</string>
+    <string name="b6b_title">Presence</string>
+    <string name="b6b_auto">Online</string>
+    <string name="b6b_auto_sub">Online while Meldiq is open or connected</string>
+    <string name="b6b_idle">Idle</string>
+    <string name="b6b_idle_sub">Shows you\'re away</string>
+    <string name="b6b_dnd">Do not disturb</string>
+    <string name="b6b_dnd_sub">Pauses notifications on all your devices for as long</string>
+    <string name="b6b_invisible">Invisible</string>
+    <string name="b6b_invisible_sub">You appear offline, and your last seen doesn\'t change. You can still use Meldiq.</string>
+    <string name="b6b_for_how_long">%1$s for how long?</string>
+    <string name="b6b_8h">8 hours</string>
+    <string name="b6b_until_changed">Until I change it</string>
 </resources>

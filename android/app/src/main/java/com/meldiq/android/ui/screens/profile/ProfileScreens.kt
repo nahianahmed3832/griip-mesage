@@ -339,7 +339,7 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
             item {
                 GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), shape = Shapes.hero) {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        com.meldiq.android.ui.components.UserAvatar(u.id, u.displayName, u.avatarColor, u.photoRev, size = 84.dp, online = u.online)
+                        com.meldiq.android.ui.components.UserAvatar(u.id, u.displayName, u.avatarColor, u.photoRev, size = 84.dp, online = u.online, presence = u.presence)
                         Spacer(Modifier.height(10.dp))
                         Text(u.displayName, style = Griip.type.headline, color = c.textPrimary)
                         Text("@${u.username}", style = Griip.type.bodySmall, color = c.textSecondary)
@@ -350,7 +350,14 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
                             // Presence isn't shared between servers.
                             Text("On another server: $server", style = Griip.type.caption, color = c.textTertiary)
                         } else {
-                            Text(if (u.online == true) "Online" else "Last seen ${TimeFmt.relative(u.lastSeenAt)}", style = Griip.type.caption, color = if (u.online == true) c.success else c.textTertiary)
+                            // Batch B6b: idle and do not disturb show as such.
+                            val shown = when {
+                                u.online != true -> "Last seen ${TimeFmt.relative(u.lastSeenAt)}"
+                                u.presence == com.meldiq.android.data.model.PresenceRules.IDLE -> androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.b6b_idle)
+                                u.presence == com.meldiq.android.data.model.PresenceRules.DND -> androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.b6b_dnd)
+                                else -> "Online"
+                            }
+                            Text(shown, style = Griip.type.caption, color = if (u.online == true) c.success else c.textTertiary)
                         }
                         u.statusText?.let { Spacer(Modifier.height(6.dp)); Text(it, style = Griip.type.bodySmall, color = c.textSecondary) }
                         Spacer(Modifier.height(14.dp))

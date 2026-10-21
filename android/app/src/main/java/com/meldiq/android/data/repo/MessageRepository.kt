@@ -849,7 +849,7 @@ class MessageRepository(
                     m + (c to cur)
                 }
             }
-            "presence" -> f.userId?.let { db.users().setPresence(it, f.online == true, f.lastSeenAt) }
+            "presence" -> f.userId?.let { db.users().setPresence(it, f.online == true, f.lastSeenAt, com.meldiq.android.data.model.PresenceRules.stored(f.presence)) }
             "conv.updated" -> f.conversationId?.let { conversations.refreshOne(it) }
             "org.updated" -> {
                 f.orgId?.let { _orgEvents.tryEmit(it) }

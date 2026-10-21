@@ -74,6 +74,8 @@ fun Avatar(
     size: Dp = 48.dp,
     online: Boolean? = null,
     @Suppress("UNUSED_PARAMETER") ring: Boolean = true,
+    /** Batch B6b: "idle" or "dnd" colours the online dot (amber, red). */
+    presence: String? = null,
 ) {
     val c = Griip.colors
     val (a, _) = AvatarGradients[((colorIndex % AvatarGradients.size) + AvatarGradients.size) % AvatarGradients.size]
@@ -86,15 +88,21 @@ fun Avatar(
                 maxLines = 1,
             )
         }
-        if (online == true) {
-            val dot = (size.value * 0.26f).coerceIn(10f, 14f).dp
-            Box(
-                Modifier.align(Alignment.BottomEnd).size(dot).clip(CircleShape).background(c.success)
-                    .border(2.dp, c.surface, CircleShape)
-                    .semantics { contentDescription = "Online" },
-            )
-        }
+        if (online == true) PresenceDot(size, presence, Modifier.align(Alignment.BottomEnd))
     }
+}
+
+/** The dot on an avatar of someone who appears online: green, amber while idle, red on do not disturb (batch B6b). */
+@Composable
+fun PresenceDot(avatarSize: Dp, presence: String?, modifier: Modifier = Modifier) {
+    val c = Griip.colors
+    val dot = (avatarSize.value * 0.26f).coerceIn(10f, 14f).dp
+    val (color, label) = when (presence) {
+        com.meldiq.android.data.model.PresenceRules.IDLE -> c.warning to androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.b6b_idle)
+        com.meldiq.android.data.model.PresenceRules.DND -> c.danger to androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.b6b_dnd)
+        else -> c.success to androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.b5_online)
+    }
+    Box(modifier.size(dot).clip(CircleShape).background(color).border(2.dp, c.surface, CircleShape).semantics { contentDescription = label })
 }
 
 /** Rounded-square mark for orgs, branches and teams (people are circles; places are squares). */

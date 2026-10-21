@@ -61,6 +61,8 @@ data class ConversationEntity(
     val timedOutUntil: Long? = null,
     /** Batch B6: a message request, "incoming" (to you: listed under Requests, silent) or "outgoing"; null: none. */
     val request: String? = null,
+    /** Batch B6b: a group's photo revision (null: none). */
+    val photoRev: Long? = null,
 )
 
 @kotlinx.serialization.Serializable
@@ -129,6 +131,8 @@ data class UserEntity(
     val updatedAt: Long = 0,
     /** Profile photo revision visible to this account (null: none, or not shown to you). */
     val photoRev: Long? = null,
+    /** Batch B6b: "idle" or "dnd" while they appear so (null: online or offline as [online] says, or unknown). */
+    val presence: String? = null,
 )
 
 @Entity(tableName = "call_log", indices = [Index("conversationId")])

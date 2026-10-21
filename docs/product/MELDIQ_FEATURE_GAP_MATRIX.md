@@ -53,7 +53,7 @@ Meldiq differs from Discord by design in two ways:
 | NAV-05 | Unread and mention signals, New line | E2E | I | I | — | — | Rechecked on the emulator 2026-10-21 (B2): rail bar and mention count, Home and Activity badges |
 | NAV-06 | Search | I | I | I | I | P2 | Metadata search on the server; message text searched on the device (encrypted) |
 | NAV-07 | Profiles | I | I | I | I | P3 | No banner or pronouns yet |
-| NAV-08 | Presence, custom status | I | I | I | I | — | |
+| NAV-08 | Presence, custom status | E2E (emulator) | I | I | I | — | B6b 2026-10-22 (NAV-CTRL-010): You › **Presence**: Online (automatic), Idle, Do not disturb (also pauses notifications on every device for as long), Invisible (offline to everyone; connecting and leaving change nothing others see, last seen included), for 1 hour to 7 days or until changed. Others see an amber (idle) or red (do not disturb) dot and the words on profiles and in DMs, within their last-seen permission. `PUT /v1/users/me/presence`. Web shows them as online/offline only (W1) |
 | NAV-09 | Settings | I | I | I | — | — | |
 | NAV-10 | Back behaviour | E2E | I | — | — | — | |
 | NAV-11 | Reorder communities in the rail | E2E (emulator) | I | — | I | — | B2 2026-10-21: long-press the rail or community sheet › Arrange communities; `railOrder` in the personal document (`community_navigation.test.ts`, `CommunityNavigationRulesTest`). Phone test pending. Web: not yet |
@@ -140,7 +140,7 @@ Meldiq differs from Discord by design in two ways:
 | DM-04 | Connections (request, accept, decline, cancel, remove) | E2E (emulator) | I | — | I | — | B6 2026-10-22 (the "no friend graph" reversal, built under the owner's overnight go-ahead): request by profile or username, accept, decline, cancel, remove; crossed requests accept each other; nobody is told of a decline or removal; no suggestions, no mutual lists. DMs › menu › **Connections**; the profile's Connect / Request sent / Accept / Connected button. 20 new requests an hour |
 | DM-05 | Block | I | I | I | I | — | |
 | DM-06 | Favourite, archive, mute DMs | I | I | I | I | — | |
-| DM-07 | Group photo | R | — | — | — | P2 (B6b) | GDM-CTRL-002. Moved out of B6 to keep it testable: with presence choices (NAV-08) in B6b |
+| DM-07 | Group photo | E2E (emulator) | I | — | I | — | B6b 2026-10-22 (GDM-CTRL-002): group info › Add / Change / Remove group photo for the group's admins; every member sees it in the chat list and header. A JPEG like community photos, not end-to-end encrypted (like the group's name). `PUT/DELETE/GET /v1/conversations/:id/photo` |
 | DM-08 | Invite to community from a DM or profile | E2E (emulator) | I | — | I | — | B4b 2026-10-21: profile › **Invite** › pick a community (not ones where you're a guest): a one-use invitation valid 7 days, sent as the https link in your DM with them. The server checks your role may invite |
 | DM-09 | Report a person | E2E (emulator) | I | — | I | — | B4: profile › Report (send to Meldiq's team or one of your communities' moderators; the server checks the person is in it), community member sheet › Report |
 

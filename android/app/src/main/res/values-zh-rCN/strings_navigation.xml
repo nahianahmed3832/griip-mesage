@@ -460,4 +460,21 @@
     <string name="b6_policy_communities">你所在社区的成员</string>
     <string name="b6_policy_connections">仅你的连接</string>
     <string name="b6_policy_nobody">没有人</string>
+    <string name="b6b_add_photo">添加群组照片</string>
+    <string name="b6b_change_photo">更换群组照片</string>
+    <string name="b6b_remove_photo">移除群组照片</string>
+    <string name="b6b_photo_sub">群组中的所有人都能看到。与群组名称一样，它不是端到端加密的。</string>
+    <string name="b6b_photo_uploading">正在上传…</string>
+    <string name="b6b_title">在线状态</string>
+    <string name="b6b_auto">在线</string>
+    <string name="b6b_auto_sub">Meldiq 打开或连接时显示在线</string>
+    <string name="b6b_idle">离开</string>
+    <string name="b6b_idle_sub">显示你暂时离开</string>
+    <string name="b6b_dnd">请勿打扰</string>
+    <string name="b6b_dnd_sub">同时在你的所有设备上暂停通知</string>
+    <string name="b6b_invisible">隐身</string>
+    <string name="b6b_invisible_sub">你会显示为离线，最后在线时间也不会改变。你仍然可以正常使用 Meldiq。</string>
+    <string name="b6b_for_how_long">%1$s 持续多久？</string>
+    <string name="b6b_8h">8 小时</string>
+    <string name="b6b_until_changed">直到我更改</string>
 </resources>

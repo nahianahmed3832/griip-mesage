@@ -45,6 +45,8 @@ fun UserAvatar(
     modifier: Modifier = Modifier,
     size: Dp = 48.dp,
     online: Boolean? = null,
+    /** Batch B6b: "idle" or "dnd" colours the online dot. */
+    presence: String? = null,
 ) {
     val container = LocalContainer.current
     val key = if (userId != null && photoRev != null) "$userId@$photoRev" else null
@@ -55,18 +57,12 @@ fun UserAvatar(
     }
     val p = photo
     if (p == null) {
-        Avatar(name, colorIndex, modifier, size, online)
+        Avatar(name, colorIndex, modifier, size, online, presence = presence)
         return
     }
     val c = Griip.colors
     Box(modifier.size(size).semantics(mergeDescendants = true) { contentDescription = "$name avatar" }) {
         Image(p, null, contentScale = ContentScale.Crop, modifier = Modifier.size(size).clip(CircleShape))
-        if (online == true) {
-            val dot = (size.value * 0.26f).coerceIn(10f, 14f).dp
-            Box(
-                Modifier.align(Alignment.BottomEnd).size(dot).clip(CircleShape).background(c.success).border(2.dp, c.surface, CircleShape)
-                    .semantics { contentDescription = "Online" },
-            )
-        }
+        if (online == true) PresenceDot(size, presence, Modifier.align(Alignment.BottomEnd))
     }
 }

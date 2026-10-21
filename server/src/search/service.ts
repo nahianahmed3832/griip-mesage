@@ -1,6 +1,6 @@
 import type { ConversationRow } from "../authz.js";
 import type { AppContext } from "../context.js";
-import { allows, canSeeLastSeen, privacyOf, relation } from "../profile.js";
+import { allows, appearsOnline, canSeeLastSeen, privacyOf, relation } from "../profile.js";
 import { userSummary } from "../routes/auth.js";
 import { conversationView } from "../routes/conversations.js";
 
@@ -78,7 +78,7 @@ export function searchPeople(ctx: AppContext, userId: string, q: string, orgId?:
     visible.flatMap((u) => {
       const rank = bestRank(term, u.username, u.display_name);
       if (rank === null) return [];
-      return [{ rank, name: u.display_name ?? u.username, item: { ...userSummary(u), online: canSeeLastSeen(ctx, userId, u) ? ctx.hub.isUserOnline(u.id) : null } }];
+      return [{ rank, name: u.display_name ?? u.username, item: { ...userSummary(u), online: canSeeLastSeen(ctx, userId, u) ? appearsOnline(ctx, u) : null } }];
     }),
   );
 }

@@ -67,6 +67,11 @@ object Migrations {
         11 to listOf(
             "ALTER TABLE `conversations` ADD COLUMN `request` TEXT",
         ),
+        // v13 (batch B6b): a group's photo, and idle / do not disturb.
+        12 to listOf(
+            "ALTER TABLE `conversations` ADD COLUMN `photoRev` INTEGER",
+            "ALTER TABLE `users` ADD COLUMN `presence` TEXT",
+        ),
         6 to listOf(
             "CREATE TABLE IF NOT EXISTS `history_outbox` (`key` TEXT NOT NULL, `queuedAt` INTEGER NOT NULL, PRIMARY KEY(`key`))",
             "CREATE INDEX IF NOT EXISTS `index_history_outbox_queuedAt` ON `history_outbox` (`queuedAt`)",

@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
@@ -64,14 +65,15 @@ fun channelIcon(kind: String?, voice: Boolean = false, format: String? = null): 
  * squares with their channel mark, so a personal group never looks like an organisation channel.
  */
 @Composable
-fun ConversationAvatar(conv: ConversationEntity, myUserId: String?, size: androidx.compose.ui.unit.Dp = 52.dp, online: Boolean? = null) {
+fun ConversationAvatar(conv: ConversationEntity, myUserId: String?, size: androidx.compose.ui.unit.Dp = 52.dp, online: Boolean? = null, presence: String? = null) {
     val c = Griip.colors
     when (conv.type) {
         "DM" -> {
             val peer = ConversationRepository.peer(conv, myUserId)
-            com.meldiq.android.ui.components.UserAvatar(peer?.id, peer?.displayName ?: "?", peer?.avatarColor ?: 0, peer?.photoRev, size = size, online = online)
+            com.meldiq.android.ui.components.UserAvatar(peer?.id, peer?.displayName ?: "?", peer?.avatarColor ?: 0, peer?.photoRev, size = size, online = online, presence = presence)
         }
-        "GROUP" -> Box(Modifier.size(size).clip(CircleShape).background(c.lavenderSoft).semantics { contentDescription = "Group" }, contentAlignment = Alignment.Center) {
+        // Batch B6b: a group's own photo, when it has one.
+        "GROUP" -> if (conv.photoRev != null) GroupPhoto(conv.id, conv.photoRev, size) else Box(Modifier.size(size).clip(CircleShape).background(c.lavenderSoft).semantics { contentDescription = "Group" }, contentAlignment = Alignment.Center) {
             Icon(Icons.Rounded.Groups, null, tint = c.lavender, modifier = Modifier.size(size * 0.5f))
         }
         else -> {
@@ -207,3 +209,30 @@ fun ConversationRow(
     }
 }
 
+
+
+/** A group's photo, loaded and cached like people's (batch B6b); the group icon while it loads or if it can't. */
+@Composable
+private fun GroupPhoto(conversationId: String, rev: Long, size: androidx.compose.ui.unit.Dp) {
+    val container = com.meldiq.android.ui.LocalContainer.current
+    val c = Griip.colors
+    val key = "$conversationId@$rev"
+    val photo = androidx.compose.runtime.produceState(com.meldiq.android.ui.components.AvatarMemory.get(key), key) {
+        if (value != null) return@produceState
+        val file = runCatching { container.profiles.groupPhoto(conversationId, rev) }.getOrNull() ?: return@produceState
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            android.graphics.BitmapFactory.decodeFile(file.path)?.asImageBitmap()
+        }?.also { com.meldiq.android.ui.components.AvatarMemory.put(key, it) }
+    }
+    val p = photo.value
+    if (p != null) {
+        androidx.compose.foundation.Image(
+            p, null, contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier.size(size).clip(CircleShape).semantics { contentDescription = "Group" },
+        )
+    } else {
+        Box(Modifier.size(size).clip(CircleShape).background(c.lavenderSoft).semantics { contentDescription = "Group" }, contentAlignment = Alignment.Center) {
+            Icon(Icons.Rounded.Groups, null, tint = c.lavender, modifier = Modifier.size(size * 0.5f))
+        }
+    }
+}

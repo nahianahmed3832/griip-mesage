@@ -16,6 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PushPin
@@ -85,6 +87,19 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
     var showEdit by remember { mutableStateOf(false) }
     var confirmLeave by remember { mutableStateOf(false) }
     var reload by remember { mutableStateOf(0) }
+    // Batch B6b: a group's photo (servers with `group-photos`).
+    var groupPhotos by remember { mutableStateOf(false) }
+    var photoBusy by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { groupPhotos = container.features.has(com.meldiq.android.data.repo.ServerFeatures.GROUP_PHOTOS) == true }
+    val photoCtx = androidx.compose.ui.platform.LocalContext.current
+    val pickGroupPhoto = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) scope.launch {
+            photoBusy = true
+            runCatching { container.conversations.setGroupPhoto(conversationId, com.meldiq.android.media.MediaPrep.profilePhoto(photoCtx, uri)) }
+                .onFailure { error = it.friendly() }
+            photoBusy = false
+        }
+    }
     // The server's current view (who may change the channel's access) and whether it supports access modes at all.
     var dto by remember { mutableStateOf<com.meldiq.android.data.api.ConversationDto?>(null) }
     var accessFeature by remember { mutableStateOf<Boolean?>(null) }
@@ -144,6 +159,18 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
                 if (cv.canManage) {
                     MenuRow(Icons.Outlined.Edit, stringResource(if (cv.type == "CHANNEL") R.string.b5_edit_name_topic else R.string.b5_rename_group), tint = c.lavender, tintBg = c.lavenderSoft, onClick = { showEdit = true })
                     if (cv.type != "DM") MenuRow(Icons.Outlined.PersonAdd, stringResource(R.string.b5_add_members), onClick = { showAdd = true })
+                    if (cv.type == "GROUP" && groupPhotos) {
+                        MenuRow(
+                            Icons.Outlined.PhotoCamera, stringResource(if (cv.photoRev == null) R.string.b6b_add_photo else R.string.b6b_change_photo),
+                            subtitle = if (photoBusy) stringResource(R.string.b6b_photo_uploading) else stringResource(R.string.b6b_photo_sub),
+                            tint = c.lavender, tintBg = c.lavenderSoft,
+                            onClick = { pickGroupPhoto.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        )
+                        if (cv.photoRev != null) MenuRow(
+                            Icons.Outlined.Delete, stringResource(R.string.b6b_remove_photo), tint = c.danger, tintBg = c.dangerSoft, trailing = null,
+                            onClick = { scope.launch { runCatching { container.conversations.removeGroupPhoto(conversationId) }.onFailure { error = it.friendly() } } },
+                        )
+                    }
                     // Communities: who may see, post and share files here, on top of the category's rules.
                     if (cv.type == "CHANNEL" && cv.orgId != null && communityChannels) MenuRow(
                         Icons.Outlined.Security, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.cm_permissions), tint = c.lavender, tintBg = c.lavenderSoft,

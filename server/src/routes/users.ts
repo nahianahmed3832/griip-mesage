@@ -7,15 +7,19 @@ import { keyFingerprint } from "../crypto.js";
 import {
   AUDIENCES,
   allows,
+  appearsOnline,
   canSeeLastSeen,
   PHONE,
+  PRESENCE_MODES,
   PRIVACY_FIELDS,
   type ProfileRow,
   privacyOf,
   profileView,
   relation,
+  shownPresence,
   validBirthday,
 } from "../profile.js";
+import { announcePresence } from "../ws.js";
 import { ApiError, badRequest, conflict, notFound, now } from "../util.js";
 import { userSummary, zUsername } from "./auth.js";
 
@@ -201,6 +205,21 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
     return { user: meView(updated) };
   });
 
+  /**
+   * Batch B6b (Discord reference NAV-CTRL-010): appear online automatically, idle, do not disturb, or invisible (offline
+   * to everyone), until [until] or until changed. The people who may see your presence hear of the change at once.
+   */
+  app.put("/v1/users/me/presence", auth, async (req) => {
+    const { userId } = me(req);
+    const body = parse(z.object({ mode: z.enum(PRESENCE_MODES), until: z.number().int().nullable().optional() }).strict(), req.body);
+    const t = now();
+    if (body.until != null && (body.until <= t || body.until > t + PAUSE_MAX_MS)) throw badRequest("A presence choice ends in the future, within 30 days");
+    const until = body.mode === "auto" ? null : (body.until ?? null);
+    ctx.db.prepare("UPDATE users SET presence_mode = ?, presence_until = ?, updated_at = ? WHERE id = ?").run(body.mode === "auto" ? null : body.mode, until, t, userId);
+    announcePresence(ctx, userId);
+    return { mode: body.mode, until };
+  });
+
   // Who may see each part of the profile (src/profile.ts). Only the fields sent change.
   app.put("/v1/users/me/privacy", auth, async (req) => {
     const { userId } = me(req);
@@ -292,7 +311,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
       const r = relation(ctx, userId, u.id);
       return !r.blockedByTarget && (r.contact || allows(privacyOf(u).findByUsername, r));
     });
-    return { users: visible.map((u) => ({ ...userSummary(u), online: canSeeLastSeen(ctx, userId, u) ? ctx.hub.isUserOnline(u.id) : null })) };
+    return { users: visible.map((u) => ({ ...userSummary(u), online: canSeeLastSeen(ctx, userId, u) ? appearsOnline(ctx, u) : null })) };
   });
 
   app.get("/v1/users/:id", auth, async (req) => {
@@ -308,7 +327,9 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
         ...profileView(u, r),
         identityKey: u.identity_key,
         fingerprint: keyFingerprint(u.identity_key),
-        online: visible ? ctx.hub.isUserOnline(u.id) : null,
+        online: visible ? appearsOnline(ctx, u) : null,
+        // Batch B6b: absent when hidden, like the profile's other hidden fields.
+        ...(visible ? { presence: shownPresence(ctx, u) } : {}),
         lastSeenAt: visible ? ctx.hub.lastSeenAt(u.id) : null,
       },
     };
@@ -355,7 +376,9 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
     // Each person's "last seen" setting decides (contacts by default, the rule this endpoint always had).
     const list = rows.filter((u) => canSeeLastSeen(ctx, userId, u)).map((u) => u.id);
     return {
-      presence: list.map((u) => ({ userId: u, online: ctx.hub.isUserOnline(u), lastSeenAt: ctx.hub.lastSeenAt(u) })),
+      presence: rows
+        .filter((u) => list.includes(u.id))
+        .map((u) => ({ userId: u.id, online: appearsOnline(ctx, u), presence: shownPresence(ctx, u), lastSeenAt: ctx.hub.lastSeenAt(u.id) })),
     };
   });
 }

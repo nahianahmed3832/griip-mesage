@@ -397,14 +397,71 @@ You need two accounts on two phones, or your two accounts on one phone (Meldiq T
 7. **Languages:** 中文 or বাংলা on the Connections screen and the request bar.
 8. **Report back:** pass or fail per step, with screenshots.
 
+## 6e. Batch B6b: group photo and presence choices (built 2026-10-22, not phone-tested)
+
+### What's in it
+
+| Feature | What the person sees | Code |
+|---|---|---|
+| Group photo (DM-07, Discord GDM-CTRL-002) | Group info › **Add a group photo** / **Change group photo** / **Remove group photo** for the group's admins ("Everyone in the group sees it. Like the group's name, it isn't end-to-end encrypted."). The photo replaces the group icon in the chat list and the header | Android `ConversationInfoScreen.kt`, `ConversationRow.kt` (`GroupPhoto`). Server `PUT/DELETE/GET /v1/conversations/:id/photo` (groups only, members only) |
+| Presence (NAV-08, NAV-CTRL-010) | You › **Presence**: Online (automatic), Idle ("Shows you're away"), Do not disturb ("Pauses notifications on all your devices for as long"), Invisible ("You appear offline, and your last seen doesn't change"); then 1 hour, 8 hours, 24 hours, 7 days or Until I change it. Others see an amber dot and "Idle", or a red dot and "Do not disturb", on profiles and in the DM header; an invisible person shows as offline with their old last-seen time | Android `profile/PresenceSheet.kt`, `PresenceRules`, `PresenceDot` in `Display.kt`, `UserAvatar.kt`. Server `PUT /v1/users/me/presence`, `profile.ts` (`shownPresence`), `ws.ts` (`announcePresence`), `hub.ts` (last seen kept while invisible) |
+
+**Server and API:** API **0.20.0**, features `group-photos` and `presence-modes`. **Migration 039** (additive):
+`conversations.photo_rev`, `users.presence_mode`, `users.presence_until`. Presence follows each person's existing
+"last seen" privacy setting: people who may not see it see nothing.
+
+**Android database version 13** (adds `conversations.photoRev`, `users.presence`).
+
+### How it was checked
+
+- **Server:** full suite **691 passed**, 10 skipped; `group_photo_presence.test.ts` (6 tests: only admins set the photo,
+  members see it, non-members get 404, not a JPEG refused, remove, groups only; online while connected, idle and do
+  not disturb shown to others and announced live, invisible shown as offline in profiles, member lists and presence
+  queries, connecting and leaving while invisible announce nothing and keep last seen, back to automatic, bad choices
+  and end times refused, a timed choice ending by itself). `profile_privacy.test.ts` still passes: presence is absent,
+  like other hidden fields, for people who may not see it.
+- **Android:** `PresenceRulesTest`; `MigrationsTest` covers v13; full unit suite and lint in the APK build below.
+- **Emulator** (Ada and Erin):
+  - Ada › You › Presence › Idle › 1 hour (server: idle); Erin opened Ada's profile: **"Idle"** with an amber dot;
+  - Ada › Invisible › Until I change it; Erin saw **"Last seen 6 min ago"** while Ada's app was open; Ada › Online;
+  - Ada › New group "Lab trip" (with Carol and Erin) › Group info › Add a group photo › picked an image › the row
+    became Change / Remove group photo and the header shows the photo (server: photo_rev set).
+- **Found and fixed during the check:** after choosing Idle the You screen still said "Online" (it read a profile copy
+  that only some calls refreshed).
+- **Not checked:** do not disturb pausing notifications on a second device (it uses the existing pause, which B1–B3
+  covered); the web shows idle and do not disturb as plain online.
+
+### B6b APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b6b-debug.apk`
+  (147 MB, git-ignored). **SHA-256:** `a61b92734b77785b758771aa61191ebd8f1c4452dc5d27809e181054074add78`.
+- **Variant:** debug, side by side (`com.meldiq.android.test`, versionCode 19 / `0.5.0-beta`), server
+  `http://localhost:8080` (API 0.20.0 from `server/scripts/phone-test-server.sh`). It contains B4 to B6 as well: **this
+  is the one APK to install for testing B4 to B6b together.**
+- **Checks:** `testDebugUnitTest` 612 tests, 0 failures; `lintDebug` 0 errors.
+
+### Owner's phone checklist (B6b)
+
+1. **Idle:** You › Presence › Idle › 1 hour. **Expected:** the row says Idle until …. On your other account, open this
+   account's profile: **Idle** with an amber dot.
+2. **Do not disturb:** You › Presence › Do not disturb › 1 hour. **Expected:** "Pause notifications" shows paused until
+   the same time; a message from the other account makes no sound or notification; the other account sees **Do not
+   disturb** with a red dot.
+3. **Invisible:** You › Presence › Invisible › Until I change it. **Expected:** the other account sees "Last seen …",
+   not Online, even while this app is open. Set Online again.
+4. **Group photo:** in a group you created › group info › **Add a group photo** › pick a picture. **Expected:** the
+   photo in the chat list and header, on both accounts. Remove it.
+5. **Languages:** 中文 or বাংলা in the Presence sheet.
+6. **Report back:** pass or fail per step, with screenshots.
+
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
    call).
 2. **The AWS tools use the root user's access key:** move them off it (`MELDIQ_AWS_ARCHITECTURE.md` §5).
-3. **Server 0.19.0 isn't deployed** (production runs 0.13.0): 0.19.0 adds migration 038 (connections, requests) and
-   `DEFAULT_DM_POLICY`; 0.18.0 adds migration 037 (applications, alerts); 0.14.0 migration 034 (timeouts); 0.15.0 B2's preference fields and templates; 0.16.0 migration 035 (slowmode) and B3's fields; 0.17.0 migration 036 (reports, pauses). For deployment, set `REPORTS_KEY` (or back up `reports.key` with the database).
-4. **Android database version 12:** forward migrations (v12 in B6).
+3. **Server 0.20.0 isn't deployed** (production runs 0.13.0): 0.20.0 adds migration 039 (group photo, presence);
+   0.19.0 adds migration 038 (connections, requests) and `DEFAULT_DM_POLICY`; 0.18.0 adds migration 037 (applications, alerts); 0.14.0 migration 034 (timeouts); 0.15.0 B2's preference fields and templates; 0.16.0 migration 035 (slowmode) and B3's fields; 0.17.0 migration 036 (reports, pauses). For deployment, set `REPORTS_KEY` (or back up `reports.key` with the database).
+4. **Android database version 13:** forward migrations (v12 in B6, v13 in B6b).
 5. **For https invite links (B4b):** serve `https://meldiq.app/.well-known/assetlinks.json` from
    `orbit_web/deploy/app-links/assetlinks.template.json` with the release signing-certificate SHA-256 (from your signing
    key; Claude never reads it), and route `meldiq.app/invite/*` to the web server's invite page (or serve the web app
@@ -412,8 +469,8 @@ You need two accounts on two phones, or your two accounts on one phone (Meldiq T
 
 ## 8. Next, exactly
 
-1. **Engineering (in progress overnight):** B6b (group photo, presence choices), then B7 to B13 in order, each committed
-   with its own APK and checklist in this file.
+1. **Engineering (in progress overnight):** B7 (media and large files), then B8 to B13 in order, each committed with
+   its own APK and checklist in this file.
 2. **Owner, when back:** phone-test the batches together using the per-batch checklists (B4, B4b, then later ones),
    and report pass or fail per batch.
 3. **Owner decisions:** `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions" (fingerprint and meldiq.app hosting for invite

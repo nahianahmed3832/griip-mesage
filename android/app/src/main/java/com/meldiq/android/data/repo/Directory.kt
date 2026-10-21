@@ -5,6 +5,7 @@ import com.meldiq.android.crypto.Ed25519
 import com.meldiq.android.crypto.RecipientDevice
 import com.meldiq.android.crypto.unb64
 import com.meldiq.android.data.api.ApiClient
+import com.meldiq.android.data.model.PresenceRules
 import com.meldiq.android.data.api.KeysRes
 import com.meldiq.android.data.api.PresenceRes
 import com.meldiq.android.data.api.UserDto
@@ -162,6 +163,7 @@ class UserRepository(private val api: ApiClient, private val db: GriipDatabase) 
                 username = u.username, displayName = u.displayName, avatarColor = u.avatarColor, statusText = u.statusText,
                 online = u.online ?: e?.online ?: false, lastSeenAt = u.lastSeenAt ?: e?.lastSeenAt, updatedAt = System.currentTimeMillis(),
                 photoRev = u.photoRev,
+                presence = PresenceRules.stored(u.presence),
             ),
         )
     }
@@ -172,7 +174,7 @@ class UserRepository(private val api: ApiClient, private val db: GriipDatabase) 
 
     suspend fun refreshPresence(ids: List<String>) {
         if (ids.isEmpty()) return
-        api.get<PresenceRes>("/v1/presence?ids=${ids.joinToString(",")}").presence.forEach { db.users().setPresence(it.userId, it.online, it.lastSeenAt) }
+        api.get<PresenceRes>("/v1/presence?ids=${ids.joinToString(",")}").presence.forEach { db.users().setPresence(it.userId, it.online, it.lastSeenAt, PresenceRules.stored(it.presence)) }
     }
 
     suspend fun markVerified(userId: String) {

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 import { type AppContext, type AuthInfo, authenticateToken, stillAuthenticated } from "./context.js";
-import { canSeeLastSeen, type ProfileRow } from "./profile.js";
+import { canSeeLastSeen, presenceModeOf, type ProfileRow, shownPresence } from "./profile.js";
 import { acknowledge } from "./routes/messages.js";
 import { now } from "./util.js";
 
@@ -14,29 +14,51 @@ import { now } from "./util.js";
  * Server → client: hello, queue, queue.drained, typing, presence, call, conv.updated,
  *                  org.updated, devices.changed, pong
  */
+/**
+ * Tells the people who may see [userId]'s presence how they appear now: online, idle, do not disturb, or offline (also
+ * while invisible). Only people who share a DM or group with them learn of changes.
+ */
+export function announcePresence(ctx: AppContext, userId: string): void {
+  const { db, hub } = ctx;
+  if (!db.open) return; // server shutting down
+  const peers = db
+    .prepare(
+      `SELECT DISTINCT m2.user_id FROM conversation_members m1
+       JOIN conversations c ON c.id = m1.conversation_id AND c.type IN ('DM','GROUP')
+       JOIN conversation_members m2 ON m2.conversation_id = m1.conversation_id
+       WHERE m1.user_id = ? AND m2.user_id != ?`,
+    )
+    .all(userId, userId) as { user_id: string }[];
+  // Someone whose "last seen" is limited is announced only to the people that setting allows (src/profile.ts).
+  const u = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as ProfileRow | undefined;
+  if (!u) return;
+  const audience = peers.filter((p) => canSeeLastSeen(ctx, p.user_id, u));
+  const presence = shownPresence(ctx, u);
+  const online = presence !== "offline";
+  hub.sendToUsers(
+    audience.map((p) => p.user_id),
+    { t: "presence", userId, online, presence, lastSeenAt: online ? null : hub.lastSeenAt(userId) },
+  );
+}
+
+/** Batch B6b: whether [userId] chose to appear offline (their connections then change nothing others see). */
+function invisible(ctx: AppContext, userId: string): boolean {
+  const u = ctx.db.prepare("SELECT presence_mode, presence_until FROM users WHERE id = ?").get(userId) as ProfileRow | undefined;
+  return !!u && presenceModeOf(u) === "invisible";
+}
+
 export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
   const { db, hub, authz } = ctx;
   const lastTyping = new Map<string, number>();
 
-  hub.onPresenceChange = (userId, online) => {
+  hub.onPresenceChange = (userId) => {
     if (!db.open) return; // server shutting down
-    // Only people who share a DM or group with this user learn about presence changes.
-    const peers = db
-      .prepare(
-        `SELECT DISTINCT m2.user_id FROM conversation_members m1
-         JOIN conversations c ON c.id = m1.conversation_id AND c.type IN ('DM','GROUP')
-         JOIN conversation_members m2 ON m2.conversation_id = m1.conversation_id
-         WHERE m1.user_id = ? AND m2.user_id != ?`,
-      )
-      .all(userId, userId) as { user_id: string }[];
-    // Someone whose "last seen" is limited is announced only to the people that setting allows (src/profile.ts).
-    const u = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as ProfileRow | undefined;
-    const audience = u ? peers.filter((p) => canSeeLastSeen(ctx, p.user_id, u)) : [];
-    hub.sendToUsers(
-      audience.map((p) => p.user_id),
-      { t: "presence", userId, online, lastSeenAt: online ? null : now() },
-    );
+    // Batch B6b: an invisible person's apps connecting and disconnecting change nothing anyone sees.
+    if (invisible(ctx, userId)) return;
+    announcePresence(ctx, userId);
   };
+  // Nor their "last seen" time.
+  hub.recordsLastSeen = (userId) => !invisible(ctx, userId);
 
   app.get("/v1/ws", { websocket: true }, (socket, req) => {
     // A browser page from an origin not in WEB_ORIGINS can't use this socket (when the list is set). Apps send no Origin.

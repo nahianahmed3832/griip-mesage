@@ -46,6 +46,35 @@ export interface ProfileRow {
   photo_rev?: number | null;
   privacy?: string | null;
   home_server_id?: string | null;
+  presence_mode?: string | null;
+  presence_until?: number | null;
+}
+
+/** Batch B6b: what a person chose to appear as. "auto": online while an app is connected. */
+export const PRESENCE_MODES = ["auto", "idle", "dnd", "invisible"] as const;
+export type PresenceMode = (typeof PRESENCE_MODES)[number];
+/** What others see: "offline" also while someone is invisible. */
+export type ShownPresence = "online" | "idle" | "dnd" | "offline";
+
+/** The person's current choice ("auto" once a timed one has ended). */
+export function presenceModeOf(u: Pick<ProfileRow, "presence_mode" | "presence_until">, at = Date.now()): PresenceMode {
+  const m = u.presence_mode as PresenceMode | null | undefined;
+  if (!m || m === "auto" || (u.presence_until != null && u.presence_until <= at)) return "auto";
+  return m;
+}
+
+/** How [u] appears to others right now (callers check the viewer may see it at all: canSeeLastSeen). */
+export function shownPresence(ctx: AppContext, u: Pick<ProfileRow, "id" | "presence_mode" | "presence_until">): ShownPresence {
+  if (!ctx.hub.isUserOnline(u.id)) return "offline";
+  const m = presenceModeOf(u);
+  if (m === "invisible") return "offline";
+  return m === "auto" ? "online" : m;
+}
+
+/** Whether [userId] appears online (connected and not invisible); loads their choice when only the id is known. */
+export function appearsOnline(ctx: AppContext, u: string | Pick<ProfileRow, "id" | "presence_mode" | "presence_until">): boolean {
+  const row = typeof u === "string" ? (ctx.db.prepare("SELECT id, presence_mode, presence_until FROM users WHERE id = ?").get(u) as ProfileRow | undefined) : u;
+  return row ? shownPresence(ctx, row) !== "offline" : false;
 }
 
 /** The person's privacy settings: stored values over the defaults; anything unreadable falls back to the default. */
@@ -130,6 +159,9 @@ export function profileView(u: ProfileRow, r: Relation) {
   if (r.self) {
     view.privacy = p;
     view.notificationsPausedUntil = notificationsPaused(u) ? u.notifications_paused_until : null;
+    // Batch B6b: your own presence choice.
+    view.presenceMode = presenceModeOf(u);
+    view.presenceUntil = presenceModeOf(u) === "auto" ? null : (u.presence_until ?? null);
   }
   return view;
 }
@@ -173,7 +205,9 @@ export function memberView(ctx: AppContext, viewerId: string, u: ProfileRow, bas
     statusText: allows(p.bio, r) ? status.text : null,
     statusEmoji: allows(p.bio, r) ? status.emoji : null,
     ...(allows(p.photo, r) && u.photo_rev ? { photoRev: u.photo_rev } : {}),
-    online: seen ? ctx.hub.isUserOnline(u.id) : null,
+    online: seen ? appearsOnline(ctx, u) : null,
+    // Batch B6b: online, idle, do not disturb or offline (invisible people appear offline).
+    ...(seen ? { presence: shownPresence(ctx, u) } : {}),
     // "Ada has paused notifications": shown to the people who may see when Ada was last online (round 3).
     notificationsPaused: seen ? notificationsPaused(u) : null,
   };

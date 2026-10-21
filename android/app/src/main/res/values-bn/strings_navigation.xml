@@ -460,4 +460,21 @@
     <string name="b6_policy_communities">আপনার কমিউনিটির লোকজন</string>
     <string name="b6_policy_connections">শুধু আপনার সংযোগ</string>
     <string name="b6_policy_nobody">কেউ না</string>
+    <string name="b6b_add_photo">গ্রুপের ছবি যোগ করুন</string>
+    <string name="b6b_change_photo">গ্রুপের ছবি বদলান</string>
+    <string name="b6b_remove_photo">গ্রুপের ছবি সরান</string>
+    <string name="b6b_photo_sub">গ্রুপের সবাই দেখতে পাবেন। গ্রুপের নামের মতো এটিও এন্ড-টু-এন্ড এনক্রিপ্ট করা নয়।</string>
+    <string name="b6b_photo_uploading">আপলোড হচ্ছে…</string>
+    <string name="b6b_title">উপস্থিতি</string>
+    <string name="b6b_auto">অনলাইন</string>
+    <string name="b6b_auto_sub">Meldiq খোলা বা সংযুক্ত থাকলে অনলাইন</string>
+    <string name="b6b_idle">নিষ্ক্রিয়</string>
+    <string name="b6b_idle_sub">দেখায় আপনি দূরে আছেন</string>
+    <string name="b6b_dnd">বিরক্ত করবেন না</string>
+    <string name="b6b_dnd_sub">একই সময় আপনার সব ডিভাইসে নোটিফিকেশন বন্ধ থাকবে</string>
+    <string name="b6b_invisible">অদৃশ্য</string>
+    <string name="b6b_invisible_sub">আপনাকে অফলাইন দেখাবে, শেষ দেখার সময়ও বদলাবে না। আপনি Meldiq ব্যবহার করতে পারবেন।</string>
+    <string name="b6b_for_how_long">কতক্ষণ %1$s?</string>
+    <string name="b6b_8h">৮ ঘণ্টা</string>
+    <string name="b6b_until_changed">আমি না বদলানো পর্যন্ত</string>
 </resources>

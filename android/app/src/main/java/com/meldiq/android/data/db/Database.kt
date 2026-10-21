@@ -249,8 +249,9 @@ interface UserDao {
     @Upsert
     suspend fun upsert(u: UserEntity)
 
-    @Query("UPDATE users SET online = :online, lastSeenAt = COALESCE(:lastSeen, lastSeenAt) WHERE id = :id")
-    suspend fun setPresence(id: String, online: Boolean, lastSeen: Long?)
+    /** [presence]: "idle" or "dnd" while they appear so; null otherwise (older servers never send one). */
+    @Query("UPDATE users SET online = :online, lastSeenAt = COALESCE(:lastSeen, lastSeenAt), presence = :presence WHERE id = :id")
+    suspend fun setPresence(id: String, online: Boolean, lastSeen: Long?, presence: String? = null)
 
     @Query("SELECT * FROM users")
     suspend fun all(): List<UserEntity>
@@ -392,7 +393,7 @@ abstract class GriipDatabase : RoomDatabase() {
          * Schema version. Raising it needs a matching step in [Migrations] and the exported schema
          * committed under `app/schemas` (docs/DECISIONS.md D-13); `MigrationsTest` enforces both.
          */
-        const val VERSION = 12
+        const val VERSION = 13
 
         /**
          * The database file is encrypted with SQLCipher (AES-256) using a random passphrase that is
