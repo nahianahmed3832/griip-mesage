@@ -63,6 +63,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="meldiq" android:host="invite" />
                 <data android:scheme="griip" android:host="invite" />
+                <data android:scheme="meldiq" android:host="m" />
             </intent-filter>
             <!-- Batch B4b: https://meldiq.app/invite/CODE, verified through meldiq.app/.well-known/assetlinks.json (the
                  release signing certificate's fingerprint is the owner's to add). Unverified, Android asks which app opens it. -->
@@ -72,6 +73,8 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="meldiq.app" android:pathPrefix="/invite/" />
                 <data android:scheme="https" android:host="www.meldiq.app" android:pathPrefix="/invite/" />
+                <!-- Batch B5: message links, https://meldiq.app/m/CONVERSATION/MESSAGE. -->
+                <data android:pathPrefix="/m/" />
             </intent-filter>
         </activity>
 

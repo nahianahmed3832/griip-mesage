@@ -37,9 +37,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.meldiq.android.R
 import com.meldiq.android.data.api.UserDto
 import com.meldiq.android.data.repo.ConversationRepository
 import com.meldiq.android.ui.LocalContainer
@@ -101,7 +103,7 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
     val cv = conv ?: return
     val title = ConversationRepository.title(cv, me)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
-        item { GriipTopBar(if (cv.type == "CHANNEL") "Channel info" else if (cv.type == "GROUP") "Group info" else "Contact", onBack = { nav.popBackStack() }) }
+        item { GriipTopBar(stringResource(if (cv.type == "CHANNEL") R.string.b5_channel_info else if (cv.type == "GROUP") R.string.b5_group_info else R.string.b5_contact), onBack = { nav.popBackStack() }) }
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp)) {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -116,7 +118,7 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
                             cv.scopeName?.let { TagPill(it, c.lavender, c.lavenderSoft) }
                         }
                         TagPill("${cv.memberCount} members", c.textSecondary, c.surfaceVariant)
-                        if (cv.archived) TagPill("Archived", c.warning, c.warningSoft)
+                        if (cv.archived) TagPill(stringResource(R.string.b5_archived), c.warning, c.warningSoft)
                     }
                 }
             }
@@ -131,17 +133,17 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
         item(key = "settings-header") { SectionHeader(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ch_notifications), Modifier.padding(top = 10.dp, bottom = 2.dp)) }
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), contentPadding = PaddingValues(6.dp)) {
-                MenuRow(Icons.Outlined.NotificationsOff, "Mute notifications", subtitle = "Mentions still notify you", trailing = {
+                MenuRow(Icons.Outlined.NotificationsOff, stringResource(R.string.b5_mute_notifications), subtitle = stringResource(R.string.b5_mentions_still), trailing = {
                     GriipSwitch(cv.muted, { v -> scope.launch { container.navPrefs.setMuted(cv, v) } })
                 })
                 if (cv.type == "DM") {
                     ConversationRepository.peer(cv, me)?.let { p ->
-                        MenuRow(Icons.Outlined.Shield, "Safety number & profile", subtitle = "Verify @${p.username}'s identity key", onClick = { nav.navigate(Routes.user(p.id)) })
+                        MenuRow(Icons.Outlined.Shield, stringResource(R.string.b5_safety_profile), subtitle = stringResource(R.string.b5_verify_key, p.username), onClick = { nav.navigate(Routes.user(p.id)) })
                     }
                 }
                 if (cv.canManage) {
-                    MenuRow(Icons.Outlined.Edit, if (cv.type == "CHANNEL") "Edit name & topic" else "Rename group", tint = c.lavender, tintBg = c.lavenderSoft, onClick = { showEdit = true })
-                    if (cv.type != "DM") MenuRow(Icons.Outlined.PersonAdd, "Add members", onClick = { showAdd = true })
+                    MenuRow(Icons.Outlined.Edit, stringResource(if (cv.type == "CHANNEL") R.string.b5_edit_name_topic else R.string.b5_rename_group), tint = c.lavender, tintBg = c.lavenderSoft, onClick = { showEdit = true })
+                    if (cv.type != "DM") MenuRow(Icons.Outlined.PersonAdd, stringResource(R.string.b5_add_members), onClick = { showAdd = true })
                     // Communities: who may see, post and share files here, on top of the category's rules.
                     if (cv.type == "CHANNEL" && cv.orgId != null && communityChannels) MenuRow(
                         Icons.Outlined.Security, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.cm_permissions), tint = c.lavender, tintBg = c.lavenderSoft,
@@ -154,13 +156,13 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
                         onClick = { scope.launch { runCatching { container.conversations.update(conversationId, format = if (cv.format == "forum") "text" else "forum") }.onFailure { error = it.friendly() }; reload++ } },
                     )
                     if (cv.type == "CHANNEL") MenuRow(
-                        if (cv.archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, if (cv.archived) "Unarchive channel" else "Archive channel",
+                        if (cv.archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, stringResource(if (cv.archived) R.string.b5_unarchive_channel else R.string.b5_archive_channel),
                         tint = c.warning, tintBg = c.warningSoft,
                         onClick = { scope.launch { runCatching { container.conversations.update(conversationId, archived = !cv.archived) }.onFailure { error = it.friendly() } } },
                     )
                 }
                 if (cv.type != "DM" && cv.joined && !(cv.kind == "ANNOUNCEMENT" && !cv.canManage)) {
-                    MenuRow(Icons.AutoMirrored.Outlined.ExitToApp, "Leave", tint = c.danger, tintBg = c.dangerSoft, onClick = { confirmLeave = true }, trailing = null)
+                    MenuRow(Icons.AutoMirrored.Outlined.ExitToApp, stringResource(R.string.b5_leave), tint = c.danger, tintBg = c.dangerSoft, onClick = { confirmLeave = true }, trailing = null)
                 }
             }
         }
@@ -169,7 +171,7 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
             items(pinned, key = { "pin" + it.id }) { m ->
                 ListCard(
                     m.text.ifEmpty { "📎 Attachment" }, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                    subtitle = (if (m.outgoing) "You · " else "") + TimeFmt.listStamp(m.sortTs),
+                    subtitle = (if (m.outgoing) stringResource(R.string.pin_you) + " · " else "") + TimeFmt.listStamp(m.sortTs),
                     leading = { com.meldiq.android.ui.components.IconTile(Icons.Outlined.PushPin, c.peach, c.peachSoft, size = 38.dp) },
                     onClick = { nav.popBackStack() },
                 )
@@ -187,13 +189,13 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (u.role == "ADMIN") RoleBadge("ADMIN") else u.orgRole?.takeIf { it != "MEMBER" }?.let { RoleBadge(it) }
                         if (cv.canManage && u.id != me && cv.type != "DM") {
-                            CircleIconButton(Icons.Rounded.MoreVert, "Manage ${u.displayName}", { menu = true }, size = 34.dp)
+                            CircleIconButton(Icons.Rounded.MoreVert, stringResource(R.string.b5_manage_person, u.displayName), { menu = true }, size = 34.dp)
                             DropdownMenu(menu, { menu = false }) {
-                                DropdownMenuItem(text = { Text(if (u.role == "ADMIN") "Make member" else "Make channel admin") }, onClick = {
+                                DropdownMenuItem(text = { Text(stringResource(if (u.role == "ADMIN") R.string.b5_make_member else R.string.b5_make_channel_admin)) }, onClick = {
                                     menu = false
                                     scope.launch { runCatching { container.conversations.addMember(conversationId, u.id, if (u.role == "ADMIN") "MEMBER" else "ADMIN") }.onFailure { error = it.friendly() }; reload++ }
                                 })
-                                DropdownMenuItem(text = { Text("Remove from ${if (cv.type == "CHANNEL") "channel" else "group"}", color = c.danger) }, onClick = {
+                                DropdownMenuItem(text = { Text(stringResource(if (cv.type == "CHANNEL") R.string.b5_remove_from_channel else R.string.b5_remove_from_group), color = c.danger) }, onClick = {
                                     menu = false
                                     scope.launch { runCatching { container.conversations.removeMember(conversationId, u.id) }.onFailure { error = it.friendly() }; reload++ }
                                 })
@@ -215,12 +217,12 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
     if (showEdit) {
         var name by remember { mutableStateOf(cv.name ?: "") }
         var topic by remember { mutableStateOf(cv.topic ?: "") }
-        GlassSheet({ showEdit = false }, title = "Edit") {
-            GriipTextField(name, { name = it.take(60) }, "Name")
+        GlassSheet({ showEdit = false }, title = stringResource(R.string.b5_edit)) {
+            GriipTextField(name, { name = it.take(60) }, stringResource(R.string.b5_name))
             Spacer(Modifier.height(12.dp))
-            if (cv.type == "CHANNEL") GriipTextField(topic, { topic = it.take(300) }, "Topic", singleLine = false, minLines = 2)
+            if (cv.type == "CHANNEL") GriipTextField(topic, { topic = it.take(300) }, stringResource(R.string.b5_topic), singleLine = false, minLines = 2)
             Spacer(Modifier.height(16.dp))
-            PillButton("Save", {
+            PillButton(stringResource(R.string.ja_save), {
                 scope.launch {
                     runCatching { container.conversations.update(conversationId, name = name.trim(), topic = if (cv.type == "CHANNEL") topic.trim() else null) }.onFailure { error = it.friendly() }
                     showEdit = false
@@ -229,7 +231,7 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
         }
     }
     if (confirmLeave) ConfirmDialog(
-        "Leave $title?", "You'll stop receiving new messages. Your existing history stays on this device.", "Leave",
+        stringResource(R.string.b5_leave_q, title), stringResource(R.string.b5_leave_body), stringResource(R.string.b5_leave),
         onConfirm = {
             confirmLeave = false
             scope.launch {
@@ -253,8 +255,8 @@ fun AddMembersSheet(orgId: String?, existing: Set<String>, onDismiss: () -> Unit
         list = runCatching { if (orgId != null) container.orgs.members(orgId, q) else if (q.length >= 2) container.users.search(q) else emptyList() }.getOrDefault(emptyList())
             .filter { it.id !in existing }
     }
-    GlassSheet(onDismiss, title = "Add members") {
-        SearchPill(q, { q = it }, "Search people")
+    GlassSheet(onDismiss, title = stringResource(R.string.b5_add_members)) {
+        SearchPill(q, { q = it }, stringResource(R.string.b5_search_people))
         Spacer(Modifier.height(8.dp))
         LazyColumn(Modifier.fillMaxWidth().height(360.dp)) {
             items(list, key = { it.id }) { u ->
@@ -262,14 +264,14 @@ fun AddMembersSheet(orgId: String?, existing: Set<String>, onDismiss: () -> Unit
                 ListCard(
                     u.displayName, Modifier.padding(vertical = 4.dp), subtitle = "@${u.username}" + (u.orgRole?.let { " · ${it.lowercase()}" } ?: ""),
                     leading = { Avatar(u.displayName, u.avatarColor, size = 40.dp) },
-                    trailing = { if (sel) TagPill("Selected", c.primaryDeep, c.primarySoft) },
+                    trailing = { if (sel) TagPill(stringResource(R.string.b5_selected), c.primaryDeep, c.primarySoft) },
                     selected = sel,
                     onClick = { picked.value = if (sel) picked.value - u.id else picked.value + u.id },
                 )
             }
         }
         Spacer(Modifier.height(12.dp))
-        PillButton("Add ${picked.value.size}", { onAdd(picked.value.toList()) }, Modifier.fillMaxWidth(), enabled = picked.value.isNotEmpty(), height = 50.dp)
+        PillButton(stringResource(R.string.b5_add_n, picked.value.size), { onAdd(picked.value.toList()) }, Modifier.fillMaxWidth(), enabled = picked.value.isNotEmpty(), height = 50.dp)
         Spacer(Modifier.width(1.dp))
     }
 }

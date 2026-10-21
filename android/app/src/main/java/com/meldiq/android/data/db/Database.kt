@@ -97,6 +97,15 @@ interface MessageDao {
     @Query("SELECT threadRootId AS root, COUNT(*) AS n, MAX(sortTs) AS lastTs FROM messages WHERE conversationId = :cid AND threadRootId IS NOT NULL AND deleted = 0 GROUP BY threadRootId")
     fun observeThreadCounts(cid: String): Flow<List<ThreadCount>>
 
+    /** Batch B5: the conversation's threads (roots this phone has, with their reply counts), latest reply first. */
+    @Query(
+        """SELECT root.*, t.n AS replyCount, t.lastTs AS lastReplyTs FROM messages root
+           JOIN (SELECT threadRootId AS r, COUNT(*) AS n, MAX(sortTs) AS lastTs FROM messages
+                 WHERE conversationId = :cid AND threadRootId IS NOT NULL AND deleted = 0 GROUP BY threadRootId) t ON t.r = root.id
+           WHERE root.conversationId = :cid ORDER BY t.lastTs DESC LIMIT :limit""",
+    )
+    fun observeThreadRoots(cid: String, limit: Int): Flow<List<ThreadRoot>>
+
     @Query("SELECT * FROM messages WHERE conversationId = :cid AND pinned = 1 AND deleted = 0 ORDER BY sortTs DESC")
     fun observePinned(cid: String): Flow<List<MessageEntity>>
 
@@ -190,6 +199,8 @@ interface MessageDao {
 
 /** A thread's replies on this phone: how many, and when the newest was sent (forum posts sort by it). */
 data class ThreadCount(val root: String, val n: Int, val lastTs: Long = 0)
+/** Batch B5: a thread's first message with how many replies it has and when the latest came. */
+data class ThreadRoot(@androidx.room.Embedded val root: MessageEntity, val replyCount: Int, val lastReplyTs: Long)
 
 @Dao
 interface OutboxDao {

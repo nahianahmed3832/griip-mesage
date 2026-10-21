@@ -179,6 +179,7 @@ class MessageRepository(
     fun observeMessages(cid: String, limit: Int): Flow<List<MessageEntity>> = db.messages().observeLatest(cid, limit)
     fun observeThread(cid: String, root: String) = db.messages().observeThread(cid, root)
     fun observeThreadCounts(cid: String) = db.messages().observeThreadCounts(cid)
+    fun observeThreadRoots(cid: String, limit: Int) = db.messages().observeThreadRoots(cid, limit)
     fun observePinned(cid: String) = db.messages().observePinned(cid)
     fun observeWithFiles(cid: String, limit: Int) = db.messages().observeWithFiles(cid, limit)
     fun observeThreadReplies(me: String, since: Long, limit: Int) = db.messages().observeThreadReplies(me, since, limit)

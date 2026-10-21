@@ -3,6 +3,7 @@ package com.meldiq.android.ui.screens.home
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -13,6 +14,7 @@ import androidx.compose.material.icons.automirrored.rounded.CallMissed
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.NotificationsNone
+import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -20,12 +22,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.meldiq.android.R
+import com.meldiq.android.data.db.ConversationEntity
 import com.meldiq.android.ui.LocalContainer
 import com.meldiq.android.ui.LocalTabBarPadding
 import com.meldiq.android.ui.Routes
@@ -40,6 +44,7 @@ import com.meldiq.android.ui.screens.chats.ConversationAvatar
 import com.meldiq.android.ui.screens.chats.listTitle
 import com.meldiq.android.ui.theme.Griip
 import com.meldiq.android.ui.theme.Space
+import kotlinx.coroutines.launch
 
 /**
  * The Activity tab (UI-002): what needs you, from this phone's own data. Unread @mentions in every workspace (opening
@@ -71,6 +76,15 @@ private fun ActivityFeed(nav: NavHostController) {
     // Round 3 (the reference's Activity chips): All, Mentions, Threads, Calls.
     var filter by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(ActivityRules.Filter.ALL) }
     val show = { s: ActivityRules.Filter -> ActivityRules.shows(filter, s) }
+    // Batch B5: unread conversations, without the channels hidden from the channel list.
+    val navPrefs by container.navPrefs.prefs.collectAsStateWithLifecycle()
+    val hidden = remember(navPrefs) { navPrefs.values.flatMap { it.hidden.orEmpty() }.toSet() }
+    val unreadGroups = remember(convs, hidden) { ActivityRules.unreads(convs, hidden) }
+    // Community names for the Unreads groups (a channel's scope name is its category).
+    val orgNames by androidx.compose.runtime.produceState(emptyMap<String, String>(), loaded) {
+        value = container.orgs.cachedOrgs()?.associate { it.id to it.name }.orEmpty()
+    }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     Box(Modifier.fillMaxSize().background(c.background)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + LocalTabBarPadding.current)) {
@@ -89,12 +103,44 @@ private fun ActivityFeed(nav: NavHostController) {
                     listOf(
                         ActivityRules.Filter.ALL to R.string.r3_activity_all, ActivityRules.Filter.MENTIONS to R.string.r3_activity_mentions,
                         ActivityRules.Filter.THREADS to R.string.r3_activity_threads, ActivityRules.Filter.CALLS to R.string.r3_activity_calls,
+                        ActivityRules.Filter.UNREADS to R.string.b5_unreads,
                     ).forEach { (f, label) -> com.meldiq.android.ui.components.PillChip(stringResource(label), filter == f, { filter = f }) }
                 }
             }
-            if (ActivityRules.empty(filter, mentions.size, threads.size, missed.size)) {
+            if (ActivityRules.empty(filter, mentions.size, threads.size, missed.size, unreadGroups.sumOf { it.conversations.size })) {
                 item(key = "empty") {
-                    EmptyState(Icons.Outlined.NotificationsNone, stringResource(R.string.activity_empty_title), stringResource(R.string.activity_empty_body))
+                    if (filter == ActivityRules.Filter.UNREADS) EmptyState(Icons.Outlined.NotificationsNone, stringResource(R.string.b5_unreads_empty), stringResource(R.string.b5_unreads_empty_body))
+                    else EmptyState(Icons.Outlined.NotificationsNone, stringResource(R.string.activity_empty_title), stringResource(R.string.activity_empty_body))
+                }
+            }
+            if (filter == ActivityRules.Filter.UNREADS && unreadGroups.isNotEmpty()) {
+                item(key = "unreads-all") {
+                    HomeSectionHeader(
+                        stringResource(R.string.b5_unreads), action = stringResource(R.string.b5_mark_all_read),
+                        onAction = { scope.launch { unreadGroups.flatMap { it.conversations }.forEach { container.conversations.markRead(it.id) } } },
+                    )
+                }
+                unreadGroups.forEach { g ->
+                    item(key = "unreads-head-" + (g.orgId ?: "direct")) {
+                        Text(
+                            g.orgId?.let { orgNames[it] } ?: g.name ?: stringResource(R.string.b5_unreads_direct), style = Griip.type.label, color = c.textSecondary,
+                            modifier = Modifier.padding(horizontal = Space.gutter + 4.dp, vertical = 6.dp),
+                        )
+                    }
+                    items(g.conversations, key = { "unread-" + it.id }) { conv ->
+                        HomeListRow(
+                            listTitle(conv, me),
+                            leading = { ChannelOrAvatar(conv, me) },
+                            onClick = { nav.navigate(Routes.conversation(conv.id)) },
+                            subtitle = conv.lastMessagePreview?.take(120), bold = true,
+                            trailing = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    HomeCount(conv.unreadCount, accent = conv.mentionCount > 0, description = stringResource(R.string.b5_unread_count, conv.unreadCount))
+                                    CircleIconButton(Icons.Rounded.DoneAll, stringResource(R.string.b5_mark_read), { scope.launch { container.conversations.markRead(conv.id) } }, size = 36.dp, tint = c.textSecondary)
+                                }
+                            },
+                        )
+                    }
                 }
             }
             if (show(ActivityRules.Filter.MENTIONS) && mentions.isNotEmpty()) {
@@ -169,15 +215,33 @@ private fun ActivityFeed(nav: NavHostController) {
 
 /** Round 3: which Activity sections a filter chip shows (unit-tested in `StatusRulesTest`). */
 object ActivityRules {
-    enum class Filter { ALL, MENTIONS, THREADS, CALLS }
+    enum class Filter { ALL, MENTIONS, THREADS, CALLS, UNREADS }
 
-    fun shows(filter: Filter, section: Filter): Boolean = filter == Filter.ALL || filter == section
+    /** All shows every section except Unreads, which has its own chip (it would repeat the mentions). */
+    fun shows(filter: Filter, section: Filter): Boolean = filter == section || (filter == Filter.ALL && section != Filter.UNREADS)
 
     /** Whether the chosen filter has nothing to show (then the empty state appears). */
-    fun empty(filter: Filter, mentions: Int, threads: Int, calls: Int): Boolean = when (filter) {
+    fun empty(filter: Filter, mentions: Int, threads: Int, calls: Int, unreads: Int = 0): Boolean = when (filter) {
         Filter.ALL -> mentions + threads + calls == 0
         Filter.MENTIONS -> mentions == 0
         Filter.THREADS -> threads == 0
         Filter.CALLS -> calls == 0
+        Filter.UNREADS -> unreads == 0
+    }
+
+    /** A group of unread conversations: one community's channels ([orgId] set), or DMs and groups (null); [name] a fallback label. */
+    data class UnreadGroup(val orgId: String?, val name: String?, val conversations: List<ConversationEntity>)
+
+    /**
+     * Batch B5 (Discord reference NAV-CTRL-005, the inbox's Unreads): conversations with unread messages, except muted,
+     * archived, hidden and left ones, newest first; DMs and groups first, then each community.
+     */
+    fun unreads(convs: List<ConversationEntity>, hidden: Set<String>): List<UnreadGroup> {
+        val unread = convs.filter { it.unreadCount > 0 && !it.muted && !it.removed && it.archivedAt == null && it.id !in hidden }
+            .sortedByDescending { it.lastMessageAt }
+        val direct = unread.filter { it.type != "CHANNEL" }
+        val byOrg = unread.filter { it.type == "CHANNEL" }.groupBy { it.orgId }
+        return listOfNotNull(direct.takeIf { it.isNotEmpty() }?.let { UnreadGroup(null, null, it) }) +
+            byOrg.map { (org, list) -> UnreadGroup(org, list.first().scopeName, list) }
     }
 }

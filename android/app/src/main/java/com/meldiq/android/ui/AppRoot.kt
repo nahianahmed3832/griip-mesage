@@ -131,7 +131,9 @@ object Routes {
     const val DISCOVER = "discover"
     const val PRIVACY = "privacy"
     const val BLOCKED = "blocked"
-    fun conversation(id: String, thread: String? = null) = "conversation/$id" + (thread?.let { "?thread=$it" } ?: "")
+    /** [message]: scroll to this message once it's loaded (batch B5 message links). */
+    fun conversation(id: String, thread: String? = null, message: String? = null) =
+        "conversation/$id" + listOfNotNull(thread?.let { "thread=$it" }, message?.let { "message=$it" }).joinToString("&").let { if (it.isEmpty()) "" else "?$it" }
     fun info(id: String) = "conversation/$id/info"
     fun members(orgId: String) = "members/$orgId"
     fun invites(orgId: String) = "invites/$orgId"
@@ -154,7 +156,7 @@ object Routes {
 }
 
 @Composable
-fun AppRoot(container: AppContainer, pendingConversation: String?, pendingInvite: String?, onPendingHandled: () -> Unit) {
+fun AppRoot(container: AppContainer, pendingConversation: String?, pendingInvite: String?, onPendingHandled: () -> Unit, pendingMessageLink: com.meldiq.android.data.model.MessageLinks.Target? = null) {
     CompositionLocalProvider(LocalContainer provides container) {
         val session by container.session.state.collectAsStateWithLifecycle()
         val call by container.calls.state.collectAsStateWithLifecycle()
@@ -189,7 +191,7 @@ fun AppRoot(container: AppContainer, pendingConversation: String?, pendingInvite
                                 is SessionState.Revoked -> RevokedScreen(s.reason)
                                 // Orbit 2.0: a new recovery key, the start choice or a legacy account's move come before the app.
                                 is SessionState.SignedIn -> com.meldiq.android.ui.screens.account.AccountGate(container) { join ->
-                                    MainNav(container, pendingConversation, pendingInvite ?: join, onPendingHandled)
+                                    MainNav(container, pendingConversation, pendingInvite ?: join, onPendingHandled, pendingMessageLink)
                                 }
                             }
                         }
@@ -226,7 +228,7 @@ private fun CallPalette(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun MainNav(container: AppContainer, pendingConversation: String?, pendingInvite: String?, onPendingHandled: () -> Unit) {
+private fun MainNav(container: AppContainer, pendingConversation: String?, pendingInvite: String?, onPendingHandled: () -> Unit, pendingMessageLink: com.meldiq.android.data.model.MessageLinks.Target?) {
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
@@ -235,8 +237,12 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
     // Home's "See all" opens the DMs tab filtered to unread.
     val dmRequest = remember { DmListRequest() }
 
-    LaunchedEffect(pendingConversation, pendingInvite) {
-        if (pendingConversation == com.meldiq.android.MainActivity.TARGET_REMINDERS) {
+    val linkContext = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(pendingConversation, pendingInvite, pendingMessageLink) {
+        if (pendingMessageLink != null) {
+            MessageLinkOpener.open(container, nav, linkContext, pendingMessageLink)
+            onPendingHandled()
+        } else if (pendingConversation == com.meldiq.android.MainActivity.TARGET_REMINDERS) {
             nav.navigate(Routes.REMINDERS)
             onPendingHandled()
         } else if (pendingConversation != null) {
@@ -281,7 +287,9 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             composable(Routes.JOIN + "?code={code}") { JoinWorkspaceScreen(nav, it.arguments?.getString("code")) }
             composable(Routes.NEW_CHAT + "?mode={mode}") { NewChatScreen(nav, it.arguments?.getString("mode")) }
             composable(Routes.SEARCH) { SearchScreen(nav) }
-            composable("conversation/{id}?thread={thread}") { ConversationScreen(nav, it.arguments!!.getString("id")!!, it.arguments?.getString("thread")) }
+            composable("conversation/{id}?thread={thread}&message={message}") {
+                ConversationScreen(nav, it.arguments!!.getString("id")!!, it.arguments?.getString("thread"), it.arguments?.getString("message"))
+            }
             composable("conversation/{id}/info") { ConversationInfoScreen(nav, it.arguments!!.getString("id")!!) }
             composable("members/{orgId}") { MembersScreen(nav, it.arguments!!.getString("orgId")!!) }
             composable("invites/{orgId}") { InvitesScreen(nav, it.arguments!!.getString("orgId")!!) }

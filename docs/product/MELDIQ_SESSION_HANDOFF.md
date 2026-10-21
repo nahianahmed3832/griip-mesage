@@ -266,6 +266,54 @@ member account. Your test community must be **listed in Discover** (Settings ›
 7. **Languages:** 中文 or বাংলা: the Applications screen and the apply sheet are translated.
 8. **Report back:** pass or fail per step, a screenshot of anything wrong, and the phone model.
 
+## 6c. Batch B5: chat interface (built 2026-10-22, not phone-tested)
+
+### What's in it
+
+| Feature | What the person sees | Code |
+|---|---|---|
+| Thread list per channel (CH-18, Discord CHAN-CTRL-011) | A channel's header › **Threads** (speech-bubble icon, text channels only): every thread this phone has, latest reply first, each with its first line, who started it, the number of replies and when; **Search threads**; "No threads here yet. To start one, long-press a message › Reply in thread." Tapping one opens it | `conversation/ThreadsSheet.kt`, `data/model/ThreadListRules.kt`, DAO `observeThreadRoots` (a query, no schema change) |
+| Message links (MSG-20, CHAT-MSG-004) | Message menu › **Copy message link** → `https://meldiq.app/m/CONVERSATION/MESSAGE` (ids only, no content). Tapping it in a chat, or opening it from another app, shows the conversation at that message (inside its thread for a reply). Not in that conversation: "You can't open this message: you're not in that conversation". Message not on this phone: the conversation, with a notice | `data/model/MessageLinks.kt`, `ui/MessageLinkOpener.kt`, `ConversationScreen.kt` (`focusMessage`), `MainActivity.kt`, `AppRoot.kt` (route `conversation/{id}?thread=&message=`), manifest (`/m/` path, `meldiq://m/`) |
+| Unreads (NAV-04, NAV-CTRL-005) | Activity › **Unreads** chip: conversations with unread messages, "Direct messages and groups" first, then each community by name; muted, archived, left and hidden channels left out; each row has its count and **Mark as read**; **Mark all read** at the top; "All caught up" when empty. The All chip doesn't repeat them | `home/ActivityFeedScreen.kt` (`ActivityRules.unreads`) |
+| Translations (MSG-19) | The message menu, message info (status values too), forward dialog, the file warning, the composer's buttons and placeholders, the header, banners (server unreachable, key changed, can't post) and conversation info in Chinese and Bengali | `ConversationScreen.kt`, `ConversationInfoScreen.kt`; strings `b5_*` (about 120) |
+
+No server change in B5.
+
+### How it was checked
+
+- **Android:** unit tests (new `ChatInterfaceRulesTest`: links, thread names and search, unreads grouping and
+  exclusions, the Unreads chip, routes) and the full suite; lint.
+- **Emulator** (Ada): #general › Threads showed the empty state; long-press › Reply in thread › sent a reply ›
+  Threads listed it ("You · 1 reply"); long-press › **Copy message link** put
+  `https://meldiq.app/m/c_…/683e3b6b-…` on the clipboard; opening that link from outside the app showed #general;
+  Activity › Unreads listed #introductions under its community; Mark as read emptied it; with the app in Chinese the
+  whole message menu and message info were Chinese.
+- **Found and fixed during the check:** the Unreads group used the channel's category name instead of the community's;
+  the message status in Message info stayed English.
+- **Not changed (B12):** dates such as "Yesterday" come from the shared time formatter, which is still English.
+
+### B5 APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b5-debug.apk`
+  (147 MB, git-ignored). **SHA-256:** `89da079076fc5ee2a8e27da4288d5eedf82bb9a750ad652b8ec4f98ecf4f5426`.
+- **Variant:** debug, side by side (`com.meldiq.android.test`, versionCode 19 / `0.5.0-beta`), server
+  `http://localhost:8080`. It contains B4 and B4b too.
+- **Checks:** `testDebugUnitTest` 605 tests, 0 failures; `lintDebug` 0 errors.
+
+### Owner's phone checklist (B5)
+
+1. **Threads:** in a channel, long-press a message › Reply in thread › send. Back in the channel, tap the speech-bubble
+   button in the header. **Expected:** the thread with "1 reply"; search finds it by its first words.
+2. **Message link:** long-press a message › **Copy message link**. Paste it into another chat and send it, then tap
+   it. **Expected:** the first chat opens at that message.
+3. **Not a member:** send that link to your other account in a DM, where that account isn't in the channel; tap it
+   there. **Expected:** "You can't open this message".
+4. **Unreads:** from the other account, send a message to a channel. On the first account, Activity › **Unreads**.
+   **Expected:** the channel under its community's name; **Mark as read** removes it.
+5. **Languages:** set the app to 中文 or বাংলা and long-press a message: every menu item is translated; open Message
+   info.
+6. **Report back:** pass or fail per step, with screenshots.
+
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's

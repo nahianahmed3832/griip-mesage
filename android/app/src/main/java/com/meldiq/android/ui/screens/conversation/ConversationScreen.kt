@@ -1,5 +1,6 @@
 package com.meldiq.android.ui.screens.conversation
 
+import com.meldiq.android.R
 import com.meldiq.android.data.model.MentionSpan
 import com.meldiq.android.data.model.MentionRules
 import androidx.compose.ui.text.TextRange
@@ -109,6 +110,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.BookmarkRemove
@@ -150,6 +152,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -185,7 +188,7 @@ private val QUICK_REACTIONS = listOf("👍", "❤️", "😂", "🎉", "😮", "
 private const val SEARCH_DEBOUNCE_MS = 200L
 
 @Composable
-fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoot: String?) {
+fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoot: String?, focusMessage: String? = null) {
     val vm = containerViewModel(key = "conv:$conversationId:$threadRoot") { ConversationViewModel(it, conversationId, threadRoot) }
     val c = Griip.colors
     val ctx = LocalContext.current
@@ -244,12 +247,12 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         val f = java.io.File(dir, "meldiq-${System.currentTimeMillis()}" + if (video) ".mp4" else ".jpg")
         val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
         captureUri = uri.toString()
-        runCatching { if (video) takeVideo.launch(uri) else takePhoto.launch(uri) }.onFailure { vm.error.value = "No camera app is available" }
+        runCatching { if (video) takeVideo.launch(uri) else takePhoto.launch(uri) }.onFailure { vm.error.value = ctx.getString(R.string.b5_no_camera) }
     }
     val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val v = pendingCamera
         pendingCamera = null
-        if (granted && v != null) launchCamera(v) else if (!granted) vm.error.value = "Meldiq needs the camera permission to take photos and videos."
+        if (granted && v != null) launchCamera(v) else if (!granted) vm.error.value = ctx.getString(R.string.b5_need_camera)
     }
     fun openCamera(video: Boolean) {
         if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) launchCamera(video)
@@ -269,12 +272,12 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         scope.launch {
             val l = com.meldiq.android.media.OneShotLocation.current(ctx)
             location = l?.let { com.meldiq.android.data.model.RichRules.clean(com.meldiq.android.data.model.SharedLocation(it.latitude, it.longitude, if (it.hasAccuracy()) it.accuracy else null)) }
-            if (location == null) locationProblem = "Couldn't get your location. Check that location is turned on."
+            if (location == null) locationProblem = ctx.getString(R.string.b5_no_location)
             locating = false
         }
     }
     val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
-        if (res.values.any { it }) { locationSheet = true; locate() } else vm.error.value = "Meldiq needs location access to share where you are."
+        if (res.values.any { it }) { locationSheet = true; locate() } else vm.error.value = ctx.getString(R.string.b5_need_location)
     }
     fun shareLocation() {
         val has = listOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)
@@ -313,9 +316,11 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         // Batch B4b: a Meldiq invite link opens the invite here (preview, then join), not in a browser.
         val uri = runCatching { android.net.Uri.parse(url) }.getOrNull()
         val invite = if (uri != null && com.meldiq.android.ui.scan.InviteCodes.isInviteLink(uri.scheme, uri.host, uri.path)) com.meldiq.android.ui.scan.InviteCodes.fromScan(url) else null
+        val messageLink = com.meldiq.android.data.model.MessageLinks.parse(url)
         if (invite != null) nav.navigate(com.meldiq.android.ui.Routes.JOIN + "?code=$invite")
+        else if (messageLink != null) scope.launch { com.meldiq.android.ui.MessageLinkOpener.open(vm.c, nav, ctx, messageLink) }
         else if (com.meldiq.android.ui.LinkOpener.needsConfirmation(url, chatSettings.linkOpening)) linkToOpen = url
-        else if (!com.meldiq.android.ui.LinkOpener.open(ctx, url, chatSettings.linkOpening == com.meldiq.android.data.repo.LinkOpening.IN_APP)) vm.error.value = "No app can open this link"
+        else if (!com.meldiq.android.ui.LinkOpener.open(ctx, url, chatSettings.linkOpening == com.meldiq.android.data.repo.LinkOpening.IN_APP)) vm.error.value = ctx.getString(R.string.b5_no_app_link)
     }
     val composerPreview by vm.linkPreview.collectAsStateWithLifecycle()
     // Received photos download by themselves when Settings › Chats › media allows (videos and files wait for a tap).
@@ -334,7 +339,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val saveDocument = rememberLauncherForActivityResult(CreateDocumentFor()) { uri -> val ref = saveTarget; if (uri != null && ref != null) vm.saveToDocument(ref, uri) }
     val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         val ref = saveTarget
-        if (ok && ref != null) vm.saveToGallery(ref) else if (!ok) vm.error.value = "Saving to the gallery needs storage access on this Android version."
+        if (ok && ref != null) vm.saveToGallery(ref) else if (!ok) vm.error.value = ctx.getString(R.string.b5_need_storage)
     }
     val onMedia: (MediaAction, AttachmentRef) -> Unit = { action, ref ->
         saveTarget = ref
@@ -410,6 +415,9 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
 
     val me = vm.me
     val title = conv?.let { ConversationRepository.title(it, me) } ?: ""
+    val youLabel = stringResource(R.string.pin_you)
+    val someoneLabel = stringResource(R.string.activity_someone)
+    val jumpLabel = stringResource(R.string.b5_jump_latest)
     // Mentions are drawn from the message's mentioned ids, never from the text alone (docs/MENTIONS.md).
     fun mentionSpansFor(m: MessageEntity): List<MentionSpan> {
         if (m.text.isEmpty() || !m.text.contains('@')) return emptyList()
@@ -422,6 +430,13 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         val idx = messages.indexOfFirst { it.id == id }
         if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) }
         else vm.loadUntil(id) { found -> scope.launch { listState.animateScrollToItem(found) } }
+    }
+    // Batch B5: a message link scrolls to its message once the conversation has loaded.
+    var focusDone by androidx.compose.runtime.saveable.rememberSaveable(focusMessage) { mutableStateOf(false) }
+    LaunchedEffect(focusMessage, messages.isNotEmpty()) {
+        if (focusMessage == null || focusDone || messages.isEmpty()) return@LaunchedEffect
+        focusDone = true
+        jumpTo(focusMessage)
     }
     val peer = conv?.let { ConversationRepository.peer(it, me) }
     val onlineCount by vm.onlineCount.collectAsStateWithLifecycle()
@@ -440,6 +455,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val remoteServers = federation[conversationId]?.servers.orEmpty()
     var showSecurity by remember { mutableStateOf(false) }
     var showPinned by remember { mutableStateOf(false) }
+    var showThreads by remember { mutableStateOf(false) }
     // The composer's attach/emoji buttons step aside while typing (round 7, [ComposerAux]); any touch on the messages
     // brings them back at once.
     val composerAux = remember { mutableStateOf(ComposerAux.State()) }
@@ -472,11 +488,11 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     )
     val subtitle = when {
         threadRoot != null && conv?.type == "CHANNEL" -> androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nv_thread_in, conv?.name.orEmpty())
-        threadRoot != null -> "Thread"
-        typing.isNotEmpty() -> if (isGroup) "${typing.first()} is typing…" else "typing…"
+        threadRoot != null -> stringResource(R.string.b5_thread)
+        typing.isNotEmpty() -> if (isGroup) stringResource(R.string.b5_typing_named, typing.first()) else stringResource(R.string.b5_typing)
         conv?.type == "DM" && peer != null && remoteMembers.isNotEmpty() -> "@${peer.username}"
         conv?.type == "DM" -> listOfNotNull(
-            if (peerUser?.online == true) "Online" else "Last seen ${TimeFmt.relative(peerUser?.lastSeenAt)}",
+            if (peerUser?.online == true) stringResource(R.string.b5_online) else stringResource(R.string.b5_last_seen, TimeFmt.relative(peerUser?.lastSeenAt)),
             // Round 3: their status as they show it to you.
             listOfNotNull(peer?.statusEmoji, peer?.statusText).joinToString(" ").ifBlank { null },
         ).joinToString(" · ")
@@ -503,9 +519,9 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             Modifier.fillMaxWidth().background(c.surface).statusBarsPadding().height(64.dp).padding(start = 4.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircleIconButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", { nav.popBackStack() })
+            CircleIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.b5_back), { nav.popBackStack() })
             Row(
-                Modifier.weight(1f).clip(Shapes.small).pressable({ nav.navigate(Routes.info(conversationId)) }, onClickLabel = "Open conversation info").padding(vertical = 6.dp, horizontal = 4.dp),
+                Modifier.weight(1f).clip(Shapes.small).pressable({ nav.navigate(Routes.info(conversationId)) }, onClickLabel = stringResource(R.string.b5_open_info)).padding(vertical = 6.dp, horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 conv?.let { ConversationAvatar(it, me, size = 40.dp, online = peerUser?.online) }
@@ -522,10 +538,14 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             // groups still call each other.
             val textChannel = conv?.type == "CHANNEL"
             if (threadRoot == null && conv?.removed != true && canCall && conv?.voice != true && !textChannel) {
-                CircleIconButton(Icons.Rounded.Videocam, "Video call", { permission(true) { vm.startCall(true) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
-                CircleIconButton(Icons.Rounded.Call, "Voice call", { permission(false) { vm.startCall(false) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
+                CircleIconButton(Icons.Rounded.Videocam, stringResource(R.string.b5_video_call), { permission(true) { vm.startCall(true) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
+                CircleIconButton(Icons.Rounded.Call, stringResource(R.string.b5_voice_call), { permission(false) { vm.startCall(false) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
             }
             if (threadRoot == null) PinnedButton(pinned.size) { showPinned = true }
+            // Batch B5: the channel's threads (forum channels list their posts already).
+            if (threadRoot == null && conv?.type == "CHANNEL" && conv?.format != "forum") {
+                CircleIconButton(Icons.Outlined.Forum, stringResource(R.string.b5_threads), { showThreads = true }, tint = c.textSecondary, size = 40.dp)
+            }
             if (threadRoot == null) SecurityPadlock(securityFacts) { showSecurity = true }
             CircleIconButton(Icons.Rounded.Search, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.conv_search), { searching = true }, tint = c.textSecondary)
         }
@@ -535,6 +555,26 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 onVerify = peer?.let { p -> { showSecurity = false; nav.navigate(Routes.user(p.id)) } },
                 onDismiss = { showSecurity = false },
             )
+        }
+        if (showThreads) {
+            val roots by remember(conversationId) { vm.c.messages.observeThreadRoots(conversationId, com.meldiq.android.data.model.ThreadListRules.SHOWN) }
+                .collectAsStateWithLifecycle(null)
+            val fileLabel = stringResource(R.string.b5_thread_file)
+            roots?.let { list ->
+                val rows = remember(list) {
+                    list.map { t ->
+                        com.meldiq.android.data.model.ThreadListRules.Row(
+                            t.root.id, com.meldiq.android.data.model.ThreadListRules.title(vm.c.messages.rich(t.root)?.title, t.root.text, fileLabel),
+                            t.root.senderUserId, t.root.outgoing, t.replyCount, t.lastReplyTs,
+                        )
+                    }
+                }
+                ThreadsSheet(
+                    rows, senderName = { r -> if (r.outgoing) youLabel else users[r.senderId]?.displayName ?: someoneLabel },
+                    onOpen = { root -> showThreads = false; nav.navigate(Routes.conversation(conversationId, root)) },
+                    onDismiss = { showThreads = false },
+                )
+            }
         }
         if (showPinned) {
             PinnedMessagesSheet(
@@ -563,22 +603,27 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         }
         remoteServers.firstOrNull { it.state == "decommissioned" || it.state == "revoked" }?.let { s ->
             StatusBanner(
-                "${s.domain ?: "Their server"} has shut down. Messages in this conversation can't be delivered.",
+                stringResource(R.string.b5_server_gone, s.domain ?: stringResource(R.string.b5_their_server)),
                 BannerKind.Error, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         } ?: remoteServers.firstOrNull { it.state == "unreachable" }?.let { s ->
             StatusBanner(
-                "${s.domain ?: "Their server"} isn't reachable right now. Your messages wait for up to 7 days and are delivered when it's back.",
+                stringResource(R.string.b5_server_unreachable, s.domain ?: stringResource(R.string.b5_their_server)),
                 BannerKind.Warning, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
         if (changedMembers.isNotEmpty()) {
-            val who = if (changedMembers.size == 1) "${changedMembers.first().displayName.ifEmpty { "A member" }}'s security key" else "${changedMembers.size} members' security keys"
-            val waiting = if (heldIncoming > 0) " $heldIncoming incoming message${if (heldIncoming == 1) " is" else "s are"} waiting." else ""
+            val who = if (changedMembers.size == 1) stringResource(R.string.b5_key_changed_one, changedMembers.first().displayName.ifEmpty { stringResource(R.string.b5_a_member) })
+                else stringResource(R.string.b5_key_changed_many, changedMembers.size)
+            val waiting = when {
+                heldIncoming == 1 -> " " + stringResource(R.string.b5_held_one)
+                heldIncoming > 1 -> " " + stringResource(R.string.b5_held_many, heldIncoming)
+                else -> ""
+            }
             StatusBanner(
-                "$who changed. Messages to and from them are paused until you check the safety number.$waiting",
+                who + waiting,
                 BannerKind.Warning, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Rounded.GppMaybe,
-                action = "Review", onAction = { nav.navigate(Routes.user(changedMembers.first().id)) },
+                action = stringResource(R.string.b5_review), onAction = { nav.navigate(Routes.user(changedMembers.first().id)) },
             )
         }
         val activeCall = conv?.activeCallId
@@ -603,8 +648,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             )
         } else if (activeCall != null && call.phase == CallPhase.Idle && threadRoot == null) {
             StatusBanner(
-                if (conv?.activeCallVideo == true) "A video call is in progress" else "A voice call is in progress", BannerKind.Success,
-                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Rounded.Call, action = "Join", onAction = { permission(conv?.activeCallVideo == true) { vm.joinCall(activeCall, conv?.activeCallVideo == true) } },
+                stringResource(if (conv?.activeCallVideo == true) R.string.b5_call_video_live else R.string.b5_call_voice_live), BannerKind.Success,
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Rounded.Call, action = stringResource(R.string.b5_join), onAction = { permission(conv?.activeCallVideo == true) { vm.joinCall(activeCall, conv?.activeCallVideo == true) } },
             )
         }
         // What connected apps posted in this channel (server-visible, labelled as such).
@@ -634,11 +679,11 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 )
             } else if (messages.isEmpty() && threadRoot == null) {
                 EmptyState(
-                    Icons.Rounded.Lock, "Say hello 👋",
+                    Icons.Rounded.Lock, stringResource(R.string.b5_say_hello),
                     if (remoteMembers.isNotEmpty()) {
                         "${remoteMembers.first().displayName} is on another server (${GlobalAddress.serverOf(remoteMembers.first().username) ?: "elsewhere"}). Messages are end-to-end encrypted on your device; both servers only relay encrypted copies, kept for at most 7 days until delivered."
                     } else {
-                        "Messages here are end-to-end encrypted on your device. The server relays encrypted copies and, if members keep their history there, stores it encrypted with keys only their own devices have."
+                        stringResource(R.string.b5_e2e_intro)
                     },
                     modifier = Modifier.align(Alignment.Center),
                 )
@@ -678,7 +723,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                         MessageBubble(
                             BubbleModel(
                                 m, users[m.senderUserId], showSender = first, showAvatar = lastInRun, firstInGroup = first, reply = reply,
-                                replySender = reply?.let { if (it.outgoing) "You" else users[it.senderUserId]?.displayName },
+                                replySender = reply?.let { if (it.outgoing) youLabel else users[it.senderUserId]?.displayName },
                                 reactions = vm.c.messages.reactions(m), attachments = vm.c.messages.attachments(m),
                                 threadCount = if (threadRoot == null) threadCounts[m.id] ?: 0 else 0, isGroupConv = isGroup,
                                 replyPreview = reply?.let { previewOf(it) },
@@ -740,7 +785,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 SmallFloatingActionButton(
                     onClick = { scope.launch { listState.animateScrollToItem(0) } },
                     containerColor = c.surface, contentColor = c.primary,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp).semantics { contentDescription = "Jump to latest message" },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp).semantics { contentDescription = jumpLabel },
                 ) { Icon(Icons.Rounded.KeyboardArrowDown, null) }
             }
         }
@@ -749,7 +794,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         AnimatedVisibility(typing.isNotEmpty()) { TypingRow(typing) }
 
         // Composer
-        error?.let { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), action = "OK", onAction = { vm.error.value = null }) }
+        error?.let { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), action = stringResource(R.string.b5_ok), onAction = { vm.error.value = null }) }
         if (conv?.format == "forum" && threadRoot == null) {
             Box(Modifier.fillMaxWidth().background(c.surface).navigationBarsPadding()) { ForumComposerBar(conv?.canPost == true) { newPostSheet = true } }
         } else if (conv != null && !conv!!.canPost) {
@@ -763,12 +808,12 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 Spacer(Modifier.width(10.dp))
                 Text(
                     when {
-                        conv?.removed == true -> "You're no longer a member of this conversation."
+                        conv?.removed == true -> stringResource(R.string.b5_not_member)
                         timedOutUntil != null ->
                             androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.to_composer, com.meldiq.android.ui.screens.workspace.TimeoutRules.untilText(timedOutUntil))
-                        conv?.archived == true -> "This channel is archived."
-                        conv?.kind == "ANNOUNCEMENT" -> "Only managers can post in this announcement channel."
-                        else -> "You can't post here."
+                        conv?.archived == true -> stringResource(R.string.b5_archived_channel)
+                        conv?.kind == "ANNOUNCEMENT" -> stringResource(R.string.b5_announce_only)
+                        else -> stringResource(R.string.b5_cant_post)
                     },
                     style = Griip.type.bodySmall, color = c.textSecondary,
                 )
@@ -791,19 +836,19 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             composerPreview?.let { p ->
                 Row(Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) { LinkPreviewCard(p, out = false, onOpen = {}) }
-                    CircleIconButton(Icons.Outlined.Close, "Send without preview", { vm.dismissPreview() }, size = 36.dp, tint = c.textSecondary)
+                    CircleIconButton(Icons.Outlined.Close, stringResource(R.string.b5_send_no_preview), { vm.dismissPreview() }, size = 36.dp, tint = c.textSecondary)
                 }
             }
             Composer(
                 text = field,
                 onText = { field = it; vm.typingChanged(it.text) },
-                replyLabel = replyTo?.let { "Replying to ${if (it.outgoing) "yourself" else users[it.senderUserId]?.displayName ?: ""}" to previewOf(it) }
-                    ?: editing?.let { "Editing message" to it.text },
+                replyLabel = replyTo?.let { stringResource(R.string.b5_replying_to, if (it.outgoing) stringResource(R.string.b5_yourself) else users[it.senderUserId]?.displayName ?: "") to previewOf(it) }
+                    ?: editing?.let { stringResource(R.string.b5_editing) to it.text },
                 onCancelContext = { vm.replyTo.value = null; vm.editing.value = null; if (editing != null) setText("") },
                 onAttach = { attachSheet = true },
                 onEmoji = { emojiSheet = true },
                 onSend = { vm.send(text); setText("") },
-                placeholder = if (threadRoot != null) "Reply in thread…" else if (conv?.type == "CHANNEL") "Message #$title" else "Message",
+                placeholder = if (threadRoot != null) stringResource(R.string.b5_reply_thread_ph) else if (conv?.type == "CHANNEL") stringResource(R.string.b5_message_channel, title) else stringResource(R.string.b5_message_ph),
                 voice = VoiceComposerState(
                     draft = voiceDraft,
                     // Voice messages go to the conversation itself, like files, so the microphone isn't offered in a thread.
@@ -828,9 +873,10 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         GlassSheet({ actionFor = null }) {
             if (interactive) Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 QUICK_REACTIONS.forEach { e ->
+                    val reactLabel = stringResource(R.string.b5_react, e)
                     Box(
                         Modifier.size(46.dp).clip(CircleShape).background(c.surfaceVariant).pressable({ vm.react(m, e); actionFor = null })
-                            .semantics { contentDescription = "React $e" },
+                            .semantics { contentDescription = reactLabel },
                         contentAlignment = Alignment.Center,
                     ) { Text(e, fontSize = 22.sp) }
                 }
@@ -852,10 +898,16 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     scope.launch { clipboard.setClipEntry(ClipData.newPlainText("message", m.text).toClipEntry()) }
                     actionFor = null
                 }, trailing = null)
+                // Batch B5: a link that opens this message for people in this conversation.
+                if (com.meldiq.android.data.model.MessageLinks.canLink(m.deleted, m.status)) MenuRow(Icons.Outlined.Link, stringResource(R.string.b5_copy_link), onClick = {
+                    scope.launch { clipboard.setClipEntry(ClipData.newPlainText("link", com.meldiq.android.data.model.MessageLinks.link(conversationId, m.id)).toClipEntry()) }
+                    actionFor = null
+                    Toast.makeText(ctx, ctx.getString(R.string.b5_link_copied), Toast.LENGTH_SHORT).show()
+                }, trailing = null)
                 if (interactive && m.outgoing && m.status != MessageStatus.FAILED && m.status != MessageStatus.SENDING) MenuRow(Icons.Outlined.Edit, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.menu_edit), onClick = {
                     vm.editing.value = m; vm.replyTo.value = null; setText(m.text); actionFor = null
                 }, trailing = null)
-                if (interactive) MenuRow(Icons.Outlined.PushPin, if (m.pinned) "Unpin" else "Pin for everyone", tint = c.peach, tintBg = c.peachSoft, onClick = { vm.pin(m); actionFor = null }, trailing = null)
+                if (interactive) MenuRow(Icons.Outlined.PushPin, stringResource(if (m.pinned) R.string.b5_unpin else R.string.b5_pin_everyone), tint = c.peach, tintBg = c.peachSoft, onClick = { vm.pin(m); actionFor = null }, trailing = null)
                 if (!m.outgoing && threadRoot == null) MenuRow(Icons.Outlined.MarkChatUnread, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nv_mark_unread), onClick = {
                     actionFor = null
                     vm.markUnreadFrom(m, messages)
@@ -879,9 +931,9 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             // Saving and sharing are explicit actions; tapping a photo only opens the viewer.
             val file = if (!m.deleted) vm.c.messages.attachments(m).firstOrNull { it.id != "pending" && !VoiceNote.isVoice(it) } else null
             if (file != null) {
-                if (MediaGallery.kindOf(file) != null) MenuRow(Icons.Outlined.Download, "Save to Gallery", onClick = { actionFor = null; onMedia(MediaAction.SaveToGallery, file) }, trailing = null)
-                MenuRow(Icons.Outlined.FolderOpen, "Save to Files", onClick = { actionFor = null; onMedia(MediaAction.SaveToFiles, file) }, trailing = null)
-                MenuRow(Icons.Outlined.Share, "Share…", onClick = { actionFor = null; onMedia(MediaAction.Share, file) }, trailing = null)
+                if (MediaGallery.kindOf(file) != null) MenuRow(Icons.Outlined.Download, stringResource(R.string.b5_save_gallery), onClick = { actionFor = null; onMedia(MediaAction.SaveToGallery, file) }, trailing = null)
+                MenuRow(Icons.Outlined.FolderOpen, stringResource(R.string.b5_save_files), onClick = { actionFor = null; onMedia(MediaAction.SaveToFiles, file) }, trailing = null)
+                MenuRow(Icons.Outlined.Share, stringResource(R.string.b5_share), onClick = { actionFor = null; onMedia(MediaAction.Share, file) }, trailing = null)
             }
             if (!m.deleted && m.kind == "text" && m.status != MessageStatus.SENDING && vm.c.messages.attachments(m).none { it.id == "pending" }) {
                 MenuRow(Icons.AutoMirrored.Outlined.Forward, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.menu_forward), onClick = { forwardFor = m; actionFor = null }, trailing = null)
@@ -902,7 +954,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         val media = remember(messages, root) { MediaGallery.items(messages + listOfNotNull(root)) { vm.c.messages.attachments(it) } }
         MediaViewer(
             items = media, startAttachmentId = id,
-            senderName = { item -> if (item.outgoing) "You" else users[item.senderUserId]?.displayName ?: "Someone" },
+            senderName = { item -> if (item.outgoing) youLabel else users[item.senderUserId]?.displayName ?: someoneLabel },
             load = vm::mediaFile,
             progress = { transfers[it] },
             canPlayVideo = vm::videoBlocked,
@@ -912,15 +964,25 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         )
     }
     infoFor?.let { m ->
-        GlassSheet({ infoFor = null }, title = "Message info") {
+        GlassSheet({ infoFor = null }, title = stringResource(R.string.menu_info)) {
             val delivered = vm.c.messages.deliveredTo(m).mapNotNull { users[it]?.displayName }
             val read = vm.c.messages.readBy(m).mapNotNull { users[it]?.displayName }
-            InfoLine("Status", m.status.lowercase().replaceFirstChar { it.uppercase() })
-            InfoLine("Sent", TimeFmt.clock(m.sentAt) + " · " + TimeFmt.dayHeader(m.sentAt))
-            m.serverTs?.let { InfoLine("Accepted by relay", TimeFmt.clock(it)) }
-            InfoLine("Delivered to", delivered.joinToString().ifEmpty { if (conv?.type == "CHANNEL") "Receipts aren't collected in channels" else "Not yet" })
-            InfoLine("Read by", read.joinToString().ifEmpty { "Not yet" })
-            InfoLine("Encryption", "griip-envelope-v1 · signed by this device")
+            InfoLine(
+                stringResource(R.string.b5_info_status),
+                when (m.status) {
+                    MessageStatus.SENDING -> stringResource(R.string.b5_status_sending)
+                    MessageStatus.SENT -> stringResource(R.string.b5_status_sent)
+                    MessageStatus.DELIVERED -> stringResource(R.string.b5_status_delivered)
+                    MessageStatus.READ -> stringResource(R.string.b5_status_read)
+                    MessageStatus.FAILED -> stringResource(R.string.b5_status_failed)
+                    else -> stringResource(R.string.b5_status_received)
+                },
+            )
+            InfoLine(stringResource(R.string.b5_info_sent), TimeFmt.clock(m.sentAt) + " · " + TimeFmt.dayHeader(m.sentAt))
+            m.serverTs?.let { InfoLine(stringResource(R.string.b5_info_relay), TimeFmt.clock(it)) }
+            InfoLine(stringResource(R.string.b5_info_delivered), delivered.joinToString().ifEmpty { if (conv?.type == "CHANNEL") stringResource(R.string.b5_info_no_receipts) else stringResource(R.string.b5_not_yet) })
+            InfoLine(stringResource(R.string.b5_info_read), read.joinToString().ifEmpty { stringResource(R.string.b5_not_yet) })
+            InfoLine(stringResource(R.string.b5_info_encryption), stringResource(R.string.b5_info_signed))
         }
     }
     if (attachSheet) {
@@ -1017,23 +1079,23 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             val destTitle = com.meldiq.android.data.repo.ConversationRepository.title(dest, me)
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { forwardTo = null },
-                title = { Text("Forward to $destTitle?") },
-                text = { Text(if (vm.c.messages.attachments(m).isNotEmpty()) "The files are encrypted again for that chat and uploaded." else "It's sent as a new message, marked as forwarded.") },
+                title = { Text(stringResource(R.string.b5_forward_to_q, destTitle)) },
+                text = { Text(stringResource(if (vm.c.messages.attachments(m).isNotEmpty()) R.string.b5_forward_files else R.string.b5_forward_text)) },
                 confirmButton = {
                     androidx.compose.material3.TextButton(onClick = {
-                        vm.forward(m, dest.id) { vm.notice.value = "Forwarded to $destTitle" }
+                        vm.forward(m, dest.id) { vm.notice.value = ctx.getString(R.string.b5_forwarded_to, destTitle) }
                         forwardTo = null
                         forwardFor = null
-                    }) { Text("Forward") }
+                    }) { Text(stringResource(R.string.menu_forward)) }
                 },
-                dismissButton = { androidx.compose.material3.TextButton(onClick = { forwardTo = null }) { Text("Cancel") } },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = { forwardTo = null }) { Text(stringResource(R.string.b5_cancel)) } },
             )
         }
     }
     linkToOpen?.let { url ->
         com.meldiq.android.ui.LinkOpenSheet(
             url,
-            onOpen = { inApp -> linkToOpen = null; if (!com.meldiq.android.ui.LinkOpener.open(ctx, url, inApp)) vm.error.value = "No app can open this link" },
+            onOpen = { inApp -> linkToOpen = null; if (!com.meldiq.android.ui.LinkOpener.open(ctx, url, inApp)) vm.error.value = ctx.getString(R.string.b5_no_app_link) },
             onCopy = { scope.launch { clipboard.setClipEntry(ClipData.newPlainText("link", url).toClipEntry()) }; linkToOpen = null },
             onDismiss = { linkToOpen = null },
         )
@@ -1056,18 +1118,18 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         }
     }
     riskyOpen?.let { (ref, why) ->
-        GlassSheet({ vm.riskyOpen.value = null }, title = "Open “${ref.name}”?") {
+        GlassSheet({ vm.riskyOpen.value = null }, title = stringResource(R.string.b5_open_file_q, ref.name)) {
             Text(why, style = Griip.type.body, color = Griip.colors.textPrimary)
             Spacer(Modifier.height(8.dp))
             Text(
-                "Files are end-to-end encrypted, so the server can't scan them for viruses. Open it only if you trust the sender and expected this file.",
+                stringResource(R.string.b5_file_warning),
                 style = Griip.type.bodySmall, color = Griip.colors.textSecondary,
             )
             Spacer(Modifier.height(16.dp))
-            com.meldiq.android.ui.components.PillButton("Cancel", { vm.riskyOpen.value = null }, Modifier.fillMaxWidth())
+            com.meldiq.android.ui.components.PillButton(stringResource(R.string.b5_cancel), { vm.riskyOpen.value = null }, Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
             com.meldiq.android.ui.components.PillButton(
-                "Open anyway", { vm.riskyOpen.value = null; vm.openAttachment(ctx, ref, confirmed = true) }, Modifier.fillMaxWidth(),
+                stringResource(R.string.b5_open_anyway), { vm.riskyOpen.value = null; vm.openAttachment(ctx, ref, confirmed = true) }, Modifier.fillMaxWidth(),
                 tone = com.meldiq.android.ui.components.ButtonTone.Danger,
             )
             Spacer(Modifier.height(16.dp))
@@ -1191,7 +1253,7 @@ private fun Composer(
                         Text(label, style = Griip.type.caption.copy(fontWeight = FontWeight.Bold), color = c.primaryDeep)
                         Text(preview, style = Griip.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    CircleIconButton(Icons.Rounded.Close, "Cancel", onCancelContext, size = 36.dp, tint = c.textSecondary)
+                    CircleIconButton(Icons.Rounded.Close, stringResource(R.string.b5_cancel), onCancelContext, size = 36.dp, tint = c.textSecondary)
                 }
             }
             Row(verticalAlignment = Alignment.Bottom) {
@@ -1201,8 +1263,8 @@ private fun Composer(
                     exit = if (reduced) ExitTransition.None else shrinkHorizontally(shrinkTowards = Alignment.Start) + fadeOut(),
                 ) {
                     Row {
-                        ComposerIcon(Icons.Outlined.AttachFile, "Attach a photo, video, file, contact or location", onAttach)
-                        ComposerIcon(Icons.Outlined.EmojiEmotions, "Emoji and animated emoji", onEmoji)
+                        ComposerIcon(Icons.Outlined.AttachFile, stringResource(R.string.b5_attach), onAttach)
+                        ComposerIcon(Icons.Outlined.EmojiEmotions, stringResource(R.string.b5_emoji), onEmoji)
                     }
                 }
                 if (!showAux) Spacer(Modifier.width(4.dp))
@@ -1226,19 +1288,21 @@ private fun Composer(
                 Spacer(Modifier.width(6.dp))
                 val enabled = text.text.isNotBlank()
                 if (!enabled && voice.available) {
+                    val recordLabel = stringResource(R.string.b5_record_voice)
                     Box(
                         Modifier.size(48.dp).clip(CircleShape).background(c.actionStart)
-                            .pressable(onMic, onClickLabel = "Record a voice message")
-                            .semantics { contentDescription = "Record a voice message" },
+                            .pressable(onMic, onClickLabel = recordLabel)
+                            .semantics { contentDescription = recordLabel },
                         contentAlignment = Alignment.Center,
                     ) { Icon(Icons.Rounded.Mic, null, tint = c.onAction, modifier = Modifier.size(24.dp)) }
                     return@Row
                 }
+                val sendLabel = stringResource(R.string.b5_send_message)
                 Box(
                     Modifier.size(48.dp).clip(CircleShape)
                         .background(if (enabled) c.actionStart else c.surfaceVariant)
-                        .pressable(if (enabled) onSend else null, onClickLabel = "Send")
-                        .semantics { contentDescription = "Send message" },
+                        .pressable(if (enabled) onSend else null, onClickLabel = stringResource(R.string.b5_send))
+                        .semantics { contentDescription = sendLabel },
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.AutoMirrored.Rounded.Send, null, tint = if (enabled) c.onAction else c.textTertiary, modifier = Modifier.size(22.dp)) }
             }

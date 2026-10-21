@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
 
     private var pendingConversation by mutableStateOf<String?>(null)
     private var pendingInvite by mutableStateOf<String?>(null)
+    private var pendingMessageLink by mutableStateOf<com.meldiq.android.data.model.MessageLinks.Target?>(null)
 
     private val notifPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -88,10 +89,11 @@ class MainActivity : ComponentActivity() {
                 // A new container (erase, or a switch to another server profile) gets a fresh UI tree:
                 // navigation, view models and remembered state never carry over between profiles.
                 androidx.compose.runtime.key(gen, container) {
-                    AppRoot(container, pendingConversation, pendingInvite) {
+                    AppRoot(container, pendingConversation, pendingInvite, pendingMessageLink = pendingMessageLink, onPendingHandled = {
                         pendingConversation = null
                         pendingInvite = null
-                    }
+                        pendingMessageLink = null
+                    })
                 }
             }
             }
@@ -137,6 +139,8 @@ class MainActivity : ComponentActivity() {
         if (data != null && InviteCodes.isInviteLink(data.scheme, data.host, data.path)) {
             pendingInvite = InviteCodes.fromScan(data.toString()) // same rule as the in-app scanner
         }
+        // Batch B5: a message link opens the message when this phone is in its conversation.
+        if (data != null) com.meldiq.android.data.model.MessageLinks.parse(data.toString())?.let { pendingMessageLink = it }
     }
 
     companion object {

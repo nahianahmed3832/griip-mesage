@@ -49,7 +49,7 @@ Meldiq differs from Discord by design in two ways:
 | NAV-01 | Community rail | E2E | I | D | — | P1 (web) | Web still shows the workspace layout: the web community rebuild is the largest web gap |
 | NAV-02 | DM list | E2E | I | I | — | — | |
 | NAV-03 | Tabs: Home, DMs, Activity, You | E2E | I | D | — | P1 (web) | |
-| NAV-04 | Activity (mentions, replies) | E2E | I | I | I | — | |
+| NAV-04 | Activity (mentions, replies, unreads) | E2E | I | I | I | — | B5 2026-10-22: an **Unreads** chip (Discord inbox NAV-CTRL-005): conversations with unread messages, DMs and groups first, then each community, without muted, archived, left or hidden ones; Mark as read per row and Mark all read. All doesn't repeat it. Android only (web: W1) |
 | NAV-05 | Unread and mention signals, New line | E2E | I | I | — | — | Rechecked on the emulator 2026-10-21 (B2): rail bar and mention count, Home and Activity badges |
 | NAV-06 | Search | I | I | I | I | P2 | Metadata search on the server; message text searched on the device (encrypted) |
 | NAV-07 | Profiles | I | I | I | I | P3 | No banner or pronouns yet |
@@ -102,7 +102,7 @@ Meldiq differs from Discord by design in two ways:
 | CH-15 | Channel and category menus | E2E | I | D | — | P1 (web) | |
 | CH-16 | Media channels | — | | | | | Forum with attachments covers it |
 | CH-17 | Timed mute (15 min to 24 h) and category level | E2E (emulator) | I | — | I | — | B3 2026-10-21: Mute for 15 min / 1 h / 3 h / 8 h / 24 h / until turned back on, for channels, categories, the community and DMs (`mutedUntil`; ends by itself on the phone, the server drops ended ones); category › Notification settings (`categoryNotify`; channel → category → community). Phone test pending |
-| CH-18 | Thread list per channel | R | — | — | — | P2 (B5) | CHAN-CTRL-011 |
+| CH-18 | Thread list per channel | E2E (emulator) | I | — | — | — | B5 2026-10-22: the channel header's **Threads** button (CHAN-CTRL-011): every thread this phone has, latest reply first, with sender, reply count and time; search by name; empty state says how to start one. Built from the phone's history (end-to-end encrypted, so the server can't list them). `ThreadsSheet.kt`, `ThreadListRules.kt` |
 
 ## E. Conversations and content
 
@@ -126,8 +126,8 @@ Meldiq differs from Discord by design in two ways:
 | MSG-16 | Attachments, 1 GiB target | E2E (600 MB, USB) | I | I | I | P1 | 1 GiB over real Wi-Fi and mobile data to production: owner's test (`MELDIQ_SESSION_HANDOFF.md`) |
 | MSG-17 | Voice messages | I | I | I | — | — | |
 | MSG-18 | Markdown | I | I | I | — | — | |
-| MSG-19 | Message menu translations | FIX | I | — | — | P1 (B5) | Hard-coded English in `ConversationScreen.kt` (Pin, Save to Gallery/Files, Share) and `ConversationInfoScreen.kt` (Group info, Rename group, Add members, Leave, Remove from group) |
-| MSG-20 | Copy message link (members only) | R | — | — | — | P3 (B5) | CHAT-MSG-004 |
+| MSG-19 | Message menu translations | E2E (emulator) | I | — | — | — | B5 2026-10-22: the message menu, message info, forward dialog, file warning, composer, header, banners and conversation info are translated (about 110 strings, `b5_*`) |
+| MSG-20 | Copy message link (members only) | E2E (emulator) | I | — | — | — | B5 2026-10-22: message menu › **Copy message link** → `https://meldiq.app/m/CONV/MSG` (ids only). Opens at the message (inside its thread for replies) on a phone in that conversation; otherwise "you're not in that conversation"; the conversation alone when the message isn't on the phone. Works inside chats and as an App Link (`/m/`) |
 | MSG-21 | Poll duration and answer emoji | R | — | — | — | P2 (B8) | POLL-CTRL-001 |
 
 ## F. DMs and groups
