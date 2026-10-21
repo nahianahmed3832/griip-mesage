@@ -85,6 +85,8 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         /** Batch B6b: a group's photo; appearing idle, do not disturb or invisible. */
         const val GROUP_PHOTOS = "group-photos"
         const val PRESENCE_MODES = "presence-modes"
+        /** Batch B8: a forum's post guidelines. */
+        const val FORUM_GUIDELINES = "forum-guidelines"
         /** Meldiq 2.0: experiments and content-free analytics counts (docs/product/EXPERIMENTS.md). */
         const val EXPERIMENTS = "experiments"
         const val ANALYTICS_EVENTS = "analytics-events"

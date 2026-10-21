@@ -120,10 +120,11 @@ interface MessageDao {
     @Query(
         """SELECT r.* FROM messages r WHERE r.threadRootId IS NOT NULL AND r.deleted = 0 AND r.senderUserId != :me AND r.sortTs > :since
            AND (EXISTS (SELECT 1 FROM messages root WHERE root.id = r.threadRootId AND root.senderUserId = :me)
-                OR EXISTS (SELECT 1 FROM messages mine WHERE mine.threadRootId = r.threadRootId AND mine.senderUserId = :me))
+                OR EXISTS (SELECT 1 FROM messages mine WHERE mine.threadRootId = r.threadRootId AND mine.senderUserId = :me)
+                OR r.threadRootId IN (:followed))
            ORDER BY r.sortTs DESC LIMIT :limit""",
     )
-    fun observeThreadReplies(me: String, since: Long, limit: Int): Flow<List<MessageEntity>>
+    fun observeThreadReplies(me: String, since: Long, limit: Int, followed: List<String>): Flow<List<MessageEntity>>
 
     /** Messages with files in a conversation, newest first: the channel details' Files section (this phone's history). */
     @Query("SELECT * FROM messages WHERE conversationId = :cid AND deleted = 0 AND attachmentsJson != '[]' ORDER BY sortTs DESC LIMIT :limit")

@@ -187,7 +187,9 @@ class MessageRepository(
     fun observeThreadRoots(cid: String, limit: Int) = db.messages().observeThreadRoots(cid, limit)
     fun observePinned(cid: String) = db.messages().observePinned(cid)
     fun observeWithFiles(cid: String, limit: Int) = db.messages().observeWithFiles(cid, limit)
-    fun observeThreadReplies(me: String, since: Long, limit: Int) = db.messages().observeThreadReplies(me, since, limit)
+    /** [followed]: thread roots followed on this phone (batch B8), whose replies count even if you never wrote there. */
+    fun observeThreadReplies(me: String, since: Long, limit: Int, followed: Set<String> = emptySet()) =
+        db.messages().observeThreadReplies(me, since, limit, followed.toList())
     fun observeMessage(id: String) = db.messages().observe(id)
     suspend fun search(q: String, cid: String? = null): List<MessageEntity> {
         val esc = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -1020,7 +1022,7 @@ class MessageRepository(
             "vote" -> {
                 val t = target(pl, item, serverTs) ?: return
                 val rich = rich(t)?.takeIf { it.poll != null } ?: return
-                val updated = PollRules.vote(rich, item.senderUserId, pl.choices.orEmpty().take(PollRules.MAX_OPTIONS))
+                val updated = PollRules.vote(rich, item.senderUserId, pl.choices.orEmpty().take(PollRules.MAX_OPTIONS), serverTs)
                 if (updated != rich) db.messages().upsert(t.copy(richJson = json.encodeToString(RichContent.serializer(), updated)))
             }
             "poll_close" -> {

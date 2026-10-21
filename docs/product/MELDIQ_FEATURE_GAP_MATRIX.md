@@ -95,7 +95,7 @@ Meldiq differs from Discord by design in two ways:
 | CH-08 | Sync with category | UT | I | D | I | — | |
 | CH-09 | Overwrites (deny/inherit/allow) | IT | I | I | I | — | |
 | CH-10 | Announcement channels | IT | I | I | I | — | Following into other communities: — (Meldiq has no cross-community feed) |
-| CH-11 | Forum channels and tags | E2E | I | D | I | P1 (web) | Required tag, gallery view: P3 |
+| CH-11 | Forum channels and tags | E2E | I | D | I | P1 (web) | B8 2026-10-22: **post guidelines** set in Edit channel (managers) and shown at the top of the forum and in New post (FORUM-CTRL-006); **Any / All of these tags** when two or more tags are chosen (FORUM-CTRL-002); a post card shows its most-used reaction with a count (FORUM-CTRL-004); **Follow** on a post or thread brings its replies into Activity (FORUM-CTRL-005, kept on this phone). Required tag and gallery view: P3 |
 | CH-12 | Voice channels | E2E | I | I | I | — | Phone: speak and listen-only 2026-10-21 |
 | CH-13 | Stage channels | D | — | — | — | P3 | Calls have raise hand and host moderation, a base for it |
 | CH-14 | Slowmode | E2E (emulator) | I | — | I | — | B3 2026-10-21: Edit channel › Slowmode (off, 5 s to 6 h); server refuses a member's second new message within the interval (429 `slowmode` with `retryAfter`, `nextPostAt`), edits and reactions free, retries of accepted messages pass; exempt: channel managers and `messages.bypass_slowmode` (Moderator template). Composer countdown; queued messages go out when allowed (`channel_controls.test.ts`). Phone test pending. Web: shows the refusal only |
@@ -128,7 +128,7 @@ Meldiq differs from Discord by design in two ways:
 | MSG-18 | Markdown | I | I | I | — | — | |
 | MSG-19 | Message menu translations | E2E (emulator) | I | — | — | — | B5 2026-10-22: the message menu, message info, forward dialog, file warning, composer, header, banners and conversation info are translated (about 110 strings, `b5_*`) |
 | MSG-20 | Copy message link (members only) | E2E (emulator) | I | — | — | — | B5 2026-10-22: message menu › **Copy message link** → `https://meldiq.app/m/CONV/MSG` (ids only). Opens at the message (inside its thread for replies) on a phone in that conversation; otherwise "you're not in that conversation"; the conversation alone when the message isn't on the phone. Works inside chats and as an App Link (`/m/`) |
-| MSG-21 | Poll duration and answer emoji | R | — | — | — | P2 (B8) | POLL-CTRL-001 |
+| MSG-21 | Poll duration and answer emoji | E2E (emulator) | I | I | — | — | B8 2026-10-22 (POLL-CTRL-001): voting lasts 1 hour to 7 days (24 hours by default) or until closed; an emoji per answer. Both travel inside the encrypted poll; votes the server accepted after the end don't count on any device (Android and web, `orbit_web` `6ecfc81`). Older apps show the poll without them |
 
 ## F. DMs and groups
 

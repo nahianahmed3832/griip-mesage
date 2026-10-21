@@ -457,6 +457,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     var showSecurity by remember { mutableStateOf(false) }
     var showPinned by remember { mutableStateOf(false) }
     var showThreads by remember { mutableStateOf(false) }
+    // Batch B8: forum post guidelines (servers with `forum-guidelines`).
+    val forumGuidelines by vm.c.conversations.guidelines.collectAsStateWithLifecycle()
     // The composer's attach/emoji buttons step aside while typing (round 7, [ComposerAux]); any touch on the messages
     // brings them back at once.
     val composerAux = remember { mutableStateOf(ComposerAux.State()) }
@@ -549,6 +551,15 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 CircleIconButton(Icons.Rounded.Call, stringResource(R.string.b5_voice_call), { permission(false) { vm.startCall(false) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
             }
             if (threadRoot == null) PinnedButton(pinned.size) { showPinned = true }
+            // Batch B8: follow a thread or forum post, so its replies show in Activity.
+            if (threadRoot != null) {
+                val followed by vm.c.followedThreads.followed.collectAsStateWithLifecycle()
+                val following = threadRoot in followed
+                com.meldiq.android.ui.components.PillChip(
+                    stringResource(if (following) R.string.b8_following else R.string.b8_follow), following,
+                    { scope.launch { vm.c.followedThreads.set(threadRoot, !following) } },
+                )
+            }
             // Batch B5: the channel's threads (forum channels list their posts already).
             if (threadRoot == null && conv?.type == "CHANNEL" && conv?.format != "forum") {
                 CircleIconButton(Icons.Outlined.Forum, stringResource(R.string.b5_threads), { showThreads = true }, tint = c.textSecondary, size = 40.dp)
@@ -675,6 +686,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     onOpen = { m -> nav.navigate(Routes.conversation(conversationId, m.id)) },
                     forumTags = conv?.let { vm.c.conversations.forumTags(it) }.orEmpty(),
                     postTags = { m -> vm.c.messages.rich(m)?.tags.orEmpty() },
+                    guidelines = forumGuidelines[conversationId],
+                    topReaction = { m -> com.meldiq.android.data.model.ForumRules.topReaction(vm.c.messages.reactions(m)) },
                 )
                 return@Box
             }
@@ -941,7 +954,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     nav.popBackStack()
                 }, trailing = null)
                 if (vm.c.messages.attachments(m).isNotEmpty()) MenuRow(Icons.Outlined.CheckCircle, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.bulk_menu_select), onClick = { selected = setOf(m.id); actionFor = null }, trailing = null)
-                val pollOpen = vm.c.messages.rich(m)?.let { it.poll != null && it.pollClosed != true } == true
+                val pollOpen = vm.c.messages.rich(m)?.let { it.poll != null && !com.meldiq.android.data.model.PollRules.closed(it, System.currentTimeMillis()) } == true
                 if (interactive && m.outgoing && pollOpen) MenuRow(Icons.Outlined.Lock, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.poll_close), onClick = { vm.closePoll(m); actionFor = null }, trailing = null)
             }
             // Saved for later (Home › Later), with an optional reminder: personal, synced to the person's other devices.
@@ -1078,8 +1091,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             EmojiPanel(emojiPrefs, onPick = { e -> vm.react(m, e); reactFor = null }, modifier = Modifier.fillMaxWidth().height(440.dp))
         }
     }
-    if (newPostSheet) NewPostSheet(onDismiss = { newPostSheet = false }, forumTags = conv?.let { vm.c.conversations.forumTags(it) }.orEmpty(), onPost = { t, b, tags -> vm.sendForumPost(t, b, tags) })
-    if (pollSheet) PollComposerSheet(onSend = { poll -> vm.sendRich(com.meldiq.android.data.model.RichContent(poll = poll)); pollSheet = false }, onDismiss = { pollSheet = false })
+    if (newPostSheet) NewPostSheet(onDismiss = { newPostSheet = false }, forumTags = conv?.let { vm.c.conversations.forumTags(it) }.orEmpty(), guidelines = forumGuidelines[conversationId], onPost = { t, b, tags -> vm.sendForumPost(t, b, tags) })
+    if (pollSheet) PollComposerSheet(onSend = { poll -> vm.sendRich(com.meldiq.android.data.model.RichContent(poll = poll)); pollSheet = false }, onDismiss = { pollSheet = false }, emojiPrefs = emojiPrefs)
     remindFor?.let { m ->
         com.meldiq.android.ui.screens.home.RemindSheet(
             current = saved.firstOrNull { it.messageId == m.id }?.remindAt,

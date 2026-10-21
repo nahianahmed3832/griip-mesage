@@ -50,10 +50,15 @@ data class Payload(
  * the question, the options or who voted for what. [multi] allows several choices.
  */
 @Serializable
-data class Poll(val question: String, val options: List<PollOption>, val multi: Boolean = false)
+data class Poll(
+    val question: String, val options: List<PollOption>, val multi: Boolean = false,
+    /** Batch B8 (Discord POLL-CTRL-001): when voting ends (epoch ms); null: open until its creator closes it. */
+    val endsAt: Long? = null,
+)
 
+/** [emoji]: batch B8, shown before the answer (older apps show the text only). */
 @Serializable
-data class PollOption(val id: String, val text: String)
+data class PollOption(val id: String, val text: String, val emoji: String? = null)
 
 /** A Meldiq sticker: its pack and id in the shared catalogue (shared/stickers, docs/STICKERS.md). */
 @Serializable

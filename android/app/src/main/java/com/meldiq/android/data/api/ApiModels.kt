@@ -174,6 +174,8 @@ import kotlinx.serialization.json.JsonObject
     val request: DmRequestDto? = null,
     /** Batch B6b (servers with `group-photos`): a group's photo revision; null without one. */
     val photoRev: Long? = null,
+    /** Batch B8 (servers with `forum-guidelines`): what a forum asks of new posts; null without any. */
+    val guidelines: String? = null,
 )
 /** A DM waiting for its recipient's answer. The sender sees it pending until it's accepted, so a decline isn't shown. */
 @Serializable data class DmRequestDto(val state: String = "pending", val incoming: Boolean = false, val sent: Int? = null, val limit: Int = 3)
@@ -219,6 +221,8 @@ object ChannelFormat {
     val forumTags: List<ForumTagReq>? = null,
     /** Batch B3: slowmode seconds, one of [com.meldiq.android.data.model.SlowmodeRules.STEPS]. */
     val slowmodeSec: Int? = null,
+    /** Batch B8: a forum's post guidelines; "" removes them. */
+    val guidelines: String? = null,
 )
 @Serializable data class ForumTagReq(val id: String? = null, val name: String)
 @Serializable data class DeleteChannelReq(val confirmName: String)

@@ -58,6 +58,8 @@ export function conversationView(ctx: AppContext, c: ConversationRow, userId: st
     position: c.position ?? 0,
     format: c.format ?? "text",
     forumTags: c.format === "forum" ? forumTags(c) : [],
+    // Batch B8: a forum's post guidelines, or null.
+    guidelines: c.format === "forum" ? ((c as { guidelines?: string | null }).guidelines ?? null) : null,
     kind: c.kind,
     name: c.name,
     topic: c.topic,
@@ -154,6 +156,9 @@ function federationInfo(ctx: AppContext, convId: string) {
  * declined: the conversation is hidden from them), the sender always sees "pending" until it's accepted, so a decline
  * isn't revealed. [sent]: the sender's messages so far (at most REQUEST_MESSAGE_LIMIT before an answer).
  */
+/** Batch B8: the longest a forum's post guidelines may be. */
+export const FORUM_GUIDELINES_MAX = 2000;
+
 export function requestView(r: DmRequestRow | null | undefined, userId: string) {
   if (!r) return null;
   const incoming = r.recipient === userId;
@@ -372,6 +377,8 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
           .array(z.object({ id: z.string().max(64).optional(), name: z.string().max(20) }))
           .max(FORUM_TAG_LIMIT)
           .optional(),
+        /** Batch B8: a forum's post guidelines (null removes them). */
+        guidelines: z.string().trim().max(FORUM_GUIDELINES_MAX).nullable().optional(),
         /** Batch B3: seconds between one person's messages; only the intervals the apps offer. */
         slowmodeSec: z.number().int().refine((n) => (SLOWMODE_STEPS as readonly number[]).includes(n), { message: "Pick one of the offered intervals" }).optional(),
       }),
@@ -382,6 +389,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
     if (body.archived !== undefined && c.type !== "CHANNEL") throw badRequest("Only channels can be archived");
     const nextFormat = body.format ?? c.format ?? "text";
     if (body.forumTags !== undefined && nextFormat !== "forum") throw badRequest("Only forum channels have tags");
+    if (body.guidelines !== undefined && nextFormat !== "forum") throw badRequest("Only forum channels have post guidelines");
     const tags = body.forumTags === undefined ? (c.forum_tags ?? null) : JSON.stringify(nextForumTags(forumTags(c), body.forumTags, () => newId("tag")));
     const kindChange = body.kind !== undefined && body.kind !== c.kind;
     if (body.kind !== undefined && c.type !== "CHANNEL") throw badRequest("Only channels have an access mode");
@@ -404,6 +412,10 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
       now(),
       id,
     );
+    if (body.guidelines !== undefined) {
+      db.prepare("UPDATE conversations SET guidelines = ? WHERE id = ?").run(body.guidelines || null, id);
+      if (c.org_id) ctx.audit({ actorId: userId, orgId: c.org_id, action: "channel.guidelines", target: id });
+    }
     if (body.slowmodeSec !== undefined && body.slowmodeSec !== (c.slowmode_sec ?? 0)) {
       db.prepare("UPDATE conversations SET slowmode_sec = ? WHERE id = ?").run(body.slowmodeSec, id);
       if (c.org_id) ctx.audit({ actorId: userId, orgId: c.org_id, action: "channel.slowmode", target: id, detail: `${body.slowmodeSec}s` });

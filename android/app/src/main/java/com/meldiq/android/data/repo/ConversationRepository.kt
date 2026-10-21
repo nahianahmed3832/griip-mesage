@@ -82,6 +82,7 @@ class ConversationRepository(
             request = d.request?.let { if (it.incoming) RequestRules.INCOMING else RequestRules.OUTGOING },
             photoRev = d.photoRev,
         )
+        _guidelines.update { m -> d.guidelines?.takeIf { it.isNotBlank() }?.let { m + (d.id to it) } ?: (m - d.id) }
         _requestSent.update { m -> d.request?.takeIf { !it.incoming }?.let { m + (d.id to ((it.sent ?: 0) to it.limit)) } ?: (m - d.id) }
         if (d.joined || local != null) db.conversations().upsert(e)
         return e
@@ -102,6 +103,11 @@ class ConversationRepository(
     }
 
     suspend fun members(id: String) = api.get<UsersRes>("/v1/conversations/$id/members").members.also { it.forEach { u -> users.remember(u) } }
+
+    private val _guidelines = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    /** Batch B8: forums' post guidelines, as the server last described them (kept in memory). */
+    val guidelines: StateFlow<Map<String, String>> = _guidelines
 
     private val _requestSent = MutableStateFlow<Map<String, Pair<Int, Int>>>(emptyMap())
 
@@ -151,8 +157,8 @@ class ConversationRepository(
 
     suspend fun update(
         id: String, name: String? = null, topic: String? = null, archived: Boolean? = null, kind: String? = null, format: String? = null,
-        forumTags: List<com.meldiq.android.data.api.ForumTagReq>? = null, slowmodeSec: Int? = null,
-    ) = upsertFromServer(api.patch<PatchConversationReq, ConversationRes>("/v1/conversations/$id", PatchConversationReq(name, topic, archived, kind, format, forumTags, slowmodeSec)).conversation)
+        forumTags: List<com.meldiq.android.data.api.ForumTagReq>? = null, slowmodeSec: Int? = null, guidelines: String? = null,
+    ) = upsertFromServer(api.patch<PatchConversationReq, ConversationRes>("/v1/conversations/$id", PatchConversationReq(name, topic, archived, kind, format, forumTags, slowmodeSec, guidelines)).conversation)
 
     /**
      * Deletes a community channel for everyone (servers with `channel-delete`), after the person typed its name. The

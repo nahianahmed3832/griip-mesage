@@ -477,4 +477,19 @@
     <string name="b6b_for_how_long">%1$s 持续多久？</string>
     <string name="b6b_8h">8 小时</string>
     <string name="b6b_until_changed">直到我更改</string>
+    <string name="b8_poll_ends">%1$s 结束</string>
+    <string name="b8_poll_duration">投票持续时间</string>
+    <string name="b8_poll_emoji">为此选项选择表情</string>
+    <string name="b8_poll_emoji_remove">不用表情</string>
+    <string name="b8_4h">4 小时</string>
+    <string name="b8_3d">3 天</string>
+    <string name="b8_no_end">直到我关闭</string>
+    <string name="b8_match_any">任一标签</string>
+    <string name="b8_match_all">全部标签</string>
+    <string name="b8_guidelines">发帖指南</string>
+    <string name="b8_guidelines_help">显示在论坛顶部，以及每个撰写帖子的人。</string>
+    <string name="b8_show_all">显示全部</string>
+    <string name="b8_show_less">收起</string>
+    <string name="b8_follow">关注</string>
+    <string name="b8_following">已关注</string>
 </resources>

@@ -479,12 +479,64 @@ limit (`docs/ATTACHMENTS.md` › Large files).
 3. Cancel an upload half-way (long-press › Cancel upload). **Expected:** it's removed and nothing arrives.
 4. **Report back:** times for both networks, and any failure text.
 
+## 6g. Batch B8: forums and polls (built 2026-10-22, not phone-tested)
+
+B8 was split: forums and polls here; event recurrence, the Server Guide and onboarding questions are **B8b**.
+
+### What's in it
+
+| Feature | What the person sees | Code |
+|---|---|---|
+| Post guidelines (CH-11, FORUM-CTRL-006) | Edit channel › (forum) **Post guidelines** ("Shown at the top of the forum and to everyone writing a post"); a **Post guidelines** card at the top of the forum and in New post, the first lines with Show all | Server `PATCH /v1/conversations/:id {guidelines}` (forums only, managers, 2,000 characters; audited), migration 040. Android `Forum.kt` (`ForumGuidelinesCard`), `ChannelEditSheets.kt` |
+| Tag matching (FORUM-CTRL-002) | With two or more tags chosen, a chip switches between **Any of these tags** and **All of these tags** | `ForumRules.filter(matchAll)` |
+| Reactions on post cards (FORUM-CTRL-004) | A post card shows its most-used reaction and how many people used it, e.g. "👍 1" | `ForumRules.topReaction` |
+| Follow (FORUM-CTRL-005) | A post's or thread's header: **Follow** / **Following**; replies in followed threads show in Activity › Threads even if you never wrote there. Kept on this phone | `FollowedThreads`, `observeThreadReplies(followed)` |
+| Poll duration and answer emoji (MSG-21, POLL-CTRL-001) | Create a poll › an emoji button per answer; **Voting lasts** 1 hour / 4 hours / 8 hours / 24 hours (default) / 3 days / 7 days / Until I close it. The poll says "Ends …", then closes by itself | `Polls.kt`, `PollRules` (`compose`, `closed`, `vote(at)`, `cleanEmoji`); web `orbit_web` commit `6ecfc81` (same rules) |
+
+**Server and API:** API **0.21.0**, feature `forum-guidelines`, **migration 040** (`conversations.guidelines`). Poll end
+times and emoji are inside the end-to-end encrypted message: the server never sees them. A vote counts only if the
+server accepted it before the end (every device applies the same rule with the server's time).
+
+### How it was checked
+
+- **Server:** full suite **693 passed**, 10 skipped (`forum_guidelines.test.ts`: managers only, members see them,
+  removing, forums only, length).
+- **Android:** `ForumPollRulesTest` (8 tests) and the full suite: **620 tests, 0 failures**; lint 0 errors.
+- **Web:** `npm test` 262 passed (new `polls.test.ts`), typecheck, eslint and prettier clean.
+- **Emulator** (Ada): Apply Lab › #introductions › Edit channel › Forum on, guidelines typed, Save (server: forum with
+  guidelines); the forum showed the guidelines card, and so did New post; posted "AdaHere"; opened it: **Follow** →
+  **Following**; reacted 👍 and the card showed "👍 1"; in #general created a poll with 😀 on the first answer and
+  1 hour: the poll shows the emoji and "Ends 3:31 AM · Today".
+- **Not checked on the emulator:** Any/All tag switching (unit-tested), a followed thread's reply arriving in
+  Activity from another account, a poll closing by itself at its end time (unit-tested).
+
+### B8 APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b8-debug.apk`
+  (147 MB, git-ignored). **SHA-256:** `e12db2c2bc5996fec31eaee6b947e81f8f5bf7c9344f01c0c94ad0160ea86ddc`.
+- **Variant:** debug, side by side, server `http://localhost:8080` (API 0.21.0). It contains everything since B4: **the
+  one APK to install for testing B4 to B8 together.**
+
+### Owner's phone checklist (B8)
+
+1. **Guidelines:** in your community, long-press a channel › Edit channel › Forum on › type Post guidelines › Save.
+   **Expected:** the forum shows them at the top; New post shows them too.
+2. **Tags:** give the forum two tags; post once with one tag and once with both. Choose both tags in the filter and
+   tap **Any of these tags** so it says **All of these tags**. **Expected:** only the post with both.
+3. **Reaction on the card:** react to a post with 👍 from both accounts. **Expected:** the card shows "👍 2".
+4. **Follow:** from the second account, open the first account's post › **Follow**. From the first account, reply in
+   it. **Expected:** the reply shows in the second account's Activity › Threads.
+5. **Poll:** create a poll with an emoji on each answer and **1 hour**. **Expected:** "Ends …" with the time; vote from
+   both accounts. After the hour it says Closed and no one can vote.
+6. **Report back:** pass or fail per step, with screenshots.
+
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
    call).
 2. **The AWS tools use the root user's access key:** move them off it (`MELDIQ_AWS_ARCHITECTURE.md` §5).
-3. **Server 0.20.0 isn't deployed** (production runs 0.13.0): 0.20.0 adds migration 039 (group photo, presence);
+3. **Server 0.21.0 isn't deployed** (production runs 0.13.0): 0.21.0 adds migration 040 (forum guidelines); 0.20.0
+   adds migration 039 (group photo, presence);
    0.19.0 adds migration 038 (connections, requests) and `DEFAULT_DM_POLICY`; 0.18.0 adds migration 037 (applications, alerts); 0.14.0 migration 034 (timeouts); 0.15.0 B2's preference fields and templates; 0.16.0 migration 035 (slowmode) and B3's fields; 0.17.0 migration 036 (reports, pauses). For deployment, set `REPORTS_KEY` (or back up `reports.key` with the database).
 4. **Android database version 13:** forward migrations (v12 in B6, v13 in B6b).
 5. **For https invite links (B4b):** serve `https://meldiq.app/.well-known/assetlinks.json` from
@@ -494,8 +546,8 @@ limit (`docs/ATTACHMENTS.md` › Large files).
 
 ## 8. Next, exactly
 
-1. **Engineering (in progress overnight):** B8 (forums, polls, events, onboarding), then B9 to B13 in order, each
-   committed with its own APK and checklist in this file.
+1. **Engineering (in progress overnight):** B8b (event recurrence, Server Guide, onboarding questions), then B9 to
+   B13 in order, each committed with its own APK and checklist in this file.
 2. **Owner, when back:** phone-test the batches together using the per-batch checklists (B4, B4b, then later ones),
    and report pass or fail per batch.
 3. **Owner decisions:** `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions" (fingerprint and meldiq.app hosting for invite

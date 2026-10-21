@@ -96,6 +96,8 @@ class AppContainer(
     val reminders = com.meldiq.android.data.repo.ReminderRepository(api, session, features) { reminderNotifier.show(it) }
     /** When each thread was last opened on this phone (Activity's thread replies). */
     val threadSeen = com.meldiq.android.data.repo.ThreadSeen(db)
+    /** Batch B8: threads and forum posts followed on this phone. */
+    val followedThreads = com.meldiq.android.data.repo.FollowedThreads(db)
     val federation = com.meldiq.android.data.repo.FederationRepository(api)
     /** Encrypted message history on the server (docs/MESSAGE_HISTORY.md). */
     val history = com.meldiq.android.data.repo.HistorySync(api, db, session, features, conversations, scope)
@@ -123,6 +125,7 @@ class AppContainer(
         history.start()
         scope.launch { orgs.loadSelection() }
         scope.launch { runCatching { threadSeen.load() } }
+        scope.launch { runCatching { followedThreads.load() } }
         // The personal workspace's preferences, then the selected organisation's whenever it changes.
         scope.launch { runCatching { navPrefs.load(com.meldiq.android.data.repo.NavPreferences.PERSONAL) } }
         scope.launch { orgs.selectedOrg.collect { id -> if (id != null) runCatching { navPrefs.load(id) } } }

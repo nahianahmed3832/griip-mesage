@@ -24,12 +24,29 @@ object ForumRules {
      * The posts to show for a search [query] (title and text, ignoring case) and [selected] tag ids (posts carrying any
      * of them; none selected: all). Everything is matched on this phone: titles, text and tags are encrypted.
      */
-    fun <T> filter(posts: List<Post<T>>, query: String, selected: Set<String>, title: (T) -> String, body: (T) -> String, tags: (T) -> List<String>): List<Post<T>> {
+    fun <T> filter(
+        posts: List<Post<T>>, query: String, selected: Set<String>, title: (T) -> String, body: (T) -> String, tags: (T) -> List<String>,
+        /** Batch B8 (FORUM-CTRL-002 Tag Matching): every selected tag, instead of any of them. */
+        matchAll: Boolean = false,
+    ): List<Post<T>> {
         val q = query.trim().lowercase()
         return posts.filter { p ->
+            val postTags = tags(p.root)
             (q.isEmpty() || title(p.root).lowercase().contains(q) || body(p.root).lowercase().contains(q)) &&
-                (selected.isEmpty() || tags(p.root).any { it in selected })
+                (selected.isEmpty() || if (matchAll) postTags.containsAll(selected) else postTags.any { it in selected })
         }
+    }
+
+    /** Batch B8 (FORUM-CTRL-004): a post card's most-used reaction and how many people used it; null without any. */
+    fun topReaction(reactions: Map<String, List<String>>): Pair<String, Int>? =
+        reactions.mapValues { it.value.distinct().size }.filter { it.value > 0 }.entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .firstOrNull()?.let { it.key to it.value }
+
+    /** Batch B8: guidelines as the forum shows them collapsed: the first lines, and whether there's more. */
+    fun guidelinesPreview(text: String, lines: Int = 3): Pair<String, Boolean> {
+        val all = text.trim().lines()
+        return all.take(lines).joinToString("\n") to (all.size > lines)
     }
 
     /** A received or typed title: one line, trimmed, bounded; null when nothing is left. */

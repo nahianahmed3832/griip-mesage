@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package com.meldiq.android.ui.screens.home
 
 import androidx.lifecycle.ViewModel
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -43,7 +46,8 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         val me = c.session.session?.userId
         if (me == null) MutableStateFlow(0)
         else combine(
-            c.messages.observeThreadReplies(me, System.currentTimeMillis() - ThreadActivityRules.WINDOW_MS, THREAD_REPLIES_SCANNED),
+            // Batch B8: followed threads count too.
+            c.followedThreads.followed.flatMapLatest { f -> c.messages.observeThreadReplies(me, System.currentTimeMillis() - ThreadActivityRules.WINDOW_MS, THREAD_REPLIES_SCANNED, f) },
             c.threadSeen.seen,
         ) { replies, seen -> ThreadActivityRules.summarize(replies, seen).sumOf { it.unseen } }
             .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
@@ -156,7 +160,8 @@ class ActivityViewModel(private val c: AppContainer) : ViewModel() {
         val me = c.session.session?.userId
         if (me == null) MutableStateFlow(emptyList())
         else combine(
-            c.messages.observeThreadReplies(me, System.currentTimeMillis() - ThreadActivityRules.WINDOW_MS, THREAD_REPLIES_SCANNED),
+            // Batch B8: followed threads count too.
+            c.followedThreads.followed.flatMapLatest { f -> c.messages.observeThreadReplies(me, System.currentTimeMillis() - ThreadActivityRules.WINDOW_MS, THREAD_REPLIES_SCANNED, f) },
             c.threadSeen.seen,
         ) { replies, seen -> ThreadActivityRules.summarize(replies, seen).take(THREADS_SHOWN) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())

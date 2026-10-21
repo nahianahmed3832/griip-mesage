@@ -477,4 +477,19 @@
     <string name="b6b_for_how_long">%1$s for how long?</string>
     <string name="b6b_8h">8 hours</string>
     <string name="b6b_until_changed">Until I change it</string>
+    <string name="b8_poll_ends">Ends %1$s</string>
+    <string name="b8_poll_duration">Voting lasts</string>
+    <string name="b8_poll_emoji">Emoji for this answer</string>
+    <string name="b8_poll_emoji_remove">No emoji</string>
+    <string name="b8_4h">4 hours</string>
+    <string name="b8_3d">3 days</string>
+    <string name="b8_no_end">Until I close it</string>
+    <string name="b8_match_any">Any of these tags</string>
+    <string name="b8_match_all">All of these tags</string>
+    <string name="b8_guidelines">Post guidelines</string>
+    <string name="b8_guidelines_help">Shown at the top of the forum and to everyone writing a post.</string>
+    <string name="b8_show_all">Show all</string>
+    <string name="b8_show_less">Show less</string>
+    <string name="b8_follow">Follow</string>
+    <string name="b8_following">Following</string>
 </resources>

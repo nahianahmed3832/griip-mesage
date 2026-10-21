@@ -40,6 +40,7 @@ import com.meldiq.android.ui.TimeFmt
 import com.meldiq.android.ui.components.Avatar
 import com.meldiq.android.ui.components.EmptyState
 import com.meldiq.android.ui.components.GlassCard
+import com.meldiq.android.ui.components.pressable
 import com.meldiq.android.ui.components.GlassSheet
 import com.meldiq.android.ui.components.GriipTextField
 import com.meldiq.android.ui.components.PillButton
@@ -65,19 +66,27 @@ fun ForumPostList(
     /** The forum's tags (servers with `forum-tags`), and a post's tag ids (from inside its encrypted message). */
     forumTags: List<ForumTagDto> = emptyList(),
     postTags: (MessageEntity) -> List<String> = { emptyList() },
+    /** Batch B8: the forum's post guidelines, and a post's most-used reaction. */
+    guidelines: String? = null,
+    topReaction: (MessageEntity) -> Pair<String, Int>? = { null },
 ) {
     val c = Griip.colors
     var sort by rememberSaveable { mutableStateOf(ForumRules.Sort.LATEST_ACTIVITY) }
     var query by rememberSaveable { mutableStateOf("") }
     var selected by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    var matchAll by rememberSaveable { mutableStateOf(false) }
     val posts = remember(roots, replies, sort) { ForumRules.posts(roots, replies, sort, id = { it.id }, time = { it.sortTs }, visible = { !it.deleted && it.kind == "text" }) }
-    val shown = remember(posts, query, selected) { ForumRules.filter(posts, query, selected, title, body, postTags) }
+    val shown = remember(posts, query, selected, matchAll) { ForumRules.filter(posts, query, selected, title, body, postTags, matchAll) }
     val tagNames = remember(forumTags) { forumTags.associate { it.id to it.name } }
     if (posts.isEmpty()) {
-        EmptyState(Icons.Outlined.Forum, stringResource(R.string.ch_forum), stringResource(R.string.fm_empty), modifier)
+        Column(modifier) {
+            guidelines?.let { ForumGuidelinesCard(it, Modifier.padding(horizontal = Space.gutter, vertical = 8.dp)) }
+            EmptyState(Icons.Outlined.Forum, stringResource(R.string.ch_forum), stringResource(R.string.fm_empty))
+        }
         return
     }
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 12.dp)) {
+        guidelines?.let { g -> item(key = "guidelines") { ForumGuidelinesCard(g, Modifier.padding(horizontal = Space.gutter, vertical = 6.dp)) } }
         item(key = "search") {
             GriipTextField(
                 query, { query = it.take(80) }, stringResource(R.string.nv_search_posts), Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp),
@@ -91,6 +100,8 @@ fun ForumPostList(
                 if (forumTags.isNotEmpty()) {
                     PillChip(stringResource(R.string.nv_all_tags), selected.isEmpty(), { selected = emptySet() })
                     forumTags.forEach { t -> PillChip(t.name, t.id in selected, { selected = if (t.id in selected) selected - t.id else selected + t.id }) }
+                    // Batch B8: with two or more tags chosen, posts with any of them or with all of them.
+                    if (selected.size >= 2) PillChip(stringResource(if (matchAll) R.string.b8_match_all else R.string.b8_match_any), matchAll, { matchAll = !matchAll })
                 }
             }
         }
@@ -116,6 +127,10 @@ fun ForumPostList(
                     Avatar(users[m.senderUserId]?.displayName ?: author, users[m.senderUserId]?.avatarColor ?: m.senderUserId.hashCode(), size = 20.dp)
                     Spacer(Modifier.width(6.dp))
                     Text("$author · ${TimeFmt.listStamp(post.lastActivity)}", style = Griip.type.caption, color = c.textTertiary, modifier = Modifier.weight(1f))
+                    topReaction(m)?.let { (emoji, n) ->
+                        TagPill("$emoji $n", c.textSecondary, c.surfaceVariant)
+                        Spacer(Modifier.width(6.dp))
+                    }
                     TagPill(
                         when (post.replies) {
                             0 -> stringResource(R.string.fm_no_replies)
@@ -141,11 +156,12 @@ fun ForumComposerBar(canPost: Boolean, onNewPost: () -> Unit) {
 }
 
 @Composable
-fun NewPostSheet(onDismiss: () -> Unit, forumTags: List<ForumTagDto> = emptyList(), onPost: (String, String, List<String>) -> Unit) {
+fun NewPostSheet(onDismiss: () -> Unit, forumTags: List<ForumTagDto> = emptyList(), guidelines: String? = null, onPost: (String, String, List<String>) -> Unit) {
     var title by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
     var tags by remember { mutableStateOf(emptyList<String>()) }
     GlassSheet(onDismiss, title = stringResource(R.string.fm_new_post)) {
+        guidelines?.let { ForumGuidelinesCard(it, Modifier.padding(bottom = 10.dp)) }
         GriipTextField(title, { title = it.take(ForumRules.MAX_TITLE) }, stringResource(R.string.fm_title))
         Spacer(Modifier.height(10.dp))
         GriipTextField(body, { body = it.take(4000) }, stringResource(R.string.fm_body), singleLine = false, minLines = 4)
@@ -167,5 +183,25 @@ fun NewPostSheet(onDismiss: () -> Unit, forumTags: List<ForumTagDto> = emptyList
         }
         Spacer(Modifier.height(16.dp))
         PillButton(stringResource(R.string.fm_post), { onPost(title, body, tags); onDismiss() }, Modifier.fillMaxWidth().padding(bottom = 8.dp), enabled = ForumRules.cleanTitle(title) != null, height = 50.dp)
+    }
+}
+
+
+/** Batch B8 (FORUM-CTRL-006 "Post Guidelines"): the forum's guidelines, the first lines with Show all. */
+@Composable
+fun ForumGuidelinesCard(text: String, modifier: Modifier = Modifier) {
+    val c = Griip.colors
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val (preview, more) = remember(text) { ForumRules.guidelinesPreview(text) }
+    GlassCard(modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.b8_guidelines), style = Griip.type.label, color = c.textSecondary)
+        Spacer(Modifier.height(4.dp))
+        Text(if (expanded) text.trim() else preview, style = Griip.type.bodySmall, color = c.textPrimary)
+        if (more) {
+            Text(
+                stringResource(if (expanded) R.string.b8_show_less else R.string.b8_show_all), style = Griip.type.caption, color = c.primary,
+                modifier = Modifier.padding(top = 6.dp).pressable({ expanded = !expanded }),
+            )
+        }
     }
 }

@@ -30,7 +30,9 @@ go-ahead (`docs/DEPLOYMENT.md`).
 | B6 | Connections, message requests, DM permissions | **Built; APK ready; owner tests it with the rest** (2026-10-22) |
 | B6b | Group photo and presence choices (split from B6) | **Built; APK ready; owner tests it with the rest** (2026-10-22) |
 | B7 | Media and large files | **Already built; checked on the emulator 2026-10-22 (100 MB, identical on arrival); the 1 GiB real-network test is the owner's** |
-| B8 to B13 | Below | Not started |
+| B8 | Forums and polls: guidelines, tag matching, post-card reactions, follow; poll duration and answer emoji | **Built; APK ready; owner tests it with the rest** (2026-10-22) |
+| B8b | Event recurrence, Server Guide, onboarding questions (split from B8) | Next |
+| B9 to B13 | Below | Not started |
 
 > **Gate changed 2026-10-21 23:13:** the owner asked for the remaining batches to be built one after another without
 > waiting, and to phone-test them all together at the end. Each batch is still committed on its own, with its own APK

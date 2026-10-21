@@ -57,7 +57,7 @@ import { Metrics } from "./ops/metrics.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
-export const VERSION = "0.20.0";
+export const VERSION = "0.21.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
@@ -370,6 +370,8 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     // Batch B6b: a group's photo, and appearing idle, do not disturb or invisible.
     "group-photos",
     "presence-modes",
+    // Batch B8: a forum's post guidelines (polls' end times and answer emoji live inside the encrypted message).
+    "forum-guidelines",
     // Round 7: end dates for guests and a community's guest policy (routes/community.ts).
     "guest-expiry",
     // Round 6: recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md).

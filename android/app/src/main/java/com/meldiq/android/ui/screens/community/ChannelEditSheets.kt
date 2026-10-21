@@ -64,8 +64,13 @@ fun EditChannelSheet(conv: ConversationEntity, canChangeAccess: Boolean, tagsAva
     val initialSlowmode = remember(conv.id) { container.conversations.slowmode.value[conv.id]?.seconds ?: 0 }
     var slowmode by remember { mutableStateOf(initialSlowmode) }
     var slowmodeAvailable by remember { mutableStateOf(false) }
+    // Batch B8: a forum's post guidelines.
+    val initialGuidelines = remember(conv.id) { container.conversations.guidelines.value[conv.id].orEmpty() }
+    var guidelines by remember { mutableStateOf(initialGuidelines) }
+    var guidelinesAvailable by remember { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         slowmodeAvailable = !conv.voice && container.features.has(com.meldiq.android.data.repo.ServerFeatures.SLOWMODE) == true
+        guidelinesAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.FORUM_GUIDELINES) == true
     }
     GlassSheet(onDismiss, title = stringResource(R.string.nv_edit_channel)) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -87,6 +92,11 @@ fun EditChannelSheet(conv: ConversationEntity, canChangeAccess: Boolean, tagsAva
                 com.meldiq.android.ui.components.ChipRow(Modifier.padding(horizontal = 0.dp)) {
                     com.meldiq.android.data.model.SlowmodeRules.STEPS.forEach { step -> PillChip(slowmodeLabel(step), slowmode == step, { slowmode = step }) }
                 }
+            }
+            if (forum && guidelinesAvailable) {
+                Spacer(Modifier.height(14.dp))
+                GriipTextField(guidelines, { guidelines = it.take(GUIDELINES_MAX) }, stringResource(R.string.b8_guidelines), singleLine = false, minLines = 3,
+                    helper = stringResource(R.string.b8_guidelines_help))
             }
             if (forum && tagsAvailable) {
                 Spacer(Modifier.height(14.dp))
@@ -125,6 +135,7 @@ fun EditChannelSheet(conv: ConversationEntity, canChangeAccess: Boolean, tagsAva
                             format = (if (forum) "forum" else "text").takeIf { canBeForum && it != conv.format },
                             forumTags = wantTags.takeIf { tagsChanged },
                             slowmodeSec = slowmode.takeIf { slowmodeAvailable && it != initialSlowmode },
+                            guidelines = guidelines.trim().takeIf { forum && guidelinesAvailable && it != initialGuidelines },
                         )
                     }.onSuccess { onDismiss(); onSaved() }.onFailure { error = it.friendly() }
                     busy = false
@@ -178,3 +189,6 @@ fun DeleteChannelSheet(conv: ConversationEntity, onDismiss: () -> Unit, onArchiv
         }
     }
 }
+
+/** Batch B8: the server's limit for a forum's post guidelines. */
+private const val GUIDELINES_MAX = 2000

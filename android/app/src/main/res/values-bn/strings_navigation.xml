@@ -477,4 +477,19 @@
     <string name="b6b_for_how_long">কতক্ষণ %1$s?</string>
     <string name="b6b_8h">৮ ঘণ্টা</string>
     <string name="b6b_until_changed">আমি না বদলানো পর্যন্ত</string>
+    <string name="b8_poll_ends">%1$s শেষ হবে</string>
+    <string name="b8_poll_duration">ভোট চলবে</string>
+    <string name="b8_poll_emoji">এই উত্তরের ইমোজি</string>
+    <string name="b8_poll_emoji_remove">ইমোজি ছাড়া</string>
+    <string name="b8_4h">৪ ঘণ্টা</string>
+    <string name="b8_3d">৩ দিন</string>
+    <string name="b8_no_end">আমি বন্ধ না করা পর্যন্ত</string>
+    <string name="b8_match_any">যেকোনো ট্যাগ</string>
+    <string name="b8_match_all">সব ট্যাগ</string>
+    <string name="b8_guidelines">পোস্টের নির্দেশিকা</string>
+    <string name="b8_guidelines_help">ফোরামের ওপরে এবং পোস্ট লেখা সবাইকে দেখানো হবে।</string>
+    <string name="b8_show_all">সব দেখুন</string>
+    <string name="b8_show_less">কম দেখুন</string>
+    <string name="b8_follow">অনুসরণ</string>
+    <string name="b8_following">অনুসরণ করছেন</string>
 </resources>
