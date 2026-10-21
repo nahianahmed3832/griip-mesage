@@ -33,6 +33,7 @@ import com.meldiq.android.data.model.AttachmentRef
 import com.meldiq.android.voice.VoiceNote
 import com.meldiq.android.data.model.CallInfo
 import com.meldiq.android.data.model.AttachmentPolicy
+import com.meldiq.android.data.model.EmojiRules
 import com.meldiq.android.data.model.RichContent
 import com.meldiq.android.data.model.PollRules
 import com.meldiq.android.data.model.RichRules
@@ -268,7 +269,7 @@ class MessageRepository(
 
     suspend fun react(m: MessageEntity, emoji: String) {
         val me = myUserId ?: return
-        if (!canSendIn(m.conversationId)) return
+        if (!canSendIn(m.conversationId) || !EmojiRules.isReaction(emoji)) return
         val current = reactions(m)
         val add = current[emoji]?.contains(me) != true
         applyReaction(db.messages().get(m.id) ?: return, me, emoji, add) // fresh row: `m` may be stale
@@ -985,7 +986,8 @@ class MessageRepository(
                 }
             }
             "reaction" -> {
-                val emoji = pl.emoji ?: return
+                // One emoji, not text: anything else from a modified client is dropped (docs/EMOJI.md).
+                val emoji = pl.emoji?.takeIf(EmojiRules::isReaction) ?: return
                 applyReaction(target(pl, item, serverTs) ?: return, item.senderUserId, emoji, pl.add != false)
             }
             "pin" -> {

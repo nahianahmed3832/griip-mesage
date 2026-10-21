@@ -225,7 +225,7 @@ fun AnimojiView(emoji: String, animate: Boolean, size: Int = 96) {
 
 /**
  * Stickers and animated emoji to send on their own, and emoji to type into the message (2026-10-19: Stickers added,
- * docs/STICKERS.md). Opens on Stickers.
+ * docs/STICKERS.md; 2026-10-21: the full Unicode picker, [EmojiPanel], docs/EMOJI.md). Opens on Stickers.
  */
 @Composable
 fun EmojiPickerSheet(
@@ -235,6 +235,7 @@ fun EmojiPickerSheet(
     onDismiss: () -> Unit,
     stickers: com.meldiq.android.data.repo.StickerPrefs? = null,
     onSendSticker: (com.meldiq.android.data.model.Sticker) -> Unit = {},
+    emoji: com.meldiq.android.data.repo.EmojiPrefs,
 ) {
     val c = Griip.colors
     val hasStickers = stickers != null && com.meldiq.android.data.model.StickerCatalog.packs.isNotEmpty()
@@ -246,7 +247,9 @@ fun EmojiPickerSheet(
             com.meldiq.android.ui.components.PillChip(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.emoji_tab), tab == 2, { tab = 2 })
         }
         Spacer(Modifier.height(10.dp))
-        Column(Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+        // The full picker scrolls by itself (a lazy grid), so it isn't put in the scrolling column below.
+        if (tab == 2) EmojiPanel(emoji, onInsert, Modifier.fillMaxWidth().height(440.dp))
+        else Column(Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
         when {
             tab == 0 && stickers != null -> {
                 val recent by stickers.recent.collectAsState()
@@ -268,25 +271,12 @@ fun EmojiPickerSheet(
                     }
                 }
             }
-            else -> FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                EMOJI.forEach { e ->
-                    Box(Modifier.size(44.dp).clip(Shapes.small).pressable({ onInsert(e) }, onClickLabel = "Insert $e"), contentAlignment = Alignment.Center) {
-                        Text(e, fontSize = 24.sp)
-                    }
-                }
-            }
+            else -> Unit
         }
         }
         Spacer(Modifier.height(16.dp))
     }
 }
-
-private val EMOJI = listOf(
-    "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇", "🙂", "😉", "😍", "🥰", "😘", "😋", "😛", "😜", "🤪", "🤗",
-    "🤔", "🤨", "😐", "😑", "😶", "🙄", "😏", "😮", "😯", "😲", "🥱", "😴", "😌", "😔", "😢", "😭", "😤", "😡", "🤯", "😱",
-    "🥳", "😎", "🤓", "🧐", "👍", "👎", "👏", "🙌", "🙏", "🤝", "💪", "👋", "✌️", "👌", "❤️", "🧡", "💛", "💚", "💙", "💜",
-    "🔥", "✨", "🎉", "🎂", "🎁", "☕", "🍵", "🍕", "🍔", "🍰", "⚽", "🏏", "🚀", "✈️", "🏠", "💼", "📌", "✅", "❌", "💯",
-)
 
 // ───────────────────────────── Forwarding ─────────────────────────────
 

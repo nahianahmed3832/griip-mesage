@@ -94,4 +94,27 @@
     <string name="nv_member_one">১ জন সদস্য</string>
     <string name="nv_join_title">কমিউনিটিতে যোগ দিন বা তৈরি করুন</string>
     <string name="nv_invite_help">কমিউনিটির মালিক, অ্যাডমিন বা আমন্ত্রণ জানাতে পারেন এমন কারো কাছে কোড চান। পুরো আমন্ত্রণ বার্তাটি পেস্ট করতে পারেন।</string>
+    <string name="emoji_search">ইমোজি খুঁজুন</string>
+    <string name="emoji_no_match">“%1$s”-এর সঙ্গে মেলে এমন ইমোজি নেই</string>
+    <string name="emoji_loading">ইমোজি লোড হচ্ছে…</string>
+    <string name="emoji_unavailable">ইমোজি লোড করা যায়নি। সাম্প্রতিক ইমোজি এখনও কাজ করে।</string>
+    <string name="emoji_tone">ত্বকের রং</string>
+    <string name="emoji_tone_default">ডিফল্ট ত্বকের রং</string>
+    <string name="emoji_tone_1">হালকা ত্বকের রং</string>
+    <string name="emoji_tone_2">মাঝারি-হালকা ত্বকের রং</string>
+    <string name="emoji_tone_3">মাঝারি ত্বকের রং</string>
+    <string name="emoji_tone_4">মাঝারি-গাঢ় ত্বকের রং</string>
+    <string name="emoji_tone_5">গাঢ় ত্বকের রং</string>
+    <string name="emoji_cat_recent">সম্প্রতি ব্যবহৃত</string>
+    <string name="emoji_cat_smileys">স্মাইলি ও অনুভূতি</string>
+    <string name="emoji_cat_people">মানুষ ও শরীর</string>
+    <string name="emoji_cat_nature">প্রাণী ও প্রকৃতি</string>
+    <string name="emoji_cat_food">খাবার ও পানীয়</string>
+    <string name="emoji_cat_travel">ভ্রমণ ও স্থান</string>
+    <string name="emoji_cat_activities">কার্যকলাপ</string>
+    <string name="emoji_cat_objects">বস্তু</string>
+    <string name="emoji_cat_symbols">প্রতীক</string>
+    <string name="emoji_cat_flags">পতাকা</string>
+    <string name="react_more">আরও প্রতিক্রিয়া</string>
+    <string name="react_title">প্রতিক্রিয়া যোগ করুন</string>
 </resources>

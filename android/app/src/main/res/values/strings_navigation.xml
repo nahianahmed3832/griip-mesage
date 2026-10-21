@@ -94,4 +94,27 @@
     <string name="nv_member_one">1 member</string>
     <string name="nv_join_title">Join or create a community</string>
     <string name="nv_invite_help">Ask the community\'s owner, an admin or anyone who may invite for a code. You can paste the whole invite message.</string>
+    <string name="emoji_search">Search emoji</string>
+    <string name="emoji_no_match">No emoji match “%1$s”</string>
+    <string name="emoji_loading">Loading emoji…</string>
+    <string name="emoji_unavailable">Emoji couldn\'t be loaded. Recent emoji still work.</string>
+    <string name="emoji_tone">Skin tone</string>
+    <string name="emoji_tone_default">Default skin tone</string>
+    <string name="emoji_tone_1">Light skin tone</string>
+    <string name="emoji_tone_2">Medium-light skin tone</string>
+    <string name="emoji_tone_3">Medium skin tone</string>
+    <string name="emoji_tone_4">Medium-dark skin tone</string>
+    <string name="emoji_tone_5">Dark skin tone</string>
+    <string name="emoji_cat_recent">Recently used</string>
+    <string name="emoji_cat_smileys">Smileys &amp; emotion</string>
+    <string name="emoji_cat_people">People &amp; body</string>
+    <string name="emoji_cat_nature">Animals &amp; nature</string>
+    <string name="emoji_cat_food">Food &amp; drink</string>
+    <string name="emoji_cat_travel">Travel &amp; places</string>
+    <string name="emoji_cat_activities">Activities</string>
+    <string name="emoji_cat_objects">Objects</string>
+    <string name="emoji_cat_symbols">Symbols</string>
+    <string name="emoji_cat_flags">Flags</string>
+    <string name="react_more">More reactions</string>
+    <string name="react_title">Add a reaction</string>
 </resources>

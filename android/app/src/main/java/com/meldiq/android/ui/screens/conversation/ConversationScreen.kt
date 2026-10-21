@@ -11,6 +11,7 @@ import com.meldiq.android.ui.media.MediaAction
 import com.meldiq.android.ui.media.MediaGallery
 import com.meldiq.android.ui.media.MediaViewer
 import com.meldiq.android.data.model.AttachmentRef
+import androidx.compose.material.icons.outlined.AddReaction
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Headset
 import androidx.compose.material.icons.outlined.MarkChatUnread
@@ -285,6 +286,9 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     var newPostSheet by remember { mutableStateOf(false) }
     var remindFor by remember { mutableStateOf<MessageEntity?>(null) }
     val stickerPrefs = remember { com.meldiq.android.data.repo.StickerPrefs(ctx) }
+    val emojiPrefs = remember { com.meldiq.android.data.repo.EmojiPrefs(ctx) }
+    /** The message getting a reaction from the full picker ("More reactions"). */
+    var reactFor by remember { mutableStateOf<MessageEntity?>(null) }
     // Saved for later (Home › Later): which messages here are saved, and whether this server keeps them.
     val saved by vm.saved.collectAsStateWithLifecycle()
     val savingSupported by vm.savingSupported.collectAsStateWithLifecycle()
@@ -815,6 +819,12 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                         contentAlignment = Alignment.Center,
                     ) { Text(e, fontSize = 22.sp) }
                 }
+                val more = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.react_more)
+                Box(
+                    Modifier.size(46.dp).clip(CircleShape).background(c.surfaceVariant).pressable({ reactFor = m; actionFor = null }, onClickLabel = more)
+                        .semantics { contentDescription = more },
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Outlined.AddReaction, null, tint = c.textSecondary, modifier = Modifier.size(22.dp)) }
             }
             if (!m.deleted && m.kind == "text") {
                 if (interactive) MenuRow(Icons.AutoMirrored.Rounded.Reply, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.menu_reply), onClick = { vm.replyTo.value = m; vm.editing.value = null; actionFor = null; focusComposer() }, trailing = null)
@@ -953,7 +963,13 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             onDismiss = { emojiSheet = false },
             stickers = stickerPrefs,
             onSendSticker = { s -> vm.sendSticker(s); emojiSheet = false },
+            emoji = emojiPrefs,
         )
+    }
+    reactFor?.let { m ->
+        GlassSheet({ reactFor = null }, title = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.react_title)) {
+            EmojiPanel(emojiPrefs, onPick = { e -> vm.react(m, e); reactFor = null }, modifier = Modifier.fillMaxWidth().height(440.dp))
+        }
     }
     if (newPostSheet) NewPostSheet(onDismiss = { newPostSheet = false }, forumTags = conv?.let { vm.c.conversations.forumTags(it) }.orEmpty(), onPost = { t, b, tags -> vm.sendForumPost(t, b, tags) })
     if (pollSheet) PollComposerSheet(onSend = { poll -> vm.sendRich(com.meldiq.android.data.model.RichContent(poll = poll)); pollSheet = false }, onDismiss = { pollSheet = false })
