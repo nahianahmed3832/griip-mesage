@@ -34,7 +34,7 @@ state that could split a domain between the stores (`src/mongo/index.ts`):
 |---|---|---|---|
 | accounts | accounts, account_sessions, account_codes, legacy_tickets | SQLite (prod) | **Yes** (`MongoAccountStore`) |
 | preferences | nav_preferences (new 2026-10-19) | SQLite (prod default) | **Yes** (`MongoPreferenceStore`) |
-| integrations | integration_installs, integration_accounts, integration_credentials, integration_oauth_states, integration_subscriptions, integration_deliveries, integration_jobs, integration_channel_events, integration_policies, integration_hooks (new 2026-10-19, docs/INTEGRATIONS.md) | SQLite (default) | **Yes** (async row store, `src/store/rows.ts`) |
+| integrations | *retired 2026-10-21 with the apps (COMMUNITY_REBUILD_2026-10-21.md)*: listed in `MONGODB_DOMAINS` it is ignored; its SQLite tables stay for `admin retired-data` | — | No |
 | identity | users, devices, user_blocks, push_endpoints, registration_invites | SQLite | Copy and verify only |
 | workspace | orgs, org_members, branches, branch_members, departments, teams, team_members, invitations, org_deletions, audit_log, org_roles, org_role_members | SQLite | Copy and verify only |
 | conversations | conversations, conversation_members, mention_all_events | SQLite | Copy and verify only |

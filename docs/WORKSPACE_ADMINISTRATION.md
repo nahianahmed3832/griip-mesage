@@ -1,5 +1,7 @@
 # Workspace administration (2026-10-19)
 
+> **Community rebuild (2026-10-21):** branches and teams are gone; channel access is decided by categories' and channels' permission overwrites and changed by holders of `channels.visibility`, not by branch managers or team leads. Settings gained rules, visibility (Discover) and who may join. See `COMMUNITY_REBUILD_2026-10-21.md`.
+
 The organisational workspace features added in the 2026-10-19 round: managing a workspace, its people and roles,
 channel access, archiving, and each person's own arrangement of Home. Every protected action is decided on the server
 (`server/src/authz.ts`, `server/src/roles.ts`); the app only hides what the server would refuse, using the permissions

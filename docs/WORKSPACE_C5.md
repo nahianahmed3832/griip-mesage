@@ -1,5 +1,7 @@
 # Workspace templates, groups, guests and meetings (round 7 slice C5, 2026-10-20)
 
+> **Community rebuild (2026-10-21):** workspace templates and user groups were removed (every community starts with its own channels; roles do what groups did). Guests and meetings stay; the app calls meetings events. See `COMMUNITY_REBUILD_2026-10-21.md`.
+
 ## Workspace templates
 
 General business, software development, marketing, ecommerce operations, customer support, agency or client work.

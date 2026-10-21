@@ -83,37 +83,35 @@ account per server as separate on-device profiles (`ANDROID_SERVER_SETUP.md`).
     callee device is ringing; `GET /v1/calls/active` lists live calls, which the app uses to recover rings it missed while reconnecting.
   - LiveKit webhooks plus a 60 s reconciliation against `RoomService.listParticipants` keep the state correct. Unanswered 1:1 calls end as `missed` after 45 s.
 
-## 5. Authorisation matrix (enforced in `authz.ts`, tested in `test/orgs.test.ts`)
+## 5. Authorisation (enforced in `authz.ts` and `permissions/`, tested in `test/orgs.test.ts`, `test/channel_permissions.test.ts`)
 
-| Action | Owner | Admin | Branch manager | Team lead | Member | Guest |
-|---|---|---|---|---|---|---|
-| Edit org, create branches | ✓ | ✓ | – | – | – | – |
-| Promote to / demote from Admin, Owner | ✓ | – | – | – | – | – |
-| Switch Member ↔ Guest, remove members | ✓ | ✓ (not admins/owners) | – | – | – | – |
-| Create departments / teams in a branch | ✓ | ✓ | own branch | – | – | – |
-| Create cross-branch teams | ✓ | ✓ | – | – | – | – |
-| Add/remove branch members | ✓ | ✓ | own branch (not managers) | – | – | – |
-| Add/remove team members, team settings | ✓ | ✓ | teams in own branch | own team (not leads) | – | – |
-| Move members between teams | needs manage rights on **both** teams | | | | | |
-| Create org-wide channels | ✓ | ✓ | – | – | – | – |
-| Create branch / team channels | ✓ | ✓ | own branch | own team | – | – |
-| Invite (role ≤ Member/Guest) | ✓ | ✓ | into own branch | into own team | – | – |
-| Invite admins | ✓ | – | – | – | – | – |
-| Post in announcement channels | ✓ | ✓ | own branch | own team | – | – |
-| Read public channels in scope | ✓ | ✓ | ✓ | ✓ | ✓ (in scope) | only if added explicitly |
-| Private channels | explicit membership only, for every role |
-| Browse directory | ✓ | ✓ | ✓ | ✓ | ✓ | – |
+Communities replaced the branch/department/team model on 2026-10-21 (`COMMUNITY_REBUILD_2026-10-21.md`).
 
-Scoping rules:
-- Branch membership never grants access to another branch.
-- A branch team may contain only members of that branch, unless the person is an org owner or admin. The server returns `409` otherwise.
-- Removing someone from an org, branch or team re-validates their channel memberships immediately.
-- Demoting someone to Guest removes their branch and team memberships and every channel membership in that org. Guests keep only channels a manager adds them to afterwards (`Authz.demoteToGuest`).
+- **Community permissions** come from the base role (Owner, Admin, Member, Guest) plus custom roles' grants, minus
+  their restrictions (`permissions/rules.ts`). Owners hold everything; admins everything but owner-only powers.
+- **Channel permissions** start from those and apply the channel's category overwrites, then the channel's own: at each
+  level @everyone deny, @everyone allow, the person's roles' denies, their allows, then the person's own overwrite.
+  Owners and admins skip overwrites; a role's community-wide restriction still wins (`permissions/channel.ts`).
+- **Seeing a channel** (`channels.view`): public and announcement channels are joined automatically by everyone whose
+  channel permissions include it; private channels are explicit membership only, and no overwrite can add anyone to
+  one. Guests are never eligible: managers add them to specific channels.
+- **Posting** needs `messages.post` (and `messages.announce` or channel management in announcement channels); **file
+  uploads** need `messages.attach` as well, checked when an upload starts and again when it completes.
+- **Every change that can affect access** (a role assigned, removed, edited or archived; an overwrite; a channel moved
+  to another category; a kind change) re-checks memberships and evicts people from calls in channels they lost.
+- **Bans** (`members.ban`) remove the person and refuse invitations and open joining until lifted. Owners can't be banned.
+- **Discovery** lists only public communities; only owners change visibility or the join policy.
 
 ## 6. Data model (server)
 
+Communities (2026-10-21, migration 032): `orgs` (with `visibility`, `join_policy`, `rules`), `channel_categories`,
+`conversations.category_id / position / format`, `channel_overwrites`, `org_bans`, `invitations.grant_role_id`,
+`community_migration_runs`. The `branches`, `departments`, `teams` tables and the channels' `scope` columns stay as the
+migration found them, so an older server can be rolled back to.
+
+
 Permanent organisational metadata:
-- `users`, `devices`, `orgs`, `org_members`, `branches`, `branch_members`, `departments`, `teams`, `team_members`, `invitations` (hashed codes)
+- `users`, `devices`, `orgs`, `org_members`, `org_roles`, `org_role_members`, `channel_categories`, `channel_overwrites`, `org_bans`, `invitations` (hashed codes)
 - `conversations`, `conversation_members`
 - `audit_log` (no content)
 

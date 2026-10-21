@@ -1,5 +1,7 @@
 # Workspaces
 
+> **Community rebuild (2026-10-21):** Workspaces are communities now: branches, departments and teams became roles and categories, and everyone sees channels as categories with permissions. Deleting a community works as described below. See `COMMUNITY_REBUILD_2026-10-21.md`.
+
 Workspaces (organizations: branches, departments, teams, channels, invitations) are reached from **Contacts ›
 Workspace and channels**. They are not a main tab: Meldiq's main tabs are Chats, Calls, Contacts and Settings. Everything
 a workspace already supported is unchanged.

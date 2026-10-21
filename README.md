@@ -2,13 +2,15 @@
 
 **Meldiq by GriipBuddy** · *Private by design. Connected by everyone.*
 
-A native Android messaging and collaboration app for GriipBuddy teams, as an internal beta. Renamed from Griip Message
+A native Android community messaging app (communities with channels, categories, forums and voice channels, plus
+private messages and calls), as an internal beta. Rebuilt community-first on 2026-10-21
+([community rebuild](docs/COMMUNITY_REBUILD_2026-10-21.md)): the workplace modules and optional connectors are gone. Renamed from Griip Message
 to Orbit on 2026-10-16 and from Orbit to Meldiq on 2026-10-19 ([rebrand notes](docs/MELDIQ_REBRAND_2026-10-19.md)).
 Protocols (`griip-envelope-v1`, `griip-fed/1`) and their cryptographic labels, the S3 bucket and key prefix, the AWS
 stacks and the Docker project keep their names until a planned migration
 ([infrastructure plan](docs/MELDIQ_INFRASTRUCTURE_PLAN_2026-10-19.md)).
-- **Messaging:** end-to-end encrypted direct messages, groups and team channels.
-- **Workspaces:** organisations, branches, departments and teams with role-based access.
+- **Messaging:** end-to-end encrypted direct messages, groups and community channels, threads and forum posts.
+- **Communities:** public or invite-only, discoverable, with categories, roles, per-role channel permissions and bans.
 - **Calls:** voice and video calls and Android screen sharing over a self-hosted LiveKit SFU.
 - **Storage:** history is kept on the device, and the relay keeps encrypted envelopes for at most 7 days.
 
@@ -26,7 +28,7 @@ stacks and the Docker project keep their names until a planned migration
 
 1. Install the APK. You can use `adb install artifacts/meldiq-test-2026-10-19.apk`, or copy it to the phone and open it.
 2. Tap **Get started**, pick a display name and a username. Your keys are created on the phone.
-3. Join a workspace with an invite code, or create one. Owners and admins create invites from **Workspace → Manage → Invitations**.
+3. Join a community with an invite code or from **Discover**, or create one. Owners and admins create invites from **Community → Manage → Invitations**.
 4. Save your recovery key from **Profile → Security & recovery**.
 5. For background delivery, keep **Settings → Stay connected in background** on, and allow the app in your phone's battery manager.
 

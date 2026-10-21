@@ -43,5 +43,5 @@ revisions, ownership), `ReminderRulesTest` (lists, snoozes, ids, sealing). Phone
 ## Not built
 
 Task and project deadlines (Meldiq has no task system; HR tasks come through the People & HR plan,
-`HR_INTEGRATION_PLAN.md`), meeting reminders from calendars, quiet hours, and notification actions (Done/Snooze on the
+removed with the community rebuild), meeting reminders from calendars, quiet hours, and notification actions (Done/Snooze on the
 notification itself).

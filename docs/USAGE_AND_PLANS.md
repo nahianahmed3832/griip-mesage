@@ -1,5 +1,7 @@
 # Usage metering, plan limits and billing readiness (round 7 slice C7, 2026-10-20)
 
+> **Community rebuild (2026-10-21):** only file transfer is still counted (API requests, webhooks, workflows, AI and inbox counters went with their modules), and the limits left are `roles.custom`, `members` and `storage.bytes`; an environment still naming a removed limit starts and ignores it. See `COMMUNITY_REBUILD_2026-10-21.md`.
+
 Groundwork for running Meldiq commercially later. **No plan, price or limit has been decided, nothing charges anyone,
 and no upgrade is offered.** Out of the box every capability is unlimited; the answer to "which plan?" is `null`.
 

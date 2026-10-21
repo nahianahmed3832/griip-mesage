@@ -46,7 +46,7 @@ KEEP: works and stays. ADAPT: stays, changed for communities. REMOVE: workplace-
 | Branches, departments, teams (and branch managers, team leads, cross-branch rules, archive) | `routes/orgs.ts`, `authz.ts`, `OrgScreens.kt`, `ScopeAdminViews.kt` | working | **workplace** | REMOVE; data migrated to roles + categories (§6) |
 | Workspace templates (team templates) | `workspace/templates.ts` | working | workplace | REMOVE the team templates; keep the community starter channels |
 | User groups (Marketing, Engineering…) | `workspace/groups.ts`, `GroupsScreen.kt` | working | workplace (duplicates roles) | REMOVE |
-| Guest end dates and guest policy | `routes/workspaceC5.ts` | working | workplace | REMOVE (the Guest base role stays: explicit-access members) |
+| Guest end dates and guest policy | `routes/workspaceC5.ts` | working | moderation | KEEP; moved to `routes/community.ts` (temporary access suits communities too) |
 | Scheduled meetings in voice rooms | `workspace/meetings.ts`, `MeetingsScreen.kt` | working | general | ADAPT → "Events" in the app (same API) |
 | Integrations framework, app directory, OAuth connectors (Google, Microsoft, GitHub, GitLab, Jira, Linear, Notion, Figma, Asana, Zoom, sandbox), incoming webhooks, app policies, platform registry | `server/src/integrations`, `routes`, `ui/screens/workspace/apps` | built, no provider configured in production | **connector** | REMOVE |
 | Developer platform: API keys, `/ext/v1`, outgoing webhooks | `developer/`, `routes/developer.ts`, `DeveloperScreen.kt` | built | connector | REMOVE |
@@ -172,10 +172,80 @@ Changed (additive fields only): org summary gains `visibility`, `joinPolicy`, `r
 Play builds 0.3.0 and older still decode it; conversation views gain `categoryId`, `position`, `format`; channel
 create takes `categoryId` and `format` (`scope` is accepted and must be `ORG`).
 
-Removed: branches, departments, teams, team moves, workspace templates, groups, guest policy and expiry, integrations
+Removed: branches, departments, teams, team moves, workspace templates, groups, integrations
 (all `/v1/integrations/*`, `/v1/orgs/:id/apps|integrations|hooks|policy`, `/v1/platform/*`), developer
 (`/v1/orgs/:id/api-keys|webhooks`, `/ext/v1/*`, `/v1/developer/catalog`), inbox (`/v1/inbox/*`, `/v1/orgs/:id/inbox*`,
 `/v1/admin/inbox/health`), workflows, documents, AI. Server features `integrations`, `workflows`, `documents`,
-`workspace-templates`, `groups`, `guest-expiry`, `developer-api`, `ai`, `unified-inbox` are no longer advertised, so
+`workspace-templates`, `groups`, `developer-api`, `ai`, `unified-inbox` are no longer advertised, so
 clients that check features hide those entries; new features `community-channels`, `community-discovery`,
 `community-moderation`.
+
+## 8. Verification (2026-10-21, on the development Mac)
+
+| Check | Result |
+|---|---|
+| Server type check (`npx tsc --noEmit`) | clean |
+| Server suite (`npm test`) | 604 passed, 10 skipped (70 files). Before the rebuild: 764 passed, 10 skipped; the difference is the removed modules' tests |
+| New server tests | `community_migration.test.ts`, `channel_permissions.test.ts`, `retired_modules.test.ts`, the community cases in `orgs.test.ts` (discovery, joining, bans, demotion, hidden categories, invite role re-check) |
+| `admin community-migration --verify` on a fresh database | runs; nothing to convert, no differences |
+| Android unit tests (`:app:testDebugUnitTest`) | 537 passed, 0 failed. Before: 559; the removed screens' tests went, `CommunityRulesTest` and `ForumRulesTest` came |
+| Android `:app:lintDebug` and `:app:assembleDebug` | build successful; three compiler warnings, none new |
+| Room 8 → 9 | migration written and schema `9.json` exported; checked by the schema export only, not on a phone |
+| 1 GiB files, `server/test/acceptance/files_1g_e2e.ts` | **12 of 12 checks passed** (below) |
+| On a phone | **not done**: the owner tests on the device |
+
+The 1 GiB acceptance run (not part of `npm test`; it moves several gigabytes). It starts the real server with its
+default limits. Phase 1 streams through the server to its disk store; phase 2 uses the direct multipart path against
+the in-repo S3 stand-in (`test/support/fakeS3.ts`, which checks SigV4 signatures and part sizes), not Amazon S3.
+
+| Check | Result |
+|---|---|
+| Server advertises the limit | `fileMaxBytes` 1,073,741,824 |
+| Upload through the server (encrypted size 1,073,758,208 bytes) | HTTP 200 in 4.2 s |
+| A member downloads it | byte-identical, 3.3 s |
+| An outsider / someone signed out | 404 / 401 |
+| One byte over the limit | 413 |
+| Direct multipart upload | 65 parts of 16 MiB, every presigned part accepted, completed in 7.7 s |
+| A member downloads it from the store | byte-identical, 4.3 s |
+| A channel overwrite denying `messages.attach` | upload start refused, 403 |
+| A cancelled upload | aborted at the store (0 open multipart uploads) |
+
+What this does not cover: the Android uploader on a real network (resume after a dropped connection, the phone
+sleeping), and Amazon S3 itself (its part limits are the same as the stand-in's). Those are the checks in §10.
+
+## 9. Before deploying this server
+
+1. **The web client.** `orbit_web` still calls routes this version removed (inbox, webhooks, API keys, AI, groups,
+   documents, workflows, branches and teams). Deploying the server first breaks those web screens. Update or hide
+   them in the web client first, or deploy both together. The Android rebuild itself needs nothing else.
+2. **Older Android builds** (Play 0.3.0 and earlier) keep working: org detail still has empty `branches`,
+   `departments`, `teams`; categorised channels are reported as `scope: "TEAM"` with the category's name so they
+   group sensibly; removed features are no longer advertised, so those builds hide the entries that check features.
+   Screens that never checked a feature (an older build's Apps or Inbox tab) show an error instead of content.
+3. **Back up** (`node dist/admin.js backup <file>`), then deploy. Migration `032_communities.sql` only adds tables and
+   columns; the branch/team conversion runs at start-up, records what it converted and leaves the old tables as
+   they were, so rolling back to the previous build works with the same database.
+4. After start-up: `node dist/admin.js community-migration --verify` must report no differences.
+5. Then, once the version is live: remove the retired settings and secrets (`CONNECTORS.md`, "After deploying"),
+   revoke the OAuth apps at each provider, run `retired-data` and, after a backup, `retired-data --purge --yes`.
+
+None of this has been done: nothing was deployed, pushed or changed in production.
+
+## 10. Still open
+
+- Phone testing of the rebuilt app (side-by-side build `-Pmeldiq.sideBySide=true`): Room 8 → 9 upgrade over real
+  data, community home with categories, channel permissions, forum posts, discovery and joining, bans, a 1 GiB file
+  on mobile data and Wi-Fi, against the production bucket.
+- Reconciling memberships after a permission change walks every member of the community; fine for hundreds, to be
+  measured before communities of tens of thousands.
+- Forum post titles are inside the encrypted message, so the server can't sort or search posts by title; sorting is
+  on the device.
+- Voice channels keep the voice-room implementation; per-channel permissions for speaking are not separate yet
+  (`messages.post` is not checked for joining a call).
+- Translations of the new strings into Chinese and Bengali were written here and need a native speaker's review.
+
+## 11. Next phase
+
+Stage-channel style speaking permissions for voice channels, slow mode and automatic moderation (word filters,
+new-member cooldown), reports from members to moderators, community templates people can pick at creation, server-side
+pagination for very large communities, and the web client brought to the same community model.

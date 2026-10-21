@@ -30,7 +30,7 @@ is unchanged (all earlier workspace tests pass). Evaluated on every request (den
 Where they're enforced: workspace profile and avatar, branch/team creation and management, channel creation, channel
 management and access mode, announcements, posting (a read-only role stops messages and files in channels), member
 directory, invitations (create, see and revoke others'), member role/title changes and removal, roles, audit log,
-usage, apps (docs/INTEGRATIONS.md). Branch managers and team leads keep their scoped powers.
+usage. Branch managers and team leads were replaced by roles and channel permissions (COMMUNITY_REBUILD_2026-10-21.md).
 
 ## 3. Anti-escalation rules
 
@@ -53,7 +53,7 @@ usage, apps (docs/INTEGRATIONS.md). Branch managers and team leads keep their sc
 
 ## 4. Lifecycle and data
 
-Create (blank, from a starter template: Moderator, HR Manager, Project Manager, App Manager, Finance, Read-Only
+Create (blank, from a starter template: Moderator, Community Manager, Announcer, Helper, Read-Only
 Member, or by cloning), edit with optimistic revisions (a stale edit gets 409 with the current role), archive (grants
 nothing, assignments kept), restore, delete (archived only). Names unique among active roles (and never a base role's),
 50 active roles per workspace, 20 per person, optional colour and icon. Assignments are removed with the member
