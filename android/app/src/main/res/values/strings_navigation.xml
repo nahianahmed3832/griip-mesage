@@ -581,4 +581,22 @@
     <string name="b11_stop">Stop</string>
     <string name="b11_share_ended">%1$s stopped sharing their screen</string>
     <string name="b11_sound_short">Sound from games and videos</string>
+    <string name="b12_today">Today</string>
+    <string name="b12_yesterday">Yesterday</string>
+    <string name="b12_just_now">just now</string>
+    <string name="b12_while_ago">a while ago</string>
+    <string name="b12_min_ago">%1$d min ago</string>
+    <string name="b12_h_ago">%1$d h ago</string>
+    <string name="b12_d_ago">%1$d d ago</string>
+    <string name="b12_morning">Good morning</string>
+    <string name="b12_afternoon">Good afternoon</string>
+    <string name="b12_evening">Good evening</string>
+    <string name="b12_hello">Hello</string>
+    <string name="b12_pronouns">Pronouns (optional)</string>
+    <string name="b12_pronouns_hint">e.g. she/her</string>
+    <string name="b12_hoist">Show members separately</string>
+    <string name="b12_hoist_sub">People with this role get their own heading in the member list</string>
+    <string name="b12_others">Members</string>
+    <string name="b12_one_person">1 person</string>
+    <string name="b12_perm_removed_one">Saved. 1 person lost access to a channel.</string>
 </resources>

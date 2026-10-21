@@ -35,6 +35,7 @@ import com.meldiq.android.voice.VoiceNote
 import com.meldiq.android.data.model.CallInfo
 import com.meldiq.android.data.model.AttachmentPolicy
 import com.meldiq.android.data.model.EmojiRules
+import com.meldiq.android.data.model.ExpressionRules
 import com.meldiq.android.data.model.RichContent
 import com.meldiq.android.data.model.PollRules
 import com.meldiq.android.data.model.RichRules
@@ -277,10 +278,11 @@ class MessageRepository(
      * pin, edit or deletion that nobody else sees.
      */
     private suspend fun canSendIn(cid: String) = db.conversations().get(cid)?.canPost != false
+    private suspend fun inCommunity(cid: String) = db.conversations().get(cid)?.orgId != null
 
     suspend fun react(m: MessageEntity, emoji: String) {
         val me = myUserId ?: return
-        if (!canSendIn(m.conversationId) || !EmojiRules.isReaction(emoji)) return
+        if (!canSendIn(m.conversationId) || !ExpressionRules.reactionAllowed(emoji, inCommunity(m.conversationId))) return
         val current = reactions(m)
         val add = current[emoji]?.contains(me) != true
         applyReaction(db.messages().get(m.id) ?: return, me, emoji, add) // fresh row: `m` may be stale
@@ -1012,8 +1014,9 @@ class MessageRepository(
                 }
             }
             "reaction" -> {
-                // One emoji, not text: anything else from a modified client is dropped (docs/EMOJI.md).
-                val emoji = pl.emoji?.takeIf(EmojiRules::isReaction) ?: return
+                // One emoji, not text: anything else from a modified client is dropped (docs/EMOJI.md). In a community a
+                // reaction may also be one of its own emoji's `:name:` (batch B12).
+                val emoji = pl.emoji?.takeIf { ExpressionRules.reactionAllowed(it, inCommunity(item.conversationId)) } ?: return
                 applyReaction(target(pl, item, serverTs) ?: return, item.senderUserId, emoji, pl.add != false)
             }
             "pin" -> {

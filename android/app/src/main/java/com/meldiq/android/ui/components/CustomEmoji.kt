@@ -28,6 +28,9 @@ import kotlinx.coroutines.withContext
 /** Batch B9: the inline-content key for a community emoji inside message text. */
 fun customEmojiKey(ref: CustomEmojiRef) = "emoji:${ref.id}"
 
+/** Batch B12: the open community's emoji by name, for reactions written as `:name:` (empty outside communities). */
+val LocalCommunityEmoji = androidx.compose.runtime.compositionLocalOf<Map<String, CustomEmojiRef>> { emptyMap() }
+
 /** The image for [ref] once downloaded and checked against its hash; null while loading or if it can't be shown. */
 @Composable
 private fun rememberExpressionImage(ref: CustomEmojiRef): ImageBitmap? {

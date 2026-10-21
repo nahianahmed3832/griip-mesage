@@ -86,6 +86,10 @@ fun RoleEditorSheet(vm: RolesViewModel, r: RolesRes, existing: CustomRoleDto?, d
     var color by remember { mutableStateOf(draft.color) }
     var grants by remember { mutableStateOf(draft.grants) }
     var denies by remember { mutableStateOf(draft.denies) }
+    // Batch B12: members listed separately (servers with `role-hoist`).
+    var hoist by remember { mutableStateOf(existing?.hoist ?: false) }
+    var hoistSupported by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { hoistSupported = vm.c.features.has(com.meldiq.android.data.repo.ServerFeatures.ROLE_HOIST) == true }
     var error by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -101,7 +105,7 @@ fun RoleEditorSheet(vm: RolesViewModel, r: RolesRes, existing: CustomRoleDto?, d
 
     val canSave = editable && RoleEditorRules.canSave(name, grants, denies, r.catalog, mine, role)
     val changed = role == null || name.trim() != role!!.name || description.trim() != role!!.description.orEmpty() || color != role!!.color ||
-        grants != role!!.permissions.toSet() || denies != role!!.denies.toSet()
+        grants != role!!.permissions.toSet() || denies != role!!.denies.toSet() || hoist != role!!.hoist
 
     fun save() {
         busy = true
@@ -111,13 +115,14 @@ fun RoleEditorSheet(vm: RolesViewModel, r: RolesRes, existing: CustomRoleDto?, d
             val current = role
             runCatching {
                 if (current == null) {
-                    vm.c.roles.create(vm.orgId, CreateRoleReq(name = name.trim(), description = description.trim().ifEmpty { null }, color = color, permissions = grants.toList().sorted(), denies = denies.toList().sorted(), template = draft.template))
+                    vm.c.roles.create(vm.orgId, CreateRoleReq(name = name.trim(), description = description.trim().ifEmpty { null }, color = color, permissions = grants.toList().sorted(), denies = denies.toList().sorted(), template = draft.template, hoist = hoist.takeIf { hoistSupported }))
                 } else {
                     vm.c.roles.update(current.id, PatchRoleReq(
                         baseRev = current.rev, name = name.trim(),
                         description = description.trim().ifEmpty { null }?.let { JsonPrimitive(it) } ?: JsonNull,
                         color = color?.let { JsonPrimitive(it) } ?: JsonNull,
                         permissions = grants.toList().sorted(), denies = denies.toList().sorted(),
+                        hoist = hoist.takeIf { hoistSupported },
                     ))
                 }
             }.onSuccess { saved -> role = saved; notice = savedText; vm.refresh() }
@@ -145,7 +150,7 @@ fun RoleEditorSheet(vm: RolesViewModel, r: RolesRes, existing: CustomRoleDto?, d
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 TagPill(if (name.isNotBlank()) "✓ ${stringResource(R.string.roles_name)}" else stringResource(R.string.roles_name), if (name.isNotBlank()) c.success else c.textSecondary, if (name.isNotBlank()) c.successSoft else c.surfaceVariant)
                 TagPill("${stringResource(R.string.roles_grants)} ${grants.size} · ${stringResource(R.string.roles_restricts)} ${denies.size}", c.textSecondary, c.surfaceVariant)
-                if (role != null) TagPill(stringResource(R.string.roles_people, holders.size), c.textSecondary, c.surfaceVariant)
+                if (role != null) TagPill(com.meldiq.android.ui.screens.community.peopleCountLabel(holders.size), c.textSecondary, c.surfaceVariant)
             }
             Spacer(Modifier.height(10.dp))
             GriipTextField(name, { name = it.take(r.limits.nameMax) }, stringResource(R.string.roles_name), helper = stringResource(R.string.roles_name_hint), enabled = editable)
@@ -161,6 +166,13 @@ fun RoleEditorSheet(vm: RolesViewModel, r: RolesRes, existing: CustomRoleDto?, d
                             .pressable(if (editable) ({ color = hex }) else null),
                     )
                 }
+            }
+            if (hoistSupported) Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.b12_hoist), style = Griip.type.bodyMedium, color = c.textPrimary)
+                    Text(stringResource(R.string.b12_hoist_sub), style = Griip.type.caption, color = c.textSecondary)
+                }
+                GriipSwitch(hoist, { hoist = it }, enabled = editable)
             }
             error?.let { StatusBanner(it, BannerKind.Error, Modifier.padding(top = 10.dp)) }
             notice?.let { StatusBanner(it, BannerKind.Success, Modifier.padding(top = 10.dp)) }

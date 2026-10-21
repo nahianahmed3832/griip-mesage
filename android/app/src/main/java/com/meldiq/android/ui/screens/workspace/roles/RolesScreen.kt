@@ -125,7 +125,7 @@ fun RolesScreen(nav: NavHostController, orgId: String) {
         items(r.baseRoles, key = { "base-" + it.key }) { b ->
             ListCard(
                 roleLabel(b.key), Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                subtitle = stringResource(R.string.roles_people, b.memberCount) + " · " + r.catalog.count { it.key in b.permissions } + "/" + r.catalog.size,
+                subtitle = com.meldiq.android.ui.screens.community.peopleCountLabel(b.memberCount) + " · " + r.catalog.count { it.key in b.permissions } + "/" + r.catalog.size,
                 leading = { IconTile(Icons.Outlined.Shield, c.primary, c.primarySoft, size = 42.dp) },
                 meta = { TagPill(stringResource(R.string.roles_protected), c.textSecondary, c.surfaceVariant) },
                 trailing = { ArrowKnob() },
@@ -171,11 +171,11 @@ private fun RoleRow(role: CustomRoleDto, r: RolesRes, onClick: () -> Unit) {
     val c = Griip.colors
     ListCard(
         role.name, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-        subtitle = role.description ?: stringResource(R.string.roles_people, role.memberCount),
+        subtitle = role.description ?: com.meldiq.android.ui.screens.community.peopleCountLabel(role.memberCount),
         leading = { RoleDot(role.color) },
         meta = {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TagPill(stringResource(R.string.roles_people, role.memberCount), c.textSecondary, c.surfaceVariant)
+                TagPill(com.meldiq.android.ui.screens.community.peopleCountLabel(role.memberCount), c.textSecondary, c.surfaceVariant)
                 if (role.permissions.isNotEmpty()) TagPill("${stringResource(R.string.roles_grants)} ${role.permissions.size}", c.primaryDeep, c.primarySoft)
                 if (role.denies.isNotEmpty()) TagPill("${stringResource(R.string.roles_restricts)} ${role.denies.size}", c.warning, c.warningSoft)
                 if (role.permissions.any { k -> r.catalog.firstOrNull { it.key == k }?.admin == true }) TagPill(stringResource(R.string.roles_admin_power), c.lavender, c.lavenderSoft)

@@ -62,6 +62,8 @@ class MainActivity : ComponentActivity() {
         installSplashScreen() // Meldiq launch screen until the first frame (Android 12+ system splash, same look on 8–11)
         super.onCreate(savedInstanceState)
         val app = application as GriipApp
+        // Dates and times in the app's language and the phone's 12/24-hour choice (batch B12); again after a language change.
+        com.meldiq.android.ui.TimeFmt.init(com.meldiq.android.ui.AppLanguage.wrap(applicationContext))
         handleIntent(intent)
         setContent {
             val gen by app.generation.collectAsStateWithLifecycle()

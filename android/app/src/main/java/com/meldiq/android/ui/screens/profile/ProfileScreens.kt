@@ -342,7 +342,7 @@ fun UserProfileScreen(nav: NavHostController, userId: String) {
                         com.meldiq.android.ui.components.UserAvatar(u.id, u.displayName, u.avatarColor, u.photoRev, size = 84.dp, online = u.online, presence = u.presence)
                         Spacer(Modifier.height(10.dp))
                         Text(u.displayName, style = Griip.type.headline, color = c.textPrimary)
-                        Text("@${u.username}", style = Griip.type.bodySmall, color = c.textSecondary)
+                        Text("@${u.username}" + (u.pronouns?.let { " · $it" } ?: ""), style = Griip.type.bodySmall, color = c.textSecondary)
                         val fullName = listOfNotNull(u.firstName, u.lastName).joinToString(" ")
                         if (fullName.isNotBlank() && fullName != u.displayName) Text(fullName, style = Griip.type.bodySmall, color = c.textSecondary)
                         val server = if (GlobalAddress.isRemote(u.username, u.homeServer)) GlobalAddress.serverOf(u.username) else null

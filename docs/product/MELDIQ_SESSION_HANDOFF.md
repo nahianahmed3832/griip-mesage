@@ -764,12 +764,80 @@ workspace domain; images are profile-photos blobs, removed with the emoji or the
    "recv … screen=" lines (frame size, fps, kbps).
 6. **Report back:** pass or fail per step, with screenshots.
 
+## 6l. Batch B12: remaining gaps (built 2026-10-22, not phone-tested)
+
+B12 took the gaps the matrix still listed for Android after B11 that fit one bounded batch, plus defects found on the
+way.
+
+### What's in it
+
+| Item | What the person sees | Code |
+|---|---|---|
+| Dates and times in the app's language | "Today", "Yesterday", "just now", "5 min ago", greetings, and day headers in English, Chinese or Bengali. Times follow the phone's 12/24-hour setting (it was always AM/PM) | `TimeFmt` in `ui/Util.kt`, set up by `MainActivity` |
+| "1 people" | "1 person" on roles, role holders and events, and "1 person lost access" after a permission change | `peopleCountLabel` in `CommunityPanel.kt` |
+| Community emoji as reactions (EXP-04) | Add a reaction › **Community** row › tap. The chip shows the image. Only inside that community's channels | `ExpressionRules.reactionAllowed`, `MessageRepository.react` and receive, `LocalCommunityEmoji`, `MessageBubble` chips |
+| Pronouns (NAV-07) | Edit profile › **Pronouns (optional)**; shown on the profile after the username; hidden by the bio's privacy setting | Server `PATCH /v1/users/me` `pronouns`, `profileView`; Android `EditProfileScreen`, `ProfileScreens` |
+| Roles listed separately (COM-09) | A role's **Show members separately** switch; the member list groups those people under the role's name, in role order, then everyone else | Server `org_roles.hoist`, roles and members routes; Android `MemberGroups`, `MembersScreen`, `RoleEditorSheet` |
+| **Fix:** community emoji and photos after Android clears the cache | When storage runs low, Android may delete the app's cache folders. After that, community emoji (and profile photos not yet cached) never loaded again until the app restarted; they now download again | `ExpressionRepository.image`, `ProfileRepository.cachedPhoto` |
+| **Fix:** server shutdown error | Sockets closing after the database during shutdown threw an uncaught error (from B6b's presence check) | `ws.ts` `recordsLastSeen` |
+
+**Left for the owner, with the reason:**
+- **Two-step sign-in (AUTH-05, P2):** it changes how every account signs in, and adds recovery and moderator rules.
+  It needs your decision on the design: authenticator app only, or email too; required for moderators?
+- **Web parity:** pronouns, role groups, custom reactions and the B10/B11 call controls aren't in the web app (W1,
+  part of the web community rebuild).
+- **Not planned in this batch:** AutoMod and explicit-media filtering (P3; the server can't read encrypted content),
+  stage channels, @role mentions, thread archiving, a profile banner.
+
+**Server and API:** API **0.24.0**, features `pronouns` and `role-hoist`, **migration 044** (`users.pronouns`,
+`org_roles.hoist`; additive). `users` is in the identity domain, copied to MongoDB by column, so no new mapping.
+
+### How it was checked
+
+- **Server:** full suite **709 passed**, 10 skipped, exit 0 (the shutdown error above was found because the suite
+  exited 1 with 19 "database connection is not open" errors); `pronouns_role_hoist.test.ts` (2 tests). TypeScript
+  check clean.
+- **Android:**
+  - new tests: `TimeFmtTest`, `CustomReactionRulesTest`, `MemberGroupsTest`;
+  - full suite **641 tests, 0 failures**; lint 0 errors.
+- **Emulator** (Ada, server 0.24.0):
+  - **Pronouns:** Edit profile › Pronouns › "she/her" › Save. Another account's API read returns "she/her".
+  - **Roles:** Apply Lab › Settings › Roles & permissions › Painter › **Show members separately** › Save role. The
+    member list shows "Painter — 1" (Ada), then "Members — 12".
+  - **Community emoji reaction:** #general › long-press "Hello" › More reactions › Community › the emoji. The chip
+    shows the image, count 1.
+  - **Cache fix:** with the folder deleted while the app ran, opening the picker downloaded the image again.
+- **Not checked on the emulator:**
+  - the Chinese and Bengali dates on screen (unit-tested words; the app language wasn't switched);
+  - a reaction seen from a second phone;
+  - pronouns on another person's profile screen (only through the API).
+
+### B12 APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b12-debug.apk`
+  (148 MB, git-ignored). **SHA-256:** `047d31db65b6418c7027e089ee3744bd9729981a1f2e8748c0158f0c16ff4854`.
+- **Variant:** debug, side by side, server `http://localhost:8080`, **API 0.24.0 needed for pronouns and role groups**.
+  It contains everything since B4: **the one APK to install for testing B4 to B12 together.**
+
+### Owner's phone checklist (B12)
+
+1. **Language:** You › Settings › Language › Bengali (or Chinese). Open a chat. **Expected:** "Today" and "Yesterday"
+   headers and list times in that language. Set the phone to 24-hour time: times follow it.
+2. **Plurals:** a role with one person reads "1 person".
+3. **Custom reaction:** in a community with its own emoji, long-press a message › More reactions › Community › tap
+   one. **Expected:** the picture appears as a reaction on both phones.
+4. **Pronouns:** Edit profile › Pronouns › Save. **Expected:** the other phone's view of your profile shows "@you ·
+   pronouns". With Privacy › Bio set to Nobody, they disappear for others.
+5. **Role groups:** Community settings › Roles & permissions › a role › **Show members separately** › Save role.
+   **Expected:** Members lists that role's people under its name first.
+6. **Report back:** pass or fail per step, with screenshots.
+
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
    call).
 2. **The AWS tools use the root user's access key:** move them off it (`MELDIQ_AWS_ARCHITECTURE.md` §5).
-3. **Server 0.23.0 isn't deployed** (production runs 0.13.0): 0.23.0 adds migration 043 (community emoji);
+3. **Server 0.24.0 isn't deployed** (production runs 0.13.0): 0.24.0 adds migration 044 (pronouns, role groups); 0.23.0 adds migration 043 (community emoji);
    0.22.0 adds migrations 041 and 042 (event repeats, onboarding, the guide); 0.21.0 adds migration 040 (forum guidelines); 0.20.0
    adds migration 039 (group photo, presence);
    0.19.0 adds migration 038 (connections, requests) and `DEFAULT_DM_POLICY`; 0.18.0 adds migration 037 (applications, alerts); 0.14.0 migration 034 (timeouts); 0.15.0 B2's preference fields and templates; 0.16.0 migration 035 (slowmode) and B3's fields; 0.17.0 migration 036 (reports, pauses). For deployment, set `REPORTS_KEY` (or back up `reports.key` with the database).
@@ -781,7 +849,7 @@ workspace domain; images are profile-photos blobs, removed with the emoji or the
 
 ## 8. Next, exactly
 
-1. **Engineering (in progress overnight):** B12 (remaining gaps), then B13 (integration), in order, each committed with
+1. **Engineering (in progress overnight):** B13 (integration and stability), the last overnight batch, each committed with
    its own APK and checklist in this file.
 2. **Backlog added by the owner 2026-10-22** (`MELDIQ_BACKLOG_B14_B16_B15.md`): **B14** minimal DM screen and
    conversation details, then **B16** transitions and interaction polish, then **B15** the final quality gate (always

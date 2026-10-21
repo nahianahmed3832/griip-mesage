@@ -233,3 +233,7 @@ fun PanelGap() = Spacer(Modifier.height(4.dp))
 /** "1 member" / "N members". */
 @Composable
 fun memberCountLabel(n: Int): String = if (n == 1) stringResource(R.string.nv_member_one) else stringResource(R.string.nv_member_count, n)
+
+/** "1 person" / "n people" (batch B12: "1 people" was shown on roles and events). */
+@Composable
+fun peopleCountLabel(n: Int): String = if (n == 1) stringResource(R.string.b12_one_person) else stringResource(R.string.roles_people, n)

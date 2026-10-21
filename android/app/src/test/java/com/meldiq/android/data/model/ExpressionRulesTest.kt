@@ -50,3 +50,18 @@ class ExpressionRulesTest {
         assertFalse(GriipJson.encodeToString(Payload.serializer(), Payload(type = "text", text = "hi")).contains("custom"))
     }
 }
+
+/** Batch B12: community emoji as reactions. */
+class CustomReactionRulesTest {
+    @Test
+    fun `a community emoji reaction is its name, and only inside a community`() {
+        org.junit.Assert.assertTrue(ExpressionRules.reactionAllowed(":party:", inCommunity = true))
+        org.junit.Assert.assertFalse(ExpressionRules.reactionAllowed(":party:", inCommunity = false))
+        org.junit.Assert.assertTrue(ExpressionRules.reactionAllowed("👍", inCommunity = false))
+        org.junit.Assert.assertFalse(ExpressionRules.reactionAllowed(":Party:", inCommunity = true))
+        org.junit.Assert.assertFalse(ExpressionRules.reactionAllowed("hello", inCommunity = true))
+        org.junit.Assert.assertFalse(ExpressionRules.reactionAllowed(":a:", inCommunity = true))
+        org.junit.Assert.assertEquals("party", ExpressionRules.reactionName(":party:"))
+        org.junit.Assert.assertNull(ExpressionRules.reactionName("👍"))
+    }
+}

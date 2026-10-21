@@ -91,7 +91,7 @@ fun ChannelPermissionsScreen(nav: NavHostController, category: Boolean, id: Stri
                 .onSuccess {
                     data = it
                     error = null
-                    android.widget.Toast.makeText(ctx, if (it.removed > 0) ctx.getString(R.string.perm_removed, it.removed) else ctx.getString(R.string.perm_saved), android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(ctx, if (it.removed == 1) ctx.getString(R.string.b12_perm_removed_one) else if (it.removed > 0) ctx.getString(R.string.perm_removed, it.removed) else ctx.getString(R.string.perm_saved), android.widget.Toast.LENGTH_SHORT).show()
                 }
                 .onFailure { error = it.friendly() }
             busy = false

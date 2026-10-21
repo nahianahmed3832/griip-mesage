@@ -519,397 +519,401 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         else -> com.meldiq.android.ui.screens.community.memberCountLabel(conv?.memberCount ?: 0)
     }
 
-    Column(Modifier.fillMaxSize().imePadding()) {
-        // Header (or the search bar while searching this conversation)
-        if (selected != null) {
-            BulkSelectionBar(
-                files = bulkPicked().size, messages = selected.orEmpty().size,
-                onClose = { endSelection() },
-                onSelectAll = { selected = messages.filter { !it.deleted && vm.c.messages.attachments(it).isNotEmpty() }.map { it.id }.toSet() },
-                onSave = { bulkExcluded = emptySet(); bulkSheet = true },
-            )
-        } else if (searching) {
-            ConversationSearchBar(searchQuery, { searchQuery = it }, onClose = { searching = false; searchQuery = "" })
-        } else Row(
-            Modifier.fillMaxWidth().background(c.surface).statusBarsPadding().height(64.dp).padding(start = 4.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CircleIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.b5_back), { nav.popBackStack() })
-            Row(
-                Modifier.weight(1f).clip(Shapes.small).pressable({ nav.navigate(Routes.info(conversationId)) }, onClickLabel = stringResource(R.string.b5_open_info)).padding(vertical = 6.dp, horizontal = 4.dp),
+    // Batch B12: the community's own emoji, for reactions written as `:name:`.
+    val communityEmoji = remember(communityExpressions) { communityExpressions.filter { it.kind == "emoji" }.associate { it.name to vm.c.expressions.ref(it) } }
+    androidx.compose.runtime.CompositionLocalProvider(com.meldiq.android.ui.components.LocalCommunityEmoji provides communityEmoji) {
+        Column(Modifier.fillMaxSize().imePadding()) {
+            // Header (or the search bar while searching this conversation)
+            if (selected != null) {
+                BulkSelectionBar(
+                    files = bulkPicked().size, messages = selected.orEmpty().size,
+                    onClose = { endSelection() },
+                    onSelectAll = { selected = messages.filter { !it.deleted && vm.c.messages.attachments(it).isNotEmpty() }.map { it.id }.toSet() },
+                    onSave = { bulkExcluded = emptySet(); bulkSheet = true },
+                )
+            } else if (searching) {
+                ConversationSearchBar(searchQuery, { searchQuery = it }, onClose = { searching = false; searchQuery = "" })
+            } else Row(
+                Modifier.fillMaxWidth().background(c.surface).statusBarsPadding().height(64.dp).padding(start = 4.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                conv?.let { ConversationAvatar(it, me, size = 40.dp, online = peerUser?.online, presence = peerUser?.presence) }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    val postTitle = if (threadRoot != null && conv?.format == "forum") root?.let { r -> com.meldiq.android.data.model.ForumRules.titleOf(vm.c.messages.rich(r)?.title, r.text) } else null
-                    Text(postTitle ?: if (conv?.type == "CHANNEL") "#$title" else title, style = Griip.type.titleSmall, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(subtitle, style = Griip.type.caption, color = if (typing.isNotEmpty() || peerUser?.online == true) c.primary else c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-            // With people on another server, calls need this server to host them (it says so per conversation).
-            val canCall = remoteMembers.isEmpty() || federation[conversationId]?.calls == true
-            // Text channels have no call buttons (round 7): a workspace's calls happen in its voice rooms. DMs and
-            // groups still call each other.
-            val textChannel = conv?.type == "CHANNEL"
-            // Batch B6: no calls through a message request, either way (the server refuses them too).
-            if (threadRoot == null && conv?.removed != true && canCall && conv?.voice != true && !textChannel && conv?.request == null) {
-                CircleIconButton(Icons.Rounded.Videocam, stringResource(R.string.b5_video_call), { permission(true) { vm.startCall(true) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
-                CircleIconButton(Icons.Rounded.Call, stringResource(R.string.b5_voice_call), { permission(false) { vm.startCall(false) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
-            }
-            if (threadRoot == null) PinnedButton(pinned.size) { showPinned = true }
-            // Batch B8: follow a thread or forum post, so its replies show in Activity.
-            if (threadRoot != null) {
-                val followed by vm.c.followedThreads.followed.collectAsStateWithLifecycle()
-                val following = threadRoot in followed
-                com.meldiq.android.ui.components.PillChip(
-                    stringResource(if (following) R.string.b8_following else R.string.b8_follow), following,
-                    { scope.launch { vm.c.followedThreads.set(threadRoot, !following) } },
-                )
-            }
-            // Batch B5: the channel's threads (forum channels list their posts already).
-            if (threadRoot == null && conv?.type == "CHANNEL" && conv?.format != "forum") {
-                CircleIconButton(Icons.Outlined.Forum, stringResource(R.string.b5_threads), { showThreads = true }, tint = c.textSecondary, size = 40.dp)
-            }
-            if (threadRoot == null) SecurityPadlock(securityFacts) { showSecurity = true }
-            CircleIconButton(Icons.Rounded.Search, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.conv_search), { searching = true }, tint = c.textSecondary)
-        }
-        if (showSecurity) {
-            ConversationSecuritySheet(
-                securityFacts, peerUser?.displayName ?: peer?.displayName,
-                onVerify = peer?.let { p -> { showSecurity = false; nav.navigate(Routes.user(p.id)) } },
-                onDismiss = { showSecurity = false },
-            )
-        }
-        if (showThreads) {
-            val roots by remember(conversationId) { vm.c.messages.observeThreadRoots(conversationId, com.meldiq.android.data.model.ThreadListRules.SHOWN) }
-                .collectAsStateWithLifecycle(null)
-            val fileLabel = stringResource(R.string.b5_thread_file)
-            roots?.let { list ->
-                val rows = remember(list) {
-                    list.map { t ->
-                        com.meldiq.android.data.model.ThreadListRules.Row(
-                            t.root.id, com.meldiq.android.data.model.ThreadListRules.title(vm.c.messages.rich(t.root)?.title, t.root.text, fileLabel),
-                            t.root.senderUserId, t.root.outgoing, t.replyCount, t.lastReplyTs,
-                        )
+                CircleIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.b5_back), { nav.popBackStack() })
+                Row(
+                    Modifier.weight(1f).clip(Shapes.small).pressable({ nav.navigate(Routes.info(conversationId)) }, onClickLabel = stringResource(R.string.b5_open_info)).padding(vertical = 6.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    conv?.let { ConversationAvatar(it, me, size = 40.dp, online = peerUser?.online, presence = peerUser?.presence) }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        val postTitle = if (threadRoot != null && conv?.format == "forum") root?.let { r -> com.meldiq.android.data.model.ForumRules.titleOf(vm.c.messages.rich(r)?.title, r.text) } else null
+                        Text(postTitle ?: if (conv?.type == "CHANNEL") "#$title" else title, style = Griip.type.titleSmall, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(subtitle, style = Griip.type.caption, color = if (typing.isNotEmpty() || peerUser?.online == true) c.primary else c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                ThreadsSheet(
-                    rows, senderName = { r -> if (r.outgoing) youLabel else users[r.senderId]?.displayName ?: someoneLabel },
-                    onOpen = { root -> showThreads = false; nav.navigate(Routes.conversation(conversationId, root)) },
-                    onDismiss = { showThreads = false },
-                )
-            }
-        }
-        if (showPinned) {
-            PinnedMessagesSheet(
-                pinned, users, ::previewOf, canUnpin = conv?.canPost != false,
-                onOpen = { m -> showPinned = false; jumpTo(m.id) },
-                onUnpin = { m -> vm.pin(m) },
-                onDismiss = { showPinned = false },
-            )
-        }
-        if (!searching && threadRoot == null) {
-            ConversationContextStrip(
-                saved = savedHere,
-                onFiles = { nav.navigate(Routes.info(conversationId)) },
-                onSaved = { nav.navigate(com.meldiq.android.ui.Routes.LATER) },
-            )
-        }
-        HorizontalDivider(thickness = 1.dp, color = c.border)
-        ConnectionBanner(conn, Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) { vm.c.realtime.reconnectNow() }
-        // Round 3 (the reference's "… has paused their notifications"): only when their last-seen setting lets you know.
-        if (conv?.type == "DM" && threadRoot == null && peer?.notificationsPaused == true) {
-            StatusBanner(
-                androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.r3_peer_paused, peer.displayName),
-                BannerKind.Info, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                icon = androidx.compose.material.icons.Icons.Outlined.NotificationsOff,
-            )
-        }
-        remoteServers.firstOrNull { it.state == "decommissioned" || it.state == "revoked" }?.let { s ->
-            StatusBanner(
-                stringResource(R.string.b5_server_gone, s.domain ?: stringResource(R.string.b5_their_server)),
-                BannerKind.Error, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-        } ?: remoteServers.firstOrNull { it.state == "unreachable" }?.let { s ->
-            StatusBanner(
-                stringResource(R.string.b5_server_unreachable, s.domain ?: stringResource(R.string.b5_their_server)),
-                BannerKind.Warning, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-        }
-        if (changedMembers.isNotEmpty()) {
-            val who = if (changedMembers.size == 1) stringResource(R.string.b5_key_changed_one, changedMembers.first().displayName.ifEmpty { stringResource(R.string.b5_a_member) })
-                else stringResource(R.string.b5_key_changed_many, changedMembers.size)
-            val waiting = when {
-                heldIncoming == 1 -> " " + stringResource(R.string.b5_held_one)
-                heldIncoming > 1 -> " " + stringResource(R.string.b5_held_many, heldIncoming)
-                else -> ""
-            }
-            StatusBanner(
-                who + waiting,
-                BannerKind.Warning, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Rounded.GppMaybe,
-                action = stringResource(R.string.b5_review), onAction = { nav.navigate(Routes.user(changedMembers.first().id)) },
-            )
-        }
-        val activeCall = conv?.activeCallId
-        // A voice room (round 6): who's in it, and Join (which opens it when nobody is there yet).
-        if (conv?.voice == true && conv?.canConnect == false && threadRoot == null) {
-            StatusBanner(
-                androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nv_no_voice), BannerKind.Info,
-                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Outlined.Headset,
-            )
-        } else if (conv?.voice == true && call.phase == CallPhase.Idle && threadRoot == null) {
-            if (conv?.canSpeak == false) StatusBanner(
-                androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nv_listen_only), BannerKind.Info,
-                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Outlined.Headset,
-            )
-            val here = conv?.let { com.meldiq.android.ui.screens.home.roomPeople(it).size } ?: 0
-            StatusBanner(
-                if (here > 0) androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.vr_banner_here, here)
-                else androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.vr_banner_empty),
-                if (here > 0) BannerKind.Success else BannerKind.Info,
-                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Outlined.Headset,
-                action = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.vr_join), onAction = { permission(false) { vm.startCall(false) } },
-            )
-        } else if (activeCall != null && call.phase == CallPhase.Idle && threadRoot == null) {
-            StatusBanner(
-                stringResource(if (conv?.activeCallVideo == true) R.string.b5_call_video_live else R.string.b5_call_voice_live), BannerKind.Success,
-                Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Rounded.Call, action = stringResource(R.string.b5_join), onAction = { permission(conv?.activeCallVideo == true) { vm.joinCall(activeCall, conv?.activeCallVideo == true) } },
-            )
-        }
-        // What connected apps posted in this channel (server-visible, labelled as such).
-
-        // Messages, over Settings › Chats › wallpaper.
-        Box(
-            Modifier.weight(1f).then(com.meldiq.android.ui.theme.Wallpapers.modifier(chatSettings.wallpaper, c))
-                .observeTouches { composerAux.value = ComposerAux.onOutside(composerAux.value) },
-        ) {
-            // A forum channel lists its posts; each post opens as a thread (communities, 2026-10-21).
-            if (conv?.format == "forum" && threadRoot == null && !searching) {
-                ForumPostList(
-                    messages, forumReplies, users, me,
-                    title = { m -> com.meldiq.android.data.model.ForumRules.titleOf(vm.c.messages.rich(m)?.title, m.text) },
-                    body = { m -> com.meldiq.android.data.model.ForumRules.body(vm.c.messages.rich(m)?.title ?: m.text.lineSequence().firstOrNull(), m.text) },
-                    onOpen = { m -> nav.navigate(Routes.conversation(conversationId, m.id)) },
-                    forumTags = conv?.let { vm.c.conversations.forumTags(it) }.orEmpty(),
-                    postTags = { m -> vm.c.messages.rich(m)?.tags.orEmpty() },
-                    guidelines = forumGuidelines[conversationId],
-                    topReaction = { m -> com.meldiq.android.data.model.ForumRules.topReaction(vm.c.messages.reactions(m)) },
-                )
-                return@Box
-            }
-            if (messages.isEmpty() && threadRoot == null && conv?.type == "CHANNEL") {
-                ChannelWelcome(
-                    conv?.name.orEmpty(), conv?.topic, conv?.canManage == true,
-                    onEdit = { nav.navigate(Routes.info(conversationId)) }, onAddPeople = { nav.navigate(Routes.info(conversationId)) },
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            } else if (messages.isEmpty() && threadRoot == null) {
-                EmptyState(
-                    Icons.Rounded.Lock, stringResource(R.string.b5_say_hello),
-                    if (remoteMembers.isNotEmpty()) {
-                        "${remoteMembers.first().displayName} is on another server (${GlobalAddress.serverOf(remoteMembers.first().username) ?: "elsewhere"}). Messages are end-to-end encrypted on your device; both servers only relay encrypted copies, kept for at most 7 days until delivered."
-                    } else {
-                        stringResource(R.string.b5_e2e_intro)
-                    },
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            }
-            if (searching && searchQuery.isNotBlank()) {
-                ConversationSearchResults(
-                    searchQuery, searchResults, users, me,
-                    onOpen = { hit ->
-                        searching = false
-                        searchQuery = ""
-                        jumpTo(hit.id)
-                    },
-                    modifier = Modifier.fillMaxSize().background(c.background),
-                )
-                return@Box
-            }
-            val byId = remember(messages) { messages.associateBy { it.id } }
-            LazyColumn(Modifier.fillMaxSize(), state = listState, reverseLayout = true, contentPadding = PaddingValues(vertical = 10.dp)) {
-                itemsIndexed(messages, key = { _, m -> m.id }) { i, m ->
-                    val older = messages.getOrNull(i + 1)
-                    val newer = messages.getOrNull(i - 1)
-                    val first = older == null || older.senderUserId != m.senderUserId || m.sortTs - older.sortTs > 5 * 60_000 || older.kind == "call" || !TimeFmt.sameDay(older.sortTs, m.sortTs)
-                    val lastInRun = newer == null || newer.senderUserId != m.senderUserId || newer.sortTs - m.sortTs > 5 * 60_000 || newer.kind == "call"
-                    val reply = m.replyToId?.let { byId[it] }
-                    // Same rule as the long-press menu's "Reply": a posted text/attachment message where you may post.
-                    val canSwipeReply = conv?.canPost != false && !m.deleted && m.kind == "text"
-                    val hasFiles = !m.deleted && vm.c.messages.attachments(m).isNotEmpty()
-                    Column(
-                        Modifier.bulkSelectable(selected != null, m.id in selected.orEmpty(), hasFiles, c.primary) {
-                            val now = selected.orEmpty()
-                            selected = if (m.id in now) now - m.id else now + m.id
-                        },
-                    ) {
-                        if (older == null || !TimeFmt.sameDay(older.sortTs, m.sortTs)) DayDivider(m.sortTs)
-                        if (m.id == unreadMarker) NewMessagesDivider()
-                        SwipeToReply(canSwipeReply && selected == null, onReply = { vm.replyTo.value = m; vm.editing.value = null; focusComposer() }) {
-                        MessageBubble(
-                            BubbleModel(
-                                m, users[m.senderUserId], showSender = first, showAvatar = lastInRun, firstInGroup = first, reply = reply,
-                                replySender = reply?.let { if (it.outgoing) youLabel else users[it.senderUserId]?.displayName },
-                                reactions = vm.c.messages.reactions(m), attachments = vm.c.messages.attachments(m),
-                                threadCount = if (threadRoot == null) threadCounts[m.id] ?: 0 else 0, isGroupConv = isGroup,
-                                replyPreview = reply?.let { previewOf(it) },
-                                mentions = mentionSpansFor(m),
-                                rich = vm.c.messages.rich(m),
-                                translation = translations[m.id],
-                                animateEmoji = chatSettings.animatedEmoji,
-                                textScale = chatSettings.textScale,
-                                stream = chatSettings.messageLayout == com.meldiq.android.data.repo.MessageLayout.STREAM,
-                                mediaCards = chatSettings.mediaCards,
-                                canVote = conv?.canPost != false,
-                                saved = m.id in savedIds,
-                                mentionsYou = com.meldiq.android.data.model.ConversationMarkers.mentionsYou(m.outgoing, MentionRules.fromStored(vm.c.messages.mentions(m)), me),
-                            ),
-                            me = me,
-                            transfer = vm.c.messages.attachments(m).firstNotNullOfOrNull { transfers[it.id] } ?: transfers[m.id],
-                            localFile = { vm.c.messages.localAttachment(it) },
-                            onLongPress = { if (m.kind != "call") actionFor = m },
-                            onReact = { vm.react(m, it) },
-                            onVote = { vm.vote(m, it) },
-                            onOpenAttachment = openAttachment,
-                            onOpenThread = { nav.navigate(Routes.conversation(conversationId, m.id)) },
-                            onRetry = { vm.retry(m) },
-                            onReplyClick = { id -> val idx = messages.indexOfFirst { it.id == id }; if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) } },
-                            onMentionClick = { id -> nav.navigate(Routes.user(id)) },
-                            onOpenLink = onOpenLink,
-                            onCopyText = { t -> scope.launch { clipboard.setClipEntry(ClipData.newPlainText("contact", t).toClipEntry()) } },
-                            onFindPhone = { ph -> vm.findByPhone(ph) { id -> nav.navigate(Routes.user(id)) } },
-                            voice = voicePlayer,
-                            onVoiceToggle = { ref -> vm.toggleVoice(m.id, ref) },
-                            onVoiceSeek = { ref, pos -> vm.seekVoice(m.id, ref, pos) },
-                        )
-                        }
-                    }
+                // With people on another server, calls need this server to host them (it says so per conversation).
+                val canCall = remoteMembers.isEmpty() || federation[conversationId]?.calls == true
+                // Text channels have no call buttons (round 7): a workspace's calls happen in its voice rooms. DMs and
+                // groups still call each other.
+                val textChannel = conv?.type == "CHANNEL"
+                // Batch B6: no calls through a message request, either way (the server refuses them too).
+                if (threadRoot == null && conv?.removed != true && canCall && conv?.voice != true && !textChannel && conv?.request == null) {
+                    CircleIconButton(Icons.Rounded.Videocam, stringResource(R.string.b5_video_call), { permission(true) { vm.startCall(true) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
+                    CircleIconButton(Icons.Rounded.Call, stringResource(R.string.b5_voice_call), { permission(false) { vm.startCall(false) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
                 }
+                if (threadRoot == null) PinnedButton(pinned.size) { showPinned = true }
+                // Batch B8: follow a thread or forum post, so its replies show in Activity.
                 if (threadRoot != null) {
-                    item(key = "root") {
-                        Column {
-                            root?.let { r ->
-                                MessageBubble(
-                                    BubbleModel(
-                                        r, users[r.senderUserId], true, true, true, null, null, vm.c.messages.reactions(r), vm.c.messages.attachments(r), 0, isGroup,
-                                        rich = vm.c.messages.rich(r), stream = chatSettings.messageLayout == com.meldiq.android.data.repo.MessageLayout.STREAM,
-                                        mediaCards = chatSettings.mediaCards, canVote = conv?.canPost != false, saved = r.id in savedIds,
-                                    ),
-                                    me, null, { vm.c.messages.localAttachment(it) }, { actionFor = r }, { vm.react(r, it) }, openAttachment, null, { vm.retry(r) }, {},
-                                    voice = voicePlayer,
-                                    onVote = { vm.vote(r, it) },
-                                    onVoiceToggle = { ref -> vm.toggleVoice(r.id, ref) },
-                                    onVoiceSeek = { ref, pos -> vm.seekVoice(r.id, ref, pos) },
-                                )
+                    val followed by vm.c.followedThreads.followed.collectAsStateWithLifecycle()
+                    val following = threadRoot in followed
+                    com.meldiq.android.ui.components.PillChip(
+                        stringResource(if (following) R.string.b8_following else R.string.b8_follow), following,
+                        { scope.launch { vm.c.followedThreads.set(threadRoot, !following) } },
+                    )
+                }
+                // Batch B5: the channel's threads (forum channels list their posts already).
+                if (threadRoot == null && conv?.type == "CHANNEL" && conv?.format != "forum") {
+                    CircleIconButton(Icons.Outlined.Forum, stringResource(R.string.b5_threads), { showThreads = true }, tint = c.textSecondary, size = 40.dp)
+                }
+                if (threadRoot == null) SecurityPadlock(securityFacts) { showSecurity = true }
+                CircleIconButton(Icons.Rounded.Search, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.conv_search), { searching = true }, tint = c.textSecondary)
+            }
+            if (showSecurity) {
+                ConversationSecuritySheet(
+                    securityFacts, peerUser?.displayName ?: peer?.displayName,
+                    onVerify = peer?.let { p -> { showSecurity = false; nav.navigate(Routes.user(p.id)) } },
+                    onDismiss = { showSecurity = false },
+                )
+            }
+            if (showThreads) {
+                val roots by remember(conversationId) { vm.c.messages.observeThreadRoots(conversationId, com.meldiq.android.data.model.ThreadListRules.SHOWN) }
+                    .collectAsStateWithLifecycle(null)
+                val fileLabel = stringResource(R.string.b5_thread_file)
+                roots?.let { list ->
+                    val rows = remember(list) {
+                        list.map { t ->
+                            com.meldiq.android.data.model.ThreadListRules.Row(
+                                t.root.id, com.meldiq.android.data.model.ThreadListRules.title(vm.c.messages.rich(t.root)?.title, t.root.text, fileLabel),
+                                t.root.senderUserId, t.root.outgoing, t.replyCount, t.lastReplyTs,
+                            )
+                        }
+                    }
+                    ThreadsSheet(
+                        rows, senderName = { r -> if (r.outgoing) youLabel else users[r.senderId]?.displayName ?: someoneLabel },
+                        onOpen = { root -> showThreads = false; nav.navigate(Routes.conversation(conversationId, root)) },
+                        onDismiss = { showThreads = false },
+                    )
+                }
+            }
+            if (showPinned) {
+                PinnedMessagesSheet(
+                    pinned, users, ::previewOf, canUnpin = conv?.canPost != false,
+                    onOpen = { m -> showPinned = false; jumpTo(m.id) },
+                    onUnpin = { m -> vm.pin(m) },
+                    onDismiss = { showPinned = false },
+                )
+            }
+            if (!searching && threadRoot == null) {
+                ConversationContextStrip(
+                    saved = savedHere,
+                    onFiles = { nav.navigate(Routes.info(conversationId)) },
+                    onSaved = { nav.navigate(com.meldiq.android.ui.Routes.LATER) },
+                )
+            }
+            HorizontalDivider(thickness = 1.dp, color = c.border)
+            ConnectionBanner(conn, Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) { vm.c.realtime.reconnectNow() }
+            // Round 3 (the reference's "… has paused their notifications"): only when their last-seen setting lets you know.
+            if (conv?.type == "DM" && threadRoot == null && peer?.notificationsPaused == true) {
+                StatusBanner(
+                    androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.r3_peer_paused, peer.displayName),
+                    BannerKind.Info, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    icon = androidx.compose.material.icons.Icons.Outlined.NotificationsOff,
+                )
+            }
+            remoteServers.firstOrNull { it.state == "decommissioned" || it.state == "revoked" }?.let { s ->
+                StatusBanner(
+                    stringResource(R.string.b5_server_gone, s.domain ?: stringResource(R.string.b5_their_server)),
+                    BannerKind.Error, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            } ?: remoteServers.firstOrNull { it.state == "unreachable" }?.let { s ->
+                StatusBanner(
+                    stringResource(R.string.b5_server_unreachable, s.domain ?: stringResource(R.string.b5_their_server)),
+                    BannerKind.Warning, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            if (changedMembers.isNotEmpty()) {
+                val who = if (changedMembers.size == 1) stringResource(R.string.b5_key_changed_one, changedMembers.first().displayName.ifEmpty { stringResource(R.string.b5_a_member) })
+                    else stringResource(R.string.b5_key_changed_many, changedMembers.size)
+                val waiting = when {
+                    heldIncoming == 1 -> " " + stringResource(R.string.b5_held_one)
+                    heldIncoming > 1 -> " " + stringResource(R.string.b5_held_many, heldIncoming)
+                    else -> ""
+                }
+                StatusBanner(
+                    who + waiting,
+                    BannerKind.Warning, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Rounded.GppMaybe,
+                    action = stringResource(R.string.b5_review), onAction = { nav.navigate(Routes.user(changedMembers.first().id)) },
+                )
+            }
+            val activeCall = conv?.activeCallId
+            // A voice room (round 6): who's in it, and Join (which opens it when nobody is there yet).
+            if (conv?.voice == true && conv?.canConnect == false && threadRoot == null) {
+                StatusBanner(
+                    androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nv_no_voice), BannerKind.Info,
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Outlined.Headset,
+                )
+            } else if (conv?.voice == true && call.phase == CallPhase.Idle && threadRoot == null) {
+                if (conv?.canSpeak == false) StatusBanner(
+                    androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nv_listen_only), BannerKind.Info,
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Outlined.Headset,
+                )
+                val here = conv?.let { com.meldiq.android.ui.screens.home.roomPeople(it).size } ?: 0
+                StatusBanner(
+                    if (here > 0) androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.vr_banner_here, here)
+                    else androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.vr_banner_empty),
+                    if (here > 0) BannerKind.Success else BannerKind.Info,
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Outlined.Headset,
+                    action = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.vr_join), onAction = { permission(false) { vm.startCall(false) } },
+                )
+            } else if (activeCall != null && call.phase == CallPhase.Idle && threadRoot == null) {
+                StatusBanner(
+                    stringResource(if (conv?.activeCallVideo == true) R.string.b5_call_video_live else R.string.b5_call_voice_live), BannerKind.Success,
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp), icon = Icons.Rounded.Call, action = stringResource(R.string.b5_join), onAction = { permission(conv?.activeCallVideo == true) { vm.joinCall(activeCall, conv?.activeCallVideo == true) } },
+                )
+            }
+            // What connected apps posted in this channel (server-visible, labelled as such).
+
+            // Messages, over Settings › Chats › wallpaper.
+            Box(
+                Modifier.weight(1f).then(com.meldiq.android.ui.theme.Wallpapers.modifier(chatSettings.wallpaper, c))
+                    .observeTouches { composerAux.value = ComposerAux.onOutside(composerAux.value) },
+            ) {
+                // A forum channel lists its posts; each post opens as a thread (communities, 2026-10-21).
+                if (conv?.format == "forum" && threadRoot == null && !searching) {
+                    ForumPostList(
+                        messages, forumReplies, users, me,
+                        title = { m -> com.meldiq.android.data.model.ForumRules.titleOf(vm.c.messages.rich(m)?.title, m.text) },
+                        body = { m -> com.meldiq.android.data.model.ForumRules.body(vm.c.messages.rich(m)?.title ?: m.text.lineSequence().firstOrNull(), m.text) },
+                        onOpen = { m -> nav.navigate(Routes.conversation(conversationId, m.id)) },
+                        forumTags = conv?.let { vm.c.conversations.forumTags(it) }.orEmpty(),
+                        postTags = { m -> vm.c.messages.rich(m)?.tags.orEmpty() },
+                        guidelines = forumGuidelines[conversationId],
+                        topReaction = { m -> com.meldiq.android.data.model.ForumRules.topReaction(vm.c.messages.reactions(m)) },
+                    )
+                    return@Box
+                }
+                if (messages.isEmpty() && threadRoot == null && conv?.type == "CHANNEL") {
+                    ChannelWelcome(
+                        conv?.name.orEmpty(), conv?.topic, conv?.canManage == true,
+                        onEdit = { nav.navigate(Routes.info(conversationId)) }, onAddPeople = { nav.navigate(Routes.info(conversationId)) },
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                } else if (messages.isEmpty() && threadRoot == null) {
+                    EmptyState(
+                        Icons.Rounded.Lock, stringResource(R.string.b5_say_hello),
+                        if (remoteMembers.isNotEmpty()) {
+                            "${remoteMembers.first().displayName} is on another server (${GlobalAddress.serverOf(remoteMembers.first().username) ?: "elsewhere"}). Messages are end-to-end encrypted on your device; both servers only relay encrypted copies, kept for at most 7 days until delivered."
+                        } else {
+                            stringResource(R.string.b5_e2e_intro)
+                        },
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+                if (searching && searchQuery.isNotBlank()) {
+                    ConversationSearchResults(
+                        searchQuery, searchResults, users, me,
+                        onOpen = { hit ->
+                            searching = false
+                            searchQuery = ""
+                            jumpTo(hit.id)
+                        },
+                        modifier = Modifier.fillMaxSize().background(c.background),
+                    )
+                    return@Box
+                }
+                val byId = remember(messages) { messages.associateBy { it.id } }
+                LazyColumn(Modifier.fillMaxSize(), state = listState, reverseLayout = true, contentPadding = PaddingValues(vertical = 10.dp)) {
+                    itemsIndexed(messages, key = { _, m -> m.id }) { i, m ->
+                        val older = messages.getOrNull(i + 1)
+                        val newer = messages.getOrNull(i - 1)
+                        val first = older == null || older.senderUserId != m.senderUserId || m.sortTs - older.sortTs > 5 * 60_000 || older.kind == "call" || !TimeFmt.sameDay(older.sortTs, m.sortTs)
+                        val lastInRun = newer == null || newer.senderUserId != m.senderUserId || newer.sortTs - m.sortTs > 5 * 60_000 || newer.kind == "call"
+                        val reply = m.replyToId?.let { byId[it] }
+                        // Same rule as the long-press menu's "Reply": a posted text/attachment message where you may post.
+                        val canSwipeReply = conv?.canPost != false && !m.deleted && m.kind == "text"
+                        val hasFiles = !m.deleted && vm.c.messages.attachments(m).isNotEmpty()
+                        Column(
+                            Modifier.bulkSelectable(selected != null, m.id in selected.orEmpty(), hasFiles, c.primary) {
+                                val now = selected.orEmpty()
+                                selected = if (m.id in now) now - m.id else now + m.id
+                            },
+                        ) {
+                            if (older == null || !TimeFmt.sameDay(older.sortTs, m.sortTs)) DayDivider(m.sortTs)
+                            if (m.id == unreadMarker) NewMessagesDivider()
+                            SwipeToReply(canSwipeReply && selected == null, onReply = { vm.replyTo.value = m; vm.editing.value = null; focusComposer() }) {
+                            MessageBubble(
+                                BubbleModel(
+                                    m, users[m.senderUserId], showSender = first, showAvatar = lastInRun, firstInGroup = first, reply = reply,
+                                    replySender = reply?.let { if (it.outgoing) youLabel else users[it.senderUserId]?.displayName },
+                                    reactions = vm.c.messages.reactions(m), attachments = vm.c.messages.attachments(m),
+                                    threadCount = if (threadRoot == null) threadCounts[m.id] ?: 0 else 0, isGroupConv = isGroup,
+                                    replyPreview = reply?.let { previewOf(it) },
+                                    mentions = mentionSpansFor(m),
+                                    rich = vm.c.messages.rich(m),
+                                    translation = translations[m.id],
+                                    animateEmoji = chatSettings.animatedEmoji,
+                                    textScale = chatSettings.textScale,
+                                    stream = chatSettings.messageLayout == com.meldiq.android.data.repo.MessageLayout.STREAM,
+                                    mediaCards = chatSettings.mediaCards,
+                                    canVote = conv?.canPost != false,
+                                    saved = m.id in savedIds,
+                                    mentionsYou = com.meldiq.android.data.model.ConversationMarkers.mentionsYou(m.outgoing, MentionRules.fromStored(vm.c.messages.mentions(m)), me),
+                                ),
+                                me = me,
+                                transfer = vm.c.messages.attachments(m).firstNotNullOfOrNull { transfers[it.id] } ?: transfers[m.id],
+                                localFile = { vm.c.messages.localAttachment(it) },
+                                onLongPress = { if (m.kind != "call") actionFor = m },
+                                onReact = { vm.react(m, it) },
+                                onVote = { vm.vote(m, it) },
+                                onOpenAttachment = openAttachment,
+                                onOpenThread = { nav.navigate(Routes.conversation(conversationId, m.id)) },
+                                onRetry = { vm.retry(m) },
+                                onReplyClick = { id -> val idx = messages.indexOfFirst { it.id == id }; if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) } },
+                                onMentionClick = { id -> nav.navigate(Routes.user(id)) },
+                                onOpenLink = onOpenLink,
+                                onCopyText = { t -> scope.launch { clipboard.setClipEntry(ClipData.newPlainText("contact", t).toClipEntry()) } },
+                                onFindPhone = { ph -> vm.findByPhone(ph) { id -> nav.navigate(Routes.user(id)) } },
+                                voice = voicePlayer,
+                                onVoiceToggle = { ref -> vm.toggleVoice(m.id, ref) },
+                                onVoiceSeek = { ref, pos -> vm.seekVoice(m.id, ref, pos) },
+                            )
                             }
-                            Text("${messages.size} ${if (messages.size == 1) "reply" else "replies"}", style = Griip.type.label, color = c.textTertiary, modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp), textAlign = TextAlign.Center)
+                        }
+                    }
+                    if (threadRoot != null) {
+                        item(key = "root") {
+                            Column {
+                                root?.let { r ->
+                                    MessageBubble(
+                                        BubbleModel(
+                                            r, users[r.senderUserId], true, true, true, null, null, vm.c.messages.reactions(r), vm.c.messages.attachments(r), 0, isGroup,
+                                            rich = vm.c.messages.rich(r), stream = chatSettings.messageLayout == com.meldiq.android.data.repo.MessageLayout.STREAM,
+                                            mediaCards = chatSettings.mediaCards, canVote = conv?.canPost != false, saved = r.id in savedIds,
+                                        ),
+                                        me, null, { vm.c.messages.localAttachment(it) }, { actionFor = r }, { vm.react(r, it) }, openAttachment, null, { vm.retry(r) }, {},
+                                        voice = voicePlayer,
+                                        onVote = { vm.vote(r, it) },
+                                        onVoiceToggle = { ref -> vm.toggleVoice(r.id, ref) },
+                                        onVoiceSeek = { ref, pos -> vm.seekVoice(r.id, ref, pos) },
+                                    )
+                                }
+                                Text("${messages.size} ${if (messages.size == 1) "reply" else "replies"}", style = Griip.type.label, color = c.textTertiary, modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp), textAlign = TextAlign.Center)
+                            }
                         }
                     }
                 }
+                if (showJump) {
+                    SmallFloatingActionButton(
+                        onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                        containerColor = c.surface, contentColor = c.primary,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp).semantics { contentDescription = jumpLabel },
+                    ) { Icon(Icons.Rounded.KeyboardArrowDown, null) }
+                }
             }
-            if (showJump) {
-                SmallFloatingActionButton(
-                    onClick = { scope.launch { listState.animateScrollToItem(0) } },
-                    containerColor = c.surface, contentColor = c.primary,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp).semantics { contentDescription = jumpLabel },
-                ) { Icon(Icons.Rounded.KeyboardArrowDown, null) }
-            }
-        }
 
-        // Typing
-        AnimatedVisibility(typing.isNotEmpty()) { TypingRow(typing) }
+            // Typing
+            AnimatedVisibility(typing.isNotEmpty()) { TypingRow(typing) }
 
-        // Composer
-        error?.let { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), action = stringResource(R.string.b5_ok), onAction = { vm.error.value = null }) }
-        // Batch B6: your message request waiting for an answer, with how many more you may send.
-        val requestSent by vm.c.conversations.requestSent.collectAsStateWithLifecycle()
-        if (conv?.request == com.meldiq.android.data.model.RequestRules.OUTGOING) requestSent[conversationId]?.let { (sent, limit) ->
-            StatusBanner(
-                stringResource(R.string.b6_request_waiting, com.meldiq.android.data.model.RequestRules.remaining(sent, limit)),
-                BannerKind.Info, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-        }
-        if (conv?.request == com.meldiq.android.data.model.RequestRules.INCOMING && threadRoot == null) {
-            MessageRequestBar(
-                peerName = peerUser?.displayName ?: peer?.displayName.orEmpty(),
-                onAnswer = { action ->
-                    scope.launch {
-                        runCatching { vm.c.conversations.answerRequest(conversationId, action) }
-                            .onSuccess { if (action != "accept") nav.popBackStack() }
-                            .onFailure { vm.error.value = it.friendly() }
-                    }
-                },
-            )
-        } else if (conv?.format == "forum" && threadRoot == null) {
-            Box(Modifier.fillMaxWidth().background(c.surface).navigationBarsPadding()) { ForumComposerBar(conv?.canPost == true) { newPostSheet = true } }
-        } else if (conv != null && !conv!!.canPost) {
-            // Timed out in the community (MOD-06): says until when, instead of a bare "can't post".
-            val timedOutUntil = conv?.timedOutUntil?.takeIf { com.meldiq.android.ui.screens.workspace.TimeoutRules.running(it) }
-            Row(
-                Modifier.fillMaxWidth().background(c.surface).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(if (conv?.kind == "ANNOUNCEMENT") Icons.Outlined.Campaign else Icons.Rounded.Lock, null, tint = c.textTertiary)
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    when {
-                        conv?.removed == true -> stringResource(R.string.b5_not_member)
-                        timedOutUntil != null ->
-                            androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.to_composer, com.meldiq.android.ui.screens.workspace.TimeoutRules.untilText(timedOutUntil))
-                        conv?.archived == true -> stringResource(R.string.b5_archived_channel)
-                        conv?.kind == "ANNOUNCEMENT" -> stringResource(R.string.b5_announce_only)
-                        else -> stringResource(R.string.b5_cant_post)
-                    },
-                    style = Griip.type.bodySmall, color = c.textSecondary,
+            // Composer
+            error?.let { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), action = stringResource(R.string.b5_ok), onAction = { vm.error.value = null }) }
+            // Batch B6: your message request waiting for an answer, with how many more you may send.
+            val requestSent by vm.c.conversations.requestSent.collectAsStateWithLifecycle()
+            if (conv?.request == com.meldiq.android.data.model.RequestRules.OUTGOING) requestSent[conversationId]?.let { (sent, limit) ->
+                StatusBanner(
+                    stringResource(R.string.b6_request_waiting, com.meldiq.android.data.model.RequestRules.remaining(sent, limit)),
+                    BannerKind.Info, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }
-        } else {
-            // @mention autocomplete (groups and channels): the members matching what's typed after "@".
-            val query = if (conv?.type != null && conv?.type != "DM" && field.selection.collapsed) MentionRules.activeQuery(text, field.selection.start) else null
-            val suggestions = remember(query, mentionMembers, canMentionAll) {
-                query?.let { MentionRules.suggest(mentionMembers, it.query, me, canMentionAll) }.orEmpty()
-            }
-            if (query != null && suggestions.isNotEmpty()) {
-                MentionSuggestions(suggestions) { choice ->
-                    val (t, cursor) = MentionRules.insert(text, query, choice)
-                    field = TextFieldValue(t, TextRange(cursor))
-                    vm.typingChanged(t)
+            if (conv?.request == com.meldiq.android.data.model.RequestRules.INCOMING && threadRoot == null) {
+                MessageRequestBar(
+                    peerName = peerUser?.displayName ?: peer?.displayName.orEmpty(),
+                    onAnswer = { action ->
+                        scope.launch {
+                            runCatching { vm.c.conversations.answerRequest(conversationId, action) }
+                                .onSuccess { if (action != "accept") nav.popBackStack() }
+                                .onFailure { vm.error.value = it.friendly() }
+                        }
+                    },
+                )
+            } else if (conv?.format == "forum" && threadRoot == null) {
+                Box(Modifier.fillMaxWidth().background(c.surface).navigationBarsPadding()) { ForumComposerBar(conv?.canPost == true) { newPostSheet = true } }
+            } else if (conv != null && !conv!!.canPost) {
+                // Timed out in the community (MOD-06): says until when, instead of a bare "can't post".
+                val timedOutUntil = conv?.timedOutUntil?.takeIf { com.meldiq.android.ui.screens.workspace.TimeoutRules.running(it) }
+                Row(
+                    Modifier.fillMaxWidth().background(c.surface).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(if (conv?.kind == "ANNOUNCEMENT") Icons.Outlined.Campaign else Icons.Rounded.Lock, null, tint = c.textTertiary)
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        when {
+                            conv?.removed == true -> stringResource(R.string.b5_not_member)
+                            timedOutUntil != null ->
+                                androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.to_composer, com.meldiq.android.ui.screens.workspace.TimeoutRules.untilText(timedOutUntil))
+                            conv?.archived == true -> stringResource(R.string.b5_archived_channel)
+                            conv?.kind == "ANNOUNCEMENT" -> stringResource(R.string.b5_announce_only)
+                            else -> stringResource(R.string.b5_cant_post)
+                        },
+                        style = Griip.type.bodySmall, color = c.textSecondary,
+                    )
                 }
-            }
-            val slowmode by vm.slowmode.collectAsStateWithLifecycle()
-            if (threadRoot == null) com.meldiq.android.ui.screens.community.SlowmodeLine(slowmode)
-            composerPreview?.let { p ->
-                Row(Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) { LinkPreviewCard(p, out = false, onOpen = {}) }
-                    CircleIconButton(Icons.Outlined.Close, stringResource(R.string.b5_send_no_preview), { vm.dismissPreview() }, size = 36.dp, tint = c.textSecondary)
+            } else {
+                // @mention autocomplete (groups and channels): the members matching what's typed after "@".
+                val query = if (conv?.type != null && conv?.type != "DM" && field.selection.collapsed) MentionRules.activeQuery(text, field.selection.start) else null
+                val suggestions = remember(query, mentionMembers, canMentionAll) {
+                    query?.let { MentionRules.suggest(mentionMembers, it.query, me, canMentionAll) }.orEmpty()
                 }
+                if (query != null && suggestions.isNotEmpty()) {
+                    MentionSuggestions(suggestions) { choice ->
+                        val (t, cursor) = MentionRules.insert(text, query, choice)
+                        field = TextFieldValue(t, TextRange(cursor))
+                        vm.typingChanged(t)
+                    }
+                }
+                val slowmode by vm.slowmode.collectAsStateWithLifecycle()
+                if (threadRoot == null) com.meldiq.android.ui.screens.community.SlowmodeLine(slowmode)
+                composerPreview?.let { p ->
+                    Row(Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) { LinkPreviewCard(p, out = false, onOpen = {}) }
+                        CircleIconButton(Icons.Outlined.Close, stringResource(R.string.b5_send_no_preview), { vm.dismissPreview() }, size = 36.dp, tint = c.textSecondary)
+                    }
+                }
+                Composer(
+                    text = field,
+                    onText = { field = it; vm.typingChanged(it.text) },
+                    replyLabel = replyTo?.let { stringResource(R.string.b5_replying_to, if (it.outgoing) stringResource(R.string.b5_yourself) else users[it.senderUserId]?.displayName ?: "") to previewOf(it) }
+                        ?: editing?.let { stringResource(R.string.b5_editing) to it.text },
+                    onCancelContext = { vm.replyTo.value = null; vm.editing.value = null; if (editing != null) setText("") },
+                    onAttach = { attachSheet = true },
+                    onEmoji = { emojiSheet = true },
+                    onSend = { vm.send(text, communityExpressions.filter { it.kind == "emoji" }.map(vm.c.expressions::ref)); setText("") },
+                    placeholder = if (threadRoot != null) stringResource(R.string.b5_reply_thread_ph) else if (conv?.type == "CHANNEL") stringResource(R.string.b5_message_channel, title) else stringResource(R.string.b5_message_ph),
+                    voice = VoiceComposerState(
+                        draft = voiceDraft,
+                        // Voice messages go to the conversation itself, like files, so the microphone isn't offered in a thread.
+                        available = threadRoot == null && editing == null,
+                        playback = voicePlayer.takeIf { it.key == vm.draftKey },
+                    ),
+                    onMic = onMic,
+                    onStopRecording = vm::stopVoice,
+                    onCancelVoice = vm::cancelVoice,
+                    onSendVoice = vm::sendVoice,
+                    onToggleDraft = vm::toggleDraftPlayback,
+                    onSeekDraft = vm::seekDraft,
+                    focus = composerFocus,
+                    aux = composerAux,
+                )
             }
-            Composer(
-                text = field,
-                onText = { field = it; vm.typingChanged(it.text) },
-                replyLabel = replyTo?.let { stringResource(R.string.b5_replying_to, if (it.outgoing) stringResource(R.string.b5_yourself) else users[it.senderUserId]?.displayName ?: "") to previewOf(it) }
-                    ?: editing?.let { stringResource(R.string.b5_editing) to it.text },
-                onCancelContext = { vm.replyTo.value = null; vm.editing.value = null; if (editing != null) setText("") },
-                onAttach = { attachSheet = true },
-                onEmoji = { emojiSheet = true },
-                onSend = { vm.send(text, communityExpressions.filter { it.kind == "emoji" }.map(vm.c.expressions::ref)); setText("") },
-                placeholder = if (threadRoot != null) stringResource(R.string.b5_reply_thread_ph) else if (conv?.type == "CHANNEL") stringResource(R.string.b5_message_channel, title) else stringResource(R.string.b5_message_ph),
-                voice = VoiceComposerState(
-                    draft = voiceDraft,
-                    // Voice messages go to the conversation itself, like files, so the microphone isn't offered in a thread.
-                    available = threadRoot == null && editing == null,
-                    playback = voicePlayer.takeIf { it.key == vm.draftKey },
-                ),
-                onMic = onMic,
-                onStopRecording = vm::stopVoice,
-                onCancelVoice = vm::cancelVoice,
-                onSendVoice = vm::sendVoice,
-                onToggleDraft = vm::toggleDraftPlayback,
-                onSeekDraft = vm::seekDraft,
-                focus = composerFocus,
-                aux = composerAux,
-            )
         }
     }
 
@@ -1100,7 +1104,22 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     }
     reactFor?.let { m ->
         GlassSheet({ reactFor = null }, title = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.react_title)) {
-            EmojiPanel(emojiPrefs, onPick = { e -> vm.react(m, e); reactFor = null }, modifier = Modifier.fillMaxWidth().height(440.dp))
+            // Batch B12: the community's own emoji first, then every emoji.
+            val own = communityExpressions.filter { it.kind == "emoji" }
+            if (own.isNotEmpty()) {
+                Text(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.b9_community_tab), style = Griip.type.label, color = c.textSecondary)
+                androidx.compose.foundation.layout.FlowRow(
+                    Modifier.padding(top = 6.dp, bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    own.forEach { e ->
+                        Box(Modifier.size(46.dp).clip(Shapes.tile).background(c.surfaceVariant).pressable({ vm.react(m, ":${e.name}:"); reactFor = null }, onClickLabel = ":${e.name}:"), contentAlignment = Alignment.Center) {
+                            com.meldiq.android.ui.components.CustomEmojiImage(vm.c.expressions.ref(e), 28.dp)
+                        }
+                    }
+                }
+            }
+            EmojiPanel(emojiPrefs, onPick = { e -> vm.react(m, e); reactFor = null }, modifier = Modifier.fillMaxWidth().height(if (own.isNotEmpty()) 360.dp else 440.dp))
         }
     }
     if (newPostSheet) NewPostSheet(onDismiss = { newPostSheet = false }, forumTags = conv?.let { vm.c.conversations.forumTags(it) }.orEmpty(), guidelines = forumGuidelines[conversationId], onPost = { t, b, tags -> vm.sendForumPost(t, b, tags) })

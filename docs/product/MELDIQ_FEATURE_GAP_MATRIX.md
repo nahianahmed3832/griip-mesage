@@ -34,7 +34,7 @@ Meldiq differs from Discord by design in two ways:
 | AUTH-02 | Login | E2E | I | I | I | — | |
 | AUTH-03 | Email verification | E2E | I | I | I | — | Owner reports it working; emulator rechecked |
 | AUTH-04 | Password reset | IT | I | I | I | — | Web Playwright through the new help view |
-| AUTH-05 | 2FA (TOTP) | R | — | — | — | P2 | Not built. Needs a TOTP secret per account (server), enrolment and challenge steps, recovery via the existing recovery codes, and community setting "2FA for moderators" (MOD-12). Spec in `MELDIQ_FULLSTACK_SPEC.md` §3 |
+| AUTH-05 | 2FA (TOTP) | R | — | — | — | P2 | Not built. Needs a TOTP secret per account (server), enrolment and challenge steps, recovery via the existing recovery codes, and community setting "2FA for moderators" (MOD-12). Spec in `MELDIQ_FULLSTACK_SPEC.md` §3. B12 2026-10-22: left for the owner's decision (it changes sign-in for every account; `MELDIQ_SESSION_HANDOFF.md` §6l) |
 | AUTH-06 | Sessions and devices | I | I | I | I | — | Settings › Sessions; remove a session |
 | AUTH-07 | Recovery without email | E2E | I | I | I | — | Recovery codes move the account to a new address |
 | AUTH-08 | Recovery choices hidden by default | E2E | I | IT | — | — | 2026-10-21, `MELDIQ_AUTH_FLOW_AUDIT.md` |
@@ -52,7 +52,7 @@ Meldiq differs from Discord by design in two ways:
 | NAV-04 | Activity (mentions, replies, unreads) | E2E | I | I | I | — | B5 2026-10-22: an **Unreads** chip (Discord inbox NAV-CTRL-005): conversations with unread messages, DMs and groups first, then each community, without muted, archived, left or hidden ones; Mark as read per row and Mark all read. All doesn't repeat it. Android only (web: W1) |
 | NAV-05 | Unread and mention signals, New line | E2E | I | I | — | — | Rechecked on the emulator 2026-10-21 (B2): rail bar and mention count, Home and Activity badges |
 | NAV-06 | Search | I | I | I | I | P2 | Metadata search on the server; message text searched on the device (encrypted) |
-| NAV-07 | Profiles | I | I | I | I | P3 | No banner or pronouns yet |
+| NAV-07 | Profiles | E2E (emulator) | I | I | I | P3 | B12 2026-10-22: **pronouns** (Edit profile, up to 40 characters; shown after the username; same privacy setting as the bio; servers with `pronouns`). Banner: not built. Web: not yet (W1) |
 | NAV-08 | Presence, custom status | E2E (emulator) | I | I | I | — | B6b 2026-10-22 (NAV-CTRL-010): You › **Presence**: Online (automatic), Idle, Do not disturb (also pauses notifications on every device for as long), Invisible (offline to everyone; connecting and leaving change nothing others see, last seen included), for 1 hour to 7 days or until changed. Others see an amber (idle) or red (do not disturb) dot and the words on profiles and in DMs, within their last-seen permission. `PUT /v1/users/me/presence`. Web shows them as online/offline only (W1) |
 | NAV-09 | Settings | I | I | I | — | — | |
 | NAV-10 | Back behaviour | E2E | I | — | — | — | |
@@ -71,7 +71,7 @@ Meldiq differs from Discord by design in two ways:
 | COM-06 | Welcome screen | I | I | — | I | P2 | #welcome channel with welcome actions; no "recommended channels" card |
 | COM-07 | Onboarding questions | E2E (emulator) | I | — | I | — | B8b 2026-10-22: Community settings › **Onboarding questions** (people who edit the community): up to 5 questions, one answer or several, required or not; each answer can give roles **without administrative permissions** and open **public** channels (checked when set and again when answered). New members see "This community asks a few questions…" › Answer; changing answers takes back only what onboarding gave. Guests don't answer. `routes/onboarding.ts`, migration 042 |
 | COM-08 | Rules shown before joining | I | I | I | I | — | |
-| COM-09 | Member list | I | I | I | I | P3 | Grouping by hoisted role: P3 |
+| COM-09 | Member list | E2E (emulator) | I | I | I | — | B12 2026-10-22: a role's **Show members separately** switch; the member list puts each such role's people under its own heading in role order ("Painter — 1", then "Members — 12"); a person appears once, under their highest such role. Servers with `role-hoist`. Web: not yet (W1) |
 | COM-10 | Leave | E2E | I | I | I | — | Phone 2026-10-21 |
 | COM-11 | Delete | I | I | I | I | — | |
 | COM-12 | Ownership transfer | I | I | I | I | — | `POST /v1/orgs/:id/ownership` |
@@ -187,7 +187,7 @@ Meldiq differs from Discord by design in two ways:
 | EXP-01 | Emoji picker (search, categories, recent) | E2E | I | IT | — | — | 2026-10-21 |
 | EXP-02 | Reaction picker | E2E | I | IT | — | — | |
 | EXP-03 | Skin tone | E2E | I | IT | — | — | |
-| EXP-04 | Custom community emoji | E2E (emulator) | I | — | I | — | B9 2026-10-22 (EXPR-CTRL-002): Community settings › **Emoji & stickers** (new permission `expressions.manage`, in the Community Manager template): upload (PNG, GIF or WebP up to 256 KB; other pictures are shrunk to 128 px PNG), rename, remove; 50 per community. Emoji sheet › **Community** tab inserts `:name:`; the message carries the emoji's id and SHA-256 inside the encryption and is drawn inline after the phone checks the downloaded image's hash; people outside the community, older apps and notifications see `:name:`. Not yet: custom emoji as reactions, animation (shown still), web |
+| EXP-04 | Custom community emoji | E2E (emulator) | I | — | I | — | B9 2026-10-22 (EXPR-CTRL-002): Community settings › **Emoji & stickers** (new permission `expressions.manage`, in the Community Manager template): upload (PNG, GIF or WebP up to 256 KB; other pictures are shrunk to 128 px PNG), rename, remove; 50 per community. Emoji sheet › **Community** tab inserts `:name:`; the message carries the emoji's id and SHA-256 inside the encryption and is drawn inline after the phone checks the downloaded image's hash; people outside the community, older apps and notifications see `:name:`. Not yet: custom emoji as reactions, animation (shown still), web. B12 2026-10-22: **as reactions** in that community's channels (Add a reaction › Community); the reaction is the emoji's `:name:`, drawn as the community's current image (its name if removed); apps before B12 ignore it |
 | EXP-05 | Community stickers | I | I | — | I | — | B9 2026-10-22: same store (20 per community, shrunk to 320 px); Community tab › tap sends it; drawn at 140 dp, text `:name:` as fallback. Not checked on the emulator (same path as emoji) |
 | EXP-06 | GIF search | — | | | | | Would send typing to a third party (Tenor); not without an opt-in. P3 |
 | EXP-07 | Built-in stickers and animated emoji | I | I | I | — | — | Meldiq's own |

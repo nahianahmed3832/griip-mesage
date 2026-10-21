@@ -581,4 +581,22 @@
     <string name="b11_stop">থামান</string>
     <string name="b11_share_ended">%1$s স্ক্রিন শেয়ার বন্ধ করেছেন</string>
     <string name="b11_sound_short">গেম ও ভিডিওর শব্দ</string>
+    <string name="b12_today">আজ</string>
+    <string name="b12_yesterday">গতকাল</string>
+    <string name="b12_just_now">এইমাত্র</string>
+    <string name="b12_while_ago">কিছুক্ষণ আগে</string>
+    <string name="b12_min_ago">%1$d মিনিট আগে</string>
+    <string name="b12_h_ago">%1$d ঘণ্টা আগে</string>
+    <string name="b12_d_ago">%1$d দিন আগে</string>
+    <string name="b12_morning">সুপ্রভাত</string>
+    <string name="b12_afternoon">শুভ অপরাহ্ন</string>
+    <string name="b12_evening">শুভ সন্ধ্যা</string>
+    <string name="b12_hello">হ্যালো</string>
+    <string name="b12_pronouns">সর্বনাম (ঐচ্ছিক)</string>
+    <string name="b12_pronouns_hint">যেমন: তিনি</string>
+    <string name="b12_hoist">সদস্যদের আলাদা দেখান</string>
+    <string name="b12_hoist_sub">এই ভূমিকার লোকেরা সদস্য তালিকায় আলাদা শিরোনামে থাকবেন</string>
+    <string name="b12_others">সদস্য</string>
+    <string name="b12_one_person">১ জন</string>
+    <string name="b12_perm_removed_one">সংরক্ষিত। ১ জন একটি চ্যানেলে প্রবেশ হারিয়েছেন।</string>
 </resources>

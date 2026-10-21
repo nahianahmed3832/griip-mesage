@@ -429,10 +429,10 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     // Custom roles (docs/WORKSPACE_ROLES.md): names and colours only; what each grants is on GET /v1/orgs/:id/roles.
     const roleRows = db
       .prepare(
-        `SELECT m.user_id, r.id, r.name, r.color FROM org_role_members m JOIN org_roles r ON r.id = m.role_id
+        `SELECT m.user_id, r.id, r.name, r.color, r.hoist, r.position FROM org_role_members m JOIN org_roles r ON r.id = m.role_id
          WHERE m.org_id = ? AND r.archived_at IS NULL ORDER BY r.position, r.name`,
       )
-      .all(orgId) as { user_id: string; id: string; name: string; color: string | null }[];
+      .all(orgId) as { user_id: string; id: string; name: string; color: string | null; hoist: number; position: number }[];
     return {
       members: rows.map((u) =>
         memberView(ctx, userId, u, {
@@ -446,7 +446,10 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
           // Empty since branches and teams became roles; kept for apps that read them.
           branches: [],
           teams: [],
-          customRoles: roleRows.filter((r) => r.user_id === u.id).map((r) => ({ id: r.id, name: r.name, color: r.color })),
+          // Batch B12: [hoist] roles head their own group in the member list, in role order ([position]).
+          customRoles: roleRows
+            .filter((r) => r.user_id === u.id)
+            .map((r) => ({ id: r.id, name: r.name, color: r.color, ...(r.hoist === 1 ? { hoist: true, position: r.position } : {}) })),
         }),
       ),
     };

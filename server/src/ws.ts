@@ -57,8 +57,9 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
     if (invisible(ctx, userId)) return;
     announcePresence(ctx, userId);
   };
-  // Nor their "last seen" time.
-  hub.recordsLastSeen = (userId) => !invisible(ctx, userId);
+  // Nor their "last seen" time. Sockets closing after the database during shutdown record nothing (found in B12: the
+  // query on a closed database threw from the close handler).
+  hub.recordsLastSeen = (userId) => db.open && !invisible(ctx, userId);
 
   app.get("/v1/ws", { websocket: true }, (socket, req) => {
     // A browser page from an origin not in WEB_ORIGINS can't use this socket (when the list is set). Apps send no Origin.

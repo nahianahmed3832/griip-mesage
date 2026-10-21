@@ -46,6 +46,8 @@ interface RoleRow {
   created_at: number;
   updated_at: number;
   archived_at: number | null;
+  /** Batch B12: members listed separately (0/1). */
+  hoist?: number;
 }
 
 const zPermission = z.string().refine(isPermission, { message: "Unknown permission" }) as unknown as z.ZodType<Permission>;
@@ -117,6 +119,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
       denies: grant.denies,
       template: r.template,
       position: r.position,
+      hoist: r.hoist === 1,
       rev: r.rev,
       memberCount: memberCount(r.id),
       archived: r.archived_at !== null,
@@ -187,6 +190,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
         description: z.string().trim().max(ROLE_DESCRIPTION_MAX).nullable().optional(),
         color: zColor.optional(),
         icon: zIcon.optional(),
+        hoist: z.boolean().optional(),
         permissions: zPermissionList.optional(),
         denies: zPermissionList.optional(),
         // Start from a starter template or by cloning an existing role; explicit fields override what's copied.
@@ -229,8 +233,8 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
       ctx.entitlements.check("roles.custom", activeCount(orgId), orgId);
       const position = ((db.prepare("SELECT MAX(position) p FROM org_roles WHERE org_id = ?").get(orgId) as { p: number | null }).p ?? 0) + 1;
       db.prepare(
-        `INSERT INTO org_roles (id, org_id, name, description, color, icon, permissions, denies, template, position, rev, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+        `INSERT INTO org_roles (id, org_id, name, description, color, icon, permissions, denies, template, position, hoist, rev, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
       ).run(
         id,
         orgId,
@@ -242,6 +246,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
         JSON.stringify(grant.denies),
         start.template,
         position,
+        body.hoist ? 1 : 0,
         userId,
         t,
         t,
@@ -262,6 +267,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
         description: z.string().trim().max(ROLE_DESCRIPTION_MAX).nullable().optional(),
         color: zColor.optional(),
         icon: zIcon.optional(),
+        hoist: z.boolean().optional(),
         permissions: zPermissionList.optional(),
         denies: zPermissionList.optional(),
         archived: z.boolean().optional(),
@@ -291,13 +297,14 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
         throw conflict(`A workspace can have at most ${MAX_ACTIVE_ROLES} active roles. Archive one first.`);
       }
       db.prepare(
-        `UPDATE org_roles SET name = ?, description = ?, color = ?, icon = ?, permissions = ?, denies = ?, archived_at = ?, rev = rev + 1, updated_at = ?
+        `UPDATE org_roles SET name = ?, description = ?, color = ?, icon = ?, hoist = ?, permissions = ?, denies = ?, archived_at = ?, rev = rev + 1, updated_at = ?
          WHERE id = ? AND rev = ?`,
       ).run(
         name,
         body.description === undefined ? current.description : body.description,
         body.color === undefined ? current.color : body.color,
         body.icon === undefined ? current.icon : body.icon,
+        body.hoist === undefined ? (current.hoist ?? 0) : body.hoist ? 1 : 0,
         JSON.stringify(after.permissions),
         JSON.stringify(after.denies),
         archiving === null ? current.archived_at : archiving ? t : null,

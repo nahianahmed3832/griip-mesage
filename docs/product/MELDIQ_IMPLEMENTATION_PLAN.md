@@ -35,7 +35,8 @@ go-ahead (`docs/DEPLOYMENT.md`).
 | B9 | Community emoji and stickers | **Built; APK ready; owner tests it with the rest** (2026-10-22) |
 | B10 | Voice, video, camera: deafen, noise reduction, pre-call check, camera and reconnect timing, a call-permission fix | **Built; APK ready; owner tests it with the rest** (2026-10-22) |
 | B11 | Screen share and game streaming: share sheet, game mode, app sound, "stopped sharing", clean stop | **Built; APK ready; owner tests it with the rest** (2026-10-22) |
-| B12, B13 | Below | Not started |
+| B12 | Remaining gaps: localized dates, plurals, community emoji reactions, pronouns, role groups in the member list; two defects fixed | **Built; APK ready; owner tests it with the rest** (2026-10-22) |
+| B13 | Below | Not started |
 | B14, B16, B15 | Added by the owner 2026-10-22 (`MELDIQ_BACKLOG_B14_B16_B15.md`) | Backlog: B14 after B13 is **approved**, then B16, then B15 last; each stops for the owner's phone test |
 
 > **Gate changed 2026-10-21 23:13:** the owner asked for the remaining batches to be built one after another without

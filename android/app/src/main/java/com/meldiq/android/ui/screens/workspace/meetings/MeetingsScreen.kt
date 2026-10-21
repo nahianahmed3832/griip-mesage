@@ -144,7 +144,7 @@ private fun MeetingSheet(m: MeetingDto, zone: String, onChanged: (MeetingDto) ->
         Text(stringResource(R.string.mtg_organizer, m.organizer.name.orEmpty()), style = Griip.type.caption, color = c.textSecondary)
         m.description?.let { Text(it, style = Griip.type.bodySmall, color = c.textPrimary, modifier = Modifier.padding(top = 6.dp)) }
         if (m.cancelled) StatusBanner(stringResource(R.string.mtg_cancelled), BannerKind.Warning, Modifier.padding(vertical = 6.dp))
-        Text(stringResource(R.string.mtg_people, m.participants.size + 1), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp))
+        Text(com.meldiq.android.ui.screens.community.peopleCountLabel(m.participants.size + 1), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp))
         Text(m.participants.joinToString(", ") { "${it.name.orEmpty()}${when (it.response) { "accepted" -> " ✓"; "declined" -> " ✗"; "tentative" -> " ?"; else -> "" }}" }, style = Griip.type.bodySmall, color = c.textPrimary)
         if (!m.cancelled) {
             if (m.myResponse != null) ChipRow(Modifier.padding(top = 8.dp)) {

@@ -60,7 +60,7 @@ import { Metrics } from "./ops/metrics.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
-export const VERSION = "0.23.0";
+export const VERSION = "0.24.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
@@ -381,6 +381,9 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     "community-guide",
     // Batch B9: a community's own emoji and stickers.
     "community-expressions",
+    // Batch B12: pronouns on profiles, roles listed separately in the member list.
+    "pronouns",
+    "role-hoist",
     // Round 7: end dates for guests and a community's guest policy (routes/community.ts).
     "guest-expiry",
     // Round 6: recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md).

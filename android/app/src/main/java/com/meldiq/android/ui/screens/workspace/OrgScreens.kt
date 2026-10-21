@@ -146,7 +146,14 @@ fun MembersScreen(nav: NavHostController, orgId: String) {
         }
         error?.let { item { StatusBanner(it, BannerKind.Error, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp), action = "OK", onAction = { error = null }) } }
         if (list == null) item { ShimmerList(5) }
-        items(shown, key = { it.id }) { u ->
+        // Batch B12: roles marked "show members separately" head their own groups (the whole list, unfiltered).
+        val groups = if (roleFilter == null && q.isBlank()) com.meldiq.android.data.model.MemberGroups.group(shown) else listOf(com.meldiq.android.data.model.MemberGroups.Group(null, shown))
+        val headed = groups.size > 1
+        groups.forEach { g ->
+        if (headed) item(key = "group-" + (g.role?.id ?: "rest")) {
+            SectionHeader("${g.role?.name ?: stringResource(R.string.b12_others)} — ${g.members.size}", Modifier.padding(start = Space.gutter, top = 12.dp, bottom = 4.dp))
+        }
+        items(g.members, key = { it.id }) { u ->
             ListCard(
                 u.displayName, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                 subtitle = "@${u.username}" + (u.title?.let { " · $it" } ?: ""),
@@ -163,6 +170,7 @@ fun MembersScreen(nav: NavHostController, orgId: String) {
                 trailing = { ArrowKnob() },
                 onClick = { if (canManage || u.id == container.session.session?.userId) manage = u else nav.navigate(Routes.user(u.id)) },
             )
+        }
         }
     }
     manage?.let { u ->

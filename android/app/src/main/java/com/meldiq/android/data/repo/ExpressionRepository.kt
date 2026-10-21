@@ -51,6 +51,9 @@ class ExpressionRepository(context: Context, private val api: ApiClient, profile
         val lock = synchronized(locks) { locks.getOrPut(ref.id) { Mutex() } }
         lock.withLock {
             if (file.length() > 0) return@withLock file
+            // Android may clear the cache folder itself when storage runs low (seen on the emulator in batch B12):
+            // made again here, or every download after that failed until the app restarted.
+            dir.mkdirs()
             val part = File(dir, file.name + ".part").apply { delete() }
             runCatching { api.downloadTo("/v1/expressions/${ref.id}/image", part) {} }.getOrElse { part.delete(); return@withLock null }
             val ok = part.length() in 1..ExpressionRules.MAX_BYTES.toLong() && ExpressionRules.matches(part.readBytes(), ref.sha256)

@@ -92,6 +92,8 @@ import kotlinx.serialization.json.JsonObject
     // Profile (server ≥ 2026-10-17, docs/PROFILE_AND_PRIVACY.md). Absent: not set, or not visible to you.
     val firstName: String? = null, val lastName: String? = null, val birthday: String? = null, val phone: String? = null,
     val photoRev: Long? = null,
+    /** Batch B12: shown with the bio, under its privacy setting (servers with `pronouns`). */
+    val pronouns: String? = null,
     /** Your own privacy settings (only in your own profile): field → "everyone" | "contacts" | "nobody". */
     val privacy: Map<String, String>? = null,
     /** Workspace member lists (servers with `custom-roles`): the custom roles this person holds there. */
@@ -105,6 +107,7 @@ import kotlinx.serialization.json.JsonObject
     val displayName: String? = null, val statusText: String? = null, val avatarColor: Int? = null,
     val firstName: String? = null, val lastName: String? = null, val birthday: String? = null, val phone: String? = null,
     val username: String? = null,
+    val pronouns: String? = null,
 )
 @Serializable data class PrivacyRes(val privacy: Map<String, String>)
 @Serializable data class PhotoRes(val photoRev: Long? = null)

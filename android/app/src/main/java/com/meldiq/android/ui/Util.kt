@@ -12,6 +12,7 @@ import com.meldiq.android.data.api.ApiException
 import com.meldiq.android.di.AppContainer
 import java.util.Calendar
 import java.util.Date
+import java.util.Locale
 
 /** ViewModel bound to the current container, keyed so a recreated container gets a fresh instance. */
 @Composable
@@ -32,9 +33,22 @@ fun rememberToast(): (String) -> Unit {
 }
 
 object TimeFmt {
+    /**
+     * Batch B12: the app's language (wrapped like the activity, see [AppLanguage]) and the phone's 12/24-hour choice.
+     * Set by MainActivity; null before that and in JVM tests, where the English words and a 12-hour clock are used.
+     */
+    @Volatile private var res: android.content.Context? = null
+
+    fun init(context: android.content.Context) { res = context }
+
+    private fun word(id: Int, english: String, vararg args: Any): String = res?.getString(id, *args) ?: english.format(*args)
+
     private fun cal(t: Long) = Calendar.getInstance().apply { timeInMillis = t }
 
+    /** The time of day in the phone's format (24-hour if the phone uses it), or 24-hour when [use24]. */
     fun clock(t: Long, use24: Boolean = false): String {
+        val r = res
+        if (!use24 && r != null) return DateFormat.getTimeFormat(r).format(Date(t))
         val c = cal(t)
         val h = c.get(Calendar.HOUR_OF_DAY)
         val m = c.get(Calendar.MINUTE)
@@ -47,44 +61,56 @@ object TimeFmt {
         return x.get(Calendar.YEAR) == y.get(Calendar.YEAR) && x.get(Calendar.DAY_OF_YEAR) == y.get(Calendar.DAY_OF_YEAR)
     }
 
+    private fun yesterday() = word(com.meldiq.android.R.string.b12_yesterday, "Yesterday")
+
     /** Conversation-list style: time today, weekday this week, else short date. */
     fun listStamp(t: Long): String {
         if (t <= 0) return ""
         val now = System.currentTimeMillis()
         return when {
             sameDay(t, now) -> clock(t)
-            sameDay(t, now - 86_400_000L) -> "Yesterday"
+            sameDay(t, now - 86_400_000L) -> yesterday()
             now - t < 6 * 86_400_000L -> DateFormat.format("EEE", Date(t)).toString()
-            else -> DateFormat.format("d MMM", Date(t)).toString()
+            else -> DateFormat.format(DateFormat.getBestDateTimePattern(Locale.getDefault(), "dMMM"), Date(t)).toString()
         }
     }
 
     fun dayHeader(t: Long): String {
         val now = System.currentTimeMillis()
         return when {
-            sameDay(t, now) -> "Today"
-            sameDay(t, now - 86_400_000L) -> "Yesterday"
-            else -> DateFormat.format("EEEE, d MMMM", Date(t)).toString()
+            sameDay(t, now) -> word(com.meldiq.android.R.string.b12_today, "Today")
+            sameDay(t, now - 86_400_000L) -> yesterday()
+            else -> DateFormat.format(DateFormat.getBestDateTimePattern(Locale.getDefault(), "EEEEdMMMM"), Date(t)).toString()
         }
     }
 
+    /** How long ago, in whole units: under a minute, minutes, hours or days (pure; unit-tested). */
+    enum class Ago { NOW, MINUTES, HOURS, DAYS }
+
+    fun ago(seconds: Long): Pair<Ago, Long> = when {
+        seconds < 60 -> Ago.NOW to 0
+        seconds < 3600 -> Ago.MINUTES to seconds / 60
+        seconds < 86400 -> Ago.HOURS to seconds / 3600
+        else -> Ago.DAYS to seconds / 86400
+    }
+
     fun relative(t: Long?): String {
-        if (t == null || t <= 0) return "a while ago"
-        val d = (System.currentTimeMillis() - t) / 1000
-        return when {
-            d < 60 -> "just now"
-            d < 3600 -> "${d / 60} min ago"
-            d < 86400 -> "${d / 3600} h ago"
-            else -> "${d / 86400} d ago"
+        if (t == null || t <= 0) return word(com.meldiq.android.R.string.b12_while_ago, "a while ago")
+        val (unit, n) = ago((System.currentTimeMillis() - t) / 1000)
+        return when (unit) {
+            Ago.NOW -> word(com.meldiq.android.R.string.b12_just_now, "just now")
+            Ago.MINUTES -> word(com.meldiq.android.R.string.b12_min_ago, "%1${'$'}d min ago", n)
+            Ago.HOURS -> word(com.meldiq.android.R.string.b12_h_ago, "%1${'$'}d h ago", n)
+            Ago.DAYS -> word(com.meldiq.android.R.string.b12_d_ago, "%1${'$'}d d ago", n)
         }
     }
 
     fun duration(sec: Long): String = if (sec >= 3600) "%d:%02d:%02d".format(sec / 3600, (sec % 3600) / 60, sec % 60) else "%d:%02d".format(sec / 60, sec % 60)
 
     fun greeting(): String = when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
-        in 5..11 -> "Good morning"
-        in 12..16 -> "Good afternoon"
-        in 17..21 -> "Good evening"
-        else -> "Hello"
+        in 5..11 -> word(com.meldiq.android.R.string.b12_morning, "Good morning")
+        in 12..16 -> word(com.meldiq.android.R.string.b12_afternoon, "Good afternoon")
+        in 17..21 -> word(com.meldiq.android.R.string.b12_evening, "Good evening")
+        else -> word(com.meldiq.android.R.string.b12_hello, "Hello")
     }
 }

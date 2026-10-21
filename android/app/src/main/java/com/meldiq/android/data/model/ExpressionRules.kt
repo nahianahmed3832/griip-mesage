@@ -35,6 +35,20 @@ object ExpressionRules {
     /** The references a message being sent needs: the picked emoji whose `:name:` is still in the text. */
     fun forSending(text: String, picked: Collection<CustomEmojiRef>): List<CustomEmojiRef> = cleanRefs(picked.toList(), text)
 
+    private val REACTION = Regex("^:[a-z0-9_]{2,32}:$")
+
+    /**
+     * Batch B12: a reaction with a community emoji is its `:name:` (only inside that community's channels). Older apps
+     * don't accept it as a reaction and ignore it; the image is the community's current emoji of that name.
+     */
+    fun isCustomReaction(value: String?): Boolean = value != null && REACTION.matches(value)
+
+    fun reactionName(value: String): String? = value.takeIf(::isCustomReaction)?.trim(':')
+
+    /** A reaction allowed in a conversation: any single emoji, or a community emoji's `:name:` in a community. */
+    fun reactionAllowed(value: String?, inCommunity: Boolean): Boolean =
+        EmojiRules.isReaction(value) || (inCommunity && isCustomReaction(value))
+
     /** A name as typed for an upload: lowercase, spaces and dashes to `_`, other characters dropped. */
     fun suggestName(raw: String): String =
         raw.substringBeforeLast('.').lowercase().replace(Regex("[\\s-]+"), "_").replace(Regex("[^a-z0-9_]"), "").take(32)

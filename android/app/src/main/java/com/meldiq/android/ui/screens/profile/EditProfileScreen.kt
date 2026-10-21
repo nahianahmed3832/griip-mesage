@@ -111,6 +111,9 @@ private fun EditProfileForm(u: UserDto, onSaved: (UserDto) -> Unit, onPrivacy: (
     var display by rememberSaveable { mutableStateOf(u.displayName) }
     var first by rememberSaveable { mutableStateOf(u.firstName ?: "") }
     var last by rememberSaveable { mutableStateOf(u.lastName ?: "") }
+    var pronouns by rememberSaveable { mutableStateOf(u.pronouns ?: "") }
+    var pronounsSupported by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { pronounsSupported = container.features.has(com.meldiq.android.data.repo.ServerFeatures.PRONOUNS) == true }
     var username by rememberSaveable { mutableStateOf(u.username) }
     var bio by rememberSaveable { mutableStateOf(u.statusText ?: "") }
     var phone by rememberSaveable { mutableStateOf(u.phone ?: "") }
@@ -194,6 +197,8 @@ private fun EditProfileForm(u: UserDto, onSaved: (UserDto) -> Unit, onPrivacy: (
             Column(Modifier.padding(horizontal = Space.gutter), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 GriipTextField(first, { first = it.take(40) }, "First name", keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
                 GriipTextField(last, { last = it.take(40) }, "Last name (optional)", keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
+                // Batch B12: free text, shown with your bio (same privacy setting).
+                if (pronounsSupported) GriipTextField(pronouns, { pronouns = it.take(40) }, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.b12_pronouns), placeholder = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.b12_pronouns_hint))
                 GriipTextField(
                     display, { display = it.take(60) }, "Display name",
                     helper = "Shown in chats and calls to everyone you talk to.",
@@ -259,6 +264,7 @@ private fun EditProfileForm(u: UserDto, onSaved: (UserDto) -> Unit, onPrivacy: (
                             firstName = first.trim(), lastName = last.trim(), birthday = birthday,
                             phone = ProfileRules.normalizePhone(phone) ?: "",
                             username = username.trim().lowercase().takeIf { it != u.username.lowercase() },
+                            pronouns = if (pronounsSupported) pronouns.trim() else null,
                         )
                         runCatching { container.profiles.update(req) }
                             .onSuccess { onSaved(it); saved = true }

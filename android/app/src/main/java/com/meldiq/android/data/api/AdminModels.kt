@@ -38,6 +38,8 @@ import kotlinx.serialization.json.JsonElement
     val denies: List<String> = emptyList(),
     val template: String? = null,
     val position: Int = 0,
+    /** Batch B12: members listed separately in the member list. */
+    val hoist: Boolean = false,
     val rev: Int = 1,
     val memberCount: Int = 0,
     val archived: Boolean = false,
@@ -71,19 +73,21 @@ import kotlinx.serialization.json.JsonElement
 @Serializable data class CreateRoleReq(
     val name: String? = null, val description: String? = null, val color: String? = null, val icon: String? = null,
     val permissions: List<String>? = null, val denies: List<String>? = null, val template: String? = null, val cloneOf: String? = null,
+    val hoist: Boolean? = null,
 )
 
 /** Edit a role at revision [baseRev]; a stale revision answers 409 with the current role. */
 @Serializable data class PatchRoleReq(
     val baseRev: Int, val name: String? = null, val description: JsonElement? = null, val color: JsonElement? = null, val icon: JsonElement? = null,
     val permissions: List<String>? = null, val denies: List<String>? = null, val archived: Boolean? = null,
+    val hoist: Boolean? = null,
 )
 
 @Serializable data class RoleMemberDto(val id: String, val username: String = "", val displayName: String = "", val orgRole: String = "MEMBER", val assignedAt: Long = 0)
 @Serializable data class RoleMembersRes(val members: List<RoleMemberDto> = emptyList())
 @Serializable data class AssignRes(val ok: Boolean = true, val permissions: List<String> = emptyList())
 
-@Serializable data class RoleRef(val id: String, val name: String, val color: String? = null)
+@Serializable data class RoleRef(val id: String, val name: String, val color: String? = null, val hoist: Boolean = false, val position: Int = 0)
 
 @Serializable data class MemberPermissionsRes(
     val base: String = "MEMBER", val roles: List<RoleRef> = emptyList(), val effective: List<String> = emptyList(),

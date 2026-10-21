@@ -48,6 +48,8 @@ export interface ProfileRow {
   home_server_id?: string | null;
   presence_mode?: string | null;
   presence_until?: number | null;
+  /** Batch B12: shown with the bio, under its privacy setting. */
+  pronouns?: string | null;
 }
 
 /** Batch B6b: what a person chose to appear as. "auto": online while an app is connected. */
@@ -149,6 +151,7 @@ export function profileView(u: ProfileRow, r: Relation) {
   if (show("bio") && status.text) view.statusText = status.text;
   if (show("bio") && status.emoji) view.statusEmoji = status.emoji;
   if (show("bio") && (status.text || status.emoji) && status.expiresAt) view.statusExpiresAt = status.expiresAt;
+  if (show("bio") && u.pronouns) view.pronouns = u.pronouns;
   if (show("name")) {
     if (u.first_name) view.firstName = u.first_name;
     if (u.last_name) view.lastName = u.last_name;

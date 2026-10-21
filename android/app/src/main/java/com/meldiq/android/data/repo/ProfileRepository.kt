@@ -130,6 +130,7 @@ class ProfileRepository(
         val lock = synchronized(locks) { locks.getOrPut(safe) { Mutex() } }
         lock.withLock {
             if (file.length() > 0) return@withLock file
+            photoDir.mkdirs() // Android may have cleared the cache folder (batch B12, as for community emoji)
             val part = File(photoDir, "$safe-$rev.part")
             runCatching { api.downloadTo(path, part) {} }.getOrElse { part.delete(); return@withLock null }
             if (!part.renameTo(file)) return@withLock null

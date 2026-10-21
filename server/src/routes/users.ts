@@ -137,6 +137,8 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
         avatarColor: z.number().int().min(0).max(15).optional(),
         firstName: zOptText(40),
         lastName: zOptText(40),
+        // Batch B12: shown with the bio (its privacy setting); free text, as people write their own.
+        pronouns: zOptText(40),
         birthday: z
           .string()
           .trim()
@@ -182,7 +184,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
     ctx.db
       .prepare(
         `UPDATE users SET display_name = ?, status_text = ?, status_emoji = ?, status_expires_at = ?, notifications_paused_until = ?,
-           avatar_color = ?, first_name = ?, last_name = ?, birthday = ?, phone = ?,
+           avatar_color = ?, first_name = ?, last_name = ?, pronouns = ?, birthday = ?, phone = ?,
            username = ?, username_changed_at = ?, updated_at = ? WHERE id = ?`,
       )
       .run(
@@ -194,6 +196,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
         body.avatarColor ?? u.avatar_color,
         pick(body.firstName, u.first_name),
         pick(body.lastName, u.last_name),
+        pick(body.pronouns, u.pronouns ?? null),
         pick(body.birthday, u.birthday),
         pick(body.phone, u.phone),
         username,

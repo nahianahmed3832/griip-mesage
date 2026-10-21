@@ -432,15 +432,18 @@ private fun MessageExtras(b: BubbleModel, me: String?, alignEnd: Boolean, cb: Me
             Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp, if (alignEnd) Alignment.End else Alignment.Start),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            val communityEmoji = com.meldiq.android.ui.components.LocalCommunityEmoji.current
             b.reactions.forEach { (emoji, users) ->
                 val mine = me in users
+                // Batch B12: a community emoji reaction (`:name:`) shows its image; a removed one shows its name.
+                val custom = com.meldiq.android.data.model.ExpressionRules.reactionName(emoji)?.let(communityEmoji::get)
                 Row(
                     Modifier.heightIn(min = 30.dp).clip(Shapes.pill).background(if (mine) c.primarySoft else c.surface).border(1.dp, if (mine) c.primary else c.border, Shapes.pill)
                         .pressable({ cb.onReact(emoji) }).padding(horizontal = 9.dp, vertical = 3.dp)
                         .semantics { contentDescription = "$emoji reaction, ${users.size}${if (mine) ", including you" else ""}" },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(emoji, style = Griip.type.label)
+                    if (custom != null) com.meldiq.android.ui.components.CustomEmojiImage(custom, 18.dp) else Text(emoji, style = Griip.type.label)
                     Spacer(Modifier.width(4.dp))
                     Text("${users.size}", style = Griip.type.caption.copy(fontWeight = FontWeight.SemiBold), color = if (mine) c.primaryDeep else c.textSecondary)
                 }
