@@ -28,7 +28,7 @@ Never touch `signed_file/` or `android/app/release/`.
   - flows that send, join, create or reach people;
   - Community-only admin screens.
 - **Screenshots:**
-  - `research/discord/live-2026-10-21/`, 94 from this round; the social ones are prefixed `2-`;
+  - `research/discord/live-2026-10-21/`, 119 from this round (94 general, 25 social prefixed `2-`), also copied to the main folder;
   - round 1's are in `research/discord/`.
   - Both folders are git-ignored because they show real people and messages. They exist only on this Mac's main
     folder and the worktree.
