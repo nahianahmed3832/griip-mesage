@@ -60,6 +60,13 @@ fun EditChannelSheet(conv: ConversationEntity, canChangeAccess: Boolean, tagsAva
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val canBeForum = !conv.voice && conv.kind != "ANNOUNCEMENT"
+    // Batch B3: slowmode for text channels, on servers that enforce it.
+    val initialSlowmode = remember(conv.id) { container.conversations.slowmode.value[conv.id]?.seconds ?: 0 }
+    var slowmode by remember { mutableStateOf(initialSlowmode) }
+    var slowmodeAvailable by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        slowmodeAvailable = !conv.voice && container.features.has(com.meldiq.android.data.repo.ServerFeatures.SLOWMODE) == true
+    }
     GlassSheet(onDismiss, title = stringResource(R.string.nv_edit_channel)) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             GriipTextField(name, { name = if (conv.voice) it.take(60) else it.lowercase().replace(' ', '-').take(60) }, stringResource(R.string.ch_name), prefix = if (conv.voice) null else "#")
@@ -72,6 +79,14 @@ fun EditChannelSheet(conv: ConversationEntity, canChangeAccess: Boolean, tagsAva
             if (canChangeAccess && conv.kind != "ANNOUNCEMENT") {
                 Spacer(Modifier.height(8.dp))
                 SwitchLine(stringResource(R.string.ch_private), stringResource(R.string.ch_private_sub), private) { private = it }
+            }
+            if (slowmodeAvailable) {
+                Spacer(Modifier.height(14.dp))
+                Text(stringResource(R.string.sm_title), style = Griip.type.bodyMedium, color = c.textPrimary)
+                Text(stringResource(R.string.sm_body), style = Griip.type.caption, color = c.textSecondary)
+                com.meldiq.android.ui.components.ChipRow(Modifier.padding(horizontal = 0.dp)) {
+                    com.meldiq.android.data.model.SlowmodeRules.STEPS.forEach { step -> PillChip(slowmodeLabel(step), slowmode == step, { slowmode = step }) }
+                }
             }
             if (forum && tagsAvailable) {
                 Spacer(Modifier.height(14.dp))
@@ -109,6 +124,7 @@ fun EditChannelSheet(conv: ConversationEntity, canChangeAccess: Boolean, tagsAva
                             kind = (if (private) "PRIVATE" else "PUBLIC").takeIf { canChangeAccess && conv.kind != "ANNOUNCEMENT" && it != conv.kind },
                             format = (if (forum) "forum" else "text").takeIf { canBeForum && it != conv.format },
                             forumTags = wantTags.takeIf { tagsChanged },
+                            slowmodeSec = slowmode.takeIf { slowmodeAvailable && it != initialSlowmode },
                         )
                     }.onSuccess { onDismiss(); onSaved() }.onFailure { error = it.friendly() }
                     busy = false

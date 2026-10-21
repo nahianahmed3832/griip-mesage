@@ -37,6 +37,8 @@ export interface ConversationRow {
   category_id?: string | null;
   position?: number;
   format?: "text" | "forum";
+  /** Seconds between one person's new messages in a channel; 0 is off (migration 035, batch B3). */
+  slowmode_sec?: number;
   /** A forum's tags, JSON [{id, name}] (migration 033). */
   forum_tags?: string | null;
 }
@@ -285,6 +287,26 @@ export class Authz {
     if (!perms.has("messages.post")) return false;
     if (conv.kind === "ANNOUNCEMENT") return perms.has("messages.announce") || this.canManageConversation(conv, userId);
     return true;
+  }
+
+  /**
+   * Whether slowmode leaves this user alone in [conv] (batch B3): people who manage the channel, and holders of
+   * `messages.bypass_slowmode` in its community.
+   */
+  slowmodeExempt(conv: ConversationRow, userId: string): boolean {
+    if (conv.type !== "CHANNEL" || !conv.org_id) return true;
+    return this.canManageConversation(conv, userId) || this.can(conv.org_id, userId, "messages.bypass_slowmode");
+  }
+
+  /** When [userId] may post their next message in [conv] under slowmode; null when they may post now or it's off. */
+  nextPostAt(conv: ConversationRow, userId: string, at: number): number | null {
+    const sec = conv.slowmode_sec ?? 0;
+    if (sec <= 0 || this.slowmodeExempt(conv, userId)) return null;
+    const row = this.db.prepare("SELECT last_post_at FROM conversation_members WHERE conversation_id = ? AND user_id = ?").get(conv.id, userId) as
+      | { last_post_at: number | null }
+      | undefined;
+    const next = (row?.last_post_at ?? 0) + sec * 1000;
+    return next > at ? next : null;
   }
 
   /** May this user upload a file into the conversation? Posting rights plus `messages.attach` in channels. */

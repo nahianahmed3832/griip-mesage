@@ -1,5 +1,7 @@
 package com.meldiq.android.ui.screens.chats
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.outlined.StarOutline
@@ -103,7 +105,24 @@ fun ChatActionsSheet(
         // messages, Mentions only (mentions and @everyone), Off (muted: only a mention of you by name). Kept for every device.
         val container = com.meldiq.android.ui.LocalContainer.current
         val level = container.navPrefs.levelOf(conv)
+        // Batch B3: mute for a while (servers that keep timed mutes); a running one says until when.
+        var timedMutes by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        var pickDuration by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            timedMutes = container.features.has(com.meldiq.android.data.repo.ServerFeatures.CHANNEL_PREFERENCES) == true
+        }
+        val mutedUntil = container.navPrefs.mutedUntil(conv)
         com.meldiq.android.ui.components.SectionHeader(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.r3_notify_level))
+        if (timedMutes) MenuRow(
+            Icons.Outlined.NotificationsOff, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.mf_mute_for),
+            subtitle = mutedUntil?.let { androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.mf_until, com.meldiq.android.ui.screens.workspace.TimeoutRules.untilText(it)) },
+            onClick = { pickDuration = true }, trailing = null,
+        )
+        if (pickDuration) com.meldiq.android.ui.screens.community.MuteForSheet(
+            listTitle(conv, myUserId), timed = true,
+            onPick = { duration -> container.navPrefs.muteFor(listOf(conv), duration); onDismiss() },
+            onDismiss = { pickDuration = false },
+        )
         listOf(
             com.meldiq.android.data.model.NotifyLevel.ALL to com.meldiq.android.R.string.r3_notify_all,
             com.meldiq.android.data.model.NotifyLevel.MENTIONS to com.meldiq.android.R.string.r3_notify_mentions,

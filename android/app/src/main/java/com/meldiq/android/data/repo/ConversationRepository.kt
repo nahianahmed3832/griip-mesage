@@ -60,6 +60,7 @@ class ConversationRepository(
         ) }
         _federation.update { m -> if (d.federation != null) m + (d.id to d.federation) else m - d.id }
         _mentionAll.update { m -> if (d.canMentionAll) m + (d.id to true) else m - d.id }
+        _slowmode.update { m -> if (d.slowmodeSec > 0) m + (d.id to com.meldiq.android.data.model.Slowmode(d.slowmodeSec, d.slowmodeExempt, d.nextPostAt)) else m - d.id }
         val local = db.conversations().get(d.id)
         val e = ConversationEntity(
             id = d.id, type = d.type, orgId = d.orgId, scope = d.scope, scopeId = d.scopeId, scopeName = d.scopeName, kind = d.kind,
@@ -89,6 +90,13 @@ class ConversationRepository(
     suspend fun members(id: String) = api.get<UsersRes>("/v1/conversations/$id/members").members.also { it.forEach { u -> users.remember(u) } }
 
     private val _mentionAll = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    private val _slowmode = MutableStateFlow<Map<String, com.meldiq.android.data.model.Slowmode>>(emptyMap())
+
+    /** Batch B3: channels with slowmode on, as the server last described them to this account (kept in memory). */
+    val slowmode: StateFlow<Map<String, com.meldiq.android.data.model.Slowmode>> = _slowmode
+
+    /** After this phone posted (or the server said to wait): when the person may post next in [id]. */
+    fun slowmodeWait(id: String, nextPostAt: Long) = _slowmode.update { m -> m[id]?.let { m + (id to it.copy(nextPostAt = nextPostAt)) } ?: m }
 
     /** Conversations where the server lets this account use @everyone (refreshed with the conversation). */
     val mentionAll: StateFlow<Map<String, Boolean>> = _mentionAll
@@ -114,8 +122,8 @@ class ConversationRepository(
 
     suspend fun update(
         id: String, name: String? = null, topic: String? = null, archived: Boolean? = null, kind: String? = null, format: String? = null,
-        forumTags: List<com.meldiq.android.data.api.ForumTagReq>? = null,
-    ) = upsertFromServer(api.patch<PatchConversationReq, ConversationRes>("/v1/conversations/$id", PatchConversationReq(name, topic, archived, kind, format, forumTags)).conversation)
+        forumTags: List<com.meldiq.android.data.api.ForumTagReq>? = null, slowmodeSec: Int? = null,
+    ) = upsertFromServer(api.patch<PatchConversationReq, ConversationRes>("/v1/conversations/$id", PatchConversationReq(name, topic, archived, kind, format, forumTags, slowmodeSec)).conversation)
 
     /**
      * Deletes a community channel for everyone (servers with `channel-delete`), after the person typed its name. The

@@ -2,13 +2,13 @@ package com.meldiq.android.ui.screens.community
 
 /** What a long-press on a channel offers (docs/product/MELDIQ_ANDROID_INTERACTION_MATRIX.md › Channel menu). */
 enum class ChannelMenuItem {
-    MARK_READ, FAVOURITE, UNFAVOURITE, MUTE, UNMUTE, COPY_NAME,
+    MARK_READ, FAVOURITE, UNFAVOURITE, MUTE, UNMUTE, HIDE, SHOW, COPY_NAME,
     EDIT, PERMISSIONS, MOVE_TO, MOVE_UP, MOVE_DOWN, ARCHIVE, RESTORE, DELETE,
 }
 
 /** What a long-press on a category header offers. */
 enum class CategoryMenuItem {
-    MARK_READ, COLLAPSE, EXPAND, COLLAPSE_ALL, MUTE, UNMUTE,
+    MARK_READ, COLLAPSE, EXPAND, COLLAPSE_ALL, MUTE, UNMUTE, NOTIFY,
     NEW_CHANNEL, RENAME, PERMISSIONS, MOVE_UP, MOVE_DOWN, DELETE,
 }
 
@@ -29,12 +29,16 @@ object CommunityMenuRules {
         canMoveUp: Boolean,
         canMoveDown: Boolean,
         canDelete: Boolean,
+        /** Batch B3: the server keeps hidden channels (`channel-preferences`), and whether this one is hidden. */
+        canHide: Boolean = false,
+        hidden: Boolean = false,
     ): List<ChannelMenuItem> = buildList {
         if (ch.joined) {
             if (ch.hasNews) add(ChannelMenuItem.MARK_READ)
             add(if (starred) ChannelMenuItem.UNFAVOURITE else ChannelMenuItem.FAVOURITE)
             add(if (ch.muted) ChannelMenuItem.UNMUTE else ChannelMenuItem.MUTE)
         }
+        if (canHide) add(if (hidden) ChannelMenuItem.SHOW else ChannelMenuItem.HIDE)
         add(ChannelMenuItem.COPY_NAME)
         if (ch.canManage) {
             if (!ch.archived) add(ChannelMenuItem.EDIT)
@@ -66,11 +70,14 @@ object CommunityMenuRules {
         canManage: Boolean,
         canMoveUp: Boolean,
         canMoveDown: Boolean,
+        /** Batch B3: categories can have their own level (`channel-preferences`). */
+        canSetLevel: Boolean = false,
     ): List<CategoryMenuItem> = buildList {
         if (hasNews) add(CategoryMenuItem.MARK_READ)
         add(if (collapsed) CategoryMenuItem.EXPAND else CategoryMenuItem.COLLAPSE)
         add(CategoryMenuItem.COLLAPSE_ALL)
         if (hasJoined) add(if (allMuted) CategoryMenuItem.UNMUTE else CategoryMenuItem.MUTE)
+        if (isCategory && canSetLevel) add(CategoryMenuItem.NOTIFY)
         if (canCreate) add(CategoryMenuItem.NEW_CHANNEL)
         if (isCategory && canManage) {
             add(CategoryMenuItem.RENAME)

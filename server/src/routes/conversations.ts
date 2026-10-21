@@ -15,6 +15,9 @@ import { deviceDirectory } from "./users.js";
 
 const MAX_GROUP = 50;
 
+/** The slowmode intervals a channel can have, in seconds (0: off), as Discord-style apps offer them. */
+export const SLOWMODE_STEPS = [0, 5, 10, 30, 60, 300, 900, 3600, 21600] as const;
+
 export function conversationView(ctx: AppContext, c: ConversationRow, userId: string) {
   const { db, authz } = ctx;
   const memberCount = (db.prepare("SELECT COUNT(*) n FROM conversation_members WHERE conversation_id = ?").get(c.id) as { n: number }).n;
@@ -73,6 +76,10 @@ export function conversationView(ctx: AppContext, c: ConversationRow, userId: st
     canMentionAll: mentionAllPermission(ctx, c, userId) === null,
     activeCall: call ? { id: call.id, video: !!call.video, state: call.state, startedAt: call.created_at, ...(inRoom ? { participantIds: inRoom } : {}) } : null,
     voice: !!c.voice,
+    // Batch B3: slowmode, and for this person whether it applies and when they may post next (null: now).
+    ...(c.type === "CHANNEL"
+      ? { slowmodeSec: c.slowmode_sec ?? 0, slowmodeExempt: authz.slowmodeExempt(c, userId), nextPostAt: authz.nextPostAt(c, userId, now()) }
+      : {}),
     // Voice channels: whether this person may join the call, and talk in it (listen-only otherwise).
     ...(c.voice ? { canConnect: authz.canConnectVoice(c, userId), canSpeak: authz.canSpeakInVoice(c, userId) } : {}),
     federation: federationInfo(ctx, c.id),
@@ -268,9 +275,12 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
           .array(z.object({ id: z.string().max(64).optional(), name: z.string().max(20) }))
           .max(FORUM_TAG_LIMIT)
           .optional(),
+        /** Batch B3: seconds between one person's messages; only the intervals the apps offer. */
+        slowmodeSec: z.number().int().refine((n) => (SLOWMODE_STEPS as readonly number[]).includes(n), { message: "Pick one of the offered intervals" }).optional(),
       }),
       req.body,
     );
+    if (body.slowmodeSec !== undefined && c.type !== "CHANNEL") throw badRequest("Only channels have slowmode");
     if (body.format !== undefined && (c.type !== "CHANNEL" || c.voice)) throw badRequest("Only text channels can become forums");
     if (body.archived !== undefined && c.type !== "CHANNEL") throw badRequest("Only channels can be archived");
     const nextFormat = body.format ?? c.format ?? "text";
@@ -297,6 +307,10 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
       now(),
       id,
     );
+    if (body.slowmodeSec !== undefined && body.slowmodeSec !== (c.slowmode_sec ?? 0)) {
+      db.prepare("UPDATE conversations SET slowmode_sec = ? WHERE id = ?").run(body.slowmodeSec, id);
+      if (c.org_id) ctx.audit({ actorId: userId, orgId: c.org_id, action: "channel.slowmode", target: id, detail: `${body.slowmodeSec}s` });
+    }
     if (c.org_id) {
       if (kindChange) ctx.audit({ actorId: userId, orgId: c.org_id, action: "channel.access", target: id, detail: `${c.kind}→${body.kind}` });
       if (body.archived !== undefined && body.archived !== !!c.archived_at) {

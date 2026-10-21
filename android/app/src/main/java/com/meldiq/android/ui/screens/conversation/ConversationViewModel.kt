@@ -43,6 +43,9 @@ internal const val ONLINE_REFRESH_MS = 60_000L
 class ConversationViewModel(val c: AppContainer, val conversationId: String, val threadRoot: String?) : ViewModel() {
     val me = c.session.session?.userId
 
+    /** Batch B3: this channel's slowmode for this account, when it's on. */
+    val slowmode = c.conversations.slowmode.map { it[conversationId] }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     /** Round 3: how many members are online (servers with conversation-presence; channels only), null when unknown. */
     val onlineCount = MutableStateFlow<Int?>(null)
 

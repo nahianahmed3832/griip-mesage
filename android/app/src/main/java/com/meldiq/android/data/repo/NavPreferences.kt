@@ -115,10 +115,32 @@ class NavPreferences(
     /** Round 3: all messages, only mentions, or nothing (kept for every device, like mute). */
     suspend fun setLevel(conv: ConversationEntity, level: String) {
         db.conversations().setMuted(conv.id, level != NotifyLevel.ALL)
-        change(workspaceOf(conv), NavOp.Notify(conv.id, level))
+        change(workspaceOf(conv), NavOp.Notify(conv.id, level, conv.categoryId))
     }
 
-    fun levelOf(conv: ConversationEntity): String = NavPrefsRules.level(prefs.value[workspaceOf(conv)] ?: NavPrefsDto(), conv.id)
+    fun levelOf(conv: ConversationEntity): String = NavPrefsRules.level(prefs.value[workspaceOf(conv)] ?: NavPrefsDto(), conv.id, conv.categoryId)
+
+    /** Batch B3: when [conv]'s timed mute ends, if one is running. */
+    fun mutedUntil(conv: ConversationEntity): Long? = NavPrefsRules.mutedUntil(prefs.value[workspaceOf(conv)] ?: NavPrefsDto(), conv.id)
+
+    /**
+     * Batch B3: mutes [convs] for [duration] ms, or until turned back on (null). A timed mute ends by itself: this phone
+     * unmutes them when it's over (and the server forgets ended mutes).
+     */
+    fun muteFor(convs: List<ConversationEntity>, duration: Long?, now: Long = System.currentTimeMillis()) {
+        for ((ws, list) in convs.groupBy { workspaceOf(it) }) {
+            val ops = list.map { c ->
+                com.meldiq.android.data.model.MuteRules.until(duration, now)?.let { NavOp.MuteUntil(c.id, it) } ?: NavOp.Notify(c.id, NotifyLevel.NONE, c.categoryId)
+            }
+            changeAndApplyMutes(ws, ops)
+        }
+    }
+
+    /** Batch B3: a category's own level in community [orgId]; null: it follows the community. */
+    fun setCategoryLevel(orgId: String, categoryId: String, level: String?) = changeAndApplyMutes(orgId, listOf(NavOp.CategoryNotify(categoryId, level)))
+
+    /** Batch B3: hides a channel of [orgId] from the channel list, or shows it again. */
+    fun setHidden(orgId: String, channelId: String, hidden: Boolean) = change(orgId, NavOp.Hide(channelId, hidden))
 
     /** Batch B2: whether @everyone counts as a mention in [conv]'s community (the person can turn that off). */
     fun countsEveryone(conv: ConversationEntity): Boolean = NavPrefsRules.countsEveryone(prefs.value[workspaceOf(conv)] ?: NavPrefsDto())
@@ -128,20 +150,21 @@ class NavPreferences(
 
     /** Batch B2: a community's own level and @everyone setting; channels without their own level follow it at once. */
     fun setCommunityNotify(orgId: String, level: String? = null, suppressEveryone: Boolean? = null) =
-        changeAndApplyMutes(orgId, NavOp.CommunityNotify(level, suppressEveryone))
+        changeAndApplyMutes(orgId, listOf(NavOp.CommunityNotify(level, suppressEveryone)))
 
     /** Batch B2: [conv] follows its community's level again. */
-    fun resetLevel(conv: ConversationEntity) = changeAndApplyMutes(workspaceOf(conv), NavOp.NotifyReset(conv.id))
+    fun resetLevel(conv: ConversationEntity) = changeAndApplyMutes(workspaceOf(conv), listOf(NavOp.NotifyReset(conv.id)))
 
     /** Batch B2: the rail order, the whole list at once. */
     fun setRailOrder(orgIds: List<String>) = change(PERSONAL, NavOp.RailOrder(orgIds))
 
     /** [change], then this phone's mute switches follow the new levels straight away (offline too). */
-    private fun changeAndApplyMutes(workspaceId: String, op: NavOp) {
+    private fun changeAndApplyMutes(workspaceId: String, ops: List<NavOp>) {
+        if (ops.isEmpty()) return
         scope.launch {
             lock.withLock {
                 val doc = docs.value[workspaceId] ?: LocalDoc()
-                save(workspaceId, doc.copy(pending = doc.pending + op))
+                save(workspaceId, doc.copy(pending = doc.pending + ops))
             }
             docs.value[workspaceId]?.let { applyMutes(workspaceId, it.effective) }
             sync(workspaceId)
@@ -151,7 +174,7 @@ class NavPreferences(
     suspend fun setMuted(conv: ConversationEntity, muted: Boolean) {
         db.conversations().setMuted(conv.id, muted)
         // Muted is "none" (only a mention of you by name), as on the web; "mentions" also lets @everyone through.
-        change(workspaceOf(conv), NavOp.Notify(conv.id, if (muted) NotifyLevel.NONE else NotifyLevel.ALL))
+        change(workspaceOf(conv), NavOp.Notify(conv.id, if (muted) NotifyLevel.NONE else NotifyLevel.ALL, conv.categoryId))
     }
 
     /**
@@ -232,8 +255,27 @@ class NavPreferences(
     /** The server's levels on this phone's mute switches, for the workspace's conversations. */
     private suspend fun applyMutes(workspaceId: String, prefs: NavPrefsDto) {
         for (conv in conversationsOf(workspaceId)) {
-            val muted = NavPrefsRules.level(prefs, conv.id) != NotifyLevel.ALL
+            val muted = NavPrefsRules.level(prefs, conv.id, conv.categoryId) != NotifyLevel.ALL
             if (conv.muted != muted) db.conversations().setMuted(conv.id, muted)
+        }
+        scheduleMuteExpiry()
+    }
+
+    @Volatile private var expiryJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Batch B3: looks again when the next timed mute ends, so its conversations unmute on time. The job lets go of
+     * [expiryJob] before it reapplies: reapplying schedules the next look, which must not cancel the job doing it
+     * (that left later workspaces muted, found on the emulator).
+     */
+    private fun scheduleMuteExpiry() {
+        val now = System.currentTimeMillis()
+        val next = com.meldiq.android.data.model.MuteRules.nextExpiry(docs.value.values.map { it.effective }, now) ?: return
+        expiryJob?.cancel()
+        expiryJob = scope.launch {
+            kotlinx.coroutines.delay(next - now + 500)
+            expiryJob = null
+            reapplyMutes()
         }
     }
 

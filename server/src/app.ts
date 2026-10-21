@@ -49,7 +49,7 @@ import { Metrics } from "./ops/metrics.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
-export const VERSION = "0.15.0";
+export const VERSION = "0.16.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
@@ -343,6 +343,9 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     // in the preferences documents; starter templates for new communities (GET /v1/community-templates).
     "community-preferences",
     "community-templates",
+    // Batch B3: slowmode (server-enforced), and timed mutes, category levels and hidden channels in the preferences.
+    "slowmode",
+    "channel-preferences",
     // Round 7: end dates for guests and a community's guest policy (routes/community.ts).
     "guest-expiry",
     // Round 6: recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md).

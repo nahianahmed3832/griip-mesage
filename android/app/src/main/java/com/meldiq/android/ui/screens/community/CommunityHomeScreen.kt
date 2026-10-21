@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Workspaces
 import androidx.compose.material.icons.rounded.Call
@@ -90,6 +91,10 @@ private sealed interface PanelSheet {
     /** Batch B2. */
     data object Notifications : PanelSheet
     data object Arrange : PanelSheet
+    /** Batch B3: how long to mute these channels; and a category's own level; and the channel browser. */
+    data class MuteFor(val ids: List<String>, val title: String) : PanelSheet
+    data class CategoryLevel(val categoryId: String, val name: String) : PanelSheet
+    data object Browse : PanelSheet
 }
 
 /**
@@ -130,9 +135,11 @@ fun CommunityHomeScreen(nav: NavHostController) {
     var canDeleteChannels by remember { mutableStateOf(false) }
     var tagsAvailable by remember { mutableStateOf(false) }
     var communityPrefs by remember { mutableStateOf(false) }
+    var channelPrefs by remember { mutableStateOf(false) }
     val railOrder by container.navPrefs.railOrder.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) {
         communityPrefs = container.features.has(ServerFeatures.COMMUNITY_PREFERENCES) == true
+        channelPrefs = container.features.has(ServerFeatures.CHANNEL_PREFERENCES) == true
         discovery = container.features.has(ServerFeatures.COMMUNITY_DISCOVERY) == true
         canDeleteChannels = container.features.has(ServerFeatures.CHANNEL_DELETE) == true
         tagsAvailable = container.features.has(ServerFeatures.FORUM_TAGS) == true
@@ -159,12 +166,14 @@ fun CommunityHomeScreen(nav: NavHostController) {
     val canArrange = d?.permissions?.canManageChannels == true
     val canCreateCategory = d != null && ("channels.create" in d.permissions.effective || d.permissions.canManageOrg)
     val selectedChannel = CommunityPanelRules.selected(view.lastChannel, channels)
-    val sections = remember(channels, d?.categories, collapsed, selectedChannel, view, placed, canArrange) {
+    val hidden = remember(orgPrefs, channelPrefs) { if (channelPrefs) orgPrefs.hidden.orEmpty().toSet() else emptySet() }
+    val sections = remember(channels, d?.categories, collapsed, selectedChannel, view, placed, canArrange, hidden) {
         CommunityPanelRules.sections(
             channels, d?.categories.orEmpty(), collapsed, selectedChannel, hideMuted = view.hideMuted, unreadOnly = view.unreadOnly,
-            placed = placed, keepEmpty = canArrange,
+            placed = placed, keepEmpty = canArrange, hidden = hidden,
         )
     }
+    val hiddenCount = remember(channels, hidden) { channels.count { it.id in hidden } }
     val badges = remember(convs) { CommunityPanelRules.rail(convs) }
     val usersById = remember(users) { users.associateBy { it.id } }
     val liveCall = if (call.phase == CallPhase.Idle) convs.firstOrNull { it.activeCallId != null && it.type != "CHANNEL" } else null
@@ -182,6 +191,10 @@ fun CommunityHomeScreen(nav: NavHostController) {
             .onFailure { toast(it.friendly()) }
     }
     fun setMuted(targets: List<com.meldiq.android.data.db.ConversationEntity>, mute: Boolean) = scope.launch { targets.forEach { container.navPrefs.setMuted(it, mute) } }
+    /** Batch B3: muting asks for how long (where the server keeps timed mutes); unmuting is immediate. */
+    fun muteOrAsk(targets: List<com.meldiq.android.data.db.ConversationEntity>, mute: Boolean, title: String) {
+        if (mute && channelPrefs) sheet = PanelSheet.MuteFor(targets.map { it.id }, title) else setMuted(targets, mute)
+    }
     fun copy(text: String) = scope.launch { clipboard.setClipEntry(ClipData.newPlainText("name", text).toClipEntry()); toast(ctx.getString(R.string.nv_copied)) }
 
     Row(Modifier.fillMaxSize().background(c.background).statusBarsPadding()) {
@@ -280,6 +293,10 @@ fun CommunityHomeScreen(nav: NavHostController) {
                         }
                     }
                 }
+                // Batch B3: hidden channels are one tap away (Discord's "Show all").
+                if (hiddenCount > 0) item(key = "hidden-channels") {
+                    PanelShortcut(Icons.Outlined.VisibilityOff, stringResource(R.string.hc_hidden_n, hiddenCount)) { sheet = PanelSheet.Browse }
+                }
             }
         }
     }
@@ -291,7 +308,7 @@ fun CommunityHomeScreen(nav: NavHostController) {
             org, d?.stats?.members ?: org.memberCount, CommunityPanelRules.allMuted(channels), view.hideMuted, view.unreadOnly,
             CommunityMenuActions(
                 onInvite = if (d?.permissions?.canInvite == true) ({ nav.navigate(Routes.invites(org.id)) }) else null,
-                onToggleMute = if (channels.any { it.joined }) ({ val mute = !CommunityPanelRules.allMuted(channels); setMuted(CommunityPanelRules.muteTargets(channels, mute), mute) }) else null,
+                onToggleMute = if (channels.any { it.joined }) ({ val mute = !CommunityPanelRules.allMuted(channels); muteOrAsk(CommunityPanelRules.muteTargets(channels, mute), mute, org.name) }) else null,
                 onSettings = { nav.navigate(Routes.WORKSPACE) },
                 onMarkRead = CommunityPanelRules.markReadTargets(channels).takeIf { it.isNotEmpty() }?.let { t -> { actions.markAllRead(t); toast(ctx.getString(R.string.r3_marked_all_read)) } },
                 onNewChannel = if (d?.permissions?.canCreateChannels == true) ({ sheet = PanelSheet.NewChannel(null) }) else null,
@@ -304,6 +321,7 @@ fun CommunityHomeScreen(nav: NavHostController) {
                 onLeave = if (org.myRole != "OWNER") ({ sheet = PanelSheet.Leave }) else null,
                 onNotifications = if (communityPrefs) ({ sheet = PanelSheet.Notifications }) else null,
                 onArrange = if (communityPrefs && list.size > 1) ({ sheet = PanelSheet.Arrange }) else null,
+                onBrowse = if (channelPrefs) ({ sheet = PanelSheet.Browse }) else null,
             ),
             onDismiss = { if (sheet == s) sheet = null },
         )
@@ -318,6 +336,7 @@ fun CommunityHomeScreen(nav: NavHostController) {
                 allMuted = CommunityPanelRules.allMuted(section?.all.orEmpty()),
                 canCreate = category?.canCreateChannels == true || (category == null && d?.permissions?.canCreateChannels == true),
                 canManage = category?.canManage == true && canArrange, canMoveUp = i > 0, canMoveDown = i in 0 until order.lastIndex,
+                canSetLevel = channelPrefs,
             )
             CategoryMenuSheet(section?.title ?: stringResource(R.string.cm_channels), items, onDismiss = { if (sheet == s) sheet = null }) { item ->
                 val all = section?.all.orEmpty()
@@ -325,7 +344,8 @@ fun CommunityHomeScreen(nav: NavHostController) {
                     CategoryMenuItem.MARK_READ -> actions.markAllRead(CommunityPanelRules.markReadTargets(all))
                     CategoryMenuItem.COLLAPSE, CategoryMenuItem.EXPAND -> container.navPrefs.change(org.id, NavOp.Collapse(s.key, item == CategoryMenuItem.COLLAPSE))
                     CategoryMenuItem.COLLAPSE_ALL -> sections.filter { !it.collapsed }.forEach { container.navPrefs.change(org.id, NavOp.Collapse(it.key, true)) }
-                    CategoryMenuItem.MUTE -> setMuted(CommunityPanelRules.muteTargets(all, true), true)
+                    CategoryMenuItem.MUTE -> muteOrAsk(CommunityPanelRules.muteTargets(all, true), true, section?.title ?: ctx.getString(R.string.cm_channels))
+                    CategoryMenuItem.NOTIFY -> category?.let { sheet = PanelSheet.CategoryLevel(it.id, it.name) }
                     CategoryMenuItem.UNMUTE -> setMuted(CommunityPanelRules.muteTargets(all, false), false)
                     CategoryMenuItem.NEW_CHANNEL -> sheet = PanelSheet.NewChannel(category?.id)
                     CategoryMenuItem.RENAME -> category?.let { sheet = PanelSheet.RenameCategory(it) }
@@ -342,13 +362,14 @@ fun CommunityHomeScreen(nav: NavHostController) {
             val i = siblings.indexOf(ch.id)
             val items = CommunityMenuRules.channel(
                 ch, starred = ch.id in starredIds, canArrange = canArrange, canMoveUp = i > 0, canMoveDown = i in 0 until siblings.lastIndex,
-                canDelete = canDeleteChannels && ch.joined,
+                canDelete = canDeleteChannels && ch.joined, canHide = channelPrefs, hidden = ch.id in hidden,
             )
             ChannelMenuSheet(ch, items, onDismiss = { if (sheet == s) sheet = null }) { item ->
                 when (item) {
                     ChannelMenuItem.MARK_READ -> ch.conv?.let { actions.markAllRead(listOf(it)) }
                     ChannelMenuItem.FAVOURITE, ChannelMenuItem.UNFAVOURITE -> ch.conv?.let { actions.toggleStar(it) }
-                    ChannelMenuItem.MUTE, ChannelMenuItem.UNMUTE -> ch.conv?.let { setMuted(listOf(it), item == ChannelMenuItem.MUTE) }
+                    ChannelMenuItem.MUTE, ChannelMenuItem.UNMUTE -> ch.conv?.let { muteOrAsk(listOf(it), item == ChannelMenuItem.MUTE, "#" + ch.name) }
+                    ChannelMenuItem.HIDE, ChannelMenuItem.SHOW -> container.navPrefs.setHidden(org.id, ch.id, item == ChannelMenuItem.HIDE)
                     ChannelMenuItem.COPY_NAME -> copy(ch.name)
                     ChannelMenuItem.EDIT -> sheet = PanelSheet.EditChannel(ch.id)
                     ChannelMenuItem.PERMISSIONS -> nav.navigate(Routes.permissions(category = false, id = ch.id, name = ch.name))
@@ -410,7 +431,7 @@ fun CommunityHomeScreen(nav: NavHostController) {
         PanelSheet.Notifications -> CommunityNotificationsSheet(
             org.name, CommunityPanelRules.allMuted(channels), orgPrefs, channels,
             CommunityNotifyActions(
-                onToggleMute = if (channels.any { it.joined }) ({ val mute = !CommunityPanelRules.allMuted(channels); setMuted(CommunityPanelRules.muteTargets(channels, mute), mute) }) else null,
+                onToggleMute = if (channels.any { it.joined }) ({ val mute = !CommunityPanelRules.allMuted(channels); muteOrAsk(CommunityPanelRules.muteTargets(channels, mute), mute, org.name) }) else null,
                 onLevel = { level -> container.navPrefs.setCommunityNotify(org.id, level = level) },
                 onSuppressEveryone = { on -> container.navPrefs.setCommunityNotify(org.id, suppressEveryone = on) },
                 onChannelLevel = { ch, level ->
@@ -421,6 +442,24 @@ fun CommunityHomeScreen(nav: NavHostController) {
             onDismiss = { if (sheet == s) sheet = null },
         )
         PanelSheet.Arrange -> ArrangeCommunitiesSheet(list, onOrder = { container.navPrefs.setRailOrder(it) }, onDismiss = { if (sheet == s) sheet = null })
+        is PanelSheet.MuteFor -> MuteForSheet(s.title, timed = channelPrefs, onPick = { duration ->
+            container.navPrefs.muteFor(channels.filter { it.id in s.ids }.mapNotNull { it.conv }, duration)
+        }, onDismiss = { if (sheet == s) sheet = null })
+        is PanelSheet.CategoryLevel -> CategoryLevelSheet(s.name, orgPrefs, s.categoryId, onPick = { level ->
+            container.navPrefs.setCategoryLevel(org.id, s.categoryId, level)
+        }, onDismiss = { if (sheet == s) sheet = null })
+        PanelSheet.Browse -> {
+            val all = remember(channels, d?.categories) {
+                CommunityPanelRules.sections(channels, d?.categories.orEmpty(), emptySet(), keepEmpty = false)
+            }
+            val untitled = stringResource(R.string.cm_channels)
+            BrowseChannelsSheet(
+                all.map { (it.title ?: untitled) to it.all }, hidden,
+                onShow = { ch, show -> container.navPrefs.setHidden(org.id, ch.id, !show) },
+                onShowAll = if (hidden.isNotEmpty()) ({ hidden.forEach { id -> container.navPrefs.setHidden(org.id, id, false) } }) else null,
+                onDismiss = { if (sheet == s) sheet = null },
+            )
+        }
     }
     editingSection?.let { section -> SectionEditSheet(section, onDismiss = { editingSection = null }) }
 }

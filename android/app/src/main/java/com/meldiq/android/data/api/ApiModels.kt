@@ -156,6 +156,12 @@ import kotlinx.serialization.json.JsonObject
     val canSpeak: Boolean = true,
     /** While you're timed out in the channel's community: when it ends (you can read but not post or join voice). */
     val timedOutUntil: Long? = null,
+    /** Batch B3 (servers with `slowmode`): seconds between one person's messages here (0: off). */
+    val slowmodeSec: Int = 0,
+    /** Whether slowmode leaves you alone here (channel managers, `messages.bypass_slowmode`). */
+    val slowmodeExempt: Boolean = true,
+    /** When you may post your next message under slowmode; null: now. */
+    val nextPostAt: Long? = null,
 )
 /** Times a community member out until [until] (epoch ms, at most 28 days ahead), or ends their timeout (null). */
 @Serializable data class TimeoutReq(val until: Long?, val reason: String? = null)
@@ -189,6 +195,8 @@ object ChannelFormat {
     val format: String? = null,
     /** Forum channels: the whole list of tags (an id keeps an existing tag; no id: a new one). */
     val forumTags: List<ForumTagReq>? = null,
+    /** Batch B3: slowmode seconds, one of [com.meldiq.android.data.model.SlowmodeRules.STEPS]. */
+    val slowmodeSec: Int? = null,
 )
 @Serializable data class ForumTagReq(val id: String? = null, val name: String)
 @Serializable data class DeleteChannelReq(val confirmName: String)
@@ -417,6 +425,12 @@ object CommunityAccess {
     val community: CommunityNotifyDto? = null,
     /** The person's communities in rail order (personal document only, same feature); null when never arranged. */
     val railOrder: List<String>? = null,
+    /** Batch B3 (`channel-preferences`): mutes that end by themselves, conversation id → epoch ms. */
+    val mutedUntil: Map<String, Long>? = null,
+    /** Batch B3, community documents: a category's own level, which its channels follow unless they have one. */
+    val categoryNotify: Map<String, String>? = null,
+    /** Batch B3, community documents: channels hidden from the channel list (still joined). */
+    val hidden: List<String>? = null,
 )
 /** The level a community's channels follow unless a channel has its own, and whether @everyone counts as a mention. */
 @Serializable data class CommunityNotifyDto(val level: String = "all", val suppressEveryone: Boolean = false)

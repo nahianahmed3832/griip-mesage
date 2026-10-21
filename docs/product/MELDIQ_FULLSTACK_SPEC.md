@@ -59,7 +59,10 @@ See matrix MOD-06.
   - the rate limit;
   - status changes are audited.
 
-### 2.3 Slowmode (CH-14)
+### 2.3 Slowmode (CH-14): built 2026-10-21 (batch B3)
+
+As specified below, except that the last post time is a column on `conversation_members` and the exemption is checked against the community's roles (not per channel).
+
 
 - **Data:** `conversations.slowmode_sec` (0–21,600) and `conversation_members.last_post_at`.
 - **Enforcement:** `POST /v1/messages` refuses with `slowmode` and `retryAfter` when

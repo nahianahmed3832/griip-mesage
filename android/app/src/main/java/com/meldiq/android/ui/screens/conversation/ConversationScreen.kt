@@ -777,6 +777,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     vm.typingChanged(t)
                 }
             }
+            val slowmode by vm.slowmode.collectAsStateWithLifecycle()
+            if (threadRoot == null) com.meldiq.android.ui.screens.community.SlowmodeLine(slowmode)
             composerPreview?.let { p ->
                 Row(Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) { LinkPreviewCard(p, out = false, onOpen = {}) }

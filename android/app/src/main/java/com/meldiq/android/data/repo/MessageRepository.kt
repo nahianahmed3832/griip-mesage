@@ -786,12 +786,22 @@ class MessageRepository(
                 )
                 db.outbox().remove(item.messageId)
                 if (item.visible) db.messages().markSent(item.messageId, res.serverTs)
+                // Batch B3: under slowmode the composer counts down to the next allowed message.
+                if (item.cls == "message") com.meldiq.android.data.model.SlowmodeRules.nextAfterPost(conversations.slowmode.value[item.conversationId], res.serverTs)
+                    ?.let { conversations.slowmodeWait(item.conversationId, it) }
                 return
             } catch (e: ApiException) {
                 if (e.status == 409 && e.code == "device_mismatch" && pass == 0) {
                     directory.invalidate(item.conversationId)
                     force = true
                     continue
+                }
+                // Batch B3: slowmode isn't a failure. The message waits until the server allows the next one.
+                if (e.status == 429 && e.code == "slowmode") {
+                    val next = com.meldiq.android.data.model.SlowmodeRules.nextFrom(e.details) ?: (System.currentTimeMillis() + SLOWMODE_FALLBACK_MS)
+                    conversations.slowmodeWait(item.conversationId, next)
+                    db.outbox().put(item.copy(nextAttemptAt = next + 250, lastError = e.message))
+                    return
                 }
                 val transient = e.isNetwork || e.status >= 500 || e.status == 429 || e.status == 401 || e.code == "decode"
                 if (transient && item.attempts < MAX_ATTEMPTS) {
@@ -1250,6 +1260,8 @@ class MessageRepository(
         private const val HELD_RECHECK_MS = 6 * 3600_000L
         private const val TAG = "Messages"
         private const val MAX_ATTEMPTS = 6
+        /** When a slowmode refusal doesn't say when (it always should): try again after this. */
+        private const val SLOWMODE_FALLBACK_MS = 5_000L
         private val BACKOFF = listOf(2_000L, 5_000L, 15_000L, 30_000L, 60_000L, 120_000L)
     }
 }

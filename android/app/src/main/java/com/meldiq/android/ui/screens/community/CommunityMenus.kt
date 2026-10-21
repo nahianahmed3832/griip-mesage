@@ -32,7 +32,9 @@ import androidx.compose.material.icons.outlined.PostAdd
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.SwapVert
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Unarchive
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
@@ -132,6 +134,8 @@ class CommunityMenuActions(
     val onNotifications: (() -> Unit)? = null,
     /** Batch B2: arrange the rail. */
     val onArrange: (() -> Unit)? = null,
+    /** Batch B3: choose which channels appear in the list. */
+    val onBrowse: (() -> Unit)? = null,
 )
 
 /**
@@ -165,6 +169,7 @@ fun CommunityMenuSheet(org: OrgDto, memberCount: Int, allMuted: Boolean, hideMut
             }
             actions.onMarkRead?.let { SheetItem(Icons.Outlined.MarkChatRead, stringResource(R.string.nv_mark_read), run(it)) }
             actions.onNotifications?.let { SheetItem(Icons.Outlined.Notifications, stringResource(R.string.cn_title), run(it)) }
+            actions.onBrowse?.let { SheetItem(Icons.Outlined.Visibility, stringResource(R.string.hc_browse), run(it)) }
             actions.onNewChannel?.let { SheetItem(Icons.Outlined.PostAdd, stringResource(R.string.cm_new_channel), run(it)) }
             actions.onNewCategory?.let { SheetItem(Icons.Outlined.CreateNewFolder, stringResource(R.string.cm_new_category), run(it)) }
             SheetItem(Icons.Outlined.Event, stringResource(R.string.cm_events), run(actions.onEvents))
@@ -204,6 +209,7 @@ private fun categoryItem(item: CategoryMenuItem): Pair<ImageVector, String> = wh
     CategoryMenuItem.COLLAPSE_ALL -> Icons.Rounded.UnfoldLess to stringResource(R.string.home_collapse_all)
     CategoryMenuItem.MUTE -> Icons.Outlined.NotificationsOff to stringResource(R.string.nv_mute_category)
     CategoryMenuItem.UNMUTE -> Icons.Outlined.Notifications to stringResource(R.string.nv_unmute_category)
+    CategoryMenuItem.NOTIFY -> Icons.Outlined.Tune to stringResource(R.string.cn_title)
     CategoryMenuItem.NEW_CHANNEL -> Icons.Outlined.PostAdd to stringResource(R.string.cm_new_channel)
     CategoryMenuItem.RENAME -> Icons.Outlined.Edit to stringResource(R.string.nv_edit_category)
     CategoryMenuItem.PERMISSIONS -> Icons.Outlined.AdminPanelSettings to stringResource(R.string.cm_permissions)
@@ -242,6 +248,8 @@ private fun channelItem(item: ChannelMenuItem): Pair<ImageVector, String> = when
     ChannelMenuItem.UNFAVOURITE -> Icons.Rounded.Star to stringResource(R.string.nv_unfavourite)
     ChannelMenuItem.MUTE -> Icons.Outlined.NotificationsOff to stringResource(R.string.nv_mute_channel)
     ChannelMenuItem.UNMUTE -> Icons.Outlined.Notifications to stringResource(R.string.nv_unmute_channel)
+    ChannelMenuItem.HIDE -> Icons.Outlined.VisibilityOff to stringResource(R.string.hc_hide)
+    ChannelMenuItem.SHOW -> Icons.Outlined.Visibility to stringResource(R.string.hc_show)
     ChannelMenuItem.COPY_NAME -> Icons.Outlined.ContentCopy to stringResource(R.string.nv_copy_name)
     ChannelMenuItem.EDIT -> Icons.Outlined.Edit to stringResource(R.string.nv_edit_channel)
     ChannelMenuItem.PERMISSIONS -> Icons.Outlined.AdminPanelSettings to stringResource(R.string.cm_permissions)

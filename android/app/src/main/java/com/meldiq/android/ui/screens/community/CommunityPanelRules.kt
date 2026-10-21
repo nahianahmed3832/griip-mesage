@@ -101,6 +101,8 @@ object CommunityPanelRules {
         unreadOnly: Boolean = false,
         placed: Set<String> = emptySet(),
         keepEmpty: Boolean = false,
+        /** Batch B3: channels hidden from the list; they still show while they mention you or are open. */
+        hidden: Set<String> = emptySet(),
     ): List<PanelSection> {
         val listed = channels.filter { it.id !in placed }
         return ChannelTree.sections(listed, categories, keepEmpty = keepEmpty, ref = { ChannelRef(it.id, it.name, it.categoryId, it.position) }, categoryName = { it.categoryName })
@@ -110,7 +112,8 @@ object CommunityPanelRules {
                     val muteOk = !hideMuted || !ch.muted || ch.mentions > 0
                     val unreadOk = !unreadOnly || ch.hasNews || ch.id == selectedId
                     val collapseOk = !isCollapsed || ch.hasNews || ch.id == selectedId
-                    muteOk && unreadOk && collapseOk
+                    val hiddenOk = ch.id !in hidden || ch.mentions > 0 || ch.id == selectedId
+                    muteOk && unreadOk && collapseOk && hiddenOk
                 }
                 // A collapsed header stays so it can be opened again; an empty category stays for the people who fill it.
                 val keep = shown.isNotEmpty() || (isCollapsed && !unreadOnly) || (keepEmpty && !unreadOnly && s.channels.isEmpty())

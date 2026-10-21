@@ -72,6 +72,18 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
       throw new ApiError(400, "bad_signature", "Envelope signature does not verify against the sending device");
     }
 
+    // Slowmode (batch B3): one new message per interval in a channel, for people it applies to. Only messages count:
+    // edits, reactions and votes are controls. A retry of an accepted message returned above as a duplicate.
+    if (e.cls === "message") {
+      const next = authz.nextPostAt(conv, userId, now());
+      if (next !== null) {
+        throw new ApiError(429, "slowmode", "Slowmode is on in this channel. Wait a moment before posting again.", {
+          retryAfter: Math.ceil((next - now()) / 1000),
+          nextPostAt: next,
+        });
+      }
+    }
+
     // @everyone: only for messages, only where the policy allows, at most mentionAllPerHour new ones an hour. A retry of
     // an accepted message returned above (duplicate) and is never counted twice.
     const mentionAll = e.mentionAll === true && e.cls === "message";
@@ -151,7 +163,10 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
         }
         inserted.push(ins.get(r.deviceId, conv.id, e.messageId, userId, deviceId, payload, t, expiresAt) as QueueItemRow);
       }
-      if (e.cls === "message") db.prepare("UPDATE conversations SET updated_at = ? WHERE id = ?").run(t, conv.id);
+      if (e.cls === "message") {
+        db.prepare("UPDATE conversations SET updated_at = ? WHERE id = ?").run(t, conv.id);
+        db.prepare("UPDATE conversation_members SET last_post_at = ? WHERE conversation_id = ? AND user_id = ?").run(t, conv.id, userId);
+      }
     })();
     for (const row of inserted) ctx.hub.pushQueued(row.recipient_device_id, [row]);
     return { messageId: e.messageId, serverTs: t, recipientCount: e.recipients.length, duplicate: false };

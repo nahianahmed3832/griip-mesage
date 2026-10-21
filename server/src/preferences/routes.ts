@@ -3,7 +3,7 @@ import { z } from "zod";
 import { PERSONAL_WORKSPACE_ID } from "../accounts/workspaces.js";
 import { type AppContext, me, parse, requireAuth } from "../context.js";
 import { ApiError, now } from "../util.js";
-import { EMPTY_PREFS, normalizePrefs, type StoredPrefs, zNavPrefs } from "./schema.js";
+import { EMPTY_PREFS, type NavPrefs, normalizePrefs, type StoredPrefs, zNavPrefs } from "./schema.js";
 
 const zWorkspaceId = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
 
@@ -53,7 +53,32 @@ export default async function preferenceRoutes(app: FastifyInstance, ctx: AppCon
     const community = personal ? undefined : (body.prefs.community ?? stored?.community);
     const myOrgs = new Set((ctx.db.prepare("SELECT org_id FROM org_members WHERE user_id = ?").all(userId) as { org_id: string }[]).map((r) => r.org_id));
     const railOrder = personal ? (body.prefs.railOrder ?? stored?.railOrder)?.filter((id) => myOrgs.has(id)) : undefined;
-    const prefs = normalizePrefs({ ...body.prefs, saved, community, railOrder }, (id) => mine.has(id));
+    // Batch B3: timed mutes (any document), and a community's category levels and hidden channels (its document only):
+    // only its own categories, and only its channels the person can see (joined or not).
+    const mutedUntil = body.prefs.mutedUntil ?? stored?.mutedUntil;
+    const categories = new Set<string>();
+    let categoryNotify: NavPrefs["categoryNotify"];
+    let hidden: string[] | undefined;
+    const channelCategory = new Map<string, string | null>();
+    if (!personal) {
+      for (const r of ctx.db.prepare("SELECT id FROM channel_categories WHERE org_id = ?").all(workspaceId) as { id: string }[]) categories.add(r.id);
+      for (const r of ctx.db.prepare("SELECT id, category_id FROM conversations WHERE org_id = ? AND type = 'CHANNEL'").all(workspaceId) as { id: string; category_id: string | null }[]) {
+        channelCategory.set(r.id, r.category_id);
+      }
+      const cats = body.prefs.categoryNotify ?? stored?.categoryNotify;
+      categoryNotify = cats ? (Object.fromEntries(Object.entries(cats).filter(([id]) => categories.has(id))) as NavPrefs["categoryNotify"]) : undefined;
+      hidden = (body.prefs.hidden ?? stored?.hidden)?.filter((id) => {
+        if (!channelCategory.has(id)) return false;
+        const conv = ctx.authz.conversation(id);
+        return !!conv && ctx.authz.canViewChannel(conv, userId);
+      });
+    }
+    const communityLevel = community?.level ?? "all";
+    const parentLevel = (id: string) => {
+      const cat = channelCategory.get(id);
+      return (cat && categoryNotify?.[cat]) || communityLevel;
+    };
+    const prefs = normalizePrefs({ ...body.prefs, saved, community, railOrder, mutedUntil, categoryNotify, hidden }, (id) => mine.has(id), parentLevel);
     const result = await ctx.prefs.put(userId, workspaceId, prefs, body.baseRev, now());
     if (!result.ok) {
       throw new ApiError(409, "stale_preferences", "These preferences changed on another device. Apply your change to this copy and try again.", {

@@ -77,6 +77,16 @@ Each person arranges Home for themselves, on every device (`/v1/me/preferences/:
 - **Rail order** (same feature): long-press a community in the rail, or community sheet › Arrange communities. Stored in
   the personal document as `railOrder` (community ids, at most 200), kept only for communities the person belongs to;
   new communities go at the end. Left out of a write, the stored order is kept.
+- **Timed mutes, category levels and hidden channels** (batch B3, 2026-10-21, server feature `channel-preferences`).
+  Like `saved`, each is kept as stored when a write leaves it out.
+  - `mutedUntil: {conversationId: epoch ms}` (any document; DMs in the personal one): the conversation behaves as
+    "none" until then. The phone unmutes on time, and the server drops ended entries.
+  - `categoryNotify: {categoryId: level}` (community documents): the level a category's channels follow. The order is
+    the channel's own level, then its category's, then the community's.
+  - `hidden: [channelId]` (community documents): channels left out of the panel. They stay joined, and come back while
+    they mention you.
+- **Slowmode** (same batch, feature `slowmode`, migration 035): a channel setting (`slowmode_sec`), enforced by
+  `POST /v1/messages` for new messages only. Channel managers and `messages.bypass_slowmode` are exempt.
 
 One document per person and workspace ("personal" for DMs and groups, an organisation id for its channels), with a
 revision: a write names the revision it was based on, and a stale write gets the current copy back (409). The phone

@@ -67,6 +67,10 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val COMMUNITY_PREFERENCES = "community-preferences"
         /** Batch B2: starter templates for a new community (GET /v1/community-templates). */
         const val COMMUNITY_TEMPLATES = "community-templates"
+        /** Batch B3: slowmode on channels, enforced by the server. */
+        const val SLOWMODE = "slowmode"
+        /** Batch B3: timed mutes, category levels and hidden channels in the preferences documents. */
+        const val CHANNEL_PREFERENCES = "channel-preferences"
         /** Meldiq 2.0: experiments and content-free analytics counts (docs/product/EXPERIMENTS.md). */
         const val EXPERIMENTS = "experiments"
         const val ANALYTICS_EVENTS = "analytics-events"

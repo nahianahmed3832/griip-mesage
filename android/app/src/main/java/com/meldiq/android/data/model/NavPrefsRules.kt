@@ -27,7 +27,8 @@ object NotifyLevel {
 sealed interface NavOp {
     @Serializable @SerialName("place") data class Place(val conversationId: String, val sectionId: String?, val starred: Boolean = false) : NavOp
     @Serializable @SerialName("move") data class Move(val conversationId: String, val delta: Int) : NavOp
-    @Serializable @SerialName("notify") data class Notify(val conversationId: String, val level: String) : NavOp
+    /** [categoryId] (batch B3): the channel's category, so "all" is kept when that category is quieter. */
+    @Serializable @SerialName("notify") data class Notify(val conversationId: String, val level: String, val categoryId: String? = null) : NavOp
     @Serializable @SerialName("addSection") data class AddSection(val id: String, val name: String) : NavOp
     @Serializable @SerialName("renameSection") data class RenameSection(val id: String, val name: String) : NavOp
     @Serializable @SerialName("deleteSection") data class DeleteSection(val id: String) : NavOp
@@ -46,6 +47,12 @@ sealed interface NavOp {
     @Serializable @SerialName("notifyReset") data class NotifyReset(val conversationId: String) : NavOp
     /** Batch B2: the whole rail order (personal document); the last arrangement wins. */
     @Serializable @SerialName("railOrder") data class RailOrder(val orgIds: List<String>) : NavOp
+    /** Batch B3: muted until [until] (epoch ms); null ends a timed mute. */
+    @Serializable @SerialName("muteUntil") data class MuteUntil(val conversationId: String, val until: Long?) : NavOp
+    /** Batch B3: a category's own level; null: it follows the community again. */
+    @Serializable @SerialName("categoryNotify") data class CategoryNotify(val categoryId: String, val level: String?) : NavOp
+    /** Batch B3: a channel hidden from (or back in) the channel list. */
+    @Serializable @SerialName("hide") data class Hide(val conversationId: String, val hidden: Boolean) : NavOp
 }
 
 /** Pure rules for personal navigation preferences (docs/WORKSPACE_ADMINISTRATION.md › Personal sections). */
@@ -60,8 +67,22 @@ object NavPrefsRules {
         else -> p.sections.firstOrNull { conversationId in it.items }?.let { NavPlace.Section(it.id) } ?: NavPlace.Default
     }
 
-    /** A channel's own level if it has one, else its community's (batch B2), else "all". */
-    fun level(p: NavPrefsDto, conversationId: String): String = p.notify[conversationId] ?: communityLevel(p)
+    /**
+     * The level that applies to a conversation now: "none" during a timed mute (batch B3); else its own level; else
+     * its category's ([categoryId], B3); else its community's (B2); else "all".
+     */
+    fun level(p: NavPrefsDto, conversationId: String, categoryId: String? = null, now: Long = System.currentTimeMillis()): String =
+        if (mutedUntil(p, conversationId, now) != null) NotifyLevel.NONE else p.notify[conversationId] ?: parentLevel(p, categoryId)
+
+    /** What a channel follows when it has no level of its own: its category's level, else the community's. */
+    fun parentLevel(p: NavPrefsDto, categoryId: String?): String = categoryId?.let { p.categoryNotify?.get(it) } ?: communityLevel(p)
+
+    /** When a timed mute of [conversationId] ends, if one is running at [now]. */
+    fun mutedUntil(p: NavPrefsDto, conversationId: String, now: Long = System.currentTimeMillis()): Long? =
+        p.mutedUntil?.get(conversationId)?.takeIf { it > now }
+
+    /** Whether a channel is hidden from the channel list (batch B3). */
+    fun isHidden(p: NavPrefsDto, conversationId: String): Boolean = p.hidden?.contains(conversationId) == true
 
     /** The level a community's channels follow unless they have their own. */
     fun communityLevel(p: NavPrefsDto): String = p.community?.level ?: NotifyLevel.ALL
@@ -98,16 +119,27 @@ object NavPrefsRules {
         is NavOp.Place -> place(p, op)
         is NavOp.Move -> move(p, op.conversationId, op.delta)
         // "All" is only stored when the community's own level is quieter; otherwise it's the default and isn't kept.
+        // Choosing a level also ends a timed mute of it.
         is NavOp.Notify -> p.copy(
-            notify = if (op.level == NotifyLevel.ALL && communityLevel(p) == NotifyLevel.ALL) p.notify - op.conversationId
+            notify = if (op.level == NotifyLevel.ALL && parentLevel(p, op.categoryId) == NotifyLevel.ALL) p.notify - op.conversationId
             else p.notify + (op.conversationId to op.level),
+            mutedUntil = p.mutedUntil?.minus(op.conversationId),
         )
+        is NavOp.MuteUntil -> p.copy(
+            mutedUntil = if (op.until == null) p.mutedUntil?.minus(op.conversationId) else p.mutedUntil.orEmpty() + (op.conversationId to op.until),
+        )
+        is NavOp.CategoryNotify -> p.copy(
+            categoryNotify = if (op.level == null) p.categoryNotify?.minus(op.categoryId) else p.categoryNotify.orEmpty() + (op.categoryId to op.level),
+        )
+        is NavOp.Hide -> p.copy(hidden = if (op.hidden) (p.hidden.orEmpty() - op.conversationId) + op.conversationId else p.hidden?.minus(op.conversationId))
         is NavOp.NotifyReset -> p.copy(notify = p.notify - op.conversationId)
         is NavOp.CommunityNotify -> {
             val current = p.community ?: com.meldiq.android.data.api.CommunityNotifyDto()
             val next = current.copy(level = op.level ?: current.level, suppressEveryone = op.suppressEveryone ?: current.suppressEveryone)
             // Back to "all": an "all" override says nothing any more (the server drops it too).
-            p.copy(community = next, notify = if (next.level == NotifyLevel.ALL) p.notify.filterValues { it != NotifyLevel.ALL } else p.notify)
+            // With category levels set, an "all" may still override a quieter category: the server decides those.
+            val dropAll = next.level == NotifyLevel.ALL && p.categoryNotify.isNullOrEmpty()
+            p.copy(community = next, notify = if (dropAll) p.notify.filterValues { it != NotifyLevel.ALL } else p.notify)
         }
         is NavOp.RailOrder -> p.copy(railOrder = op.orgIds.distinct())
         is NavOp.AddSection -> {

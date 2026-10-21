@@ -18,7 +18,9 @@ const zMessageId = z.string().min(3).max(64).regex(/^[A-Za-z0-9_-]+$/);
 export const NOTIFY_LEVELS = ["all", "mentions", "none"] as const;
 export type NotifyLevel = (typeof NOTIFY_LEVELS)[number];
 
-export const LIMITS = { starred: 200, sections: 30, itemsPerSection: 200, collapsed: 200, notify: 1000, saved: 500, railOrder: 200 } as const;
+export const LIMITS = { starred: 200, sections: 30, itemsPerSection: 200, collapsed: 200, notify: 1000, saved: 500, railOrder: 200, mutedUntil: 1000, categories: 200, hidden: 500 } as const;
+/** Category ids as the server assigns them. */
+const zCategoryId = z.string().min(3).max(64).regex(/^cat_[A-Za-z0-9_-]+$/);
 
 /**
  * A community's own notification settings (batch B2, Discord reference COMM-CTRL-002), in that community's document:
@@ -71,6 +73,21 @@ export const zNavPrefs = z
     community: zCommunityNotify.optional(),
     /** Personal document only: the person's communities in rail order (B2, NAV-11). Left out, the stored order is kept. */
     railOrder: z.array(zOrgId).max(LIMITS.railOrder).optional(),
+    /**
+     * Batch B3: mutes that end by themselves, conversation id → epoch ms (any document; DMs in the personal one). Until
+     * then the conversation behaves as "none". Ended ones are dropped. Left out, the stored ones are kept.
+     */
+    mutedUntil: z
+      .record(zConversationId, z.number().int().min(0))
+      .refine((m) => Object.keys(m).length <= LIMITS.mutedUntil, { message: `At most ${LIMITS.mutedUntil} timed mutes` })
+      .optional(),
+    /** Batch B3, community documents only: a category's own level, which its channels follow unless they have one. */
+    categoryNotify: z
+      .record(zCategoryId, z.enum(NOTIFY_LEVELS))
+      .refine((m) => Object.keys(m).length <= LIMITS.categories, { message: `At most ${LIMITS.categories} category settings` })
+      .optional(),
+    /** Batch B3, community documents only: channels hidden from the person's channel list (they stay joined). */
+    hidden: z.array(zConversationId).max(LIMITS.hidden).optional(),
   })
   .strict();
 
@@ -97,7 +114,13 @@ export interface StoredPrefs {
  * says which conversation ids may stay (the person's own conversations); the rest are dropped rather than refused, so a
  * conversation left on another device never makes a write fail.
  */
-export function normalizePrefs(p: NavPrefs, keep: (conversationId: string) => boolean): NavPrefs {
+export function normalizePrefs(
+  p: NavPrefs,
+  keep: (conversationId: string) => boolean,
+  /** The level a channel would follow without its own (its category's, else the community's). */
+  parentLevel: (conversationId: string) => NotifyLevel = () => p.community?.level ?? "all",
+  at: number = Date.now(),
+): NavPrefs {
   const seen = new Set<string>();
   const take = (ids: readonly string[]): string[] =>
     ids.filter((id) => {
@@ -112,7 +135,7 @@ export function normalizePrefs(p: NavPrefs, keep: (conversationId: string) => bo
     .map((s) => ({ ...s, items: take(s.items) }));
   const notify = Object.fromEntries(
     Object.entries(p.notify)
-      .filter(([id, level]) => (level !== "all" || (p.community?.level ?? "all") !== "all") && keep(id))
+      .filter(([id, level]) => (level !== "all" || parentLevel(id) !== "all") && keep(id))
       .sort(([a], [b]) => a.localeCompare(b)),
   ) as Record<string, NotifyLevel>;
   const savedIds = new Set<string>();
@@ -125,6 +148,9 @@ export function normalizePrefs(p: NavPrefs, keep: (conversationId: string) => bo
     saved,
     ...(p.community ? { community: p.community } : {}),
     ...(p.railOrder ? { railOrder: [...new Set(p.railOrder)] } : {}),
+    ...(p.mutedUntil ? { mutedUntil: Object.fromEntries(Object.entries(p.mutedUntil).filter(([id, until]) => until > at && keep(id))) } : {}),
+    ...(p.categoryNotify ? { categoryNotify: p.categoryNotify } : {}),
+    ...(p.hidden ? { hidden: [...new Set(p.hidden)] } : {}),
   };
 }
 

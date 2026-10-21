@@ -77,7 +77,7 @@ Meldiq differs from Discord by design in two ways:
 | COM-13 | Community notifications | E2E (emulator) | I | I | I | — | Mute all, per-channel levels. B2 2026-10-21: community level, Ignore @everyone, channel override list (sheet `CommunityNotificationsSheet.kt`); emulator-checked with two real clients (suppressed @everyone didn't notify or count; unsuppressed did; "Mentions only" silenced plain messages; an "All" override notified). Phone test pending. Web: levels only |
 | COM-14 | Verification level | R | — | — | — | P3 | Email is always verified in Meldiq; "account age" levels: P3 |
 | COM-15 | System messages | D | — | — | — | P3 | |
-| COM-16 | Hide channels without leaving, channel browser | R | — | — | — | P2 (B3) | Discord Browse Channels and Remove from Channel List (COMM-CTRL-007, CHAN-CTRL-005) |
+| COM-16 | Hide channels without leaving, channel browser | E2E (emulator) | I | — | I | — | B3 2026-10-21: channel menu › Hide from channel list; "N hidden · Browse channels" row; community sheet › Browse channels with a switch per channel and Show all; hidden channels come back while they mention you. `hidden` in the community document. Phone test pending |
 | COM-17 | Server Guide with Get Started tasks | R | — | — | — | P2 (B8) | Tasks tied to channels, ticked on visit (COMM-CTRL-003/004/005) |
 | COM-18 | Join applications (apply to join, moderator approval) | R | — | — | — | P2 (B4) | Discord Access › Apply to Join with up to 5 questions (ADMIN-CTRL-008) |
 
@@ -98,10 +98,10 @@ Meldiq differs from Discord by design in two ways:
 | CH-11 | Forum channels and tags | E2E | I | D | I | P1 (web) | Required tag, gallery view: P3 |
 | CH-12 | Voice channels | E2E | I | I | I | — | Phone: speak and listen-only 2026-10-21 |
 | CH-13 | Stage channels | D | — | — | — | P3 | Calls have raise hand and host moderation, a base for it |
-| CH-14 | Slowmode | R (observed) S | — | — | — | P2 | Server-enforced per member and channel (`last_post_at`); permission `messages.bypass_slowmode`. Possible because the server sees who posts, not what |
+| CH-14 | Slowmode | E2E (emulator) | I | — | I | — | B3 2026-10-21: Edit channel › Slowmode (off, 5 s to 6 h); server refuses a member's second new message within the interval (429 `slowmode` with `retryAfter`, `nextPostAt`), edits and reactions free, retries of accepted messages pass; exempt: channel managers and `messages.bypass_slowmode` (Moderator template). Composer countdown; queued messages go out when allowed (`channel_controls.test.ts`). Phone test pending. Web: shows the refusal only |
 | CH-15 | Channel and category menus | E2E | I | D | — | P1 (web) | |
 | CH-16 | Media channels | — | | | | | Forum with attachments covers it |
-| CH-17 | Timed mute (15 min to 24 h) and "category default" level | R | — | — | — | P2 (B3) | Meldiq mutes are open-ended (CHAN-CTRL-002/003) |
+| CH-17 | Timed mute (15 min to 24 h) and category level | E2E (emulator) | I | — | I | — | B3 2026-10-21: Mute for 15 min / 1 h / 3 h / 8 h / 24 h / until turned back on, for channels, categories, the community and DMs (`mutedUntil`; ends by itself on the phone, the server drops ended ones); category › Notification settings (`categoryNotify`; channel → category → community). Phone test pending |
 | CH-18 | Thread list per channel | R | — | — | — | P2 (B5) | CHAN-CTRL-011 |
 
 ## E. Conversations and content
