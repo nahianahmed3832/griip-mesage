@@ -1,7 +1,8 @@
 import { endNewAccountLimits, hasNewAccountLimits } from "./abuse.js";
-import type { Authz } from "./authz.js";
 import type { AppContext } from "./context.js";
 import type { DB } from "./db.js";
+import { type Authz, parsePermissionList } from "./authz.js";
+import { roleAssignmentRefusal } from "./permissions/rules.js";
 import { ApiError, humanCode, newId, normalizeCode, now, sha256Hex } from "./util.js";
 
 export interface OrgInviteRow {
@@ -60,7 +61,21 @@ export function orgInviteProblem(authz: Authz, inv: OrgInviteRow | undefined): I
   if (inv.expires_at <= now()) return "invite_expired";
   if (inv.uses >= inv.max_uses) return "invite_used_up";
   if (!authz.canIssueInvite(inv.org_id, inv.created_by, inv.role)) return "invite_unavailable";
+  if (inv.grant_role_id && !creatorMayStillGrant(authz, inv)) return "invite_unavailable";
   return null;
+}
+
+/**
+ * A role carrying powers or restrictions is handed out only while the invitation's creator could still assign it by
+ * hand. A role with neither (one a branch or team became: it only decides who sees a category) is given as the old
+ * branch or team invitation would have added the person.
+ */
+function creatorMayStillGrant(authz: Authz, inv: OrgInviteRow): boolean {
+  const role = authz.roleGrant(inv.grant_role_id!, inv.org_id);
+  if (!role) return true; // archived or deleted: nothing is granted (joinOrgByInvite checks again)
+  if (role.permissions.length === 0 && role.denies.length === 0) return true;
+  const actor = authz.actor(inv.org_id, inv.created_by);
+  return !!actor && roleAssignmentRefusal(actor, { base: "MEMBER", perms: new Set(), self: false }, role) === null;
 }
 
 /** A usable org invitation for this code, or undefined (see [orgInviteProblem] for why not). */

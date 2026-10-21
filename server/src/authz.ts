@@ -55,6 +55,10 @@ export function parsePermissionList(json: string): Permission[] {
 export class Authz {
   constructor(private db: DB) {}
 
+  /** Set only while [reconcileCommunity] runs: overwrites and channel actors read once per target and person. */
+  private overwriteCache: Map<string, Overwrite[]> | null = null;
+  private actorCache: Map<string, ChannelActor | null> | null = null;
+
   /** The custom roles [userId] holds in [orgId] (archived roles grant and restrict nothing). */
   assignedRoles(orgId: string, userId: string): AssignedRole[] {
     const rows = this.db
@@ -90,6 +94,14 @@ export class Authz {
    */
   permissionsAs(orgId: string, userId: string, base: OrgRole): Set<Permission> {
     return effectivePermissions(base, this.assignedRoles(orgId, userId));
+  }
+
+  /** An active custom role's grants and restrictions, or undefined when it's archived, deleted or elsewhere. */
+  roleGrant(roleId: string, orgId: string): RoleGrant | undefined {
+    const r = this.db.prepare("SELECT permissions, denies FROM org_roles WHERE id = ? AND org_id = ? AND archived_at IS NULL").get(roleId, orgId) as
+      | { permissions: string; denies: string }
+      | undefined;
+    return r ? { permissions: parsePermissionList(r.permissions), denies: parsePermissionList(r.denies) } : undefined;
   }
 
   /** Members of the workspace who hold [permission] now (to tell them about something waiting for them). */
@@ -151,14 +163,27 @@ export class Authz {
 
   /** Overwrites on a category or a channel. */
   overwrites(targetType: "category" | "channel", targetId: string): Overwrite[] {
+    const key = `${targetType}:${targetId}`;
+    const cached = this.overwriteCache?.get(key);
+    if (cached) return cached;
     const rows = this.db
       .prepare("SELECT subject, allow, deny FROM channel_overwrites WHERE target_type = ? AND target_id = ?")
       .all(targetType, targetId) as { subject: string; allow: string; deny: string }[];
-    return rows.map((r) => ({ subject: r.subject, allow: parseCapabilities(r.allow), deny: parseCapabilities(r.deny) }));
+    const list = rows.map((r) => ({ subject: r.subject, allow: parseCapabilities(r.allow), deny: parseCapabilities(r.deny) }));
+    this.overwriteCache?.set(key, list);
+    return list;
   }
 
   /** What [userId] brings into channel permissions: base role, community permissions, roles and their restrictions. */
   channelActor(orgId: string, userId: string): ChannelActor | null {
+    const key = `${orgId}:${userId}`;
+    if (this.actorCache?.has(key)) return this.actorCache.get(key)!;
+    const actor = this.readChannelActor(orgId, userId);
+    this.actorCache?.set(key, actor);
+    return actor;
+  }
+
+  private readChannelActor(orgId: string, userId: string): ChannelActor | null {
     const base = this.orgRole(orgId, userId);
     if (!base) return null;
     const roles = this.assignedRoles(orgId, userId);
@@ -355,10 +380,19 @@ export class Authz {
   reconcileCommunity(orgId: string, now: number): Map<string, string[]> {
     const lost = new Map<string, string[]>();
     const members = (this.db.prepare("SELECT user_id FROM org_members WHERE org_id = ?").all(orgId) as { user_id: string }[]).map((r) => r.user_id);
-    for (const u of members) {
-      const removed = this.revalidateChannelMemberships(orgId, u);
-      this.autoJoinScope(orgId, u, now);
-      if (removed.length) lost.set(u, removed);
+    // Nothing that decides access changes while this runs (the caller holds the write transaction), so overwrites and
+    // each person's roles are read once instead of once per channel.
+    this.overwriteCache = new Map();
+    this.actorCache = new Map();
+    try {
+      for (const u of members) {
+        const removed = this.revalidateChannelMemberships(orgId, u);
+        this.autoJoinScope(orgId, u, now);
+        if (removed.length) lost.set(u, removed);
+      }
+    } finally {
+      this.overwriteCache = null;
+      this.actorCache = null;
     }
     return lost;
   }

@@ -47,7 +47,7 @@ import { Metrics } from "./ops/metrics.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
-export const VERSION = "0.11.0";
+export const VERSION = "0.12.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
@@ -331,6 +331,8 @@ export function serverFeatures(config: Config, directUploads = false): string[] 
     "community-channels",
     "community-discovery",
     "community-moderation",
+    // Round 7: end dates for guests and a community's guest policy (routes/community.ts).
+    "guest-expiry",
     // Round 6: recovery codes for a lost email address (docs/ACCOUNT_RECOVERY.md).
     "recovery-codes",
     // 2026-10-21: keys backed up under the password, unlocked on a new device by an emailed code (docs/KEY_BACKUP.md).

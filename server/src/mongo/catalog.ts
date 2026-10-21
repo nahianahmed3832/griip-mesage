@@ -81,20 +81,19 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   team_members: "workspace",
   invitations: "workspace",
   org_deletions: "workspace",
-  // Workflows (round 7, docs/WORKFLOWS.md): a workspace's automations and their runs.
+  // Branches and teams, workflows, documents, user groups, developer keys and the Unified Inbox: retired by the
+  // community rebuild; their tables stay (src/retiredData.ts, src/communityMigration.ts).
   workflows: "workspace",
   workflow_runs: "workspace",
-  // Documents (round 7, docs/DOCUMENTS.md).
   documents: "workspace",
   document_members: "workspace",
   document_versions: "workspace",
   document_comments: "workspace",
-  // Groups and meetings (round 7, docs/WORKSPACE_C5.md).
+  // Meetings, shown as community events (round 7, docs/WORKSPACE_C5.md).
   user_groups: "workspace",
   user_group_members: "workspace",
   meetings: "workspace",
   meeting_participants: "workspace",
-  // API keys and webhooks (round 7, docs/DEVELOPER_API.md).
   api_keys: "workspace",
   webhooks: "workspace",
   webhook_deliveries: "workspace",
@@ -102,7 +101,6 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   usage_daily: "workspace",
   // Content-free daily product counts (Meldiq 2.0, docs/product/EXPERIMENTS.md).
   analytics_daily: "workspace",
-  // Unified Inbox (round 8, docs/UNIFIED_INBOX.md).
   inbox_accounts: "workspace",
   inbox_queues: "workspace",
   inbox_contacts: "workspace",

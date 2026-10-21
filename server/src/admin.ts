@@ -52,6 +52,7 @@ import { humanCode, newId, now, sha256Hex } from "./util.js";
 import { createBlobStore } from "./storage/index.js";
 import { MONGO_COMMANDS, runMongoCommand } from "./mongo/admin.js";
 import { RETIRED_COMMANDS, runRetiredCommand } from "./retiredData.js";
+import { migrateBranchesAndTeams, verifyCommunityMigration } from "./communityMigration.js";
 import { openMongo } from "./mongo/index.js";
 
 const [cmd, ...rest] = process.argv.slice(2);
@@ -318,6 +319,24 @@ switch (cmd) {
     if (cmd === "fed-block") db.prepare("INSERT OR REPLACE INTO federation_blocks (server_id, reason, created_at) VALUES (?, ?, ?)").run(rest[0], rest.slice(1).join(" ") || null, now());
     else db.prepare("DELETE FROM federation_blocks WHERE server_id = ?").run(rest[0]);
     console.log(`${cmd === "fed-block" ? "blocked" : "unblocked"} ${rest[0]}`);
+    break;
+  }
+  case "community-migration": {
+    // Idempotent: branches and teams already converted are skipped. --verify then compares access, old rules vs new.
+    const r = migrateBranchesAndTeams(db);
+    console.log(`converted ${r.branches} branches and ${r.teams} teams (${r.channels} channels placed in categories)`);
+    if (!rest.includes("--verify")) break;
+    const authz = new Authz(db);
+    const diffs = verifyCommunityMigration(db, (c, u) => {
+      const conv = authz.conversation(c);
+      return !!conv && authz.canViewChannel(conv, u);
+    });
+    if (diffs.length === 0) console.log("verified: everyone sees exactly the channels the old structure gave them");
+    else {
+      console.table(diffs.slice(0, 50));
+      console.error(`${diffs.length} difference(s) in channel visibility (first 50 shown)`);
+      process.exitCode = 1;
+    }
     break;
   }
   case "storage-check": {

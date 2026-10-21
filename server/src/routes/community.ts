@@ -264,6 +264,12 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
     const held = authz.isOrgAdmin(t.orgId, actor) ? new Set(authz.permissions(t.orgId, actor)) : t.held;
     const refusal = overwriteRefusal(held, { subject, allow, deny }, prev);
     if (refusal) throw new ApiError(refusal.status, refusal.code, refusal.message);
+    // Who can see is the community's call, like making a channel public or private: managing a category or channel
+    // isn't enough to show its channels to more (or fewer) people.
+    const viewState = (o?: { allow: readonly string[]; deny: readonly string[] }) => (o?.allow.includes("channels.view") ? 1 : o?.deny.includes("channels.view") ? -1 : 0);
+    if (viewState(prev) !== viewState({ allow, deny }) && !authz.can(t.orgId, actor, "channels.visibility")) {
+      throw forbidden("Only people who can change channel access can change who sees it");
+    }
     if (allow.length === 0 && deny.length === 0) {
       db.prepare("DELETE FROM channel_overwrites WHERE target_type = ? AND target_id = ? AND subject = ?").run(type, id, subject);
     } else {
@@ -278,7 +284,13 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
     return { ...listOverwrites(targetFor(type, id, actor)), ...result };
   };
 
-  app.get("/v1/categories/:id/overwrites", auth, async (req) => listOverwrites(targetFor("category", parse(zId, req.params).id, me(req).userId)));
+  app.get("/v1/categories/:id/overwrites", auth, async (req) => {
+    const actor = me(req).userId;
+    const t = targetFor("category", parse(zId, req.params).id, actor);
+    // A category's rules name roles and people: shown to those who manage it or can see a channel in it.
+    if (!t.canManage && !categoryViews(ctx, t.orgId, actor).some((c) => c.id === t.id)) throw notFound("Category not found");
+    return listOverwrites(t);
+  });
   app.put("/v1/categories/:id/overwrites", auth, async (req) => writeOverwrite("category", parse(zId, req.params).id, me(req).userId, parse(zOverwrite, req.body)));
   app.get("/v1/conversations/:id/overwrites", auth, async (req) => listOverwrites(targetFor("channel", parse(zId, req.params).id, me(req).userId)));
   app.put("/v1/conversations/:id/overwrites", auth, async (req) => writeOverwrite("channel", parse(zId, req.params).id, me(req).userId, parse(zOverwrite, req.body)));

@@ -150,6 +150,36 @@ describe("communities", () => {
     await expectStatus(member.req("PUT", `/v1/conversations/${general.id}/overwrites`, { subject: "everyone", deny: ["messages.post"] }), 403);
   });
 
+  it("keep who sees what with the people who may change channel access, and hide a hidden category's rules and name", async () => {
+    const den = (await owner.req("GET", `/v1/orgs/${orgId}/channels`)).channels.find((c: any) => c.name === "den");
+    // member manages #den, but showing it to fewer (or more) people is not theirs to decide.
+    const err = await expectStatus(member.req("PUT", `/v1/conversations/${den.id}/overwrites`, { subject: "everyone", deny: ["messages.attach", "channels.view"] }), 403);
+    expect(err.error.code).toBe("forbidden");
+    const room = (await owner.req("GET", `/v1/orgs/${orgId}`)).categories.find((c: any) => c.name === "Staff room");
+    await expectStatus(member.req("GET", `/v1/categories/${room.id}/overwrites`), 404);
+    expect((await staff.req("GET", `/v1/categories/${room.id}/overwrites`)).overwrites.length).toBeGreaterThan(0);
+    const feed = (await member.req("GET", `/v1/orgs/${orgId}/activity`)).activity as any[];
+    expect(feed.some((e) => e.action === "category.create" && e.target === room.id)).toBe(false);
+    expect((await staff.req("GET", `/v1/orgs/${orgId}/activity`)).activity.some((e: any) => e.action === "category.create" && e.target === room.id)).toBe(true);
+  });
+
+  it("stop an invitation handing out a powerful role once its creator can't assign it any more", async () => {
+    const helper = await h.client("chelper");
+    const inviter = (await owner.req("POST", `/v1/orgs/${orgId}/roles`, { name: "Inviter", permissions: ["members.invite"], denies: [] })).role.id;
+    const granter = (await owner.req("POST", `/v1/orgs/${orgId}/roles`, { name: "Granter", permissions: ["roles.assign", "messages.announce"], denies: [] })).role.id;
+    const herald = (await owner.req("POST", `/v1/orgs/${orgId}/roles`, { name: "Herald", permissions: ["messages.announce"], denies: [] })).role.id;
+    await join(helper, await invite(owner, { role: "MEMBER" }));
+    await owner.req("PUT", `/v1/roles/${inviter}/members/${helper.userId}`);
+    await owner.req("PUT", `/v1/roles/${granter}/members/${helper.userId}`);
+    const code = await invite(helper, { role: "MEMBER", roleId: herald, maxUses: 5 });
+    const plain = await invite(helper, { role: "MEMBER", maxUses: 5 });
+    expect((await newcomer.req("POST", "/v1/invites/preview", { code })).grantRole.name).toBe("Herald");
+    // They may still invite, but no longer hand out Herald: that invitation stops, the plain one keeps working.
+    await owner.req("DELETE", `/v1/roles/${granter}/members/${helper.userId}`);
+    await expectStatus(newcomer.req("POST", "/v1/invites/preview", { code }), 404);
+    expect((await newcomer.req("POST", "/v1/invites/preview", { code: plain })).org.id).toBe(orgId);
+  });
+
   it("keep a category whose permissions decide visibility until its channels move out; moving a channel takes the new category's rules", async () => {
     const full = await owner.req("GET", `/v1/orgs/${orgId}`);
     const room = full.categories.find((c: any) => c.name === "Staff room");

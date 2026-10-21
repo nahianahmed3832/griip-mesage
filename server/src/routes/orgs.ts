@@ -704,7 +704,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
         }
       }
     })();
-    ctx.audit({ actorId: actor, orgId, action: body.voice ? "voice_room.create" : "channel.create", target: id, detail: `${body.kind} ${body.format} ${body.name}` });
+    ctx.audit({ actorId: actor, orgId, action: body.voice ? "voice_room.create" : "channel.create", target: id, detail: `${body.kind} ${body.name}` });
     notifyConversation(ctx, id);
     notifyOrg(ctx, orgId);
     return { channel: conversationView(ctx, authz.conversation(id)!, actor) };
@@ -731,11 +731,12 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   // Non-admins see an event only if they could see its target in the org structure (GET /v1/orgs/:id)
   // or the conversation itself. The target is looked up live, so older audit rows without any scope
   // information are filtered the same way; a target that no longer exists is hidden.
-  const activityVisibleTo = (r: { action: string; target: string | null }, viewer: string): boolean => {
+  const activityVisibleTo = (r: { action: string; target: string | null }, viewer: string, orgId: string): boolean => {
     const target = r.target ?? "";
     switch (r.action) {
       case "category.create":
-        return true; // categories are listed for every member who can see a channel in them
+        // Only categories the viewer is shown (one with a channel they can see, or one they manage).
+        return categoryViews(ctx, orgId, viewer).some((c) => c.id === target);
       case "channel.create":
       case "channel.access":
       case "voice_room.create": {
@@ -768,7 +769,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     };
     return {
       activity: rows
-        .filter((r) => isAdmin || activityVisibleTo(r, actor))
+        .filter((r) => isAdmin || activityVisibleTo(r, actor, orgId))
         .slice(0, 60)
         .map((r) => ({ id: r.id, at: r.at, action: r.action, actorId: r.actor_id, actorName: nameOf(r.actor_id), target: r.target, detail: r.detail })),
     };
