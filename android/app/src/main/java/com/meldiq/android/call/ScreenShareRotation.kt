@@ -20,7 +20,7 @@ class ScreenShareRotation(context: Context, private val log: (String) -> Unit) {
     private val displays = context.getSystemService(DisplayManager::class.java)
     private val main = Handler(Looper.getMainLooper())
     private var capturer: ScreenCapturerAndroid? = null
-    private var fps = CallMediaPolicy.SCREEN_FPS
+    private var mode = ShareMode.TEXT
     private var last: Pair<Int, Int>? = null
 
     private val listener = object : DisplayManager.DisplayListener {
@@ -32,10 +32,10 @@ class ScreenShareRotation(context: Context, private val log: (String) -> Unit) {
     }
 
     /** Starts following the default display for [screenCapturer]; the size is checked once at once. */
-    fun start(screenCapturer: ScreenCapturerAndroid, maxFps: Int = CallMediaPolicy.SCREEN_FPS) {
+    fun start(screenCapturer: ScreenCapturerAndroid, shareMode: ShareMode = ShareMode.TEXT) {
         stop()
         capturer = screenCapturer
-        fps = maxFps
+        mode = shareMode
         displays?.registerDisplayListener(listener, main)
         update()
     }
@@ -49,10 +49,10 @@ class ScreenShareRotation(context: Context, private val log: (String) -> Unit) {
     private fun update() {
         val c = capturer ?: return
         val size = displaySize() ?: return
-        val target = CallMediaPolicy.orientedCaptureSize(size.first, size.second)
+        val target = CallMediaPolicy.orientedCaptureSize(size.first, size.second, mode)
         if (target == last) return
         last = target
-        runCatching { c.changeCaptureFormat(target.first, target.second, fps) }
+        runCatching { c.changeCaptureFormat(target.first, target.second, mode.fps) }
             .onSuccess { log("screen capture resized to ${target.first}×${target.second} for a ${size.first}×${size.second} display") }
             .onFailure { Log.w("ScreenShareRotation", "capture resize failed: ${it.javaClass.simpleName}") }
     }

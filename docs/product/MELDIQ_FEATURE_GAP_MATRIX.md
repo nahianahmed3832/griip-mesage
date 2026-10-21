@@ -172,8 +172,8 @@ Meldiq differs from Discord by design in two ways:
 | CALL-02 | Group calls | I | I | I | I | P1 | Group-call tiles; phone validation open |
 | CALL-03 | Voice channels | E2E | I | I | I | — | |
 | CALL-04 | Camera switch, mute | I (fixed in code) | I | I | — | P1 | Rear-camera mirroring and switch race fixed 2026-10-20 (`docs/MELDIQ_CALL_BUGS_2026-10-20.md`); **awaiting phone validation**. B10 logs every switch (side, id, size, time) for the phone test (`MELDIQ_CALLING_SCREENSHARE_AUDIT.md` §3) |
-| CALL-05 | Screen share | I | I | I | — | P1 | Android MediaProjection with display-rotation following; awaiting phone validation |
-| CALL-06 | Game streaming ("Go Live") | S (B11) | — | — | — | P2 | Screen share at up to 1080p is the base; high-frame-rate encoding, system audio capture (Android 10+ `AudioPlaybackCapture`, with consent) and viewer quality choice are specified in `MELDIQ_REALTIME_MEDIA_PLAN.md` |
+| CALL-05 | Screen share | I | I | I | — | P1 | Android MediaProjection with display-rotation following; B11 2026-10-22: share sheet (mode, app sound), "stopped sharing" message, clean stop on end and reconnect (emulator-checked); awaiting phone validation |
+| CALL-06 | Game streaming ("Go Live") | I (B11) | — | — | — | P2 | Games and video mode: 720p, 30 fps, 3.5 Mbit/s, keeps frame rate; app sound (Android 10+) mixed with the microphone. Not yet: H.264, 60 fps, a separate game-sound track (phone measurements first). **Awaiting phone validation** |
 | CALL-07 | Stage (raise hand) | I (calls) | I | I | I | P3 | Raise hand and host moderation in calls |
 | CALL-08 | Noise suppression | I | I | I | — | — | WebRTC NS/AEC/AGC; hardware NS off |
 | CALL-09 | Reconnect | I | I | I | — | P2 | B10 logs each reconnect's time (`CallDiag`); measure on phones |

@@ -21,6 +21,7 @@ import android.media.projection.MediaProjectionManager
 import android.util.Log
 import android.widget.Toast
 import com.meldiq.android.R
+import com.meldiq.android.call.ShareMode
 import com.meldiq.android.BuildConfig
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -164,8 +165,10 @@ fun CallOverlay() {
     val minimized by calls.minimized.collectAsStateWithLifecycle()
     var explainShare by remember { mutableStateOf(false) }
     var routeSheet by remember { mutableStateOf(false) }
+    val settingsStore = container.settings
     val projection = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        if (r.resultCode == Activity.RESULT_OK && r.data != null) calls.startScreenShare(r.data!!)
+        val pick = settingsStore.current
+        if (r.resultCode == Activity.RESULT_OK && r.data != null) calls.startScreenShare(r.data!!, ShareMode.of(pick.shareMode), pick.shareAppSound)
         else Toast.makeText(ctx, "Screen sharing cancelled", Toast.LENGTH_SHORT).show()
     }
     BackHandler(enabled = s.phase != CallPhase.Idle && !minimized && s.phase != CallPhase.Incoming) { calls.minimize() }
@@ -324,8 +327,9 @@ fun CallOverlay() {
                 ) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(Color.White))
                     Spacer(Modifier.width(10.dp))
-                    Text("You're sharing your screen", style = Griip.type.bodyMedium, color = Color.White, modifier = Modifier.weight(1f))
-                    Text("Stop", style = Griip.type.button, color = Color.White, modifier = Modifier.clip(Shapes.pill).background(Color.White.copy(alpha = 0.22f)).pressable({ calls.stopScreenShare() }).padding(horizontal = 14.dp, vertical = 6.dp))
+                    val what = stringResource(if (s.shareMode == ShareMode.GAME) R.string.b11_sharing_game else R.string.b11_sharing)
+                    Text(if (s.shareAppSound) what + " · " + stringResource(R.string.b11_with_sound) else what, style = Griip.type.bodyMedium, color = Color.White, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.b11_stop), style = Griip.type.button, color = Color.White, modifier = Modifier.clip(Shapes.pill).background(Color.White.copy(alpha = 0.22f)).pressable({ calls.stopScreenShare() }).padding(horizontal = 14.dp, vertical = 6.dp))
                 }
             }
             if (s.phase == CallPhase.Incoming) {
@@ -375,12 +379,12 @@ fun CallOverlay() {
         }
     }
     if (routeSheet) AudioRouteSheet(s, onPick = { calls.selectAudioRoute(it); routeSheet = false }, onDismiss = { routeSheet = false; calls.clearRouteError() })
-    if (explainShare) ConfirmDialog(
-        "Share your screen?",
-        "Everyone in this call will see everything on your screen — including notifications and any app you open — until you tap Stop. Android will ask for your permission next.",
-        "Continue",
-        onConfirm = {
+    // Batch B11: what the share is for and whether app sound goes with it, remembered for next time.
+    if (explainShare) ShareSheet(
+        ShareMode.of(settingsStore.current.shareMode), settingsStore.current.shareAppSound,
+        onContinue = { mode, sound ->
             explainShare = false
+            settingsStore.update { it.copy(shareMode = mode.name, shareAppSound = sound) }
             val mpm = ctx.getSystemService(MediaProjectionManager::class.java)
             projection.launch(mpm.createScreenCaptureIntent())
         },

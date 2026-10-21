@@ -563,4 +563,22 @@
     <string name="b10_need_mic">Allow the microphone to check it.</string>
     <string name="b10_need_camera">Allow the camera to check it.</string>
     <string name="b10_check_private">Nothing is recorded or sent.</string>
+    <string name="b11_title">Share your screen</string>
+    <string name="b11_warning">Everyone in this call sees everything on your screen, notifications and any app you open included, until you tap Stop.</string>
+    <string name="b11_text">Text and apps</string>
+    <string name="b11_text_sub">Sharp text, up to 1080p at 15 fps</string>
+    <string name="b11_game">Games and video</string>
+    <string name="b11_game_sub">Smooth motion, 720p at 30 fps</string>
+    <string name="b11_sound">Include app sound</string>
+    <string name="b11_sound_sub">Goes out with your microphone, so muting yourself mutes it too. Some apps don\'t allow it.</string>
+    <string name="b11_sound_old">App sound needs Android 10 or later.</string>
+    <string name="b11_android14">Android will ask next. You can share one app or the whole screen.</string>
+    <string name="b11_android_asks">Android will ask for your permission next.</string>
+    <string name="b11_continue">Continue</string>
+    <string name="b11_sharing">You\'re sharing your screen</string>
+    <string name="b11_sharing_game">Sharing · games and video</string>
+    <string name="b11_with_sound">with sound</string>
+    <string name="b11_stop">Stop</string>
+    <string name="b11_share_ended">%1$s stopped sharing their screen</string>
+    <string name="b11_sound_short">Sound from games and videos</string>
 </resources>

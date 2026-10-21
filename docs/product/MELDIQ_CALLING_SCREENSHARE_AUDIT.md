@@ -101,6 +101,15 @@ records a verdict for each one:
 | Viewer | Tile with letterbox, fit not crop | Full-screen viewer, quality label, "stream ended" state |
 | Measurement | `CallDiagnostics` | End-to-end latency (timestamp overlay test), fps received, freezes per minute |
 
+**Built in B11 (2026-10-22, `MELDIQ_SESSION_HANDOFF.md` §6k):**
+- Game mode: 720p, 30 fps, 3.5 Mbit/s, maintain frame rate.
+- App sound via `ScreenAudioCapturer`, mixed into the microphone.
+- The share sheet, with the Android 14 single-app note.
+- "Stopped sharing" for viewers.
+- Clean stop on end and reconnect.
+
+H.264 and 60 fps wait for phone measurements.
+
 **Acceptance for B11:**
 - Another device in the same call receives the shared screen at the stated frame rate (from the receiver's
   `CallDiagnostics` lines), in both orientations.

@@ -563,4 +563,22 @@
     <string name="b10_need_mic">পরীক্ষা করতে মাইক্রোফোনের অনুমতি দিন।</string>
     <string name="b10_need_camera">পরীক্ষা করতে ক্যামেরার অনুমতি দিন।</string>
     <string name="b10_check_private">কিছুই রেকর্ড বা পাঠানো হয় না।</string>
+    <string name="b11_title">স্ক্রিন শেয়ার</string>
+    <string name="b11_warning">আপনি থামান না পর্যন্ত কলের সবাই আপনার স্ক্রিনের সবকিছু দেখবেন, নোটিফিকেশন ও খোলা অ্যাপ সহ।</string>
+    <string name="b11_text">লেখা ও অ্যাপ</string>
+    <string name="b11_text_sub">পরিষ্কার লেখা, ১০৮০p পর্যন্ত, ১৫ fps</string>
+    <string name="b11_game">গেম ও ভিডিও</string>
+    <string name="b11_game_sub">মসৃণ চলাচল, ৭২০p, ৩০ fps</string>
+    <string name="b11_sound">অ্যাপের শব্দ সহ</string>
+    <string name="b11_sound_sub">আপনার মাইক্রোফোনের সাথে যায়, তাই মিউট করলে এটাও মিউট হয়। কিছু অ্যাপ অনুমতি দেয় না।</string>
+    <string name="b11_sound_old">অ্যাপের শব্দের জন্য Android 10 বা পরের সংস্করণ লাগে।</string>
+    <string name="b11_android14">এরপর Android জিজ্ঞাসা করবে। একটি অ্যাপ বা পুরো স্ক্রিন শেয়ার করতে পারেন।</string>
+    <string name="b11_android_asks">এরপর Android অনুমতি চাইবে।</string>
+    <string name="b11_continue">চালিয়ে যান</string>
+    <string name="b11_sharing">আপনি স্ক্রিন শেয়ার করছেন</string>
+    <string name="b11_sharing_game">শেয়ার হচ্ছে · গেম ও ভিডিও</string>
+    <string name="b11_with_sound">শব্দ সহ</string>
+    <string name="b11_stop">থামান</string>
+    <string name="b11_share_ended">%1$s স্ক্রিন শেয়ার বন্ধ করেছেন</string>
+    <string name="b11_sound_short">গেম ও ভিডিওর শব্দ</string>
 </resources>

@@ -28,6 +28,9 @@ data class Settings(
     val hardwareEchoCanceller: Boolean = false,
     /** Batch B10: calls reduce background noise (on); off keeps music and quiet sounds as they are. */
     val noiseReduction: Boolean = true,
+    /** Batch B11: the last screen-share choice ("TEXT" or "GAME") and whether app sound went with it. */
+    val shareMode: String = "TEXT",
+    val shareAppSound: Boolean = false,
     // Chats (2026-10-17, docs/SETTINGS.md).
     /** Animated emoji move in chats (still when off, or when the system's animations are off). */
     val animatedEmoji: Boolean = true,
@@ -92,6 +95,8 @@ class SettingsStore(
         mediaE2ee = prefs.getBoolean("mediaE2ee", true),
         hardwareEchoCanceller = prefs.getBoolean("hardwareEchoCanceller", false),
         noiseReduction = prefs.getBoolean("noiseReduction", true),
+        shareMode = prefs.getString("shareMode", null) ?: "TEXT",
+        shareAppSound = prefs.getBoolean("shareAppSound", false),
         animatedEmoji = prefs.getBoolean("animatedEmoji", true),
         linkOpening = runCatching { LinkOpening.valueOf(prefs.getString("linkOpening", null)!!) }.getOrDefault(LinkOpening.IN_APP),
         linkPreviews = prefs.getBoolean("linkPreviews", false),
@@ -125,6 +130,8 @@ class SettingsStore(
             .putBoolean("mediaE2ee", n.mediaE2ee)
             .putBoolean("hardwareEchoCanceller", n.hardwareEchoCanceller)
             .putBoolean("noiseReduction", n.noiseReduction)
+            .putString("shareMode", n.shareMode)
+            .putBoolean("shareAppSound", n.shareAppSound)
             .putBoolean("animatedEmoji", n.animatedEmoji)
             .putString("linkOpening", n.linkOpening.name)
             .putBoolean("linkPreviews", n.linkPreviews)

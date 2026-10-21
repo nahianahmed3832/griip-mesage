@@ -693,6 +693,77 @@ workspace domain; images are profile-photos blobs, removed with the emoji or the
    then the call goes on, with no "connection dropped" message left on the other phone.
 7. **Report back:** pass or fail per step, with screenshots.
 
+## 6k. Batch B11: screen sharing and game streaming (built 2026-10-22, not phone-tested)
+
+### What's in it
+
+| Feature | What the person sees | Code |
+|---|---|---|
+| Share choice (CALL-05/06) | **Share** opens a sheet first: the warning, then **Text and apps** (sharp text, up to 1080p at 15 fps) or **Games and video** (smooth motion, 720p at 30 fps), and **Include app sound**. The last choice is the default next time. Then Android's own consent (Android 14+: one app or the entire screen) | `ui/screens/calls/ShareSheet.kt`; `SettingsStore.shareMode`, `shareAppSound` |
+| Game mode | 1280×720 at most, 30 fps, up to 3.5 Mbit/s, and under congestion it keeps the frame rate and lowers sharpness. Text mode is unchanged: 1920×1080, 15 fps, 2.5 Mbit/s, keeps sharpness. Rotation following uses the chosen mode's size | `ShareMode` in `CallMediaPolicy.kt`; `CallManager.applyShareMode`; `ScreenShareRotation` |
+| App sound (Android 10+) | Sound from the shared apps goes with your microphone, so muting or deafening yourself silences it too; apps that forbid capture stay silent. The banner reads "Sharing · games and video · with sound" | `CallManager.startAppSound` / `stopAppSound` (LiveKit `ScreenAudioCapturer`) |
+| Share ended | When the other person stops sharing, you're told "<name> stopped sharing their screen" | `CallManager` (`TrackUnpublished`) |
+| Clean stop | Stopping the share, ending the call, a reconnect or Android ending the capture also stop the app sound and release it | `CallManager` |
+
+**Not built, with the reason:**
+- **H.264:** phones' hardware H.264 encoders differ, and decoding plus frame encryption need checking on real
+  devices first. VP8 stays.
+- **60 fps:** not without measurements on phones.
+- **A viewer quality picker:** the receiver's adaptive stream already picks what it can take.
+- **Game sound as a separate track:** it's mixed into the microphone, so muting yourself silences it too.
+
+**Server:** no change (API 0.23.0).
+
+### How it was checked
+
+- **Android:** `ShareModeTest` (4 tests: 720p cap and shape in both orientations, frame rate against sharpness, saved
+  choice fallback, Android 10 for sound) and `CallMediaPolicyTest`. Full suite: see the APK section. Lint 0 errors (it
+  caught two Android 10 calls without an explicit version check: fixed).
+- **Emulator** (Ada shares to Erin in a voice call, local LiveKit):
+  - **Games and video with sound:**
+    - diagnostics showed "screen share: game 1280x720 30 fps 3500 kbps, app sound on" and "capture resized to
+      576×1280 for a 1080×2400 display";
+    - Erin's app received 576×1280 at 15–18 fps, end-to-end encrypted (the emulator's encoder and decoder limit the
+      rate);
+    - the banner read "Sharing · games and video · with sound".
+  - **Text and apps:** "text 1920x1080 15 fps 2500 kbps".
+  - **Stopping:** **Stop** ended the share and Android's capture session was gone (`dumpsys media_projection`
+    empty). Ending the call while sharing did the same, with no crash. A new call started with no screen share (no
+    old track republished). When Ada stopped, Erin's app showed the "stopped sharing" message (seen in the system
+    log).
+  - **Android 16** offered "Share one app" or "Share entire screen", as the sheet says.
+- **Found and fixed during the check:** the app-sound explanation was cut off after one line; it now has its own
+  lines under the switch.
+- **Not checked on the emulator:**
+  - whether app sound is heard on the other phone (the emulator plays no game sound);
+  - 30 fps on real hardware;
+  - a landscape game;
+  - a single-app share when that app goes to the background.
+
+### B11 APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b11-debug.apk`
+  (149 MB, git-ignored). **SHA-256:** `995c241a7b5c9e0de7e7a69b5d56a3b72357dbf283ff8f084531de9835153f1d`.
+- **Variant:** debug, side by side, server `http://localhost:8080` (API 0.23.0). It contains everything since B4: **the
+  one APK to install for testing B4 to B11 together.**
+- **Checks:** 636 Android unit tests, 0 failures; lint 0 errors.
+
+### Owner's phone checklist (B11): two phones in a call
+
+1. **Text mode:** **Share** › **Text and apps** › Continue › Android's dialog › share the entire screen. Open a long
+   chat. **Expected:** the other phone reads the text clearly. Tap **Stop**: sharing ends, and the other phone says you
+   stopped sharing.
+2. **Game mode with sound:** **Share** › **Games and video**, **Include app sound** on › Continue › entire screen.
+   Play a game or video in landscape. **Expected:** the other phone sees smooth, landscape motion and hears the game.
+   The banner reads "Sharing · games and video · with sound". Mute yourself: the game sound stops too.
+3. **One app (Android 14+):** choose **Share one app** in Android's dialog and pick a game. **Expected:** only that
+   app is seen. Note what the other phone sees when you leave the app.
+4. **Ending:** end the call while sharing. **Expected:** the status-bar capture icon disappears. Call again: nothing
+   is shared until you choose to.
+5. **Measurements (optional):** `adb logcat -s CallDiag` on both phones; send the "stats send … screen=" and
+   "recv … screen=" lines (frame size, fps, kbps).
+6. **Report back:** pass or fail per step, with screenshots.
+
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
@@ -710,7 +781,7 @@ workspace domain; images are profile-photos blobs, removed with the emoji or the
 
 ## 8. Next, exactly
 
-1. **Engineering (in progress overnight):** B11 (screen share and game streaming), then B12 and B13 in order, each committed with
+1. **Engineering (in progress overnight):** B12 (remaining gaps), then B13 (integration), in order, each committed with
    its own APK and checklist in this file.
 2. **Backlog added by the owner 2026-10-22** (`MELDIQ_BACKLOG_B14_B16_B15.md`): **B14** minimal DM screen and
    conversation details, then **B16** transitions and interaction polish, then **B15** the final quality gate (always

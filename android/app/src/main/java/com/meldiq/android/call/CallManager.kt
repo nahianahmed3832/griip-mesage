@@ -1,5 +1,7 @@
 package com.meldiq.android.call
 
+import com.meldiq.android.R
+
 import android.content.Context
 import android.content.Intent
 import android.media.AudioDeviceInfo
@@ -53,6 +55,8 @@ import io.livekit.android.room.track.Track
 import io.livekit.android.room.track.TrackPublication
 import io.livekit.android.room.track.VideoTrack
 import io.livekit.android.room.track.screencapture.ScreenCaptureParams
+import io.livekit.android.audio.ScreenAudioCapturer
+import io.livekit.android.room.track.LocalAudioTrack
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -104,6 +108,9 @@ data class CallUiState(
     val deafened: Boolean = false,
     val cameraOn: Boolean = false,
     val screenSharing: Boolean = false,
+    /** Batch B11: what this share is tuned for, and whether app sound goes with it (both only while sharing). */
+    val shareMode: ShareMode = ShareMode.TEXT,
+    val shareAppSound: Boolean = false,
     /** The call's sound is on the speaker now (from [audioRoute]; kept for the picture-in-picture and older callers). */
     val speakerOn: Boolean = false,
     val participants: List<ParticipantUi> = emptyList(),
@@ -763,10 +770,14 @@ class CallManager(
     }
 
     /** Room options per [CallMediaPolicy]: explicit camera settings, and screen share tuned for readable text. */
-    private fun roomOptions(e2ee: E2EEOptions?): RoomOptions {
+    private fun displaySize(): Pair<Int, Int> {
         val wm = context.getSystemService(android.view.WindowManager::class.java)
-        val (w, h) = if (android.os.Build.VERSION.SDK_INT >= 30) wm.maximumWindowMetrics.bounds.let { it.width() to it.height() }
+        return if (android.os.Build.VERSION.SDK_INT >= 30) wm.maximumWindowMetrics.bounds.let { it.width() to it.height() }
         else android.util.DisplayMetrics().also { @Suppress("DEPRECATION") wm.defaultDisplay.getRealMetrics(it) }.let { it.widthPixels to it.heightPixels }
+    }
+
+    private fun roomOptions(e2ee: E2EEOptions?): RoomOptions {
+        val (w, h) = displaySize()
         val (long, short) = CallMediaPolicy.screenCaptureSize(w, h)
         return RoomOptions(
             adaptiveStream = true,
@@ -856,7 +867,14 @@ class CallManager(
                 cryptorGuard?.guard(ev.room, ev.publication, ev.participant)
             }
             is RoomEvent.TrackUnsubscribed -> trackChanged { it.trackRemoved(trackKey(ev.participant, ev.publications)) }
-            is RoomEvent.TrackUnpublished -> trackChanged { it.trackRemoved(trackKey(ev.participant, ev.publication)) }
+            is RoomEvent.TrackUnpublished -> {
+                trackChanged { it.trackRemoved(trackKey(ev.participant, ev.publication)) }
+                // Batch B11: a viewer is told the share ended instead of the screen just disappearing.
+                if (ev.participant !== ev.room.localParticipant && ev.publication.source == Track.Source.SCREEN_SHARE) {
+                    val who = _state.value.participants.firstOrNull { it.identity == ev.participant.identity?.value }?.name ?: _state.value.title
+                    _state.update { it.copy(notice = context.getString(R.string.b11_share_ended, who)) }
+                }
+            }
             is RoomEvent.TrackMuted -> trackChanged { it.trackMuted(trackKey(ev.participant, ev.publication), true) }
             is RoomEvent.TrackUnmuted -> trackChanged { it.trackMuted(trackKey(ev.participant, ev.publication), false) }
             // Only until the guard has replaced a cryptor's observer; afterwards states arrive through the guard.
@@ -1073,7 +1091,7 @@ class CallManager(
      * or the person ends the capture from outside the call screen, LiveKit unpublishes the track; it's never restarted
      * on its own, and the call screen says it stopped.
      */
-    fun startScreenShare(resultData: Intent) = scope.launch {
+    fun startScreenShare(resultData: Intent, mode: ShareMode = ShareMode.TEXT, appSound: Boolean = false) = scope.launch {
         val r = room ?: return@launch
         if (_state.value.listenOnly) { _state.update { it.copy(notice = CallFailure.LISTEN_ONLY) }; return@launch }
         if (_state.value.phase != CallPhase.Connected) {
@@ -1081,6 +1099,7 @@ class CallManager(
             return@launch
         }
         stoppingShare = false
+        applyShareMode(r, mode)
         try {
             val params = ScreenCaptureParams(
                 resultData,
@@ -1092,7 +1111,10 @@ class CallManager(
                 _state.update { it.copy(error = "Screen sharing failed to start") }
             } else {
                 val share = r.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE)?.track as? LocalVideoTrack
-                (share?.capturer as? livekit.org.webrtc.ScreenCapturerAndroid)?.let { shareRotation.start(it) }
+                (share?.capturer as? livekit.org.webrtc.ScreenCapturerAndroid)?.let { shareRotation.start(it, mode) }
+                val withSound = appSound && share != null && startAppSound(r, share)
+                _state.update { it.copy(shareMode = mode, shareAppSound = withSound) }
+                diag.log("screen share: ${mode.name.lowercase()} ${mode.maxLong}x${mode.maxShort} ${mode.fps} fps ${mode.maxBitrate / 1000} kbps, app sound ${if (withSound) "on" else "off"}")
             }
         } catch (e: Exception) {
             Log.w(TAG, "screen share start failed: ${e.javaClass.simpleName}")
@@ -1103,6 +1125,7 @@ class CallManager(
 
     private fun onCaptureStopped(r: Room) {
         shareRotation.stop()
+        stopAppSound(r)
         if (room !== r) return
         val ours = stoppingShare
         stoppingShare = false
@@ -1117,6 +1140,7 @@ class CallManager(
         if (!r.localParticipant.isScreenShareEnabled) return@launch
         stoppingShare = true
         shareRotation.stop()
+        stopAppSound(r)
         runCatching { r.localParticipant.setScreenShareEnabled(false, null) }
         refreshParticipants()
     }
@@ -1184,6 +1208,47 @@ class CallManager(
     private var rejoinJob: kotlinx.coroutines.Job? = null
     private var reconnectingSince: Long? = null
 
+    /** Batch B11: app sound mixed into the microphone track while sharing (null when not). */
+    private var shareSound: ScreenAudioCapturer? = null
+
+    /** Sets the room's screen-share capture and encoding for [mode] just before a share is published. */
+    private fun applyShareMode(r: Room, mode: ShareMode) {
+        val (w, h) = displaySize()
+        val (long, short) = CallMediaPolicy.screenCaptureSize(w, h, mode)
+        r.screenShareTrackCaptureDefaults = LocalVideoTrackOptions(isScreencast = true, captureParams = VideoCaptureParameter(long, short, mode.fps))
+        r.screenShareTrackPublishDefaults = VideoTrackPublishDefaults(
+            videoEncoding = VideoEncoding(mode.maxBitrate, mode.fps),
+            simulcast = false,
+            degradationPreference = if (mode.keepFrameRate) RtpParameters.DegradationPreference.MAINTAIN_FRAMERATE else RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION,
+        )
+    }
+
+    /**
+     * Mixes the shared apps' sound into the microphone track (Android 10+). Apps that forbid capture stay silent; the
+     * sound goes only while the microphone is on. Returns whether it started.
+     */
+    @android.annotation.SuppressLint("MissingPermission") // calls only start with the microphone allowed
+    private fun startAppSound(r: Room, share: LocalVideoTrack): Boolean {
+        // Written out (not CallMediaPolicy.canShareAppSound) so lint sees the Android 10 check.
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return false
+        val mic = r.localParticipant.getTrackPublication(Track.Source.MICROPHONE)?.track as? LocalAudioTrack ?: return false
+        val capturer = runCatching { ScreenAudioCapturer.createFromScreenShareTrack(share) }
+            .onFailure { Log.w(TAG, "app sound capture failed: ${it.javaClass.simpleName}") }
+            .getOrNull() ?: return false
+        mic.setAudioBufferCallback(capturer)
+        shareSound = capturer
+        return true
+    }
+
+    /** Stops mixing app sound; [r] is null when the room is already gone. */
+    private fun stopAppSound(r: Room?) {
+        val capturer = shareSound ?: return
+        shareSound = null
+        (r?.localParticipant?.getTrackPublication(Track.Source.MICROPHONE)?.track as? LocalAudioTrack)?.let { runCatching { it.setAudioBufferCallback(null) } }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) runCatching { capturer.releaseAudioResources() }
+        _state.update { it.copy(shareAppSound = false) }
+    }
+
     /** The other person is in the room again: stop waiting for them and drop the "connection dropped" notice. */
     private fun peerBack() {
         peerWait?.cancel()
@@ -1227,6 +1292,7 @@ class CallManager(
 
     /** Drops the current room without ending the call (before a rejoin). */
     private fun teardownRoomOnly() {
+        stopAppSound(room)
         mediaJob?.cancel()
         mediaJob = null
         eventsJob?.cancel()
@@ -1276,6 +1342,7 @@ class CallManager(
     private fun reset() {
         userRoute = null
         shareRotation.stop()
+        stopAppSound(room)
         _minimized.value = false
         _state.value = CallUiState()
         // No call any more: no ongoing-call notification either, whatever raced the service's stop.

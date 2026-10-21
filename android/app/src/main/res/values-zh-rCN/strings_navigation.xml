@@ -563,4 +563,22 @@
     <string name="b10_need_mic">允许使用麦克风才能检查。</string>
     <string name="b10_need_camera">允许使用摄像头才能检查。</string>
     <string name="b10_check_private">不会录制或发送任何内容。</string>
+    <string name="b11_title">共享屏幕</string>
+    <string name="b11_warning">通话中的每个人都会看到你屏幕上的一切，包括通知和你打开的任何应用，直到你点按「停止」。</string>
+    <string name="b11_text">文字和应用</string>
+    <string name="b11_text_sub">文字清晰，最高 1080p、每秒 15 帧</string>
+    <string name="b11_game">游戏和视频</string>
+    <string name="b11_game_sub">画面流畅，720p、每秒 30 帧</string>
+    <string name="b11_sound">包含应用声音</string>
+    <string name="b11_sound_sub">随你的麦克风一起发送，所以你静音时它也会静音。部分应用不允许。</string>
+    <string name="b11_sound_old">共享应用声音需要 Android 10 或更高版本。</string>
+    <string name="b11_android14">接下来 Android 会询问。你可以共享单个应用或整个屏幕。</string>
+    <string name="b11_android_asks">接下来 Android 会请求你的许可。</string>
+    <string name="b11_continue">继续</string>
+    <string name="b11_sharing">你正在共享屏幕</string>
+    <string name="b11_sharing_game">共享中 · 游戏和视频</string>
+    <string name="b11_with_sound">含声音</string>
+    <string name="b11_stop">停止</string>
+    <string name="b11_share_ended">%1$s 已停止共享屏幕</string>
+    <string name="b11_sound_short">游戏和视频的声音</string>
 </resources>

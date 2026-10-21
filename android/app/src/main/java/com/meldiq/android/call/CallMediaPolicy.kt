@@ -40,10 +40,10 @@ object CallMediaPolicy {
      * [SCREEN_MAX_LONG]×[SCREEN_MAX_SHORT] without stretching, never scaled up, even numbers (encoders need them).
      * LiveKit orients it to the screen (portrait capture on a portrait screen).
      */
-    fun screenCaptureSize(displayW: Int, displayH: Int): Pair<Int, Int> {
+    fun screenCaptureSize(displayW: Int, displayH: Int, mode: ShareMode = ShareMode.TEXT): Pair<Int, Int> {
         val long = maxOf(displayW, displayH).coerceAtLeast(2)
         val short = minOf(displayW, displayH).coerceAtLeast(2)
-        val scale = minOf(1.0, SCREEN_MAX_LONG.toDouble() / long, SCREEN_MAX_SHORT.toDouble() / short)
+        val scale = minOf(1.0, mode.maxLong.toDouble() / long, mode.maxShort.toDouble() / short)
         fun even(v: Double) = (v.toInt() / 2 * 2).coerceAtLeast(2)
         return even(long * scale) to even(short * scale)
     }
@@ -52,10 +52,16 @@ object CallMediaPolicy {
      * The screen-capture size for the display as it is now: landscape when the display is landscape (a game turned it),
      * portrait otherwise, never stretched ([screenCaptureSize]).
      */
-    fun orientedCaptureSize(displayW: Int, displayH: Int): Pair<Int, Int> {
-        val (long, short) = screenCaptureSize(displayW, displayH)
+    fun orientedCaptureSize(displayW: Int, displayH: Int, mode: ShareMode = ShareMode.TEXT): Pair<Int, Int> {
+        val (long, short) = screenCaptureSize(displayW, displayH, mode)
         return if (displayW > displayH) long to short else short to long
     }
+
+    /**
+     * Batch B11: app sound can go with a screen share from Android 10 (API 29, `AudioPlaybackCapture`). It's mixed into
+     * the microphone track, so it's sent only while the microphone is on, and apps that forbid capture stay silent.
+     */
+    fun canShareAppSound(sdk: Int): Boolean = sdk >= 29
 
     /** Your own picture is mirrored only for the front camera, like a mirror; the back camera shows the world as it is. */
     fun mirrorPreview(isLocal: Boolean, backCamera: Boolean): Boolean = isLocal && !backCamera
@@ -138,5 +144,26 @@ class VideoStatsSampler {
 
     fun forget(keep: Set<String>) {
         last.keys.retainAll(keep)
+    }
+}
+
+/**
+ * What a screen share is tuned for (batch B11, CALL-06), chosen before each share.
+ *
+ * - [TEXT]: documents, chats and apps. Up to 1920×1080, 15 fps, 2.5 Mbit/s; congestion lowers the frame rate and keeps
+ *   text sharp (the round-7 settings, unchanged).
+ * - [GAME]: games and video. Up to 1280×720 at 30 fps and 3.5 Mbit/s; congestion lowers sharpness and keeps motion
+ *   smooth. 720p is what phones encode at 30 fps without heating up, and what a receiving phone shows anyway.
+ *
+ * Both use VP8 with one layer. H.264 isn't used yet: hardware H.264 encoders differ by phone, and the other phones'
+ * decoders and the frame encryption need checking on real devices first (`MELDIQ_CALLING_SCREENSHARE_AUDIT.md` §4).
+ */
+enum class ShareMode(val maxLong: Int, val maxShort: Int, val fps: Int, val maxBitrate: Int, val keepFrameRate: Boolean) {
+    TEXT(CallMediaPolicy.SCREEN_MAX_LONG, CallMediaPolicy.SCREEN_MAX_SHORT, CallMediaPolicy.SCREEN_FPS, CallMediaPolicy.SCREEN_MAX_BITRATE, keepFrameRate = false),
+    GAME(1280, 720, 30, 3_500_000, keepFrameRate = true),
+    ;
+
+    companion object {
+        fun of(name: String?): ShareMode = entries.firstOrNull { it.name == name } ?: TEXT
     }
 }
