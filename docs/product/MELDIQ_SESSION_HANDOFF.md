@@ -454,6 +454,31 @@ You need two accounts on two phones, or your two accounts on one phone (Meldiq T
 5. **Languages:** 中文 or বাংলা in the Presence sheet.
 6. **Report back:** pass or fail per step, with screenshots.
 
+## 6f. Batch B7: media and large files (checked 2026-10-22; no code change)
+
+**Finding:** what B7 planned is already built: the attach panel and picker, a preview with checks before sending,
+progress on the bubble, retry and cancel (`docs/ATTACHMENTS.md`), chunked encryption for files over 25 MB, resumable
+downloads (HTTP ranges), and, with S3 (production since 2026-10-17), direct multipart uploads that resume after a dropped
+connection (`docs/AWS_STORAGE_PLAN.md`). Nothing was added, so there's no B7 APK: use the B6b APK.
+
+**Checked on the emulator** (local server, disk storage): Ada sent a 100 MB file to Erin. The panel said "1 GB per
+file on this server"; the preview warned that `.bin` files can run software; the upload finished in about 19 seconds
+(over USB) with progress on the bubble; Erin downloaded it with progress, the open warning appeared, and the file on
+Erin's phone had **the same SHA-256 as the original** (`a03635718f1a21e9…`).
+
+**Still open, the owner's test (matrix MSG-16):** a 1 GiB file to production over real Wi-Fi and over mobile data,
+including turning networks off and on mid-way. Production must allow it: `ATTACHMENT_MAX_BYTES` and the proxy's body
+limit (`docs/ATTACHMENTS.md` › Large files).
+
+### Owner's phone checklist (B7, against production with a release build)
+
+1. Send a file of about 1 GB to your other account over Wi-Fi. **Expected:** progress, then sent; the other phone
+   downloads it with progress and it opens.
+2. Repeat over mobile data, and switch flight mode on and off once during the upload. **Expected:** it resumes, not
+   restarts (S3 multipart), and completes.
+3. Cancel an upload half-way (long-press › Cancel upload). **Expected:** it's removed and nothing arrives.
+4. **Report back:** times for both networks, and any failure text.
+
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
@@ -469,8 +494,8 @@ You need two accounts on two phones, or your two accounts on one phone (Meldiq T
 
 ## 8. Next, exactly
 
-1. **Engineering (in progress overnight):** B7 (media and large files), then B8 to B13 in order, each committed with
-   its own APK and checklist in this file.
+1. **Engineering (in progress overnight):** B8 (forums, polls, events, onboarding), then B9 to B13 in order, each
+   committed with its own APK and checklist in this file.
 2. **Owner, when back:** phone-test the batches together using the per-batch checklists (B4, B4b, then later ones),
    and report pass or fail per batch.
 3. **Owner decisions:** `MELDIQ_IMPLEMENTATION_PLAN.md` "Owner actions" (fingerprint and meldiq.app hosting for invite

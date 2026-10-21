@@ -123,7 +123,7 @@ Meldiq differs from Discord by design in two ways:
 | MSG-13 | Events | I | I | I | I | P2 | Meetings with RSVP; recurrence and "voice channel" events: P2 |
 | MSG-14 | Typing indicator | I | I | I | I | — | |
 | MSG-15 | Save for later, reminders | I | I | I | I | — | |
-| MSG-16 | Attachments, 1 GiB target | E2E (600 MB, USB) | I | I | I | P1 | 1 GiB over real Wi-Fi and mobile data to production: owner's test (`MELDIQ_SESSION_HANDOFF.md`) |
+| MSG-16 | Attachments, 1 GiB target | E2E (600 MB USB; 100 MB emulator 2026-10-22) | I | I | I | P1 | Built: chunked encryption, resumable downloads, S3 multipart uploads that resume. B7 2026-10-22: 100 MB Ada → Erin on the emulator, same SHA-256 on arrival. 1 GiB over real Wi-Fi and mobile data to production: owner's test (`MELDIQ_SESSION_HANDOFF.md` §6f) |
 | MSG-17 | Voice messages | I | I | I | — | — | |
 | MSG-18 | Markdown | I | I | I | — | — | |
 | MSG-19 | Message menu translations | E2E (emulator) | I | — | — | — | B5 2026-10-22: the message menu, message info, forward dialog, file warning, composer, header, banners and conversation info are translated (about 110 strings, `b5_*`) |
