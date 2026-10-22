@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
+import { HistoryItemsQuery, historyPutBody } from "../../../shared/contracts/http/history.js";
 import { hasNewAccountLimits } from "../../../app/middleware/abuse.js";
 import { type AppContext } from "../../../app/context.js";
 import { me, requireAuth } from "../../auth/index.js";
@@ -16,8 +16,6 @@ import { now } from "../../../shared/utilities/util.js";
  * Only the account itself can read or change its history; deleting the account deletes it (foreign keys).
  */
 
-const TAG = /^[A-Za-z0-9_-]{16,64}$/;
-const MAX_BATCH = 200;
 const MAX_BATCH_BYTES = 4 * 1024 * 1024;
 
 export default async function historyRoutes(app: FastifyInstance, ctx: AppContext) {
@@ -46,20 +44,7 @@ export default async function historyRoutes(app: FastifyInstance, ctx: AppContex
     };
   });
 
-  const putSchema = z.object({
-    items: z
-      .array(
-        z.object({
-          tag: z.string().regex(TAG),
-          conv: z.string().regex(TAG),
-          ts: z.number().int().min(0).max(8_640_000_000_000_000),
-          // base64 ciphertext, or null to mark the item deleted (other devices then drop it too).
-          body: z.string().max(Math.ceil((cfg.maxItemBytes * 4) / 3) + 4).nullable(),
-        }),
-      )
-      .min(1)
-      .max(MAX_BATCH),
-  });
+  const putSchema = historyPutBody(Math.ceil((cfg.maxItemBytes * 4) / 3) + 4);
 
   // Adds or replaces items (an edited message replaces its item). All or nothing: a batch over the account's quota is
   // refused whole, with 429.
@@ -86,10 +71,7 @@ export default async function historyRoutes(app: FastifyInstance, ctx: AppContex
   app.get("/v1/history/items", auth, async (req) => {
     requireEnabled();
     const { userId } = me(req);
-    const q = parse(
-      z.object({ after: z.coerce.number().int().min(0).default(0), limit: z.coerce.number().int().min(1).max(1000).default(500) }),
-      req.query,
-    );
+    const q = parse(HistoryItemsQuery, req.query);
     const rows = await history.items(userId, q.after, q.limit + 1);
     const more = rows.length > q.limit;
     const page = rows.slice(0, q.limit);

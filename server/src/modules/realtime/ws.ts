@@ -5,7 +5,6 @@ import { type AuthInfo, authenticateToken, stillAuthenticated } from "../auth/in
 import { canSeeLastSeen, presenceModeOf, type ProfileRow, shownPresence } from "../accounts/profile.js";
 import { acknowledge } from "../messaging/messagesRoutes.js";
 import { now } from "../../shared/utilities/util.js";
-import { frame } from "./hub.js";
 
 /**
  * Realtime gateway. Auth uses the same bearer session token as REST, sent in the
@@ -124,7 +123,7 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
   const open = (socket: WebSocket, auth: AuthInfo, token: string | undefined): ((raw: Buffer) => Promise<void>) => {
     const conn = hub.add(socket, auth.userId, auth.deviceId);
     db.prepare("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(now(), auth.deviceId);
-    socket.send(frame({ t: "hello", userId: auth.userId, deviceId: auth.deviceId, serverTime: now() }));
+    socket.send(hub.encode({ t: "hello", userId: auth.userId, deviceId: auth.deviceId, serverTime: now() }));
     hub.flushBacklog(conn);
 
     let alive = true;
@@ -173,7 +172,7 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
       }
       switch (msg?.t) {
         case "ping":
-          socket.send(frame({ t: "pong", serverTime: now() }));
+          socket.send(hub.encode({ t: "pong", serverTime: now() }));
           break;
         case "ack": {
           const ids = Array.isArray(msg.ids) ? msg.ids.filter((x: unknown) => Number.isInteger(x)).slice(0, 500) : [];

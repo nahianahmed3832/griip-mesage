@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
+import { AckBody, Envelope, QueueQuery } from "../../shared/contracts/http/messaging.js";
 import { REQUEST_MESSAGE_LIMIT } from "../accounts/relationships/rules.js";
-import { z } from "zod";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
 import { parse, zB64, zKey, zSig } from "../../shared/validation/index.js";
@@ -9,26 +9,6 @@ import { type QueueItemRow, queueItemToWire } from "../realtime/hub.js";
 import { ApiError, conflict, forbidden } from "../../shared/errors.js";
 import { now } from "../../shared/utilities/util.js";
 import { MENTION_ALL_MESSAGES, mentionAllPermission, mentionAllRateLimited } from "./mentions.js";
-
-const MAX_CIPHERTEXT_B64 = 128 * 1024; // ≈ 96 KiB of ciphertext per message (attachments go via /v1/attachments)
-
-const zEnvelope = z.object({
-  conversationId: z.string().max(64),
-  messageId: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/),
-  cls: z.enum(["message", "control"]),
-  sentAt: z.number().int().positive(),
-  nonce: z.string().length(16).regex(/^[A-Za-z0-9+/]+={0,2}$/), // 12 bytes
-  ciphertext: zB64.max(MAX_CIPHERTEXT_B64),
-  signature: zSig,
-  recipients: z
-    .array(z.object({ deviceId: z.string().max(64), enc: zKey, wrappedKey: z.string().length(64).regex(/^[A-Za-z0-9+/]+={0,2}$/) }))
-    .max(1000),
-  /**
-   * The sender asks for @everyone (docs/MENTIONS.md). Content stays encrypted: the server only checks its policy and
-   * marks the recipients' copies, and recipients treat @everyone as a mention only with that mark.
-   */
-  mentionAll: z.boolean().optional(),
-});
 
 export default async function messageRoutes(app: FastifyInstance, ctx: AppContext) {
   const auth = { preHandler: requireAuth(ctx) };
@@ -41,7 +21,7 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
    */
   app.post("/v1/messages", { ...auth, bodyLimit: 2 * 1024 * 1024 }, async (req) => {
     const { userId, deviceId } = me(req);
-    const e = parse(zEnvelope, req.body);
+    const e = parse(Envelope, req.body);
     const conv = authz.requireMember(e.conversationId, userId);
     if (!authz.canPost(conv, userId)) {
       const timedOut = conv.org_id ? authz.timeoutUntil(conv.org_id, userId) : null;
@@ -195,7 +175,7 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
   // REST fallback for the WebSocket queue (used after reconnect if the socket is unavailable).
   app.get("/v1/queue", auth, async (req) => {
     const { deviceId } = me(req);
-    const { limit } = parse(z.object({ limit: z.coerce.number().int().min(1).max(200).default(100) }), req.query);
+    const { limit } = parse(QueueQuery, req.query);
     const rows = db
       .prepare("SELECT * FROM delivery_queue WHERE recipient_device_id = ? AND expires_at > ? ORDER BY id LIMIT ?")
       .all(deviceId, now(), limit + 1) as QueueItemRow[];
@@ -204,7 +184,7 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
 
   app.post("/v1/queue/ack", auth, async (req) => {
     const { userId, deviceId } = me(req);
-    const { ids } = parse(z.object({ ids: z.array(z.number().int().positive()).min(1).max(500) }), req.body);
+    const { ids } = parse(AckBody, req.body);
     const removed = acknowledge(ctx, userId, deviceId, ids);
     return { removed };
   });

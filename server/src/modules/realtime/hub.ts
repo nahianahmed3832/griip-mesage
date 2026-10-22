@@ -59,6 +59,14 @@ export class Hub {
   recordsLastSeen: (userId: string) => boolean = () => true;
   /** A device's last socket closed; [openedAt] is when that socket opened. */
   onDeviceOffline: (deviceId: string, openedAt: number) => void = () => {};
+  /** Sees every frame before it is sent; the test harness checks them against the contract (test/support/contracts.ts). */
+  observe: ((e: ServerEvent) => void) | null = null;
+
+  /** The text of one WebSocket frame: only contract events can be sent (src/shared/contracts/realtime.ts). */
+  encode(e: ServerEvent): string {
+    this.observe?.(e);
+    return JSON.stringify(e);
+  }
 
   /** [maxSocketsPerDevice]: a device opening more connections than this closes its oldest (docs/ABUSE_CONTROLS.md). */
   constructor(
@@ -126,7 +134,7 @@ export class Hub {
   sendToDevice(deviceId: string, msg: ServerEvent): boolean {
     const set = this.byDevice.get(deviceId);
     if (!set || set.size === 0) return false;
-    const data = frame(msg);
+    const data = this.encode(msg);
     for (const c of set) if (c.ws.readyState === 1) c.ws.send(data);
     return true;
   }
@@ -173,7 +181,7 @@ export class Hub {
       if (opts.wake !== false && rows.some((r) => r.kind === "envelope")) this.onQueuedOffline(deviceId);
       return;
     }
-    const data = frame({ t: "queue", items: rows.map(queueItemToWire), more: false });
+    const data = this.encode({ t: "queue", items: rows.map(queueItemToWire), more: false });
     for (const c of this.byDevice.get(deviceId) ?? []) if (!c.flushing && c.ws.readyState === 1) c.ws.send(data);
   }
 
@@ -188,15 +196,10 @@ export class Hub {
     const more = rows.length > batchSize;
     const batch = rows.slice(0, batchSize);
     if (conn.ws.readyState !== 1) return;
-    conn.ws.send(frame({ t: "queue", items: batch.map(queueItemToWire), more, backlog: true }));
+    conn.ws.send(this.encode({ t: "queue", items: batch.map(queueItemToWire), more, backlog: true }));
     // Query, send and this switch happen in one synchronous step, so an item queued afterwards is
     // pushed live and one queued before is in this batch: nothing is skipped or sent twice.
     conn.flushing = more;
-    if (!more) conn.ws.send(frame({ t: "queue.drained" }));
+    if (!more) conn.ws.send(this.encode({ t: "queue.drained" }));
   }
-}
-
-/** The text of one WebSocket frame: only contract events can be sent (src/shared/contracts/realtime.ts). */
-export function frame(e: ServerEvent): string {
-  return JSON.stringify(e);
 }

@@ -14,7 +14,8 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "admin": "node dist/admin.js",
-    "seed:dev": "node dist/seed.js"
+    "seed:dev": "node dist/seed.js",
+    "contracts": "tsx scripts/contracts.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1144.0",

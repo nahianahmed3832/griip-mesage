@@ -1,10 +1,11 @@
 import crypto from "node:crypto";
+import { CompleteBody, ConversationQuery, PartsBody, UploadStartBody } from "../../shared/contracts/http/files.js";
+import { idParams } from "../../shared/contracts/http/primitives.js";
 import fs from "node:fs";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import { hasNewAccountLimits, HOUR_MS, SlidingWindow } from "../../app/middleware/abuse.js";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
@@ -139,7 +140,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
 
   app.post("/v1/attachments", auth, async (req, reply) => {
     const { userId } = me(req);
-    const { conversationId } = parse(z.object({ conversationId: z.string().max(64) }), req.query);
+    const { conversationId } = parse(ConversationQuery, req.query);
     const conv = ctx.authz.requireMember(conversationId, userId);
     if (!ctx.authz.canPost(conv, userId)) throw new ApiError(403, "forbidden", "You can't post in this conversation");
     if (!ctx.authz.canAttach(conv, userId)) throw new ApiError(403, "forbidden", "You can't share files in this channel");
@@ -209,7 +210,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
 
   app.get("/v1/attachments/:id", auth, async (req, reply) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const a = ctx.db.prepare("SELECT * FROM attachments WHERE id = ?").get(id) as
       | { id: string; conversation_id: string; size: number; expires_at: number }
       | undefined;
@@ -254,7 +255,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
   // only in members' messages and history. Charged to the uploader's quota for kept files.
   app.post("/v1/attachments/:id/keep", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const a = ctx.db.prepare("SELECT * FROM attachments WHERE id = ?").get(id) as
       | { id: string; conversation_id: string; uploader_user_id: string; size: number; expires_at: number; kept: number }
       | undefined;
@@ -279,7 +280,6 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
   //    can't overwrite anything (or, above the multipart threshold, starts a multipart upload with per-part hashes).
   // 3. The app sends the bytes straight to S3, then asks the server to complete. 4. The server checks the stored object
   //    (size, hash) and only then records the attachment. Apps on servers storing on disk keep using POST /v1/attachments.
-  const sha256B64 = z.string().regex(/^[A-Za-z0-9+/]{43}=$/, "Expected a base64 SHA-256");
   const direct = blobs.direct;
   interface UploadRow {
     id: string;
@@ -315,7 +315,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
   app.post("/v1/attachments/uploads", auth, async (req, reply) => {
     const { userId, deviceId } = me(req);
     const d = requireDirect();
-    const body = parse(z.object({ conversationId: z.string().max(64), size: z.number().int().positive(), sha256: sha256B64 }), req.body);
+    const body = parse(UploadStartBody, req.body);
     const conv = ctx.authz.requireMember(body.conversationId, userId);
     if (!ctx.authz.canPost(conv, userId)) throw new ApiError(403, "forbidden", "You can't post in this conversation");
     if (!ctx.authz.canAttach(conv, userId)) throw new ApiError(403, "forbidden", "You can't share files in this channel");
@@ -351,7 +351,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
   // A fresh URL for a single upload whose URL expired before the app could start it.
   app.post("/v1/attachments/uploads/:id/url", auth, async (req) => {
     const d = requireDirect();
-    const u = loadUpload(parse(z.object({ id: z.string().max(64) }), req.params).id, me(req).userId);
+    const u = loadUpload(parse(idParams, req.params).id, me(req).userId);
     if (u.multipart_id) throw badRequest("This is a multipart upload: ask for its parts");
     return { upload: await d.presignPut("attachments", u.id, u.size, u.sha256, cfg.directUploads.urlTtlSeconds).catch((e) => storeFailure(e, "presign")) };
   });
@@ -359,12 +359,9 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
   // URLs for parts of a multipart upload: each bound to its exact size and SHA-256.
   app.post("/v1/attachments/uploads/:id/parts", auth, async (req) => {
     const d = requireDirect();
-    const u = loadUpload(parse(z.object({ id: z.string().max(64) }), req.params).id, me(req).userId);
+    const u = loadUpload(parse(idParams, req.params).id, me(req).userId);
     if (!u.multipart_id) throw badRequest("This is a single upload: ask for its URL");
-    const { parts } = parse(
-      z.object({ parts: z.array(z.object({ n: z.number().int().min(1).max(10_000), size: z.number().int().positive(), sha256: sha256B64 })).min(1).max(100) }),
-      req.body,
-    );
+    const { parts } = parse(PartsBody, req.body);
     for (const p of parts) {
       if (p.n > partCount(u) || p.size !== partSizeOf(u, p.n)) throw badRequest(`Part ${p.n} must be ${p.n > partCount(u) ? "within the upload" : `${partSizeOf(u, p.n)} bytes`}`);
     }
@@ -377,7 +374,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
   // What the store already has of a multipart upload (an app resuming after an interruption).
   app.get("/v1/attachments/uploads/:id/parts", auth, async (req) => {
     const d = requireDirect();
-    const u = loadUpload(parse(z.object({ id: z.string().max(64) }), req.params).id, me(req).userId);
+    const u = loadUpload(parse(idParams, req.params).id, me(req).userId);
     if (!u.multipart_id) throw badRequest("This is a single upload");
     const have = await d.listParts("attachments", u.id, u.multipart_id).catch((e) => storeFailure(e, "list-parts"));
     return { parts: have.map((p) => ({ n: p.partNumber, etag: p.etag, size: p.size, sha256: p.sha256 })) };
@@ -387,13 +384,13 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
   app.post("/v1/attachments/uploads/:id/complete", auth, async (req) => {
     const { userId } = me(req);
     const d = requireDirect();
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const done = ctx.db.prepare("SELECT id, size, expires_at FROM attachments WHERE id = ? AND uploader_user_id = ?").get(id, userId) as
       | { id: string; size: number; expires_at: number }
       | undefined;
     if (done) return { id: done.id, size: done.size, expiresAt: done.expires_at };
     const u = loadUpload(id, userId);
-    const body = parse(z.object({ parts: z.array(z.object({ n: z.number().int().min(1), etag: z.string().max(200), sha256: sha256B64 })).max(10_000).optional() }), req.body ?? {});
+    const body = parse(CompleteBody, req.body ?? {});
     // Membership is checked again: someone removed while uploading can't add a file afterwards.
     const conv = ctx.authz.conversation(u.conversation_id);
     if (!conv || !ctx.authz.isMember(conv.id, userId) || !ctx.authz.canAttach(conv, userId)) {
@@ -442,7 +439,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
 
   // The app gave up (cancelled, or failed for good): whatever reached the store is removed.
   app.delete("/v1/attachments/uploads/:id", auth, async (req) => {
-    const u = loadUpload(parse(z.object({ id: z.string().max(64) }), req.params).id, me(req).userId);
+    const u = loadUpload(parse(idParams, req.params).id, me(req).userId);
     ctx.db.prepare("DELETE FROM attachment_uploads WHERE id = ?").run(u.id);
     abandon(u);
     await processAbandonedUploads(ctx).catch(() => 0);

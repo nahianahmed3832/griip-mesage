@@ -5,6 +5,7 @@ import { buildApp, type BuiltApp } from "../../src/app/server.js";
 import { loadConfig } from "../../src/app/config.js";
 import type { Mailer } from "../../src/infrastructure/mail/mailer.js";
 import type { PushDeps } from "../../src/modules/notifications/service.js";
+import { type ContractCheck, contractCheck } from "./contracts.js";
 import { GriipClient } from "./griipClient.js";
 import { dropTestDatabase, testMongoEnv } from "./mongo.js";
 
@@ -13,6 +14,8 @@ export interface Harness extends BuiltApp {
   dir: string;
   close: () => Promise<void>;
   client: (username: string, displayName?: string) => Promise<GriipClient>;
+  /** What this server registered and answered, checked against the contracts (test/support/contracts.ts). */
+  contracts: ContractCheck;
 }
 
 let counter = 0;
@@ -46,7 +49,8 @@ export async function startServer(env: Record<string, string> = {}, opts: { push
     ...testMongoEnv(env),
     ...env,
   } as NodeJS.ProcessEnv);
-  const built = await buildApp(config, { logger: false, push: opts.push, mailer: opts.mailer });
+  const contracts = contractCheck();
+  const built = await buildApp(config, { logger: false, push: opts.push, mailer: opts.mailer, contracts: contracts.observer });
   await built.app.listen({ host: "127.0.0.1", port: 0 });
   const addr = built.app.server.address();
   const port = typeof addr === "object" && addr ? addr.port : 0;
@@ -58,6 +62,7 @@ export async function startServer(env: Record<string, string> = {}, opts: { push
     ...built,
     baseUrl,
     dir,
+    contracts,
     client: async (username, displayName) => {
       const c = new GriipClient(baseUrl, `${username}${++counter}`.toLowerCase(), displayName ?? username);
       await c.register();
@@ -75,6 +80,7 @@ export async function startServer(env: Record<string, string> = {}, opts: { push
       if (built.ctx.mongo) await dropTestDatabase(built.ctx.config.mongo!);
       built.ctx.db.close();
       fs.rmSync(dir, { recursive: true, force: true });
+      contracts.finish();
     },
   };
 }

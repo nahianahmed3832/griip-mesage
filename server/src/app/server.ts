@@ -1,4 +1,5 @@
 import rateLimit from "@fastify/rate-limit";
+import { type ContractObserver, observeContracts } from "./contractObserver.js";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import { MongoNetworkError, MongoServerSelectionError } from "mongodb";
@@ -85,6 +86,8 @@ export async function buildApp(
     push?: PushDeps;
     mailer?: Mailer;
     mongo?: MeldiqMongo;
+    /** Tests only: checks routes, answers and frames against the contracts (src/app/contractObserver.ts). */
+    contracts?: ContractObserver;
   } = {},
 ): Promise<BuiltApp> {
   const app = Fastify({
@@ -109,6 +112,7 @@ export async function buildApp(
     trustProxy: config.trustProxy,
     bodyLimit: 256 * 1024,
   });
+  if (opts.contracts) observeContracts(app, opts.contracts);
 
   const db = opts.db ?? openDatabase(config.databasePath);
   // `accounts` needs the finished context; it is set right below, before any route can run.
@@ -137,6 +141,10 @@ export async function buildApp(
     const mongo = opts.mongo ?? (await openMongo(config.mongo, db, app.log));
     ctx.mongo = mongo;
     if (!opts.mongo) app.addHook("onClose", async () => mongo.close());
+  }
+  if (opts.contracts) {
+    const observer = opts.contracts;
+    ctx.hub.observe = (e) => observer.frame(e);
   }
   ctx.accounts = new Accounts(ctx, { mailer: opts.mailer });
   ctx.prefs = ctx.mongo?.owns("preferences") ? new MongoPreferenceStore(ctx.mongo) : new SqlitePreferenceStore(db);

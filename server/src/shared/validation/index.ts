@@ -1,13 +1,23 @@
 import { z } from "zod";
 import { badRequest } from "../errors.js";
 
-/** Request validation shared by every route: zod schemas and the 400 they produce (docs/architecture/ARCHITECTURE_1_0_PLAN.md §4). */
-export function parse<T extends z.ZodTypeAny>(schema: T, data: unknown): z.infer<T> {
+/**
+ * Anything with zod's safeParse: the routes' own zod 3 schemas and the zod 4 schemas of src/shared/contracts (both
+ * produce the same 400 here).
+ */
+export interface Schema<T> {
+  safeParse(data: unknown):
+    | { success: true; data: T }
+    | { success: false; error: { issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey>; message: string }> } };
+}
+
+/** Request validation shared by every route: the parsed value, or a 400 listing what's wrong (docs/architecture/ARCHITECTURE_1_0_PLAN.md §4). */
+export function parse<T>(schema: Schema<T>, data: unknown): T {
   const r = schema.safeParse(data);
   if (!r.success) {
     throw badRequest(
       "Invalid request",
-      r.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+      r.error.issues.map((i) => ({ path: i.path.map(String).join("."), message: i.message })),
     );
   }
   return r.data;

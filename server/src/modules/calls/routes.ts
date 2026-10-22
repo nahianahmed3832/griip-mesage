@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
+import { CallCreateBody, ConversationCallsQuery, DeclineBody, HandBody, ModerateBody } from "../../shared/contracts/http/calls.js";
+import { idParams } from "../../shared/contracts/http/primitives.js";
 import type { CallAttendanceWire, CallEventExtras, CallEventName, CallWire, ServerEvent } from "../../shared/contracts/realtime.js";
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
 import { parse } from "../../shared/validation/index.js";
@@ -410,7 +411,7 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.post("/v1/calls", auth, async (req) => {
     const { userId, deviceId } = me(req);
-    const body = parse(z.object({ conversationId: z.string().max(64), video: z.boolean().default(false) }), req.body);
+    const body = parse(CallCreateBody, req.body);
     const conv = authz.requireMember(body.conversationId, userId);
     if (conv.archived_at) throw conflict("This channel is archived");
     // Batch B6: nobody rings through a message request; the recipient accepts it first.
@@ -494,8 +495,8 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
   // Only call metadata the server already has (who started it, when, who connected); nothing from encrypted messages.
   app.get("/v1/conversations/:id/calls", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const q = parse(z.object({ before: z.coerce.number().int().positive().optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }), req.query ?? {});
+    const { id } = parse(idParams, req.params);
+    const q = parse(ConversationCallsQuery, req.query ?? {});
     authz.requireMember(id, userId);
     const since = (db.prepare("SELECT joined_at FROM conversation_members WHERE conversation_id = ? AND user_id = ?").get(id, userId) as { joined_at: number }).joined_at;
     const rows = db
@@ -506,13 +507,13 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.get("/v1/calls/:id", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     return { call: callView(ctx, memberCall(id, userId)) };
   });
 
   app.post("/v1/calls/:id/join", auth, async (req) => {
     const { userId, deviceId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const c = memberCall(id, userId);
     if (c.host_server_id) return forwarded(c, "join", userId, deviceId);
     return actions.join(c, userId, deviceId);
@@ -523,8 +524,8 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
   /** Raise or lower your hand in a voice room's call (everyone in the conversation sees the queue). */
   app.post("/v1/calls/:id/hand", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const { raised } = parse(z.object({ raised: z.boolean() }), req.body);
+    const { id } = parse(idParams, req.params);
+    const { raised } = parse(HandBody, req.body);
     const c = memberCall(id, userId);
     if (!c.room) throw badRequest("Hands are for voice rooms");
     if (c.state === "ENDED") throw new ApiError(410, "call_ended", "This call has ended");
@@ -541,8 +542,8 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
    */
   app.post("/v1/calls/:id/moderate", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const body = parse(z.object({ userId: z.string().max(64), action: z.enum(["mute", "lower_hand", "remove"]) }), req.body);
+    const { id } = parse(idParams, req.params);
+    const body = parse(ModerateBody, req.body);
     const c = memberCall(id, userId);
     const conv = authz.conversation(c.conversation_id)!;
     if (!c.room) throw badRequest("Moderation is for voice rooms");
@@ -574,7 +575,7 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.post("/v1/calls/:id/connected", auth, async (req) => {
     const { userId, deviceId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const c = memberCall(id, userId);
     if (c.host_server_id) return forwarded(c, "connected", userId, deviceId);
     return actions.connected(c, userId, deviceId);
@@ -582,7 +583,7 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.post("/v1/calls/:id/alerted", auth, async (req) => {
     const { userId, deviceId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const c = memberCall(id, userId);
     if (c.host_server_id) {
       if (c.state === "ENDED") throw new ApiError(410, "call_ended", "This call has ended");
@@ -593,8 +594,8 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.post("/v1/calls/:id/decline", auth, async (req) => {
     const { userId, deviceId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const body = parse(z.object({ reason: z.enum(["declined", "busy"]).default("declined") }), req.body ?? {});
+    const { id } = parse(idParams, req.params);
+    const body = parse(DeclineBody, req.body ?? {});
     const c = memberCall(id, userId);
     if (c.host_server_id) {
       if (c.state === "ENDED") return { call: callView(ctx, c) };
@@ -605,7 +606,7 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.post("/v1/calls/:id/end", auth, async (req) => {
     const { userId, deviceId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const c = memberCall(id, userId);
     if (c.host_server_id) return forwarded(c, "end", userId, deviceId);
     return actions.end(c, userId);
@@ -613,7 +614,7 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.post("/v1/calls/:id/leave", auth, async (req) => {
     const { userId, deviceId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const c = memberCall(id, userId);
     if (c.host_server_id) return forwarded(c, "leave", userId, deviceId);
     return actions.leave(c, userId, deviceId);
