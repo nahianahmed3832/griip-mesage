@@ -154,9 +154,6 @@
     <string name="guest_policy_allow_sub">访客只能看到被添加的频道</string>
     <string name="guest_policy_max">访客最长停留时间</string>
     <string name="guest_no_limit">无限制</string>
-    <string name="tpl_title">社区模板</string>
-    <string name="tpl_menu_sub">添加某类团队通常需要的频道</string>
-    <string name="tpl_note">只添加此社区尚未拥有的频道，以及一份欢迎文档。不会添加任何人或应用。</string>
     <string name="grp_title">群组</string>
     <string name="grp_menu_sub">市场、工程……：一次性将成员添加到频道和会议</string>
     <string name="grp_intro">群组本身不授予任何权限：将其添加到频道或会议时，会逐一检查后添加其成员。</string>
@@ -195,7 +192,6 @@
     <string name="mtg_minutes">%1$d 分钟</string>
     <string name="mtg_room">语音房间</string>
     <string name="mtg_no_rooms">此社区还没有语音房间。请先创建一个。</string>
-    <string name="mtg_invite_groups">邀请群组</string>
     <string name="mtg_invite_people">邀请成员</string>
     <string name="mtg_field_description">备注（可选）</string>
     <string name="mtg_save">保存</string>

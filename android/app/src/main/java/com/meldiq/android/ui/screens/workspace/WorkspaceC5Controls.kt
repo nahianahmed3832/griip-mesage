@@ -21,13 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.meldiq.android.R
-import com.meldiq.android.data.api.ApplyTemplateReq
-import com.meldiq.android.data.api.ApplyTemplateRes
 import com.meldiq.android.data.api.GuestPolicyReq
 import com.meldiq.android.data.api.OrgDetailRes
 import com.meldiq.android.data.api.UserDto
-import com.meldiq.android.data.api.WsTemplateDto
-import com.meldiq.android.data.api.WsTemplatesRes
 import com.meldiq.android.ui.LocalContainer
 import com.meldiq.android.ui.TimeFmt
 import com.meldiq.android.ui.components.ChipRow
@@ -101,29 +97,5 @@ internal fun GuestPolicyCard(orgId: String, allowed: Boolean, maxDays: Int?, onC
             }
         }
         error?.let { Text(it, style = Griip.type.caption, color = c.danger) }
-    }
-}
-
-/** Adds a template's channels and a welcome document (only what's missing); for people who can edit the workspace. */
-@Composable
-internal fun TemplatesSheet(orgId: String, onApplied: (Int) -> Unit, onDismiss: () -> Unit) {
-    val container = LocalContainer.current
-    val c = Griip.colors
-    val scope = rememberCoroutineScope()
-    var templates by remember { mutableStateOf<List<WsTemplateDto>>(emptyList()) }
-    var error by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) { runCatching { container.api.get<WsTemplatesRes>("/v1/workspace-templates").templates }.onSuccess { templates = it }.onFailure { error = it.friendly() } }
-    GlassSheet(onDismiss, title = stringResource(R.string.tpl_title)) {
-        Text(stringResource(R.string.tpl_note), style = Griip.type.caption, color = c.textSecondary)
-        templates.forEach { t ->
-            MenuRow(Icons.Outlined.AutoAwesome, t.name, subtitle = t.description + "\n" + t.channels.joinToString(" ") { "#${it.name}" }, onClick = {
-                scope.launch {
-                    runCatching { container.api.post<ApplyTemplateReq, ApplyTemplateRes>("/v1/orgs/$orgId/apply-template", ApplyTemplateReq(t.id)).applied }
-                        .onSuccess { onApplied(it.channels.size) }.onFailure { error = it.friendly() }
-                }
-            })
-        }
-        error?.let { Text(it, style = Griip.type.caption, color = c.danger) }
-        Spacer(Modifier.height(16.dp))
     }
 }

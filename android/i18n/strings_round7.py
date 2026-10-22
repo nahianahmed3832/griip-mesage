@@ -163,9 +163,6 @@ S = {
 "guest_policy_max": ("Longest a guest can stay", "访客最长停留时间", "অতিথি সর্বোচ্চ কতদিন থাকতে পারবেন"),
 "guest_no_limit": ("No limit", "无限制", "সীমা নেই"),
 # Templates
-"tpl_title": ("Community templates", "社区模板", "কমিউনিটি টেমপ্লেট"),
-"tpl_menu_sub": ("Add the channels a kind of team usually needs", "添加某类团队通常需要的频道", "এক ধরনের দলের সাধারণত দরকারি চ্যানেল যোগ করুন"),
-"tpl_note": ("Adds only channels this community doesn't have yet, plus a welcome document. It never adds people or apps.", "只添加此社区尚未拥有的频道，以及一份欢迎文档。不会添加任何人或应用。", "শুধু এই কমিউনিটিতে এখনো না থাকা চ্যানেল আর একটি স্বাগত ডকুমেন্ট যোগ করে। কখনো মানুষ বা অ্যাপ যোগ করে না।"),
 # Groups
 "grp_title": ("Groups", "群组", "গ্রুপ"),
 "grp_menu_sub": ("Marketing, Engineering…: add people to channels and meetings in one go", "市场、工程……：一次性将成员添加到频道和会议", "মার্কেটিং, ইঞ্জিনিয়ারিং…: একবারে চ্যানেল ও মিটিংয়ে মানুষ যোগ করুন"),
@@ -206,7 +203,6 @@ S = {
 "mtg_minutes": ("%1$d min", "%1$d 分钟", "%1$d মিনিট"),
 "mtg_room": ("Voice room", "语音房间", "ভয়েস রুম"),
 "mtg_no_rooms": ("This community has no voice channels yet. Create one first.", "此社区还没有语音房间。请先创建一个。", "এই কমিউনিটিতে এখনো ভয়েস রুম নেই। আগে একটি তৈরি করুন।"),
-"mtg_invite_groups": ("Invite groups", "邀请群组", "গ্রুপ আমন্ত্রণ"),
 "mtg_invite_people": ("Invite people", "邀请成员", "মানুষ আমন্ত্রণ"),
 "mtg_field_description": ("Notes (optional)", "备注（可选）", "নোট (ঐচ্ছিক)"),
 "mtg_save": ("Save", "保存", "সংরক্ষণ"),

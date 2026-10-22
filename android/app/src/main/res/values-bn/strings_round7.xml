@@ -154,9 +154,6 @@
     <string name="guest_policy_allow_sub">অতিথিরা শুধু যোগ করা চ্যানেলগুলো দেখেন</string>
     <string name="guest_policy_max">অতিথি সর্বোচ্চ কতদিন থাকতে পারবেন</string>
     <string name="guest_no_limit">সীমা নেই</string>
-    <string name="tpl_title">কমিউনিটি টেমপ্লেট</string>
-    <string name="tpl_menu_sub">এক ধরনের দলের সাধারণত দরকারি চ্যানেল যোগ করুন</string>
-    <string name="tpl_note">শুধু এই কমিউনিটিতে এখনো না থাকা চ্যানেল আর একটি স্বাগত ডকুমেন্ট যোগ করে। কখনো মানুষ বা অ্যাপ যোগ করে না।</string>
     <string name="grp_title">গ্রুপ</string>
     <string name="grp_menu_sub">মার্কেটিং, ইঞ্জিনিয়ারিং…: একবারে চ্যানেল ও মিটিংয়ে মানুষ যোগ করুন</string>
     <string name="grp_intro">গ্রুপ নিজে কোনো অধিকার দেয় না: চ্যানেল বা মিটিংয়ে যোগ করলে সদস্যদের একে একে যাচাই করে যোগ করা হয়।</string>
@@ -195,7 +192,6 @@
     <string name="mtg_minutes">%1$d মিনিট</string>
     <string name="mtg_room">ভয়েস রুম</string>
     <string name="mtg_no_rooms">এই কমিউনিটিতে এখনো ভয়েস রুম নেই। আগে একটি তৈরি করুন।</string>
-    <string name="mtg_invite_groups">গ্রুপ আমন্ত্রণ</string>
     <string name="mtg_invite_people">মানুষ আমন্ত্রণ</string>
     <string name="mtg_field_description">নোট (ঐচ্ছিক)</string>
     <string name="mtg_save">সংরক্ষণ</string>

@@ -154,9 +154,6 @@
     <string name="guest_policy_allow_sub">Guests see only the channels they\'re added to</string>
     <string name="guest_policy_max">Longest a guest can stay</string>
     <string name="guest_no_limit">No limit</string>
-    <string name="tpl_title">Community templates</string>
-    <string name="tpl_menu_sub">Add the channels a kind of team usually needs</string>
-    <string name="tpl_note">Adds only channels this community doesn\'t have yet, plus a welcome document. It never adds people or apps.</string>
     <string name="grp_title">Groups</string>
     <string name="grp_menu_sub">Marketing, Engineering…: add people to channels and meetings in one go</string>
     <string name="grp_intro">A group grants nothing by itself: adding it to a channel or meeting adds its members, checked one by one.</string>
@@ -195,7 +192,6 @@
     <string name="mtg_minutes">%1$d min</string>
     <string name="mtg_room">Voice room</string>
     <string name="mtg_no_rooms">This community has no voice channels yet. Create one first.</string>
-    <string name="mtg_invite_groups">Invite groups</string>
     <string name="mtg_invite_people">Invite people</string>
     <string name="mtg_field_description">Notes (optional)</string>
     <string name="mtg_save">Save</string>

@@ -43,8 +43,6 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.meldiq.android.R
 import com.meldiq.android.data.api.ConversationDto
-import com.meldiq.android.data.api.GroupDto
-import com.meldiq.android.data.api.GroupsRes
 import com.meldiq.android.data.api.MeetingDto
 import com.meldiq.android.data.api.MeetingReq
 import com.meldiq.android.data.api.MeetingRes
@@ -198,15 +196,12 @@ private fun MeetingEditor(orgId: String, meeting: MeetingDto?, zone: String, onS
     var repeatAvailable by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { repeatAvailable = container.features.has(com.meldiq.android.data.repo.ServerFeatures.EVENT_REPEAT) == true }
     var people by remember { mutableStateOf(meeting?.participants.orEmpty().associate { it.id to it.name.orEmpty() }) }
-    var groupIds by remember { mutableStateOf(emptySet<String>()) }
     var rooms by remember { mutableStateOf<List<ConversationDto>>(emptyList()) }
-    var groups by remember { mutableStateOf<List<GroupDto>>(emptyList()) }
     var query by remember { mutableStateOf("") }
     var found by remember { mutableStateOf<List<UserDto>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(orgId) {
         rooms = runCatching { container.orgs.channels(orgId).filter { it.voice && !it.archived } }.getOrDefault(emptyList())
-        groups = runCatching { container.api.get<GroupsRes>("/v1/orgs/$orgId/groups").groups }.getOrDefault(emptyList())
     }
     LaunchedEffect(query) { found = if (query.trim().length < 2) emptyList() else runCatching { container.orgs.members(orgId, query.trim()) }.getOrDefault(emptyList()) }
     val problems = MeetingRules.problems(title, roomId, date, time, zone, System.currentTimeMillis())
@@ -230,10 +225,6 @@ private fun MeetingEditor(orgId: String, meeting: MeetingDto?, zone: String, onS
             Text(stringResource(R.string.mtg_room), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp))
             if (rooms.isEmpty()) Text(stringResource(R.string.mtg_no_rooms), style = Griip.type.caption, color = c.textSecondary)
             ChipRow(Modifier.padding(horizontal = 0.dp)) { rooms.forEach { r -> PillChip("#${r.name.orEmpty()}", roomId == r.id, { roomId = r.id }) } }
-            if (groups.isNotEmpty()) {
-                Text(stringResource(R.string.mtg_invite_groups), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp))
-                ChipRow(Modifier.padding(horizontal = 0.dp)) { groups.forEach { g -> PillChip(g.name, g.id in groupIds, { groupIds = if (g.id in groupIds) groupIds - g.id else groupIds + g.id }) } }
-            }
             Text(stringResource(R.string.mtg_invite_people), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp))
             people.forEach { (id, n) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -253,7 +244,7 @@ private fun MeetingEditor(orgId: String, meeting: MeetingDto?, zone: String, onS
         PillButton(stringResource(R.string.mtg_save), {
             val start = MeetingRules.startMs(date, time, zone) ?: return@PillButton
             val req = MeetingReq(
-                roomId.orEmpty(), title.trim(), description.trim().ifEmpty { null }, start, start + minutes * 60_000L, zone, people.keys.toList(), groupIds.toList(), meeting?.rev,
+                roomId.orEmpty(), title.trim(), description.trim().ifEmpty { null }, start, start + minutes * 60_000L, zone, people.keys.toList(), meeting?.rev,
                 repeat = repeat.takeIf { repeatAvailable },
             )
             scope.launch {
