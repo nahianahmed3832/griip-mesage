@@ -1,8 +1,8 @@
 {
   "health": {
-    "version": "0.26.0",
-    "generatedAt": 1792676691710,
-    "uptimeSeconds": 1,
+    "version": "0.27.0",
+    "generatedAt": 1792687717865,
+    "uptimeSeconds": 2,
     "checks": {
       "database": {
         "available": true,
@@ -24,9 +24,9 @@
       }
     },
     "process": {
-      "rssBytes": 235864064,
-      "heapUsedBytes": 94709152,
-      "eventLoopDelayP99Ms": 170
+      "rssBytes": 201392128,
+      "heapUsedBytes": 93389080,
+      "eventLoopDelayP99Ms": 540
     },
     "realtime": {
       "onlineDevices": 0
@@ -46,13 +46,13 @@
       }
     },
     "metrics": {
-      "since": 1792676691606,
+      "since": 1792687717498,
       "window": {
         "minutes": 15,
         "requests": 9,
         "serverErrors": 0,
         "errorRate": 0,
-        "p95Ms": 25
+        "p95Ms": 10
       },
       "routes": [
         {
@@ -60,18 +60,18 @@
           "count": 2,
           "clientErrors": 0,
           "serverErrors": 0,
-          "avgMs": 4,
+          "avgMs": 3,
           "p95Ms": 10,
-          "maxMs": 7
+          "maxMs": 6
         },
         {
           "route": "POST /v1/auth/register",
           "count": 2,
           "clientErrors": 0,
           "serverErrors": 0,
-          "avgMs": 7,
-          "p95Ms": 25,
-          "maxMs": 11
+          "avgMs": 4,
+          "p95Ms": 10,
+          "maxMs": 6
         },
         {
           "route": "GET /v1/admin/health",
@@ -87,9 +87,9 @@
           "count": 1,
           "clientErrors": 0,
           "serverErrors": 0,
-          "avgMs": 5,
+          "avgMs": 7,
           "p95Ms": 10,
-          "maxMs": 5
+          "maxMs": 7
         },
         {
           "route": "GET /v1/conversations/:id",
@@ -105,14 +105,16 @@
           "count": 1,
           "clientErrors": 0,
           "serverErrors": 0,
-          "avgMs": 3,
+          "avgMs": 7,
           "p95Ms": 10,
-          "maxMs": 3
+          "maxMs": 7
         }
       ],
       "jobs": [],
       "providers": []
     },
-    "warnings": []
+    "warnings": [
+      "The server is slow to respond (event-loop delay 540 ms at the 99th percentile)."
+    ]
   }
 }

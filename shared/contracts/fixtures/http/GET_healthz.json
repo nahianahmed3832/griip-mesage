@@ -1,7 +1,7 @@
 {
   "ok": true,
-  "version": "0.26.0",
-  "time": 1792675391819,
+  "version": "0.27.0",
+  "time": 1792687709317,
   "livekit": true,
-  "mongodb": null
+  "mongodb": true
 }
