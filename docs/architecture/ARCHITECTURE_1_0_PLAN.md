@@ -403,3 +403,30 @@ accounts. Then files, federation, relay, conversations + workspace, identity, ea
 - **Consequences:** a large diff in `meldiq-web`; risk to the strict CSP and to the service worker (handled in F0);
   the work belongs to the web parity session's release process ([`web-deploys`] rule: check the live release before
   installing). Public pages (marketing, community previews) can later use server rendering where it helps.
+
+## 11. Progress log
+
+### Phase B (2026-10-22, branch `architecture-1.0`, not merged, not deployed)
+
+| Commit | Step | What |
+|---|---|---|
+| `25da76e` | B0 | CI's MongoDB pass runs `accounts,preferences,history,reports,relationships` (it ran the retired `integrations` and skipped three stores) |
+| `b3aa6d3` | B1–B2 | 119 files moved with `git mv` into `app/`, `modules/<10 modules>/`, `infrastructure/{database,storage,mail}/`, `shared/utilities/`; 523 import paths rewritten; no other code change except the migrations path in `infrastructure/database/db.ts` and one error message. Map: [`SERVER_MODULE_MAP.md`](SERVER_MODULE_MAP.md) |
+| `a5dcb71` | B2 | `test/architecture_boundaries.test.ts`: import rules (78 existing exceptions) and table ownership (146 existing file→table accesses outside the owner), both shrink-only; every migration table has an owner |
+
+Tests: typecheck clean; server 717 passed / 10 skipped on SQLite and in MongoDB mode before the boundary test, 721
+with it; `npm run build`; a smoke start of `dist/index.js` (44 migrations applied, `/healthz`, `/v1/server-info`) and
+`dist/admin.js`.
+
+Known limits, deliberately left for later steps:
+- `app/context.ts` still mixes the context type, authentication helpers and validation primitives, and
+  `shared/utilities/util.ts` holds `ApiError`: splitting them is C1 (with the error catalog), so B stays a pure move.
+- Modules have no `index.ts` public API yet except `accounts`; cross-module calls are the 78 allowlisted imports.
+- Layer subfolders (domain/application/infrastructure/transport) are introduced per module when it gets a store
+  interface (D1 messaging first), not as empty folders.
+- Older documents name the old paths (`SERVER_MODULE_MAP.md` translates).
+- Merging into internal-beta will conflict with any batch that edits the same server files; git's rename detection
+  handles most of it, and B is easiest to merge before the next server batch lands.
+
+Next safe step: C1 (realtime event union, error-code catalog, typed `Hub`, split of `context.ts`/`util.ts`), still
+without any route, event or data change.
