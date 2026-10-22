@@ -1,5 +1,10 @@
 import { z } from "zod/v4";
 import { ERROR_CODES, type ErrorCode } from "../../errors.js";
+import { accountsRoutes } from "./areas/accounts.js";
+import { communityRoutes } from "./areas/community.js";
+import { conversationsRoutes } from "./areas/conversations.js";
+import { identityRoutes } from "./areas/identity.js";
+import { organizationsRoutes } from "./areas/organizations.js";
 import { callRoutes } from "./calls.js";
 import { fileRoutes } from "./files.js";
 import { historyRoutes } from "./history.js";
@@ -19,4 +24,15 @@ export const ErrorEnvelope = z.strictObject({
 });
 
 /** The documented routes. Routes not listed yet are still checked for the error envelope by the test suite. */
-export const ROUTE_CONTRACTS: readonly RouteContract[] = [...systemRoutes, ...messagingRoutes, ...historyRoutes, ...fileRoutes, ...callRoutes];
+export const ROUTE_CONTRACTS: readonly RouteContract[] = [
+  ...systemRoutes,
+  ...messagingRoutes,
+  ...historyRoutes,
+  ...fileRoutes,
+  ...callRoutes,
+  ...accountsRoutes,
+  ...identityRoutes,
+  ...organizationsRoutes,
+  ...communityRoutes,
+  ...conversationsRoutes,
+];
