@@ -1,7 +1,5 @@
 package com.meldiq.android.data.repo
 
-import com.meldiq.android.data.db.MessageColumns
-import com.meldiq.android.data.model.MessagePreview
 import androidx.room.withTransaction
 import com.meldiq.android.crypto.HistoryKeys
 import com.meldiq.android.crypto.b64
@@ -19,8 +17,10 @@ import com.meldiq.android.data.api.HistorySummary
 import com.meldiq.android.data.db.ConversationEntity
 import com.meldiq.android.data.db.GriipDatabase
 import com.meldiq.android.data.db.KvEntity
+import com.meldiq.android.data.db.MessageColumns
 import com.meldiq.android.data.db.MessageEntity
 import com.meldiq.android.data.model.AttachmentRef
+import com.meldiq.android.data.model.MessagePreview
 import com.meldiq.android.data.model.MessageStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope

@@ -1,7 +1,5 @@
 package com.meldiq.android.data.repo
 
-import com.meldiq.android.data.db.MessageColumns
-import com.meldiq.android.data.model.MessagePreview
 import android.content.Context
 import android.util.Log
 import com.meldiq.android.crypto.AttachmentCrypto
@@ -9,65 +7,48 @@ import com.meldiq.android.crypto.ChunkedAttachmentCrypto
 import com.meldiq.android.crypto.EnvelopeException
 import com.meldiq.android.crypto.EnvelopeHeader
 import com.meldiq.android.crypto.MessageCrypto
-import com.meldiq.android.crypto.ReceivedEnvelope
-import com.meldiq.android.data.api.AckReq
 import com.meldiq.android.data.api.ApiClient
 import com.meldiq.android.data.api.ApiException
+import com.meldiq.android.data.api.CallDto
 import com.meldiq.android.data.api.CallRes
+import com.meldiq.android.data.api.CallsRes
 import com.meldiq.android.data.api.ConnState
 import com.meldiq.android.data.api.GriipJson
-import com.meldiq.android.data.api.OkRes
-import com.meldiq.android.data.api.QueueItem
-import com.meldiq.android.data.api.QueuePayload
-import com.meldiq.android.data.api.QueueRes
 import com.meldiq.android.data.api.RealtimeClient
-import com.meldiq.android.data.api.ClientEvent
-import com.meldiq.android.data.api.ServerEvent
 import com.meldiq.android.data.api.SendMessageReq
 import com.meldiq.android.data.api.SendMessageRes
+import com.meldiq.android.data.api.ServerEvent
 import com.meldiq.android.data.api.WireKeyWrap
 import com.meldiq.android.data.db.CallKeyEntity
 import com.meldiq.android.data.db.ConversationEntity
 import com.meldiq.android.data.db.GriipDatabase
+import com.meldiq.android.data.db.MessageColumns
 import com.meldiq.android.data.db.MessageEntity
 import com.meldiq.android.data.db.OutboxEntity
-import com.meldiq.android.data.db.QuarantineEntity
-import com.meldiq.android.data.model.RequestRules
-import com.meldiq.android.data.model.AttachmentRef
-import com.meldiq.android.data.model.CallInfo
 import com.meldiq.android.data.model.AttachmentPolicy
-import com.meldiq.android.data.model.EmojiRules
-import com.meldiq.android.data.model.ExpressionRules
-import com.meldiq.android.data.model.RichContent
-import com.meldiq.android.data.model.PollRules
-import com.meldiq.android.data.model.RichRules
+import com.meldiq.android.data.model.AttachmentRef
 import com.meldiq.android.data.model.CallHistory
-import com.meldiq.android.data.api.CallDto
-import com.meldiq.android.data.api.CallsRes
-import com.meldiq.android.data.model.MessageStatus
-import com.meldiq.android.data.model.MentionNotify
+import com.meldiq.android.data.model.CallInfo
 import com.meldiq.android.data.model.MentionRules
 import com.meldiq.android.data.model.MentionSet
+import com.meldiq.android.data.model.MessagePreview
+import com.meldiq.android.data.model.MessageStatus
 import com.meldiq.android.data.model.Payload
+import com.meldiq.android.data.model.RichContent
+import com.meldiq.android.data.model.RichRules
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.MapSerializer
-import kotlinx.serialization.builtins.serializer
 import java.io.File
 import java.util.UUID
 
@@ -104,64 +85,79 @@ class MessageRepository(
     private val uploader: AttachmentUploader = AttachmentUploader(api, null),
     private val notify: (Notice) -> Unit,
 ) {
-    /** Round 3: the person's notification level for a conversation (set by the container from NavPreferences). */
-    var notifyLevelOf: (ConversationEntity) -> String = { com.meldiq.android.data.model.NotifyLevel.ALL }
-    /** Batch B2: whether @everyone counts as a mention in the conversation's community (set by the container). */
-    var countsEveryoneOf: (ConversationEntity) -> Boolean = { true }
-
     private val json = GriipJson
     private val files = AttachmentFiles(attachmentsDir)
-    private val pending = PendingControls(RoomPendingControlStore(db))
     private val keyRequests = CallKeyRequests()
-    private val callKeys = CallKeyVerifier { id ->
-        try {
-            api.get<CallRes>("/v1/calls/$id").call
-        } catch (e: ApiException) {
-            if (e.status == 404) null else throw e // other failures: redelivered and checked again
-        }
-    }
-    private val listOfStrings = ListSerializer(String.serializer())
-    private val reactionsSer = MapSerializer(String.serializer(), ListSerializer(String.serializer()))
     private val kickCh = Channel<Unit>(Channel.CONFLATED)
-    private val processLock = Mutex()
-    private val lastReadSent = HashMap<String, Long>()
 
-    private val _typing = MutableStateFlow<Map<String, Map<String, Long>>>(emptyMap())
-    val typing: StateFlow<Map<String, Map<String, Long>>> = _typing
-    private val _callInvites = MutableSharedFlow<IncomingCallKey>(extraBufferCapacity = 16)
-    val callInvites: SharedFlow<IncomingCallKey> = _callInvites
-    private val _callFrames = MutableSharedFlow<ServerEvent.Call>(extraBufferCapacity = 32)
-    val callFrames: SharedFlow<ServerEvent.Call> = _callFrames
-    private val _orgEvents = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    /** Round 7: a meeting starting in ten minutes (its id), and a workspace whose meetings changed (its id). */
-    private val _meetingSoon = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    val meetingSoon: SharedFlow<String> = _meetingSoon
-    private val _meetingUpdates = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    val meetingUpdates: SharedFlow<String> = _meetingUpdates
-    val orgEvents: SharedFlow<String> = _orgEvents
-    private val _connectionsChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
-
-    /** Batch B6: someone sent, accepted, cancelled or removed a connection with you (screens reload their lists). */
-    val connectionsChanged: SharedFlow<Unit> = _connectionsChanged
-    private val _orgDeleted = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    val orgDeleted: SharedFlow<String> = _orgDeleted
-    private val _reminderEvents = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    /** Reminders that went off or changed on another device ("reminder.due", "reminders.changed"): their ids. */
-    val reminderEvents: SharedFlow<String> = _reminderEvents
-    private val _prefsUpdated = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    /** Workspaces whose personal preferences another device of this person changed ("prefs.updated"). */
-    val prefsUpdated: SharedFlow<String> = _prefsUpdated
     private val _transfer = MutableStateFlow<Map<String, Float>>(emptyMap())
     val transferProgress: StateFlow<Map<String, Float>> = _transfer
-    val backlogDrained = MutableStateFlow(false)
 
     private val myUserId get() = session.session?.userId
     private val myDeviceId get() = session.session?.deviceId
 
+    private val signals = MessageSignals(db, conversations, directory)
+    private val controls = MessageControls(db, realtime, session, conversations, settings, files, ::sendControl)
+    private val receiver = MessageReceiver(
+        context, db, api, realtime, session, crypto, directory, conversations, users, settings, appState, scope, files, keyRequests,
+        signals, controls, notify, ::sendControl, ::kick,
+    )
+
+    /** Round 3: the person's notification level for a conversation (set by the container from NavPreferences). */
+    var notifyLevelOf: (ConversationEntity) -> String
+        get() = receiver.notifyLevelOf
+        set(value) { receiver.notifyLevelOf = value }
+    /** Batch B2: whether @everyone counts as a mention in the conversation's community (set by the container). */
+    var countsEveryoneOf: (ConversationEntity) -> Boolean
+        get() = receiver.countsEveryoneOf
+        set(value) { receiver.countsEveryoneOf = value }
+
+    // ─────────── Receiving: the socket's signals (MessageSignals) and the queue (MessageReceiver) ───────────
+
+    val typing: StateFlow<Map<String, Map<String, Long>>> = signals.typing
+    val callInvites: SharedFlow<IncomingCallKey> = signals.callInvites
+    val callFrames: SharedFlow<ServerEvent.Call> = signals.callFrames
+    /** Round 7: a meeting starting in ten minutes (its id), and a workspace whose meetings changed (its id). */
+    val meetingSoon: SharedFlow<String> = signals.meetingSoon
+    val meetingUpdates: SharedFlow<String> = signals.meetingUpdates
+    val orgEvents: SharedFlow<String> = signals.orgEvents
+    /** Batch B6: someone sent, accepted, cancelled or removed a connection with you (screens reload their lists). */
+    val connectionsChanged: SharedFlow<Unit> = signals.connectionsChanged
+    val orgDeleted: SharedFlow<String> = signals.orgDeleted
+    /** Reminders that went off or changed on another device ("reminder.due", "reminders.changed"): their ids. */
+    val reminderEvents: SharedFlow<String> = signals.reminderEvents
+    /** Workspaces whose personal preferences another device of this person changed ("prefs.updated"). */
+    val prefsUpdated: SharedFlow<String> = signals.prefsUpdated
+    val backlogDrained: MutableStateFlow<Boolean> = signals.backlogDrained
+
+    /** REST fallback used by the background service when the socket is unavailable. */
+    suspend fun pollQueueOnce() = receiver.pollQueueOnce()
+
+    /**
+     * The user reviewed [identityKey] (the safety number they compared) and accepts it for [userId]:
+     * pin it, resume paused sends and open the messages held while the key was untrusted.
+     */
+    suspend fun acceptIdentity(userId: String, identityKey: String) = receiver.acceptIdentity(userId, identityKey)
+
+    // ─────────── Message controls (MessageControls) ───────────
+
+    suspend fun react(m: MessageEntity, emoji: String) = controls.react(m, emoji)
+    /** Edits keep mention targets in step with the text (members only); @everyone stays as it was sent. */
+    suspend fun edit(m: MessageEntity, newText: String, resolved: MentionSet? = null) = controls.edit(m, newText, resolved)
+    suspend fun delete(m: MessageEntity) = controls.delete(m)
+    /** Your vote on the poll in [m] (docs/RICH_MESSAGES.md › Polls); an empty [choices] takes the vote back. */
+    suspend fun vote(m: MessageEntity, choices: List<String>) = controls.vote(m, choices)
+    /** Closes your own poll for everyone: no more votes. */
+    suspend fun closePoll(m: MessageEntity) = controls.closePoll(m)
+    suspend fun setPinned(m: MessageEntity, pinned: Boolean) = controls.setPinned(m, pinned)
+    /** Clear unread and (DMs/groups) send an encrypted read receipt. */
+    suspend fun markConversationRead(cid: String) = controls.markConversationRead(cid)
+    fun setTyping(cid: String, on: Boolean) = controls.setTyping(cid, on)
+
     fun start() {
-        scope.launch { realtime.events.collect { e -> runCatching { handleEvent(e) }.onFailure { Log.w(TAG, "event ${e.javaClass.simpleName} failed: ${it.javaClass.simpleName}") } } }
+        scope.launch { realtime.events.collect { e -> runCatching { signals.handle(e) { q -> receiver.processQueue(q.items, q.backlog) } }.onFailure { Log.w(TAG, "event ${e.javaClass.simpleName} failed: ${it.javaClass.simpleName}") } } }
         scope.launch { outboxLoop() }
-        scope.launch { runCatching { retrySetAside() } }
+        scope.launch { runCatching { receiver.retrySetAside() } }
         scope.launch {
             realtime.state.collect { st ->
                 if (st == ConnState.Connected) {
@@ -173,8 +169,7 @@ class MessageRepository(
         scope.launch {
             while (true) {
                 delay(3000)
-                val now = System.currentTimeMillis()
-                _typing.update { m -> m.mapValues { (_, u) -> u.filterValues { it > now } }.filterValues { it.isNotEmpty() } }
+                signals.pruneTyping()
             }
         }
     }
@@ -209,11 +204,11 @@ class MessageRepository(
     suspend fun searchPinned(q: String): List<MessageEntity> =
         db.messages().searchPinned(q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_"))
 
-    fun reactions(m: MessageEntity): Map<String, List<String>> = runCatching { json.decodeFromString(reactionsSer, m.reactionsJson) }.getOrDefault(emptyMap())
+    fun reactions(m: MessageEntity): Map<String, List<String>> = MessageColumns.reactions(m)
     fun attachments(m: MessageEntity): List<AttachmentRef> = MessageColumns.attachments(m)
-    fun readBy(m: MessageEntity): List<String> = runCatching { json.decodeFromString(listOfStrings, m.readByJson) }.getOrDefault(emptyList())
-    fun deliveredTo(m: MessageEntity): List<String> = runCatching { json.decodeFromString(listOfStrings, m.deliveredToJson) }.getOrDefault(emptyList())
-    fun mentions(m: MessageEntity): List<String> = runCatching { json.decodeFromString(listOfStrings, m.mentionsJson) }.getOrDefault(emptyList())
+    fun readBy(m: MessageEntity): List<String> = MessageColumns.readBy(m)
+    fun deliveredTo(m: MessageEntity): List<String> = MessageColumns.deliveredTo(m)
+    fun mentions(m: MessageEntity): List<String> = MessageColumns.mentions(m)
     fun callInfo(m: MessageEntity): CallInfo? = MessageColumns.call(m)
     fun rich(m: MessageEntity): RichContent? = MessageColumns.rich(m)
 
@@ -232,7 +227,7 @@ class MessageRepository(
         val now = System.currentTimeMillis()
         // A contact, location or animated emoji travels with a readable text, which older apps show instead.
         val body = if (rich != null && rich.structured && text.isBlank()) RichRules.fallbackText(rich) else text
-        val m = mentions ?: if (rich?.structured == true) MentionSet.NONE else resolveMentions(cid, body)
+        val m = mentions ?: if (rich?.structured == true) MentionSet.NONE else controls.resolveMentions(cid, body)
         val payload = Payload(
             type = "text", text = body, replyTo = replyTo, threadRoot = threadRoot, mentions = m.ids.ifEmpty { null },
             mentionAll = if (m.all) true else null, attachments = attachments.ifEmpty { null },
@@ -243,7 +238,7 @@ class MessageRepository(
         val existing = db.messages().get(id)
         val msg = MessageEntity(
             id = id, conversationId = cid, senderUserId = s.userId, senderDeviceId = s.deviceId, outgoing = true, kind = "text", text = body,
-            replyToId = replyTo, threadRootId = threadRoot, mentionsJson = json.encodeToString(listOfStrings, MentionRules.stored(m)),
+            replyToId = replyTo, threadRootId = threadRoot, mentionsJson = MessageColumns.encodeIds(MentionRules.stored(m)),
             attachmentsJson = MessageColumns.encodeAttachments(attachments), sentAt = existing?.sentAt ?: now, sortTs = existing?.sortTs ?: now, status = MessageStatus.SENDING,
             richJson = MessageColumns.encodeRich(rich), forwarded = forwarded,
         )
@@ -254,88 +249,10 @@ class MessageRepository(
         return id
     }
 
-    /**
-     * Resolves `@username` tokens against this conversation's members only. It used to look usernames up among every
-     * user the phone knew, so a token could point at someone outside the conversation, or `@ann:other.server` at a
-     * local "ann" (docs/MENTIONS.md).
-     */
-    private suspend fun resolveMentions(cid: String, text: String): MentionSet {
-        if (!text.contains('@')) return MentionSet.NONE
-        val conv = db.conversations().get(cid) ?: return MentionSet.NONE
-        if (conv.type == "DM") return MentionSet.NONE
-        // What the phone already knows (no network wait while the composer still shows the message being sent).
-        val members = conversations.knownMentionMembers(cid)
-        return MentionRules.resolve(text, members, conversations.mentionAll.value[cid] == true, myUserId)
-    }
-
     private suspend fun sendControl(cid: String, payload: Payload) {
         val id = UUID.randomUUID().toString()
         db.outbox().put(OutboxEntity(id, cid, "control", json.encodeToString(Payload.serializer(), payload), System.currentTimeMillis(), visible = false))
         kick()
-    }
-
-    /**
-     * Where the user can't post (announcement channels for non-managers, archived scopes), the server
-     * refuses every envelope, controls included. Changing the message locally would show a reaction,
-     * pin, edit or deletion that nobody else sees.
-     */
-    private suspend fun canSendIn(cid: String) = db.conversations().get(cid)?.canPost != false
-    private suspend fun inCommunity(cid: String) = db.conversations().get(cid)?.orgId != null
-
-    suspend fun react(m: MessageEntity, emoji: String) {
-        val me = myUserId ?: return
-        if (!canSendIn(m.conversationId) || !ExpressionRules.reactionAllowed(emoji, inCommunity(m.conversationId))) return
-        val current = reactions(m)
-        val add = current[emoji]?.contains(me) != true
-        applyReaction(db.messages().get(m.id) ?: return, me, emoji, add) // fresh row: `m` may be stale
-        sendControl(m.conversationId, Payload(type = "reaction", target = m.id, emoji = emoji, add = add))
-    }
-
-    /** Edits keep mention targets in step with the text (members only); @everyone stays as it was sent. */
-    suspend fun edit(m: MessageEntity, newText: String, resolved: MentionSet? = null) {
-        if (!m.outgoing || !canSendIn(m.conversationId)) return
-        val ids = (resolved ?: resolveMentions(m.conversationId, newText)).ids
-        val stored = MentionRules.stored(MentionSet(ids, MentionRules.fromStored(mentions(m)).all))
-        db.messages().upsert(m.copy(text = newText, editedAt = System.currentTimeMillis(), mentionsJson = json.encodeToString(listOfStrings, stored)))
-        sendControl(m.conversationId, Payload(type = "edit", target = m.id, text = newText, mentions = ids))
-    }
-
-    suspend fun delete(m: MessageEntity) {
-        if (!m.outgoing || !canSendIn(m.conversationId)) return
-        files.deleteFor(m.id, attachments(m)) // the decrypted copies go too (T1.10)
-        db.messages().upsert(m.copy(deleted = true, text = "", attachmentsJson = "[]"))
-        sendControl(m.conversationId, Payload(type = "delete", target = m.id))
-        refreshPreview(m.conversationId)
-    }
-
-    /**
-     * Your vote on the poll in [m] (docs/RICH_MESSAGES.md › Polls): shown here at once and sent to every member as an
-     * encrypted "vote" control. An empty [choices] takes the vote back.
-     */
-    suspend fun vote(m: MessageEntity, choices: List<String>) {
-        val me = myUserId ?: return
-        if (!canSendIn(m.conversationId)) return
-        val fresh = db.messages().get(m.id) ?: return
-        val rich = rich(fresh)?.takeIf { it.poll != null && it.pollClosed != true } ?: return
-        val updated = PollRules.vote(rich, me, choices)
-        db.messages().upsert(fresh.copy(richJson = MessageColumns.encodeRich(updated)))
-        sendControl(m.conversationId, Payload(type = "vote", target = m.id, choices = updated.votes.orEmpty()[me].orEmpty()))
-    }
-
-    /** Closes your own poll for everyone: no more votes. */
-    suspend fun closePoll(m: MessageEntity) {
-        val me = myUserId ?: return
-        if (!m.outgoing || !canSendIn(m.conversationId)) return
-        val fresh = db.messages().get(m.id) ?: return
-        val rich = rich(fresh)?.takeIf { it.poll != null } ?: return
-        db.messages().upsert(fresh.copy(richJson = MessageColumns.encodeRich(PollRules.close(rich, fresh.senderUserId, me))))
-        sendControl(m.conversationId, Payload(type = "poll_close", target = m.id))
-    }
-
-    suspend fun setPinned(m: MessageEntity, pinned: Boolean) {
-        if (!canSendIn(m.conversationId)) return
-        db.messages().upsert(m.copy(pinned = pinned))
-        sendControl(m.conversationId, Payload(type = "pin", target = m.id, pinned = pinned))
     }
 
     suspend fun retry(id: String) {
@@ -372,27 +289,6 @@ class MessageRepository(
         val call = api.get<CallRes>("/v1/calls/$callId").call
         if (call.state == "ENDED") return
         sendControl(call.conversationId, Payload(type = "call_key_request", callId = callId))
-    }
-
-    /** Clear unread and (DMs/groups) send an encrypted read receipt. */
-    suspend fun markConversationRead(cid: String) {
-        db.conversations().markRead(cid)
-        val conv = db.conversations().get(cid) ?: return
-        if (!settings.current.readReceipts || conv.type == "CHANNEL" || conv.memberCount > 20 || !conv.canPost) return
-        val latest = db.messages().latestIncoming(cid) ?: return
-        val upTo = latest.serverTs ?: latest.sortTs
-        if ((lastReadSent[cid] ?: 0) >= upTo) return
-        lastReadSent[cid] = upTo
-        sendControl(cid, Payload(type = "read", upTo = upTo))
-    }
-
-    private var lastTypingSent = 0L
-    fun setTyping(cid: String, on: Boolean) {
-        if (!settings.current.typingIndicators) return
-        val now = System.currentTimeMillis()
-        if (on && now - lastTypingSent < 2500) return
-        lastTypingSent = if (on) now else 0
-        realtime.send(ClientEvent.Typing(cid, on))
     }
 
     // ─────────── Attachments (encrypted before upload) ───────────
@@ -550,7 +446,7 @@ class MessageRepository(
         attachments(m).forEach { ref -> if (ref.id == AttachmentFiles.PENDING) batchSources.remove(ref.sha256) }
         files.deleteFor(id, attachments(m))
         db.messages().deleteLocal(id)
-        refreshPreview(m.conversationId)
+        db.refreshPreview(m.conversationId)
         return true
     }
 
@@ -847,283 +743,6 @@ class MessageRepository(
 
     // ─────────────────────────── Receiving ───────────────────────────
 
-    private suspend fun handleEvent(e: ServerEvent) {
-        when (e) {
-            is ServerEvent.Queue -> processQueue(e.items, e.backlog)
-            ServerEvent.QueueDrained -> backlogDrained.value = true
-            is ServerEvent.Typing -> _typing.update { m ->
-                val cur = m[e.c].orEmpty().toMutableMap()
-                if (e.on) cur[e.u] = System.currentTimeMillis() + 6000 else cur.remove(e.u)
-                m + (e.c to cur)
-            }
-            is ServerEvent.Presence -> db.users().setPresence(e.userId, e.online, e.lastSeenAt, com.meldiq.android.data.model.PresenceRules.stored(e.presence))
-            is ServerEvent.ConvUpdated -> conversations.refreshOne(e.conversationId)
-            is ServerEvent.OrgUpdated -> {
-                _orgEvents.tryEmit(e.orgId)
-                runCatching { conversations.refresh() }
-            }
-            is ServerEvent.OrgDeleted -> {
-                _orgDeleted.tryEmit(e.orgId)
-                _orgEvents.tryEmit(e.orgId)
-            }
-            is ServerEvent.DevicesChanged -> directory.invalidateUser(e.userId)
-            ServerEvent.ConnectionsUpdated -> _connectionsChanged.tryEmit(Unit)
-            is ServerEvent.PrefsUpdated -> _prefsUpdated.tryEmit(e.workspaceId)
-            is ServerEvent.ReminderDue -> _reminderEvents.tryEmit(e.id)
-            is ServerEvent.RemindersChanged -> _reminderEvents.tryEmit(e.id)
-            is ServerEvent.MeetingSoon -> _meetingSoon.tryEmit(e.meetingId)
-            is ServerEvent.MeetingUpdated -> _meetingUpdates.tryEmit(e.orgId)
-            is ServerEvent.Call -> _callFrames.tryEmit(e)
-            // Moderator and applicant signals: the screens that show them reload when opened.
-            is ServerEvent.OrgReports, is ServerEvent.OrgApplications, is ServerEvent.OrgApplication, is ServerEvent.OrgAlert -> Unit
-            // The socket's own bookkeeping, and frames from a newer server.
-            is ServerEvent.Hello, is ServerEvent.Pong, is ServerEvent.Unknown -> Unit
-        }
-    }
-
-    /** Acknowledges an item only once its local state is committed or it's safely kept (T1.4, [QueueProcessor]). */
-    private val processor = QueueProcessor(
-        apply = { handleItem(it) },
-        undecryptable = { item, reason -> recordUndecryptable(item, reason) },
-        quarantine = { quarantine(it) },
-        setAside = { item, e -> setAside(item, e) },
-    )
-
-    private suspend fun processQueue(items: List<QueueItem>, backlog: Boolean) = processLock.withLock {
-        val acks = processor.process(items)
-        if (acks.size < items.size) Log.w(TAG, "deferring ${items.size - acks.size} queue item(s) for redelivery")
-        if (acks.isNotEmpty() || backlog) {
-            val sent = realtime.send(ClientEvent.Ack(acks, backlog))
-            if (!sent && acks.isNotEmpty()) runCatching { api.post<AckReq, OkRes>("/v1/queue/ack", AckReq(acks)) }
-        }
-    }
-
-    /** REST fallback used by the background service when the socket is unavailable. */
-    suspend fun pollQueueOnce() {
-        val r = api.get<QueueRes>("/v1/queue?limit=100")
-        if (r.items.isEmpty()) return
-        val acks = processLock.withLock { processor.process(r.items) }
-        if (acks.isNotEmpty()) api.post<AckReq, OkRes>("/v1/queue/ack", AckReq(acks))
-    }
-
-    /**
-     * Retries items set aside after repeated failures (for example after an app update fixed the
-     * cause). Called at start-up; whatever still fails stays set aside.
-     */
-    private suspend fun retrySetAside() = processLock.withLock {
-        pending.purgeExpired()
-        // Uploads cut off by the app being killed: offer a retry instead of "sending" forever (T2.6).
-        db.messages().failInterruptedUploads("Upload interrupted · tap to retry")
-        context.cacheDir.listFiles { f -> f.name.endsWith(".enc") }?.forEach { it.delete() }
-        for (q in db.quarantine().setAside()) {
-            val item = runCatching { json.decodeFromString(QueueItem.serializer(), q.itemJson) }.getOrNull() ?: continue
-            if (runCatching { handleItem(item) }.isSuccess) db.quarantine().remove(q.queueId)
-        }
-    }
-
-    private suspend fun handleItem(item: QueueItem) {
-        // Never "succeed" without a session: that would acknowledge (and lose) the item unprocessed.
-        val me = myUserId ?: throw ApiException(0, "not_signed_in", "Not signed in yet")
-        val myDevice = myDeviceId ?: throw ApiException(0, "not_signed_in", "Not signed in yet")
-        if (item.kind == "receipt") {
-            if (item.payload.status == "delivered") {
-                val m = db.messages().get(item.messageId) ?: return
-                if (!m.outgoing) return
-                val d = (deliveredTo(m) + item.senderUserId).distinct()
-                db.messages().upsert(m.copy(deliveredToJson = json.encodeToString(listOfStrings, d)))
-                db.messages().markDelivered(m.id)
-            }
-            return
-        }
-        val p = item.payload
-        val existing = db.messages().get(item.messageId)
-        // A duplicate delivery is ignored, but a placeholder left by an earlier failure may be replaced.
-        val placeholder = existing?.kind == "undecryptable" && existing.senderUserId == item.senderUserId
-        if (existing != null && p.cls == "message" && !placeholder) return
-        val signingKey = when (val k = directory.senderKey(item.senderUserId, item.senderDeviceId, p.serverTs ?: item.createdAt)) {
-            is SenderKey.Trusted -> k.signingKey
-            SenderKey.IdentityChanged -> throw SenderIdentityChanged()
-            SenderKey.Unknown -> throw EnvelopeException("unknown or uncertified sender device")
-        }
-        val header = EnvelopeHeader(item.messageId, item.conversationId, item.senderUserId, item.senderDeviceId, p.sentAt ?: 0, p.cls ?: "message")
-        val env = ReceivedEnvelope(
-            header,
-            p.nonce ?: throw EnvelopeException("malformed envelope"), p.ciphertext ?: throw EnvelopeException("malformed envelope"),
-            p.signature ?: throw EnvelopeException("malformed envelope"), p.enc ?: throw EnvelopeException("malformed envelope"),
-            p.wrappedKey ?: throw EnvelopeException("malformed envelope"),
-        )
-        val plain = crypto.open(env, signingKey, myDevice)
-        val payload = json.decodeFromString(Payload.serializer(), String(plain))
-        val conv = db.conversations().get(item.conversationId) ?: conversations.refreshOne(item.conversationId)
-        if (db.users().get(item.senderUserId)?.displayName.isNullOrEmpty()) runCatching { users.fetch(item.senderUserId) }
-        apply(payload, item, conv, item.senderUserId == me, p.serverTs ?: item.createdAt)
-    }
-
-    private suspend fun apply(pl: Payload, item: QueueItem, conv: ConversationEntity?, mine: Boolean, serverTs: Long) {
-        val me = myUserId!!
-        when (pl.type) {
-            "text" -> {
-                // Names are cleaned for display (no hidden or direction-changing characters that could disguise a type).
-                val atts = pl.attachments.orEmpty().take(MAX_RECEIVED_ATTACHMENTS).map { it.copy(name = AttachmentPolicy.safeName(it.name)) }
-                // @everyone counts only with the server's mark on this copy, in a group or channel; a claim inside the
-                // payload alone (or from another server) is plain text (docs/MENTIONS.md).
-                val received = MentionRules.received(pl.mentions, pl.mentionAll, item.payload.mentionAll, conv?.type)
-                val m = MessageEntity(
-                    id = item.messageId, conversationId = item.conversationId, senderUserId = item.senderUserId, senderDeviceId = item.senderDeviceId,
-                    outgoing = mine, kind = "text", text = pl.text.orEmpty(), replyToId = pl.replyTo, threadRootId = pl.threadRoot,
-                    mentionsJson = json.encodeToString(listOfStrings, MentionRules.stored(received)), attachmentsJson = MessageColumns.encodeAttachments(atts),
-                    sentAt = item.payload.sentAt ?: serverTs, serverTs = serverTs, sortTs = serverTs,
-                    status = if (mine) MessageStatus.SENT else MessageStatus.RECEIVED,
-                    richJson = MessageColumns.encodeRich(RichRules.fromPayload(pl)),
-                    forwarded = pl.forwarded == true,
-                )
-                if (db.messages().insertIgnore(m) == -1L) return
-                replayPending(item.conversationId, item.messageId, conv, me)
-                val viewing = appState.foreground.value && appState.viewingConversation.value == item.conversationId
-                val mention = MentionNotify.isMention(mine, me in received.ids, received.all, conv?.let { countsEveryoneOf(it) } ?: true)
-                // A muted conversation still notifies when someone mentions you by name; @everyone respects the mute.
-                val personalMention = !mine && me in received.ids
-                val unread = if (!mine && !viewing) 1 else 0
-                val senderName = if (mine) "You" else db.users().get(item.senderUserId)?.displayName ?: "Someone"
-                if (pl.threadRoot == null) {
-                    db.conversations().bumpPreview(item.conversationId, item.messageId, MessagePreview.of(pl), serverTs, senderName, unread, if (mention && !viewing) 1 else 0)
-                } else if (unread > 0) db.conversations().bumpUnread(item.conversationId, 0, if (mention) 1 else 0)
-                if (viewing && !mine) scope.launch { markConversationRead(item.conversationId) }
-                val muted = conv?.muted == true
-                val level = conv?.let { notifyLevelOf(it) } ?: com.meldiq.android.data.model.NotifyLevel.ALL
-                // Batch B6: a message request never notifies; it waits under Requests.
-                val request = conv?.request == RequestRules.INCOMING
-                if (!mine && !viewing && !request && MentionNotify.shouldNotify(settings.current.notifications, level, muted, mention, personalMention)) {
-                    val title = conv?.let { ConversationRepository.title(it, me) } ?: senderName
-                    notify(Notice(item.conversationId, if (conv?.type == "CHANNEL") "#$title" else title, senderName, MessagePreview.of(pl), mention, conv?.type != "DM", canReply = conv?.canPost != false))
-                }
-            }
-            "edit" -> {
-                val t = target(pl, item, serverTs) ?: return
-                if (t.senderUserId == item.senderUserId && !t.deleted) {
-                    // New text, new mention targets (no new notification); @everyone stays as it was when sent.
-                    val mentionsJson = pl.mentions?.let { ids ->
-                        json.encodeToString(listOfStrings, MentionRules.stored(MentionSet(ids.distinct(), MentionRules.fromStored(mentions(t)).all)))
-                    } ?: t.mentionsJson
-                    db.messages().upsert(t.copy(text = pl.text.orEmpty(), editedAt = serverTs, mentionsJson = mentionsJson))
-                    if (db.conversations().get(t.conversationId)?.lastMessageId == t.id) refreshPreview(t.conversationId)
-                }
-            }
-            "delete" -> {
-                val t = target(pl, item, serverTs) ?: return
-                if (t.senderUserId == item.senderUserId) {
-                    files.deleteFor(t.id, attachments(t))
-                    db.messages().upsert(t.copy(deleted = true, text = "", attachmentsJson = "[]"))
-                    refreshPreview(t.conversationId)
-                }
-            }
-            "reaction" -> {
-                // One emoji, not text: anything else from a modified client is dropped (docs/EMOJI.md). In a community a
-                // reaction may also be one of its own emoji's `:name:` (batch B12).
-                val emoji = pl.emoji?.takeIf { ExpressionRules.reactionAllowed(it, inCommunity(item.conversationId)) } ?: return
-                applyReaction(target(pl, item, serverTs) ?: return, item.senderUserId, emoji, pl.add != false)
-            }
-            "pin" -> {
-                val t = target(pl, item, serverTs) ?: return
-                db.messages().upsert(t.copy(pinned = pl.pinned == true))
-            }
-            "vote" -> {
-                val t = target(pl, item, serverTs) ?: return
-                val rich = rich(t)?.takeIf { it.poll != null } ?: return
-                val updated = PollRules.vote(rich, item.senderUserId, pl.choices.orEmpty().take(PollRules.MAX_OPTIONS), serverTs)
-                if (updated != rich) db.messages().upsert(t.copy(richJson = MessageColumns.encodeRich(updated)))
-            }
-            "poll_close" -> {
-                val t = target(pl, item, serverTs) ?: return
-                val rich = rich(t)?.takeIf { it.poll != null } ?: return
-                val updated = PollRules.close(rich, t.senderUserId, item.senderUserId)
-                if (updated != rich) db.messages().upsert(t.copy(richJson = MessageColumns.encodeRich(updated)))
-            }
-            "read" -> {
-                val upTo = pl.upTo ?: return
-                if (mine) {
-                    db.conversations().markRead(item.conversationId)
-                } else {
-                    for (m in db.messages().outgoingUpTo(item.conversationId, upTo)) {
-                        val r = (readBy(m) + item.senderUserId).distinct()
-                        db.messages().upsert(m.copy(readByJson = json.encodeToString(listOfStrings, r), status = MessageStatus.READ))
-                    }
-                }
-            }
-            "call_key_request" -> {
-                // Only the call's creator answers, in the call's own conversation, while the call is live (T5.3).
-                val callId = pl.callId ?: return
-                val k = db.calls().key(callId) ?: return
-                if (k.conversationId != item.conversationId || !keyRequests.shouldAnswer(callId)) return
-                val call = runCatching { api.get<CallRes>("/v1/calls/$callId").call }.getOrNull() ?: return // the joiner asks again
-                if (call.state == "ENDED") return
-                // The creator answers; in a voice room, so does anyone connected who holds the key (docs/VOICE_ROOMS.md).
-                val mayAnswer = (k.fromUserId == me && call.createdBy == me) || (call.voiceRoom && call.participants.any { it.userId == me })
-                if (!mayAnswer) return
-                sendControl(item.conversationId, Payload(type = "call_invite", callId = callId, video = call.video, e2eeKey = k.key))
-            }
-            "call_invite" -> {
-                val callId = pl.callId ?: return
-                val key = pl.e2eeKey ?: return
-                if (db.calls().key(callId) != null) {
-                    Log.w(TAG, "ignoring second media key for an existing call")
-                    return
-                }
-                val verdict = callKeys.check(callId, item.conversationId, item.senderUserId)
-                if (verdict != CallKeyVerifier.Verdict.ACCEPT) {
-                    Log.w(TAG, "ignoring call key: $verdict") // T5.2: only the call's creator sets its key
-                    return
-                }
-                if (db.calls().putKeyIfAbsent(CallKeyEntity(callId, item.conversationId, key, item.senderUserId, System.currentTimeMillis())) == -1L) {
-                    Log.w(TAG, "ignoring second media key for an existing call")
-                    return
-                }
-                val info = CallInfo(callId, pl.video == true)
-                // A voice room's key: joining the room isn't a call to record in its conversation.
-                val voiceRoom = db.conversations().get(item.conversationId)?.voice == true
-                if (!voiceRoom) db.messages().insertIgnore(
-                    MessageEntity(
-                        id = "call-$callId", conversationId = item.conversationId, senderUserId = item.senderUserId, senderDeviceId = item.senderDeviceId,
-                        outgoing = mine, kind = "call", text = if (pl.video == true) "Video call" else "Voice call", sentAt = serverTs, serverTs = serverTs,
-                        sortTs = serverTs, status = if (mine) MessageStatus.SENT else MessageStatus.RECEIVED, callJson = MessageColumns.encodeCall(info),
-                    ),
-                )
-                if (!mine) _callInvites.tryEmit(IncomingCallKey(callId, item.conversationId, item.senderUserId, pl.video == true))
-            }
-        }
-    }
-
-    /**
-     * The message a control refers to, only if it's in the control's own conversation (T3.4). A target
-     * that hasn't arrived yet holds the control until it does (T2.1); one in another conversation is ignored.
-     */
-    private suspend fun target(pl: Payload, item: QueueItem, serverTs: Long): MessageEntity? {
-        val id = pl.target ?: return null
-        val t = db.messages().get(id)
-        if (t == null) {
-            pending.hold(item.messageId, item.conversationId, id, item.senderUserId, json.encodeToString(Payload.serializer(), pl), serverTs)
-            return null
-        }
-        return t.takeIf { it.conversationId == item.conversationId }
-    }
-
-    /** Applies, in their original order, the controls that arrived before this message. */
-    private suspend fun replayPending(conversationId: String, messageId: String, conv: ConversationEntity?, me: String) {
-        for (c in pending.takeFor(conversationId, messageId)) {
-            val pl = runCatching { json.decodeFromString(Payload.serializer(), c.payloadJson) }.getOrNull() ?: continue
-            val item = QueueItem(0, "envelope", c.conversationId, c.id, c.senderUserId, "", c.serverTs, c.expiresAt, QueuePayload(cls = "control", serverTs = c.serverTs))
-            apply(pl, item, conv, c.senderUserId == me, c.serverTs)
-        }
-    }
-
-    private suspend fun applyReaction(t: MessageEntity, userId: String, emoji: String, add: Boolean) {
-        val map = reactions(t).toMutableMap()
-        val set = map[emoji].orEmpty().toMutableList()
-        if (add) { if (userId !in set) set += userId } else set.remove(userId)
-        if (set.isEmpty()) map.remove(emoji) else map[emoji] = set
-        db.messages().upsert(t.copy(reactionsJson = json.encodeToString(reactionsSer, map)))
-    }
-
     // ─────────────────────────── Call history ───────────────────────────
 
     /**
@@ -1137,7 +756,7 @@ class MessageRepository(
         // build made is removed (phone test: opening the room added "Group voice call in progress").
         if (call.voiceRoom) {
             db.messages().deleteLocal("call-${call.id}")
-            refreshPreview(call.conversationId)
+            db.refreshPreview(call.conversationId)
             return
         }
         val declinedHere = db.calls().getLog(call.id)?.endReason == "declined"
@@ -1157,7 +776,7 @@ class MessageRepository(
         } else if (existing.kind == "call" && existing.conversationId == call.conversationId && existing.callJson != encoded) {
             db.messages().upsert(existing.copy(callJson = encoded))
         } else return
-        refreshPreview(call.conversationId)
+        db.refreshPreview(call.conversationId)
     }
 
     /** Brings the conversation's call entries up to date (on open). Servers before 2026-10-17 have no call list: skipped. */
@@ -1180,86 +799,7 @@ class MessageRepository(
                 callJson = MessageColumns.encodeCall(info),
             ),
         )
-        refreshPreview(cid)
-    }
-
-    private suspend fun refreshPreview(cid: String) {
-        val conv = db.conversations().get(cid) ?: return
-        val last = db.messages().latestVisible(cid)
-        db.conversations().upsert(
-            conv.copy(
-                lastMessageId = last?.id,
-                lastMessagePreview = last?.let(MessagePreview::of) ?: MessagePreview.DELETED,
-                lastMessageAt = last?.sortTs ?: conv.lastMessageAt,
-            ),
-        )
-    }
-
-    /** Kept locally, then acknowledged: opened later if the user accepts the sender's new key (T1.2). */
-    private suspend fun quarantine(item: QueueItem) {
-        db.quarantine().put(QuarantineEntity(item.id, item.conversationId, item.senderUserId, json.encodeToString(QueueItem.serializer(), item), System.currentTimeMillis()))
-    }
-
-    /**
-     * An item that kept failing for an unexpected reason (a local database error or a bug): kept on
-     * the phone with the reason, shown in the conversation, and retried at start-up (T1.4).
-     */
-    private suspend fun setAside(item: QueueItem, e: Throwable) {
-        Log.w(TAG, "setting aside queue item after repeated failures: ${e.javaClass.simpleName}")
-        db.quarantine().put(
-            QuarantineEntity(item.id, item.conversationId, item.senderUserId, json.encodeToString(QueueItem.serializer(), item), System.currentTimeMillis(), reason = "failed: ${e.javaClass.simpleName}"),
-        )
-        if (item.payload.cls == "message") {
-            db.messages().insertIgnore(
-                MessageEntity(
-                    id = item.messageId, conversationId = item.conversationId, senderUserId = item.senderUserId, senderDeviceId = item.senderDeviceId,
-                    outgoing = false, kind = "undecryptable", text = "This message couldn't be processed. It's kept on this phone and will be tried again when the app restarts.",
-                    sentAt = item.createdAt, serverTs = item.createdAt, sortTs = item.createdAt, status = MessageStatus.RECEIVED, errorText = e.javaClass.simpleName,
-                ),
-            )
-        }
-    }
-
-    /**
-     * The user reviewed [identityKey] (the safety number they compared) and accepts it for [userId]:
-     * pin it, resume paused sends and open the messages held while the key was untrusted.
-     */
-    suspend fun acceptIdentity(userId: String, identityKey: String) {
-        directory.acceptIdentity(userId, identityKey)
-        db.messages().resumeHeld()
-        db.outbox().resume(HELD_REASON, System.currentTimeMillis())
-        kick()
-        processLock.withLock {
-            for (q in db.quarantine().heldForIdentity(userId)) {
-                val item = runCatching { json.decodeFromString(QueueItem.serializer(), q.itemJson) }.getOrNull()
-                if (item == null) {
-                    db.quarantine().remove(q.queueId)
-                    continue
-                }
-                try {
-                    handleItem(item)
-                    db.quarantine().remove(q.queueId)
-                } catch (_: SenderIdentityChanged) {
-                    // Still untrusted (the server presents yet another key): keep holding it.
-                } catch (_: ApiException) {
-                    // Keys unreachable right now: try again on the next acceptance or app start.
-                } catch (e: EnvelopeException) {
-                    recordUndecryptable(item, e.message ?: "")
-                    db.quarantine().remove(q.queueId)
-                }
-            }
-        }
-    }
-
-    private suspend fun recordUndecryptable(item: QueueItem, reason: String) {
-        if (item.payload.cls != "message") return
-        db.messages().insertIgnore(
-            MessageEntity(
-                id = item.messageId, conversationId = item.conversationId, senderUserId = item.senderUserId, senderDeviceId = item.senderDeviceId,
-                outgoing = false, kind = "undecryptable", text = "This message couldn't be verified or decrypted and was discarded.",
-                sentAt = item.createdAt, serverTs = item.createdAt, sortTs = item.createdAt, status = MessageStatus.RECEIVED, errorText = reason,
-            ),
-        )
+        db.refreshPreview(cid)
     }
 
     companion object {
@@ -1268,7 +808,7 @@ class MessageRepository(
         /** More than a sender can attach (10), so an older or newer app's message still shows, but bounded. */
         const val MAX_RECEIVED_ATTACHMENTS = 20
         /** Outbox `lastError` marking a send paused by an identity change. */
-        private const val HELD_REASON = "identity_changed"
+        internal const val HELD_REASON = "identity_changed"
         private const val HELD_RECHECK_MS = 6 * 3600_000L
         private const val TAG = "Messages"
         private const val MAX_ATTEMPTS = 6

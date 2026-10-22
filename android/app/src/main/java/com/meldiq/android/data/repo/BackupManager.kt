@@ -1,6 +1,5 @@
 package com.meldiq.android.data.repo
 
-import com.meldiq.android.data.db.MessageColumns
 import android.content.Context
 import android.net.Uri
 import com.meldiq.android.crypto.BackupCrypto
@@ -10,6 +9,7 @@ import com.meldiq.android.crypto.randomBytes
 import com.meldiq.android.crypto.unb64
 import com.meldiq.android.data.db.ConversationEntity
 import com.meldiq.android.data.db.GriipDatabase
+import com.meldiq.android.data.db.MessageColumns
 import com.meldiq.android.data.db.MessageEntity
 import com.meldiq.android.data.db.UserEntity
 import com.meldiq.android.data.model.AttachmentRef
