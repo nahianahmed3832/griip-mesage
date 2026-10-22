@@ -27,6 +27,9 @@ Credentials in them are replaced by `<redacted>`; ids and times are from test ru
 - Errors are always `{ "error": { "code", "message", "details"? } }`; branch on `code`, show `message`.
 - Unknown queue item kinds or payloads get a placeholder, never a silent drop.
 - Decode every fixture in your unit tests with your own models, so a contract change shows up as a failing test.
+  Android: `android/app/src/test/java/com/meldiq/android/contract/ContractFixturesTest.kt` decodes the 154 answers the
+  app uses, every frame and every error, with `GriipJson` and with a stricter decoder (unknown enum values or nulls);
+  the fixtures live outside the Gradle module, so run it with `--rerun` after they change (CI always runs it).
 
 **Coverage:** all 211 client-facing routes are documented, and the test suite has seen a real answer to every one of
 them match its schema ([`COVERAGE.md`](COVERAGE.md), generated). Not documented here, on purpose: the server-to-server

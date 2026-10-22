@@ -1,0 +1,2 @@
+# Strict-decoding failures known when written (ContractFixturesTest); may only shrink.
+# Regenerate with MELDIQ_WRITE_STRICT_ALLOWLIST=1 ./gradlew :app:testDebugUnitTest --tests com.meldiq.android.contract.* --rerun
