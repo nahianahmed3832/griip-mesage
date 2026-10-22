@@ -291,7 +291,14 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             composable(Routes.PEOPLE) { com.meldiq.android.ui.screens.contacts.PeopleScreen(nav) }
             composable(Routes.PROFILE) { com.meldiq.android.ui.screens.profile.SettingsHub(nav) }
             composable(Routes.JOIN + "?code={code}") { JoinWorkspaceScreen(nav, it.arguments?.getString("code")) }
-            composable(Routes.NEW_CHAT + "?mode={mode}") { NewChatScreen(nav, it.arguments?.getString("mode")) }
+            // Batch B14: `with` picks someone already (a DM's "New group").
+            composable(
+                Routes.NEW_CHAT + "?mode={mode}&with={with}",
+                arguments = listOf(
+                    androidx.navigation.navArgument("mode") { type = androidx.navigation.NavType.StringType; nullable = true; defaultValue = null },
+                    androidx.navigation.navArgument("with") { type = androidx.navigation.NavType.StringType; nullable = true; defaultValue = null },
+                ),
+            ) { NewChatScreen(nav, it.arguments?.getString("mode"), it.arguments?.getString("with")) }
             composable(Routes.SEARCH) { SearchScreen(nav) }
             composable("conversation/{id}?thread={thread}&message={message}") {
                 ConversationScreen(nav, it.arguments!!.getString("id")!!, it.arguments?.getString("thread"), it.arguments?.getString("message"))

@@ -130,6 +130,10 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :cid AND deleted = 0 AND attachmentsJson != '[]' ORDER BY sortTs DESC LIMIT :limit")
     fun observeWithFiles(cid: String, limit: Int): Flow<List<MessageEntity>>
 
+    /** Batch B14: messages whose text may hold a link (the details screen's Links tab checks each with LinkRules). */
+    @Query("SELECT * FROM messages WHERE conversationId = :cid AND deleted = 0 AND (text LIKE '%://%' OR text LIKE '%www.%') ORDER BY sortTs DESC LIMIT :limit")
+    fun observeWithLinks(cid: String, limit: Int): Flow<List<MessageEntity>>
+
     @Query("SELECT * FROM messages WHERE id = :id")
     suspend fun get(id: String): MessageEntity?
 

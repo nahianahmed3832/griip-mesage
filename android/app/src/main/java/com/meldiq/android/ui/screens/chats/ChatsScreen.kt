@@ -316,7 +316,7 @@ private fun ChatsHome(nav: NavHostController, request: DmListRequest) {
 
 /** Pick people → open a DM, create a group (mode=group) or start a call (mode=call). */
 @Composable
-fun NewChatScreen(nav: NavHostController, mode: String?) {
+fun NewChatScreen(nav: NavHostController, mode: String?, with: String? = null) {
     val container = LocalContainer.current
     val c = Griip.colors
     val scope = rememberCoroutineScope()
@@ -336,6 +336,11 @@ fun NewChatScreen(nav: NavHostController, mode: String?) {
     val me = container.session.session?.userId
     val permission = com.meldiq.android.ui.screens.calls.rememberCallPermission()
 
+    // Batch B14: "New group" from a DM's details starts with that person picked.
+    LaunchedEffect(with) {
+        val id = with?.takeIf { it != me } ?: return@LaunchedEffect
+        if (picked.none { it.id == id }) runCatching { container.users.fetch(id) }.onSuccess { u -> if (picked.none { it.id == u.id }) picked.add(u) }
+    }
     LaunchedEffect(Unit) {
         val org = container.orgs.selectedOrg.value ?: runCatching { container.orgs.orgs().firstOrNull()?.id }.getOrNull()
         if (org != null) colleagues = runCatching { container.orgs.members(org) }.getOrDefault(emptyList()).filter { it.id != me }
@@ -393,7 +398,7 @@ fun NewChatScreen(nav: NavHostController, mode: String?) {
             ListCard(
                 "New group", Modifier.padding(horizontal = 8.dp, vertical = 4.dp), subtitle = "Pick people to add",
                 leading = { com.meldiq.android.ui.components.IconTile(Icons.Rounded.Groups, c.lavender, c.lavenderSoft, size = 44.dp) },
-                onClick = { nav.navigate(Routes.NEW_CHAT + "?mode=group") { popUpTo(Routes.NEW_CHAT + "?mode={mode}") { inclusive = true } } },
+                onClick = { nav.navigate(Routes.NEW_CHAT + "?mode=group") { popUpTo(Routes.NEW_CHAT + "?mode={mode}&with={with}") { inclusive = true } } },
             )
         }
         if (group && picked.isNotEmpty()) {

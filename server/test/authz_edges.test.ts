@@ -70,11 +70,14 @@ describe("archived channels are read-only (T3.2)", () => {
     const orgId = (await o.req("POST", "/v1/orgs", { name: "Archive Co" })).org.id;
     const code = (await o.req("POST", `/v1/orgs/${orgId}/invites`, { role: "MEMBER" })).invite.code;
     await m.req("POST", "/v1/invites/accept", { code });
-    const ch = (await o.req("POST", `/v1/orgs/${orgId}/channels`, { name: "wind-down", voice: true })).channel.id;
+    // Posts in a text channel; calls in a voice channel (which takes no messages since batch B14).
+    const ch = (await o.req("POST", `/v1/orgs/${orgId}/channels`, { name: "wind-down" })).channel.id;
+    const room = (await o.req("POST", `/v1/orgs/${orgId}/channels`, { name: "wind-down-voice", voice: true })).channel.id;
     await m.send(ch, { type: "text", text: "before archiving" });
     await o.req("PATCH", `/v1/conversations/${ch}`, { archived: true });
+    await o.req("PATCH", `/v1/conversations/${room}`, { archived: true });
     await expectStatus(m.send(ch, { type: "text", text: "after" }), 403);
-    await expectStatus(m.req("POST", "/v1/calls", { conversationId: ch }), 409);
+    await expectStatus(m.req("POST", "/v1/calls", { conversationId: room }), 409);
     expect((await m.req("GET", `/v1/conversations/${ch}`)).conversation.canPost).toBe(false);
     await o.req("PATCH", `/v1/conversations/${ch}`, { archived: false });
     await m.send(ch, { type: "text", text: "back" });

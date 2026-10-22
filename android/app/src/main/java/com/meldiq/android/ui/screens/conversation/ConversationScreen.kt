@@ -102,7 +102,7 @@ import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Reply
 import androidx.compose.material.icons.automirrored.rounded.Send
-import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
@@ -295,6 +295,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     // Batch B9: the community's own emoji and stickers (servers with `community-expressions`).
     val expressionLists by vm.c.expressions.lists.collectAsStateWithLifecycle()
     val convOrg = conv?.orgId
+    // Batch B14: DMs and groups get the simpler header (calls and search) and their details screen.
+    val dmLike = conv?.type == "DM" || conv?.type == "GROUP"
     val communityExpressions = convOrg?.let { expressionLists[it] }.orEmpty()
     LaunchedEffect(convOrg) {
         if (convOrg != null && vm.c.features.has(com.meldiq.android.data.repo.ServerFeatures.COMMUNITY_EXPRESSIONS) == true) runCatching { vm.c.expressions.refresh(convOrg) }
@@ -462,6 +464,19 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val federation by vm.c.conversations.federation.collectAsStateWithLifecycle()
     val remoteServers = federation[conversationId]?.servers.orEmpty()
     var showSecurity by remember { mutableStateOf(false) }
+    // Batch B14: what the details screen asked for on its way back (search, the security sheet, or a message to open).
+    val myEntry = remember { nav.currentBackStackEntry }
+    val detailsAction by (myEntry?.savedStateHandle?.getStateFlow<String?>(DETAILS_ACTION, null) ?: kotlinx.coroutines.flow.MutableStateFlow<String?>(null))
+        .collectAsStateWithLifecycle()
+    LaunchedEffect(detailsAction) {
+        val a = detailsAction ?: return@LaunchedEffect
+        myEntry?.savedStateHandle?.set(DETAILS_ACTION, null)
+        when {
+            a == DetailsActions.SEARCH -> searching = true
+            a == DetailsActions.SECURITY -> showSecurity = true
+            else -> DetailsActions.jumpTarget(a)?.let { jumpTo(it) }
+        }
+    }
     var showPinned by remember { mutableStateOf(false) }
     var showThreads by remember { mutableStateOf(false) }
     // Batch B8: forum post guidelines (servers with `forum-guidelines`).
@@ -519,6 +534,11 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         else -> com.meldiq.android.ui.screens.community.memberCountLabel(conv?.memberCount ?: 0)
     }
 
+    // Batch B14: a voice channel opens as its room (who's in it, Join, invite), with no messages or composer.
+    conv?.takeIf { it.voice && threadRoot == null }?.let { room ->
+        VoiceChannelScreen(nav, room, users, call, onJoin = { permission(false) { vm.startCall(false) } }, onOpenCall = { vm.c.calls.expand() })
+        return
+    }
     // Batch B12: the community's own emoji, for reactions written as `:name:`.
     val communityEmoji = remember(communityExpressions) { communityExpressions.filter { it.kind == "emoji" }.associate { it.name to vm.c.expressions.ref(it) } }
     androidx.compose.runtime.CompositionLocalProvider(com.meldiq.android.ui.components.LocalCommunityEmoji provides communityEmoji) {
@@ -557,10 +577,11 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 val textChannel = conv?.type == "CHANNEL"
                 // Batch B6: no calls through a message request, either way (the server refuses them too).
                 if (threadRoot == null && conv?.removed != true && canCall && conv?.voice != true && !textChannel && conv?.request == null) {
-                    CircleIconButton(Icons.Rounded.Videocam, stringResource(R.string.b5_video_call), { permission(true) { vm.startCall(true) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
                     CircleIconButton(Icons.Rounded.Call, stringResource(R.string.b5_voice_call), { permission(false) { vm.startCall(false) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
+                    CircleIconButton(Icons.Rounded.Videocam, stringResource(R.string.b5_video_call), { permission(true) { vm.startCall(true) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
                 }
-                if (threadRoot == null) PinnedButton(pinned.size) { showPinned = true }
+                // Batch B14: a DM's or group's header keeps calls and search; pins, files and security are in its details.
+                if (threadRoot == null && !dmLike) PinnedButton(pinned.size) { showPinned = true }
                 // Batch B8: follow a thread or forum post, so its replies show in Activity.
                 if (threadRoot != null) {
                     val followed by vm.c.followedThreads.followed.collectAsStateWithLifecycle()
@@ -574,7 +595,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 if (threadRoot == null && conv?.type == "CHANNEL" && conv?.format != "forum") {
                     CircleIconButton(Icons.Outlined.Forum, stringResource(R.string.b5_threads), { showThreads = true }, tint = c.textSecondary, size = 40.dp)
                 }
-                if (threadRoot == null) SecurityPadlock(securityFacts) { showSecurity = true }
+                if (threadRoot == null && !dmLike) SecurityPadlock(securityFacts) { showSecurity = true }
                 CircleIconButton(Icons.Rounded.Search, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.conv_search), { searching = true }, tint = c.textSecondary)
             }
             if (showSecurity) {
@@ -612,7 +633,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     onDismiss = { showPinned = false },
                 )
             }
-            if (!searching && threadRoot == null) {
+            if (!searching && threadRoot == null && !dmLike) {
                 ConversationContextStrip(
                     saved = savedHere,
                     onFiles = { nav.navigate(Routes.info(conversationId)) },
@@ -1332,18 +1353,17 @@ private fun Composer(
                     enter = if (reduced) EnterTransition.None else expandHorizontally(expandFrom = Alignment.Start) + fadeIn(),
                     exit = if (reduced) ExitTransition.None else shrinkHorizontally(shrinkTowards = Alignment.Start) + fadeOut(),
                 ) {
-                    Row {
-                        ComposerIcon(Icons.Outlined.AttachFile, stringResource(R.string.b5_attach), onAttach)
-                        ComposerIcon(Icons.Outlined.EmojiEmotions, stringResource(R.string.b5_emoji), onEmoji)
-                    }
+                    // Batch B14: one "+" for photos, files, camera, contacts, location and the rest (the attach sheet).
+                    ComposerIcon(Icons.Rounded.Add, stringResource(R.string.b5_attach), onAttach)
                 }
                 if (!showAux) Spacer(Modifier.width(4.dp))
-                Box(
+                Row(
                     Modifier.weight(1f).heightIn(min = 48.dp).animateContentSize(grow).clip(fieldShape)
                         .background(c.surfaceVariant).border(1.dp, c.border, fieldShape)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    contentAlignment = Alignment.CenterStart,
+                        .padding(start = 16.dp, end = 4.dp),
+                    verticalAlignment = Alignment.Bottom,
                 ) {
+                Box(Modifier.weight(1f).padding(vertical = 12.dp), contentAlignment = Alignment.CenterStart) {
                     if (text.text.isEmpty()) Text(placeholder, style = Griip.type.body, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     BasicTextField(
                         value = text,
@@ -1354,6 +1374,13 @@ private fun Composer(
                             .onFocusChanged { if (!it.isFocused) aux.value = ComposerAux.onOutside(aux.value) }
                             .semantics { contentDescription = placeholder },
                     )
+                }
+                // Batch B14: emoji, stickers and GIF-like animated emoji live inside the field, as in most messengers.
+                val emojiLabel = stringResource(R.string.b5_emoji)
+                Box(
+                    Modifier.size(40.dp).padding(bottom = 4.dp).clip(CircleShape).pressable(onEmoji, onClickLabel = emojiLabel).semantics { contentDescription = emojiLabel },
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Outlined.EmojiEmotions, null, tint = c.textSecondary, modifier = Modifier.size(22.dp)) }
                 }
                 Spacer(Modifier.width(6.dp))
                 val enabled = text.text.isNotBlank()

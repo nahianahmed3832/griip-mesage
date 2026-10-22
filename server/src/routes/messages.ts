@@ -47,6 +47,8 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
         conv.archived_at ? "This channel is archived" : conv.kind === "ANNOUNCEMENT" ? "Only managers can post in announcement channels" : "You can't post in this channel",
       );
     }
+    // Batch B14: a voice channel is for talking. Its calls' encrypted controls (keys) still pass; messages don't.
+    if (conv.voice === 1 && e.cls === "message") throw new ApiError(403, "voice_channel", "Voice channels don't take messages");
     // Clock sanity: sentAt is signed by the client; reject wildly wrong clocks (±1 day).
     if (Math.abs(e.sentAt - now()) > 24 * 3600_000) throw new ApiError(400, "bad_clock", "Device clock is too far off");
 

@@ -188,6 +188,7 @@ class MessageRepository(
     fun observeThreadRoots(cid: String, limit: Int) = db.messages().observeThreadRoots(cid, limit)
     fun observePinned(cid: String) = db.messages().observePinned(cid)
     fun observeWithFiles(cid: String, limit: Int) = db.messages().observeWithFiles(cid, limit)
+    fun observeWithLinks(cid: String, limit: Int) = db.messages().observeWithLinks(cid, limit)
     /** [followed]: thread roots followed on this phone (batch B8), whose replies count even if you never wrote there. */
     fun observeThreadReplies(me: String, since: Long, limit: Int, followed: Set<String> = emptySet()) =
         db.messages().observeThreadReplies(me, since, limit, followed.toList())

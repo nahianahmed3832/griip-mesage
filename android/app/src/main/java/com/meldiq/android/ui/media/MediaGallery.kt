@@ -26,6 +26,16 @@ object MediaGallery {
         else -> null
     }
 
+    /**
+     * Batch B14: the shape a photo or video takes in a message, width over height: its own, but no taller than 3:4 and no
+     * wider than 16:9, so a phone screenshot doesn't fill the screen and a panorama doesn't shrink to a strip (cropped).
+     */
+    fun previewRatio(width: Int, height: Int): Float =
+        if (width <= 0 || height <= 0) 1f else (width.toFloat() / height).coerceIn(PREVIEW_TALLEST, PREVIEW_WIDEST)
+
+    const val PREVIEW_TALLEST = 0.75f
+    const val PREVIEW_WIDEST = 16f / 9f
+
     /** Whether received photos download on their own (Settings › Chats), given whether the network is unmetered. */
     fun autoDownloadAllowed(mode: com.meldiq.android.data.repo.AutoDownload, unmetered: Boolean): Boolean = when (mode) {
         com.meldiq.android.data.repo.AutoDownload.ALWAYS -> true

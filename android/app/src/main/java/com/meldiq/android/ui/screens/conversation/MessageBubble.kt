@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -539,8 +541,12 @@ private fun AttachmentView(a: AttachmentRef, out: Boolean, transfer: Float?, loc
     }
     val bmp = bitmap
     if (bmp != null) {
-        Box(Modifier.widthIn(max = 260.dp).heightIn(max = 300.dp).clip(Shapes.tile).pressable({ onOpen(a) }, onClickLabel = if (kind == MediaKind.Video) "Play video" else "View photo")) {
-            Image(bmp, a.name, contentScale = ContentScale.Crop)
+        // Batch B14: one width for every photo and video, its own shape within 3:4 and 16:9 (MediaGallery.previewRatio).
+        Box(
+            Modifier.width(MEDIA_PREVIEW_WIDTH).aspectRatio(MediaGallery.previewRatio(bmp.width, bmp.height)).clip(Shapes.tile)
+                .pressable({ onOpen(a) }, onClickLabel = if (kind == MediaKind.Video) "Play video" else "View photo"),
+        ) {
+            Image(bmp, a.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             if (kind == MediaKind.Video) {
                 Box(Modifier.align(Alignment.Center).size(52.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
                     Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(32.dp))
@@ -582,6 +588,8 @@ private fun AttachmentView(a: AttachmentRef, out: Boolean, transfer: Float?, loc
     }
 }
 
+private val MEDIA_PREVIEW_WIDTH = 240.dp
+
 fun humanSize(b: Long): String = when {
     b >= 1_048_576 -> "%.1f MB".format(b / 1_048_576.0)
     b >= 1024 -> "${b / 1024} KB"
@@ -599,18 +607,13 @@ private fun CallChip(m: MessageEntity, out: Boolean, starter: String?) {
     val line = info?.let { CallHistory.line(it, out, starter) } ?: CallHistory.Line("${if (out) "Outgoing" else "Incoming"} ${m.text.lowercase()}", null, false)
     val tint = if (line.missed) c.danger else c.primary
     val detail = listOfNotNull(line.detail, TimeFmt.clock(m.sortTs)).joinToString(" · ")
-    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.Center) {
-        Row(
-            Modifier.clip(Shapes.pill).background(if (line.missed) c.dangerSoft else c.surface)
-                .border(1.dp, if (line.missed) c.danger.copy(alpha = 0.35f) else c.border, Shapes.pill)
-                .padding(horizontal = 12.dp, vertical = 5.dp)
-                .semantics(mergeDescendants = true) {},
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(if (video) Icons.Rounded.Videocam else Icons.Rounded.Call, null, tint = tint, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(line.title, style = Griip.type.label.copy(fontWeight = FontWeight.SemiBold), color = if (line.missed) c.danger else c.textPrimary)
-            Text(" · $detail", style = Griip.type.label, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    // Batch B14: a quiet line in the timeline (no pill or border); missed calls stay red.
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.Center) {
+        Row(Modifier.semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
+            Icon(if (video) Icons.Rounded.Videocam else Icons.Rounded.Call, null, tint = tint, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(line.title, style = Griip.type.caption.copy(fontWeight = FontWeight.SemiBold), color = if (line.missed) c.danger else c.textSecondary)
+            Text(" · $detail", style = Griip.type.caption, color = c.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

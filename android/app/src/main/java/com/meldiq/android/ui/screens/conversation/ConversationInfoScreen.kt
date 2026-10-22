@@ -117,7 +117,88 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
 
     val cv = conv ?: return
     val title = ConversationRepository.title(cv, me)
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
+    // Batch B14: shared by both layouts below.
+    val settingsCard: @Composable () -> Unit = {
+        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), contentPadding = PaddingValues(6.dp)) {
+            // Batch B14: a DM or group mutes from its details' Mute button; channels keep the switch.
+            if (cv.type == "CHANNEL") MenuRow(Icons.Outlined.NotificationsOff, stringResource(R.string.b5_mute_notifications), subtitle = stringResource(R.string.b5_mentions_still), trailing = {
+                GriipSwitch(cv.muted, { v -> scope.launch { container.navPrefs.setMuted(cv, v) } })
+            })
+            if (cv.type == "DM") {
+                ConversationRepository.peer(cv, me)?.let { p ->
+                    MenuRow(Icons.Outlined.Shield, stringResource(R.string.b5_safety_profile), subtitle = stringResource(R.string.b5_verify_key, p.username), onClick = { nav.navigate(Routes.user(p.id)) })
+                }
+            }
+            if (cv.canManage) {
+                MenuRow(Icons.Outlined.Edit, stringResource(if (cv.type == "CHANNEL") R.string.b5_edit_name_topic else R.string.b5_rename_group), tint = c.lavender, tintBg = c.lavenderSoft, onClick = { showEdit = true })
+                // Batch B14: a group adds people from its details' Add button.
+                if (cv.type == "CHANNEL") MenuRow(Icons.Outlined.PersonAdd, stringResource(R.string.b5_add_members), onClick = { showAdd = true })
+                if (cv.type == "GROUP" && groupPhotos) {
+                    MenuRow(
+                        Icons.Outlined.PhotoCamera, stringResource(if (cv.photoRev == null) R.string.b6b_add_photo else R.string.b6b_change_photo),
+                        subtitle = if (photoBusy) stringResource(R.string.b6b_photo_uploading) else stringResource(R.string.b6b_photo_sub),
+                        tint = c.lavender, tintBg = c.lavenderSoft,
+                        onClick = { pickGroupPhoto.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    )
+                    if (cv.photoRev != null) MenuRow(
+                        Icons.Outlined.Delete, stringResource(R.string.b6b_remove_photo), tint = c.danger, tintBg = c.dangerSoft, trailing = null,
+                        onClick = { scope.launch { runCatching { container.conversations.removeGroupPhoto(conversationId) }.onFailure { error = it.friendly() } } },
+                    )
+                }
+                // Communities: who may see, post and share files here, on top of the category's rules.
+                if (cv.type == "CHANNEL" && cv.orgId != null && communityChannels) MenuRow(
+                    Icons.Outlined.Security, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.cm_permissions), tint = c.lavender, tintBg = c.lavenderSoft,
+                    onClick = { nav.navigate(Routes.permissions(category = false, id = conversationId, name = cv.name.orEmpty())) },
+                )
+                // A text channel can become a forum (posts with titles and replies) and back; nothing is lost either way.
+                if (cv.type == "CHANNEL" && !cv.voice && communityChannels) MenuRow(
+                    Icons.Outlined.Forum,
+                    androidx.compose.ui.res.stringResource(if (cv.format == "forum") com.meldiq.android.R.string.fm_make_text else com.meldiq.android.R.string.fm_make_forum),
+                    onClick = { scope.launch { runCatching { container.conversations.update(conversationId, format = if (cv.format == "forum") "text" else "forum") }.onFailure { error = it.friendly() }; reload++ } },
+                )
+                if (cv.type == "CHANNEL") MenuRow(
+                    if (cv.archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, stringResource(if (cv.archived) R.string.b5_unarchive_channel else R.string.b5_archive_channel),
+                    tint = c.warning, tintBg = c.warningSoft,
+                    onClick = { scope.launch { runCatching { container.conversations.update(conversationId, archived = !cv.archived) }.onFailure { error = it.friendly() } } },
+                )
+            }
+            if (cv.type != "DM" && cv.joined && !(cv.kind == "ANNOUNCEMENT" && !cv.canManage)) {
+                MenuRow(Icons.AutoMirrored.Outlined.ExitToApp, stringResource(R.string.b5_leave), tint = c.danger, tintBg = c.dangerSoft, onClick = { confirmLeave = true }, trailing = null)
+            }
+        }
+    }
+    val memberItems: androidx.compose.foundation.lazy.LazyListScope.(List<UserDto>) -> Unit = { list ->
+        items(list, key = { it.id }) { u ->
+            var menu by remember { mutableStateOf(false) }
+            ListCard(
+                if (u.id == me) "${u.displayName} (you)" else u.displayName, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
+                subtitle = "@${u.username}",
+                leading = { Avatar(u.displayName, u.avatarColor, size = 44.dp, online = u.online) },
+                trailing = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (u.role == "ADMIN") RoleBadge("ADMIN") else u.orgRole?.takeIf { it != "MEMBER" }?.let { RoleBadge(it) }
+                        if (cv.canManage && u.id != me && cv.type != "DM") {
+                            CircleIconButton(Icons.Rounded.MoreVert, stringResource(R.string.b5_manage_person, u.displayName), { menu = true }, size = 34.dp)
+                            DropdownMenu(menu, { menu = false }) {
+                                DropdownMenuItem(text = { Text(stringResource(if (u.role == "ADMIN") R.string.b5_make_member else R.string.b5_make_channel_admin)) }, onClick = {
+                                    menu = false
+                                    scope.launch { runCatching { container.conversations.addMember(conversationId, u.id, if (u.role == "ADMIN") "MEMBER" else "ADMIN") }.onFailure { error = it.friendly() }; reload++ }
+                                })
+                                DropdownMenuItem(text = { Text(stringResource(if (cv.type == "CHANNEL") R.string.b5_remove_from_channel else R.string.b5_remove_from_group), color = c.danger) }, onClick = {
+                                    menu = false
+                                    scope.launch { runCatching { container.conversations.removeMember(conversationId, u.id) }.onFailure { error = it.friendly() }; reload++ }
+                                })
+                            }
+                        }
+                    }
+                },
+                onClick = if (u.id != me) ({ nav.navigate(Routes.user(u.id)) }) else null,
+            )
+        }
+    }
+    if (cv.type != "CHANNEL") {
+        DmDetailsList(nav, cv, me, title, members, pinned, error, settingsCard, memberItems, onAdd = if (cv.canManage) ({ showAdd = true }) else null)
+    } else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
         item { GriipTopBar(stringResource(if (cv.type == "CHANNEL") R.string.b5_channel_info else if (cv.type == "GROUP") R.string.b5_group_info else R.string.b5_contact), onBack = { nav.popBackStack() }) }
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp)) {
@@ -146,53 +227,7 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
             }
         }
         item(key = "settings-header") { SectionHeader(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ch_notifications), Modifier.padding(top = 10.dp, bottom = 2.dp)) }
-        item {
-            GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), contentPadding = PaddingValues(6.dp)) {
-                MenuRow(Icons.Outlined.NotificationsOff, stringResource(R.string.b5_mute_notifications), subtitle = stringResource(R.string.b5_mentions_still), trailing = {
-                    GriipSwitch(cv.muted, { v -> scope.launch { container.navPrefs.setMuted(cv, v) } })
-                })
-                if (cv.type == "DM") {
-                    ConversationRepository.peer(cv, me)?.let { p ->
-                        MenuRow(Icons.Outlined.Shield, stringResource(R.string.b5_safety_profile), subtitle = stringResource(R.string.b5_verify_key, p.username), onClick = { nav.navigate(Routes.user(p.id)) })
-                    }
-                }
-                if (cv.canManage) {
-                    MenuRow(Icons.Outlined.Edit, stringResource(if (cv.type == "CHANNEL") R.string.b5_edit_name_topic else R.string.b5_rename_group), tint = c.lavender, tintBg = c.lavenderSoft, onClick = { showEdit = true })
-                    if (cv.type != "DM") MenuRow(Icons.Outlined.PersonAdd, stringResource(R.string.b5_add_members), onClick = { showAdd = true })
-                    if (cv.type == "GROUP" && groupPhotos) {
-                        MenuRow(
-                            Icons.Outlined.PhotoCamera, stringResource(if (cv.photoRev == null) R.string.b6b_add_photo else R.string.b6b_change_photo),
-                            subtitle = if (photoBusy) stringResource(R.string.b6b_photo_uploading) else stringResource(R.string.b6b_photo_sub),
-                            tint = c.lavender, tintBg = c.lavenderSoft,
-                            onClick = { pickGroupPhoto.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        )
-                        if (cv.photoRev != null) MenuRow(
-                            Icons.Outlined.Delete, stringResource(R.string.b6b_remove_photo), tint = c.danger, tintBg = c.dangerSoft, trailing = null,
-                            onClick = { scope.launch { runCatching { container.conversations.removeGroupPhoto(conversationId) }.onFailure { error = it.friendly() } } },
-                        )
-                    }
-                    // Communities: who may see, post and share files here, on top of the category's rules.
-                    if (cv.type == "CHANNEL" && cv.orgId != null && communityChannels) MenuRow(
-                        Icons.Outlined.Security, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.cm_permissions), tint = c.lavender, tintBg = c.lavenderSoft,
-                        onClick = { nav.navigate(Routes.permissions(category = false, id = conversationId, name = cv.name.orEmpty())) },
-                    )
-                    // A text channel can become a forum (posts with titles and replies) and back; nothing is lost either way.
-                    if (cv.type == "CHANNEL" && !cv.voice && communityChannels) MenuRow(
-                        Icons.Outlined.Forum,
-                        androidx.compose.ui.res.stringResource(if (cv.format == "forum") com.meldiq.android.R.string.fm_make_text else com.meldiq.android.R.string.fm_make_forum),
-                        onClick = { scope.launch { runCatching { container.conversations.update(conversationId, format = if (cv.format == "forum") "text" else "forum") }.onFailure { error = it.friendly() }; reload++ } },
-                    )
-                    if (cv.type == "CHANNEL") MenuRow(
-                        if (cv.archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, stringResource(if (cv.archived) R.string.b5_unarchive_channel else R.string.b5_archive_channel),
-                        tint = c.warning, tintBg = c.warningSoft,
-                        onClick = { scope.launch { runCatching { container.conversations.update(conversationId, archived = !cv.archived) }.onFailure { error = it.friendly() } } },
-                    )
-                }
-                if (cv.type != "DM" && cv.joined && !(cv.kind == "ANNOUNCEMENT" && !cv.canManage)) {
-                    MenuRow(Icons.AutoMirrored.Outlined.ExitToApp, stringResource(R.string.b5_leave), tint = c.danger, tintBg = c.dangerSoft, onClick = { confirmLeave = true }, trailing = null)
-                }
-            }
-        }
+        item { settingsCard() }
         if (pinned.isNotEmpty()) {
             item { SectionHeader(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ch_pinned), Modifier.padding(top = 12.dp, bottom = 6.dp)) }
             items(pinned, key = { "pin" + it.id }) { m ->
@@ -200,39 +235,14 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
                     m.text.ifEmpty { "📎 Attachment" }, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
                     subtitle = (if (m.outgoing) stringResource(R.string.pin_you) + " · " else "") + TimeFmt.listStamp(m.sortTs),
                     leading = { com.meldiq.android.ui.components.IconTile(Icons.Outlined.PushPin, c.peach, c.peachSoft, size = 38.dp) },
-                    onClick = { nav.popBackStack() },
+                    // Batch B14: opens the pinned message itself (it used to only go back to the chat).
+                    onClick = { returnToChat(nav, DetailsActions.jump(m.id)) },
                 )
             }
         }
         channelFilesSection(files, names = { m -> container.messages.attachments(m).map { it.name to it.size } }, onOpen = { nav.popBackStack() })
         item { SectionHeader(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ch_members, members.size), Modifier.padding(top = 12.dp, bottom = 6.dp)) }
-        items(members, key = { it.id }) { u ->
-            var menu by remember { mutableStateOf(false) }
-            ListCard(
-                if (u.id == me) "${u.displayName} (you)" else u.displayName, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                subtitle = "@${u.username}",
-                leading = { Avatar(u.displayName, u.avatarColor, size = 44.dp, online = u.online) },
-                trailing = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (u.role == "ADMIN") RoleBadge("ADMIN") else u.orgRole?.takeIf { it != "MEMBER" }?.let { RoleBadge(it) }
-                        if (cv.canManage && u.id != me && cv.type != "DM") {
-                            CircleIconButton(Icons.Rounded.MoreVert, stringResource(R.string.b5_manage_person, u.displayName), { menu = true }, size = 34.dp)
-                            DropdownMenu(menu, { menu = false }) {
-                                DropdownMenuItem(text = { Text(stringResource(if (u.role == "ADMIN") R.string.b5_make_member else R.string.b5_make_channel_admin)) }, onClick = {
-                                    menu = false
-                                    scope.launch { runCatching { container.conversations.addMember(conversationId, u.id, if (u.role == "ADMIN") "MEMBER" else "ADMIN") }.onFailure { error = it.friendly() }; reload++ }
-                                })
-                                DropdownMenuItem(text = { Text(stringResource(if (cv.type == "CHANNEL") R.string.b5_remove_from_channel else R.string.b5_remove_from_group), color = c.danger) }, onClick = {
-                                    menu = false
-                                    scope.launch { runCatching { container.conversations.removeMember(conversationId, u.id) }.onFailure { error = it.friendly() }; reload++ }
-                                })
-                            }
-                        }
-                    }
-                },
-                onClick = if (u.id != me) ({ nav.navigate(Routes.user(u.id)) }) else null,
-            )
-        }
+        memberItems(members)
     }
     if (showAdd) AddMembersSheet(cv.orgId, members.map { it.id }.toSet(), onDismiss = { showAdd = false }) { ids ->
         scope.launch {

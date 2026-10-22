@@ -133,3 +133,10 @@ describe("voice rooms", () => {
     await expectStatus(owner.req("POST", `/v1/calls/${call.call.id}/hand`, { raised: true }), 400);
   });
 });
+
+describe("messages in voice channels (batch B14)", () => {
+  it("refuses messages but lets the call's encrypted controls through", async () => {
+    await expectStatus(owner.send(roomId, { type: "text", text: "hello" }, "message"), 403);
+    await owner.send(roomId, { type: "call_key_request", callId: "x" }, "control");
+  });
+});

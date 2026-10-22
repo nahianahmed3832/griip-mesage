@@ -949,6 +949,84 @@ Checked and found right:
   - the application race, covered by the existing suite plus the new conditional update.
 - **Android:** unchanged since B12 (641 tests, 0 failures; lint 0 errors).
 
+## 6n. Batch B14: minimal DM screen, conversation details, voice rooms (built 2026-10-22, not phone-tested)
+
+Started on the owner's go-ahead without waiting for the B13 phone test. Specification:
+`MELDIQ_BACKLOG_B14_B16_B15.md` §B14, plus the owner's addition the same day: "voice channel… cannot send any message
+and won't be have any message options either".
+
+### What's in it
+
+| Area | What the person sees | Code |
+|---|---|---|
+| DM and group header | Back, the avatar, the name with presence or member count, **voice call**, **video call**, **search**. The name no longer gets cut. Pins, files and the lock moved to the details screen. The separate Files chip row is gone. Channels keep their header | `ConversationScreen.kt` (`dmLike`) |
+| Details screen (DMs, groups) | A header (photo, name, @username or member count, online), round actions **Search · Mute · Profile (DM) or Add (group) · Security**, **New group: start a group with <name>** (DM), tabs **Members (groups) · Media · Pins · Links · Files** with counts, then Settings. Tapping a photo, file or pin goes back to the chat at that message; Search and Security open in the chat; links open as Settings › Chats says, asking first when it should | `DmDetails.kt`, `ConversationInfoScreen.kt`, `DetailsRules` |
+| New group with this person | The usual New group screen, with that person already added | `NewChatScreen(…, with)`, route `newchat?mode=group&with=` |
+| Timeline | Photos and videos at one width (240 dp), each in its own shape, but no taller than 3:4 and no wider than 16:9 (a phone screenshot no longer fills the screen). The caption stays under its picture. Call records are quiet one-line notes, not bordered pills; missed calls stay red | `MessageBubble.kt`, `MediaGallery.previewRatio` |
+| Composer | **+** (photos and videos, camera, record video, files, contact, location, poll: the existing sheet), the message field with **emoji inside it**, then **mic**, which becomes **Send** when there's text | `ConversationScreen.kt` (`Composer`) |
+| Voice channels | A voice channel opens as its **room**: who's in it (one large tile, or two by two), **Join voice** (or **Open the call** when you're in), **Invite people** (the community's invitations), and the listen-only and no-permission notices. **No messages, no composer, no message menu.** The server refuses messages there (`403 voice_channel`); the call's encrypted key messages still pass. The web app shows a note instead of its message box | `VoiceChannel.kt`; server `routes/messages.ts`; web `ConversationView.tsx` |
+| **Fix:** pinned message in a channel's details | Tapping it opens that message; it used to only go back | `ConversationInfoScreen.kt` |
+| Duplicates removed | In DMs and groups, the "Mute notifications" switch and "Add members" row (now the Mute and Add buttons) | `ConversationInfoScreen.kt` |
+
+**Not changed, on purpose:**
+- Channel screens: B14 is about DMs, and a channel's header and details differ.
+- Voice notes (already compact, with a waveform and duration) and replies, reactions and the "edited" mark (checked; already
+  grouped consistently in the Stream layout).
+- Messages already in a voice channel stay stored; they're no longer shown there.
+
+**Server and API:** API **0.25.0** (no migration): messages to voice channels are refused. **Web:** `meldiq-web`
+`df66b32` and `e9f8d2b`.
+
+### How it was checked
+
+- **Server:** full suite **711 passed**, 10 skipped, exit 0; type check clean; `voice_rooms.test.ts` adds "refuses messages but lets the
+  call's encrypted controls through". One older test that sent messages into a voice channel now uses a text channel
+  for its posts.
+- **Android:** `DetailsRulesTest` (tabs; media, files and links from messages, newest first, each link once, nothing
+  from deleted or unsent messages) and `PreviewRatioTest`; full suite **646 tests, 0 failures**; lint 0 errors.
+- **Web:** 262 tests passed; type check clean.
+- **Emulator** (Ada, local server):
+  - **DM:** the header showed "ErinSender · Online" in full, with voice, video and search; no Files row.
+  - **Details:** Search opened the chat's search with the keyboard (the composer stayed above it); Security opened
+    the security sheet; New group opened with ErinSender added (no group created); Files › big100.bin went back to
+    the chat at it.
+  - **Tabs:** Media showed the photo just sent; Links showed "web.meldiq.app · https://web.meldiq.app/help · You";
+    Pins listed the pinned message and opened it.
+  - **Group "Labtrip":** Members tab with the manage menus; Add; Settings.
+  - **Photo:** a 540×1200 picture with a caption showed at 240×320 dp with the caption under it.
+  - **Small screen** (360×640 dp): the header and details fit; the tabs scroll sideways.
+  - **Voice channel "lounge":** the room with "No one is here yet", Invite people and Join voice. Joining started the
+    room's call; back on the room it showed "In the room — 1" and Open the call.
+- **Not checked on the emulator:** a second person in the room (two apps on one emulator share a microphone and
+  camera), the old build's view of the new message rules, and the web app in a browser.
+
+### B14 APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b14-production-debug.apk`
+  (148 MB, git-ignored). **SHA-256:** `a7aaee23068621600e192f39d7033ca12451c13ff94c5b9120f1b34b2ff8f4c3`.
+- **Variant:** debug, side by side ("Meldiq Test"), **production server `https://msg.meldiq.app`** (API 0.25.0). It
+  contains everything from B4 to B14 and updates the earlier "Meldiq Test" in place.
+
+### Owner's phone checklist (B14), two phones
+
+1. **DM header:** open a DM. **Expected:** back, the person's photo and full name with Online or Last seen, then voice,
+   video and search, nothing else, and no Files row.
+2. **Details:** tap the name. **Expected:** Search, Mute, Profile and Security buttons; New group; tabs Media, Pins,
+   Links, Files with counts; then Settings.
+3. **Each tab:** send a photo with a caption, a link and a file, and pin a message. **Expected:** each appears in its
+   tab, and tapping a photo, file or pin returns to that message in the chat.
+4. **Actions:** Search opens the chat's search. Mute changes to Unmute. Security opens the encryption sheet. New group
+   opens with that person added.
+5. **Group:** a group's details start on Members (with the manage menu); Add adds people.
+6. **Timeline:** a phone screenshot shows as a 3:4 card, not the whole screen, with its caption under it. Calls appear
+   as quiet one-line notes.
+7. **Composer:** "+" opens photos, camera, files, contact, location and poll; emoji is inside the field; the mic turns
+   into Send when you type; the keyboard never covers the field.
+8. **Voice channel:** open one. **Expected:** the room (who's in it, Join voice, Invite people), with no message box
+   and no messages. Join from both phones: both appear as tiles; Open the call returns to the call.
+9. **Small phone:** if you have one, repeat steps 1, 2 and 8.
+10. **Report back:** pass or fail per step, with screenshots.
+
 ## 7. Things the owner should know (carried over)
 
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
