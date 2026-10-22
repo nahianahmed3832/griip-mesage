@@ -7,7 +7,7 @@
 | VPS | Hostinger VM 1245833, `srv1245833.hstgr.cloud`, **72.60.107.88** (Ubuntu 24.04, 2 vCPU, 8 GB) |
 | Compose project | **`griip-internal-messaging`** |
 | Directory | **`/opt/griip-internal-messaging`** (root, 0750; `.env` 0600) |
-| Services | `api` (`griip-internal-messaging-api:0.24.0` since 2026-10-22 01:14 UTC, built on the VPS; `0.13.0-rollback`, `0.12.0-rollback`, `0.11.0-rollback`, `0.10.0-rollback`, `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
+| Services | `api` (`griip-internal-messaging-api:0.25.0` since 2026-10-22 02:31 UTC, built on the VPS; `0.24.0-rollback`, `0.13.0-rollback`, `0.12.0-rollback`, `0.11.0-rollback`, `0.10.0-rollback`, `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
 | Volume / network | `griip-internal-messaging_api-data`, `griip-internal-messaging_default` |
 | Public URLs | **`https://msg.meldiq.app`** (API + WebSocket) and **`wss://rtc.meldiq.app`** (LiveKit signalling) since 2026-10-22; the former `msg.griipbuddy.cloud` and `rtc.griipbuddy.cloud` still serve the same backends for apps installed earlier |
 | TLS | host nginx: `meldiq-msg.conf` (certificate `meldiq-msg`, msg and rtc.meldiq.app) and `griip-message.conf` (certificate `griip-message`, the former names); both renew automatically (certbot, webroot `/var/www/griip-message-acme`) |
@@ -114,6 +114,24 @@ Branch `api-0.8.1-web-return`. No migrations (schema stays 28).
 Not verifiable on production yet: no one can connect an app there (`integrations-status`: no `INTEGRATIONS_TOKEN_KEY`, no
 provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
 `up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
+
+### API 0.25.0 and Meldiq Web e9f8d2b (2026-10-22, 02:31 UTC, owner's go-ahead)
+
+Batch B14 (`internal-beta` `22d5303`): voice channels take no messages (`403 voice_channel`; the call's encrypted controls
+still pass). No migration (schema 44). Web: no message box in voice channels.
+
+| Step | Result |
+|---|---|
+| Checks before | server 711 passed / 10 skipped; Android 646 passed, lint 0 errors; web 262 passed |
+| Backup | `backups/pre-0.25.0-20261022T020957Z`: integrity ok, schema 44, 33 users; `.env`, `compose.yaml`, `livekit.yaml` copies; image tagged `0.24.0-rollback`; sources kept as `server.pre-0.25.0` |
+| Sources | rsync with checksums: `package.json`, `package-lock.json`, `src/app.ts`, `src/routes/messages.ts` |
+| Rehearsal | 0.25.0 on a copy of the snapshot (in the project folder), `--network none`: healthy, no warnings; copy deleted |
+| Switch | image 0.25.0, `validate-env.sh` 0 errors, `config -q`, `up -d --no-deps --no-build api`; healthy, 0 restarts, no warnings or errors |
+| Checks after | `/healthz` 0.25.0 on msg.meldiq.app and msg.griipbuddy.cloud; `/v1/messages` refuses requests without a session |
+| Web | release `0.2.4-beta-e9f8d2b`; `verify.sh` all checks passed |
+
+Rollback: `image: griip-internal-messaging-api:0.24.0-rollback`, then `up -d --no-deps --no-build api`; the web with
+`bash /root/meldiq-web-0.2.4-beta-e9f8d2b/rollback.sh`.
 
 ### API 0.24.0, msg.meldiq.app and Meldiq Web 6ecfc81 (2026-10-22, 01:14 UTC, owner's go-ahead)
 

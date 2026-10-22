@@ -16,14 +16,15 @@ Overnight, B4b to B13 were built one after another, as asked. Every batch is com
 go-ahead (2026-10-22) it was pushed to GitHub and deployed (below).
 
 **In production since 2026-10-22 01:14 UTC** (owner's go-ahead; `docs/DEPLOYMENT.md`):
-- **API 0.24.0** on **`https://msg.meldiq.app`**, calls on `wss://rtc.meldiq.app`. The former `msg.griipbuddy.cloud`
+- **API 0.25.0** (B14, 02:31 UTC; 0.24.0 at 01:14) on **`https://msg.meldiq.app`**, calls on `wss://rtc.meldiq.app`. The former `msg.griipbuddy.cloud`
   answers too, so apps installed earlier keep working.
-- **Meldiq Web** `0.2.4-beta-6ecfc81` on `https://web.meldiq.app`.
+- **Meldiq Web** `0.2.4-beta-e9f8d2b` on `https://web.meldiq.app`.
 - A backup was taken before and after. To roll back, see `docs/DEPLOYMENT.md`.
 
-**For employees:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-production-debug.apk`.
-It's "Meldiq Test" (debug-signed, installs next to the regular app) and talks only to `https://msg.meldiq.app`.
-**SHA-256:** `d7b4ae98f279c7339a279900a20fc9171d6aff03ebc0b44c6c111037b65b5b0d`.
+**For employees:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b14-production-debug.apk`
+(B4–B14). It's "Meldiq Test" (debug-signed, installs next to the regular app) and talks only to
+`https://msg.meldiq.app`. **SHA-256:** `a7aaee23068621600e192f39d7033ca12451c13ff94c5b9120f1b34b2ff8f4c3`. The B14
+checklist is in §6n.
 - Registration is by invitation: a community owner's invite code, or `admin.js reg-invite` on the server
   (`docs/DEPLOYMENT.md`).
 - For the regular Meldiq app, sign a release in Android Studio from the main folder. Release builds now default to
@@ -49,6 +50,7 @@ src/index.ts`, `adb reverse tcp:8080 tcp:8080`).
 | B11 | `c486859` | Screen share modes, game sound | §6k |
 | B12 | `bf455cf` | Dates in your language, custom emoji reactions, pronouns, role groups | §6l |
 | B13 | `1c92e93` | Server fixes only: nothing new to try on the phone | §6m |
+| B14 | `22d5303` | Minimal DM screen and details, voice channels as rooms | §6n |
 
 **Waiting on you:**
 - the phone tests above, as pass or fail per batch;
