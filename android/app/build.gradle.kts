@@ -45,7 +45,7 @@ fun setting(name: String): String? =
 
 val environments = setOf("development", "staging", "production")
 val endpointDefaults = mapOf(
-    "production" to "https://msg.griipbuddy.cloud", // the live relay today, not the Meldiq hostname (not bought yet)
+    "production" to "https://msg.meldiq.app", // since 2026-10-22; msg.griipbuddy.cloud still answers for older installs
     "development" to "http://localhost:8080",
 )
 fun apiBaseUrl(environment: String): String {
