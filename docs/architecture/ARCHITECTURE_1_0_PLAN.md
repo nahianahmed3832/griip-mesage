@@ -595,3 +595,16 @@ CI builds clean and always runs it. Declaring them as an input needs `build.grad
 
 `internal-beta` fast-forwarded to `ee1a8d8` (local, not pushed). Main folder: Android 654 passed (`--rerun`).
 The web branch `contract-fixtures` is the web session's to merge and release.
+
+### Step F2: Android on the contracts (2026-10-23, branch `architecture-1.0-android`, not merged)
+
+| Commit | What |
+|---|---|
+| `95fa3d4` | One sealed `ServerEvent` parsed in `RealtimeCodec`, outbound `ClientEvent` by the serializer; `RealtimeCodecTest` against `realtime.schema.json` |
+| `b07fcfb` | `MessageColumns` (one decoder for the JSON columns) and `MessagePreview` (one preview instead of four) |
+| `f3cd4be` | `MessageRepository` split into `MessageSignals`, `MessageReceiver` and `MessageControls` behind the same API |
+| `50b65c6` | The three retired workspace routes are no longer called; `ApiRoutesTest` checks every path literal against `openapi.json` |
+| `8811ac8` | `RequestContractTest` (request bodies against the schemas) and the four null fixes it found (`@SendNulls`) |
+
+Android 677 passed (from 654). Report, test results, APK and phone checklist:
+[`ANDROID_1_0_COMPLETION.md`](ANDROID_1_0_COMPLETION.md). The AI consent sheet waits for the server's AI module (E1).
