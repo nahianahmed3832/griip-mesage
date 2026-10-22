@@ -1,0 +1,375 @@
+# Meldiq Architecture 1.0: target architecture and plan (2026-10-22)
+
+**Status: proposed, waiting for the owner's approval.** Nothing in this document is implemented yet. The audit it
+rests on is [`ARCHITECTURE_1_0_AUDIT.md`](ARCHITECTURE_1_0_AUDIT.md). Section numbers below follow the brief's list of
+required deliverables (§9): 1 is the audit, 2 to 9 are here.
+
+Principle: one understandable codebase, one canonical backend contract, native applications preserved, AI integrated
+cleanly, and complexity introduced only when it earns its place.
+
+## 0. Where the brief and the repository disagree
+
+The audit found four places where the brief describes something the repository doesn't have. Each needs an owner
+decision before the phase that depends on it (§10). The plan below assumes the recommendation.
+
+| # | Brief says | Repository and production say | Recommendation |
+|---|---|---|---|
+| D1 | Web is an existing Next.js application | Meldiq Web is a **React + Vite single-page app** (`meldiq-web`, static files behind nginx on web.meldiq.app). There is no Next.js code anywhere. | **Keep React + Vite** (ADR 0008 below). The web app is an end-to-end encrypted client: the server can't render its content, so server-side rendering brings nothing, and a framework migration would be a rewrite. |
+| D2 | Preserve the existing native iOS stack | `/Volumes/code_files/meldiq_ios` is **empty**. No Swift code exists in any accessible repository. | **Gap report and implementation plan only** in 1.0 (§7.3). Building the app is a separate, owner-approved project. |
+| D3 | MongoDB initially, including message storage | **Production runs on SQLite** (`/healthz` reports `mongodb: null`, checked 2026-10-22). 5 of 12 data domains can run on MongoDB; about 650 SQL statements in 7 domains can't yet. No MongoDB cluster exists. | Keep the existing domain-by-domain move (`MELDIQ_MONGODB_MIGRATION.md`), now as part of the module refactor: every module gets a store interface; MongoDB becomes the production home only after the owner provisions a cluster and approves each cutover. |
+| D4 | The server stores messages | Meldiq is **end-to-end encrypted**. The server stores ciphertext envelopes for at most 7 days (relay queue) and each account's history as ciphertext under opaque tags. It never holds message plaintext. | "Message storage" means the relay queue and the encrypted history store. Both move behind persistence interfaces (§5). Server-side AI cannot read messages (§6). |
+
+## 2. Target architecture
+
+```
+ Android (Kotlin/Compose)     Meldiq Web (React/Vite)     iOS (planned, SwiftUI)
+          │  HTTPS /v1 /v2 REST (OpenAPI)  ·  WSS /v1/ws typed events  │
+          ▼                                                            ▼
+ ┌──────────────────────── Meldiq API: one Fastify/TypeScript process (modular monolith) ─────────────────────────┐
+ │ app/        server bootstrap, config, error envelope, auth + rate-limit middleware                              │
+ │ modules/    auth · accounts · organizations · messaging · realtime · files · calls · notifications · ai ·      │
+ │             administration · federation (off)                                                                   │
+ │ infrastructure/  database (SQLite today, MongoDB per domain) · storage (S3, local) · realtime bus (in-process)  │
+ │                  · ai-providers · mail                                                                          │
+ │ shared/     contracts (zod: REST + WebSocket) · validation · logging · utilities                                │
+ └─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+        │ SQLite → MongoDB (per domain)      │ S3 ap-southeast-1 (ciphertext)     │ LiveKit SFU (same VPS)
+        │                                    │                                    │ FCM · ntfy · SMTP/SES
+```
+
+What stays exactly as it is: Fastify 5, Node 22, zod, the Hostinger VPS with Docker Compose, S3 for file objects,
+LiveKit for media, FCM and ntfy for push, the `griip-envelope-v1` encryption, and every route and event clients use
+today.
+
+What is **not** introduced: Kafka, Kubernetes, microservices, a second message service, a vector database, Redis.
+Redis (or MongoDB change streams) becomes a candidate only when a second API process is needed: the WebSocket hub
+is in memory, so a second process needs a shared bus. One process on the current VPS has headroom for the internal
+beta; there is no measurement saying otherwise, so no bus is added now. The hub gets an interface (`RealtimeBus`) so
+that adding one later touches one adapter.
+
+## 3. Backend folder structure and dependency rules
+
+### 3.1 Layout (adapted to what exists)
+
+The server already has domain folders (`accounts/`, `permissions/`, `push/`, `history/`, `mongo/` …) next to a flat
+`routes/` folder and about 15 root files. The refactor groups them by module; it does not rewrite them.
+
+```
+server/src/
+  app/            server.ts (today app.ts), index.ts, config/ (config.ts), errors/ (ApiError, error handler),
+                  middleware/ (requireAuth, rate limits, abuse.ts)
+  modules/
+    auth/           v1 challenge sign-in (routes/auth.ts), pairing, sessions, authenticateToken (context.ts)
+    accounts/       accounts/* (v2), profile.ts, photos.ts, preferences/, relationships/, key backup, recovery,
+                    deletion, reminders/
+    organizations/  routes/orgs.ts, community.ts, roles.ts, applications.ts, onboarding.ts, guide.ts,
+                    expressions.ts, reports/, invites.ts, roles.ts, permissions/, authz.ts, workspace/*,
+                    communityMigration.ts, orgRepair.ts
+    messaging/      routes/messages.ts, conversations.ts, history/, mentions.ts, search/, channelRepair.ts
+    realtime/       hub.ts, ws.ts, presence
+    files/          routes/attachments.ts (the S3 interaction stays behind infrastructure/storage)
+    calls/          routes/calls.ts, livekit.ts, routes/meetings.ts, workspace/meetings.ts
+    notifications/  push/*, routes/push.ts
+    ai/             new (§6)
+    administration/ ops/*, admin.ts (CLI), usage/, entitlements.ts, experiments/, backup.ts, retiredData.ts, jobs.ts
+    federation/     federation/*, core/* (unchanged, off unless FEDERATION_DOMAIN is set)
+  infrastructure/
+    database/       db.ts (SQLite + migrations), mongo/client.ts, config, catalog, migrate, admin tools
+    storage/        storage/* (S3, local, fallback)
+    realtime/       InProcessBus (today's hub fan-out); a shared bus later if ever needed
+    ai-providers/   provider adapters (§6)
+    mail/           accounts/mailer.ts, mail templates
+  shared/
+    contracts/      zod schemas for every request, response and realtime event; error-code catalog (§4)
+    validation/     zId, zB64, zKey, zSig, zName, parse() (today in context.ts)
+    logging/        the redaction rules and log helpers
+    utilities/      util.ts, crypto.ts
+```
+
+Inside a module only the layers it needs:
+
+| Layer | Holds | Example (messaging) |
+|---|---|---|
+| domain | Rules and types, no I/O | envelope rules, ordering and idempotency rules, slowmode |
+| application | Use cases; depends on store interfaces, not on SQLite or MongoDB | `sendEnvelope`, `fetchBacklog`, `ack` |
+| infrastructure | The module's store implementations | `SqliteRelayStore`, `MongoRelayStore` |
+| transport | Fastify routes and WebSocket handlers; validate with `shared/contracts`, call use cases | `POST /v1/messages`, `ack` frames |
+
+Small modules (expressions, guide) stay transport + store; they don't get empty layers.
+
+### 3.2 Dependency rules
+
+1. `transport → application → domain`. `infrastructure` implements interfaces that `application` declares.
+2. A module uses another module only through that module's `index.ts` (its public use cases). It never imports
+   another module's store, never queries another module's tables or collections.
+3. `shared/` imports nothing from `modules/`, `infrastructure/` or `app/`. `infrastructure/` imports only `shared/`.
+4. Only `app/server.ts` wires everything (stores chosen by `ctx.mongo?.owns(domain)`, as today).
+5. Enforced by a test (`test/architecture_boundaries.test.ts`) that reads import paths and fails on a violation. No
+   new lint dependency.
+
+Rule 2 is the expensive one. Today `authz.ts` and most routes read other domains' tables directly (861 `prepare()`
+calls in 60 files). The move does not fix all of that at once: each existing cross-module query is listed in the
+boundary test's allowlist with its module pair, and the list may only shrink. New code can't add to it.
+
+## 4. API and WebSocket contract plan
+
+### 4.1 What is kept
+
+- Paths `/v1/*` and `/v2/*` (accounts), `GET /v1/server-info` with `api` / `minClientApi` and a `features` list.
+- The error envelope `{ error: { code, message, details? } }`, already uniform through one error handler.
+- WebSocket frames `{ "t": "<name>", ... }` on `/v1/ws`.
+
+### 4.2 What is added
+
+| Item | How | Where |
+|---|---|---|
+| Request and response schemas | zod schemas for every route's body, query, params and response, moved out of the route files | `shared/contracts/http/<module>.ts` |
+| Realtime event schemas | A discriminated union `RealtimeEvent` of the 21 client-facing server→client frames and 4 client→server frames (audit §2.5); `Hub.send*` takes `RealtimeEvent` instead of `unknown` | `shared/contracts/realtime.ts` |
+| Error codes | A catalog of the ~110 codes with HTTP status and meaning; `ApiError` takes a catalog key | `shared/contracts/errors.ts` |
+| OpenAPI | Generated from the zod schemas at build time into `docs/api/openapi.json`; served at `/v1/openapi.json` outside production | build script |
+| Contract tests | Every route's real response in the test suite is validated against its response schema (in tests only, no runtime cost) | `test/contracts/*` |
+| Golden fixtures | JSON examples of each payload and event, generated from the schemas and checked into `shared/contracts/fixtures/`. The server, Android and web test suites all decode the same files | `shared/contracts/fixtures/` |
+| Client types | Web: TypeScript types generated from the JSON Schemas into the web repository by a script, with a checksum check in CI. Android: hand-written `@Serializable` models stay, verified against the fixtures (Kotlin generators would replace `ApiClient`, which works). iOS: `Codable` models verified against the same fixtures | per client |
+
+### 4.3 Semantics to document (and test) per area
+
+- **Message ids, idempotency:** client-generated `messageId` (8–64 chars), unique; a retry from the same device gets
+  `duplicate: true` with the original `serverTs`, another device gets `409 conflict`.
+- **Ordering:** each recipient device receives its queue in server insertion order (the queue row id). The hub holds
+  live items back while a backlog flush runs, so a live item never overtakes the backlog.
+- **Pagination:** queue (`GET /v1/queue`, limit ≤ 200, `more`), history (`GET /v1/history/items` by `seq` cursor), and
+  the other list routes. Each list route states its cursor and order in its schema.
+- **Reconnect and resync:** `hello` → backlog in batches (`queue` with `backlog: true`) → `queue.drained`; the client
+  acks in batches; un-acked items are redelivered; `GET /v1/calls/active` recovers missed rings; `conv.updated` /
+  `org.updated` tell clients to reload.
+- **Uploads:** `POST /v1/attachments/uploads` → presigned S3 part URLs → `complete` (permission re-checked) → the
+  envelope references the attachment id; downloads by short-lived presigned URL after a membership check.
+- **AI:** §6.4.
+- **Compatibility policy:** fields are only added within a version; clients ignore unknown fields and unknown event
+  names; a breaking change needs a new path version and an adapter for the old one for at least two app releases;
+  `minClientApi` rises only with the owner's approval. A `contracts` version is added to `hello` (additive).
+
+## 5. Database and S3 ownership rules
+
+### 5.1 One owner per collection or table
+
+| Module | Owns (tables → collections, same names) |
+|---|---|
+| auth | auth_challenges, sessions, pairing_requests |
+| accounts | accounts domain (accounts, account_sessions, account_codes, legacy_tickets, recovery, key backups), users, devices, user_blocks, nav_preferences, relationships domain, reminders, registration_invites |
+| organizations | workspace domain (orgs, members, roles, categories, overwrites, bans, invitations, audit_log, join_applications, …), reports |
+| messaging | conversations domain, relay domain's delivery_queue and submitted_messages, history domain |
+| files | files domain (attachments, attachment_uploads, abandoned_uploads, pending_blob_deletes) and the S3 objects under the attachments and profile-photo prefixes |
+| calls | calls, call_participants |
+| notifications | push_endpoints, fcm tokens |
+| administration | usage, experiments, ops data |
+| federation | federation domain |
+
+Other modules read or change these only through the owner's use cases (rule 2). The table is the starting point; the
+boundary test makes it binding.
+
+### 5.2 Message persistence
+
+Two stores, both behind interfaces in the messaging module:
+
+- `RelayStore`: enqueue a fan-out (one row per recipient device) with the idempotency record in one atomic step;
+  fetch a device's backlog after a cursor; ack a batch; the retention sweep. `SqliteRelayStore` first (the existing
+  SQL moved, unchanged), `MongoRelayStore` second. MongoDB needs a per-device monotonic sequence for ordering (a
+  counter document per device, incremented in the same transaction as the fan-out) and a unique index on
+  `messageId`.
+- `HistoryStore`: exists (`history/store.ts`, `mongo/history.ts`) and moves into the module.
+
+Rules kept: ciphertext only; 7-day queue TTL; ack deletes; per-device order; idempotency on `messageId`; fan-out
+limit 1,000 recipient devices per envelope (a real ceiling for large channels, recorded in the audit, not changed
+in 1.0).
+
+### 5.3 S3
+
+- File objects stay in S3 (`griipbuddy-orbit-media-sg`, ap-southeast-1); metadata stays in the files module's store.
+- Only the files and accounts (profile photos) modules call `infrastructure/storage`. No other module builds S3 keys.
+- Every presigned URL is issued after a permission check and is short-lived; upload completion re-checks permission.
+
+### 5.4 MongoDB cutover rules (unchanged from `MONGODB.md`)
+
+No data moves without: the owner's go-ahead, an encrypted off-host backup, a rehearsal on a production snapshot, the
+copy-and-verify tool, a write freeze, and the `mongo-rollback` path tested. SQLite's copy stays untouched until the
+owner approves cleanup. Order: files → federation → relay → conversations + workspace (with asynchronous `authz`) →
+identity.
+
+## 6. AI and encryption boundary
+
+### 6.1 Where plaintext exists
+
+| Data | Plaintext on | Plaintext on the server? |
+|---|---|---|
+| Messages, files, voice messages, call media | the sender's and recipients' devices, after decryption | **Never** |
+| Encrypted history | the account's own devices | Never |
+| Channel names, topics, category names, forum tags, event titles, community rules and guide, member display names | server (stored in clear for routing, permissions and discovery) | Yes |
+| Draft the person is typing | that device | Only if the person sends it to AI |
+
+### 6.2 Policy
+
+1. Server-side AI receives only (a) text the person explicitly submits from their own device after a consent step
+   naming the provider, model, region and exactly what is sent, and (b) server-held plaintext metadata for community
+   features that a community admin has turned on.
+2. Nothing is sent automatically or in the background; nobody's messages are sent by someone who couldn't read them.
+3. The server keeps no prompt or answer; it keeps a usage record (who, feature, model, tokens, cost, time).
+4. Off by default: `AI_ENABLED=false` server-wide, per-community "AI features" off, per-feature flags.
+5. Model output and any retrieved context are untrusted input: validated, never executed, never used to widen access.
+6. If a feature needs content that only clients hold, the feature runs from the client with consent, or it isn't
+   built. The trust boundary is not changed in 1.0.
+
+### 6.3 Module
+
+```
+modules/ai/
+  domain/          feature catalog (draft-help, catch-up summary, community FAQ), limits, prompt ids @ versions
+  application/     runTask(feature, input, user) → checks AI_ENABLED, community setting, permission, quota, size;
+                   picks the model for the feature; streams; records usage; tools call other modules' use cases
+                   with the requesting person's own authorisation (no service-level privileges)
+  infrastructure/  usage store (ai_usage), quota counters
+  transport/       POST /v1/ai/tasks (JSON, or text/event-stream when streaming), DELETE /v1/ai/tasks/:id (cancel)
+infrastructure/ai-providers/
+  ModelProvider    generate(request, signal) → AsyncIterable<chunk> + usage; one adapter per provider
+  FakeProvider     deterministic, for tests; the default when AI_ENABLED=true and no provider is configured in tests
+```
+
+Cancellation through `AbortSignal` (client disconnect or `DELETE`); timeouts per feature; one retry on a provider's
+retryable errors only; per-person and per-community daily and monthly token quotas; provider keys only in the server's
+environment. No worker process and no queue until a chosen feature needs one (transcription, document processing); then
+a second entrypoint in the same codebase (`npm run worker`), with the queue chosen from the deployment at that time.
+No vector database: messages are encrypted, so there is nothing for a server-side index to hold except published
+community knowledge, which is small enough for keyword search until measured otherwise.
+
+### 6.4 Contract
+
+`POST /v1/ai/tasks { feature, input: { text }, consent: { provider, model, region }, communityId? }` →
+`200 { output, usage }` or a stream of `{ t: "delta", text }` … `{ t: "done", usage }`; errors `ai_disabled`,
+`ai_quota_exceeded`, `ai_input_too_large`, `ai_provider_unavailable`, `ai_consent_mismatch` (the consent names a
+different model than the server would use).
+
+## 7. Client migration plan
+
+Clients move only after the contract for their area is published (fixtures and OpenAPI exist) and the server passes
+its contract tests. Mixed versions must keep working throughout: no client is forced to update by this work.
+
+### 7.1 Web (React + Vite, repository `meldiq-web`)
+
+- Generated contract types replace hand-written payload types area by area; the WebSocket client switches on the
+  `RealtimeEvent` union; unknown events are ignored.
+- A queue item the web can't parse gets a placeholder (as Android does) instead of being acked and dropped.
+- Lenient `.catch()` defaults on enums are replaced by an explicit "unknown" value the UI can show.
+- Code for retired server modules goes: the AI client (`sync/ai.ts`, `ui/ai/*`, `ui/workspace/AiPage.tsx`), and
+  the `inbox.*`, `integration.event` and `/v1/documents` handling. The new AI sheet comes after the server module.
+- Web releases stay with the "Meldiq web parity with Android" session's process (check the live release before any
+  install).
+- Detail from the web audit: [`ARCHITECTURE_1_0_AUDIT.md` §5](ARCHITECTURE_1_0_AUDIT.md).
+
+### 7.2 Android (Kotlin + Compose)
+
+- Keep MVVM + repositories + manual DI; no new Gradle modules.
+- Unit tests decode every golden fixture with the app's own models; mismatches are fixed in the models.
+- Realtime frames parsed in one place into one sealed type; repositories subscribe to it. Outbound frames built
+  with the serializer instead of string templates.
+- The duplicated decoders (`attachmentsJson`, `callJson`, `richJson`) and the four preview functions collapse into
+  one each, with tests; `MessageRepository` splits into send, receive and controls parts behind the same API.
+- AI: one consent sheet, starting with draft help, after the server module exists.
+- Detail: [`ARCHITECTURE_1_0_AUDIT.md` §4](ARCHITECTURE_1_0_AUDIT.md).
+
+### 7.3 iOS (not present)
+
+Gap report: no code, no Xcode project, no bundle id, no push certificate, no TestFlight. Implementation plan for an
+owner-approved project:
+
+1. SwiftUI app, iOS 17+ (CryptoKit has HPKE from iOS 17, matching `griip-envelope-v1`'s X25519/HKDF-SHA256/AES-256-GCM;
+   Ed25519 via `Curve25519.Signing`). Verify against the shared vectors (`server/test/interop_vectors.test.ts`) first.
+2. Networking: `URLSession` + `URLSessionWebSocketTask`, `Codable` models checked against the golden fixtures.
+3. Storage: SQLite (GRDB) with the file protection class, keys in the Keychain (Secure Enclave where possible).
+4. Calls: LiveKit Swift SDK with frame encryption; CallKit and PushKit for incoming calls; APNs for wake-ups (the
+   server's push module gains an APNs adapter).
+5. Order: sign-in and device setup → DMs → communities read-only → posting → files → calls.
+
+### 7.4 Feature-parity checklist
+
+Kept as a table in `docs/architecture/FEATURE_PARITY.md` (created in phase F) with one row per feature in
+`docs/FEATURE_INVENTORY.md` and a column per client: works / partial / missing / not applicable, each with evidence.
+
+## 8. Testing, compatibility and rollout
+
+### 8.1 Baseline (2026-10-22, before any change)
+
+Recorded in the audit §8: server typecheck clean, 717 passed / 10 skipped on SQLite and the same with the five
+MongoDB-capable domains in MongoDB; web typecheck clean, 363 passed / 1 skipped; Android 651 JVM tests passed. Every phase must end at or above this baseline with no new skips.
+
+### 8.2 Verification matrix
+
+| Area | Server tests | Contract tests | Android | Web | Manual (owner's phone) |
+|---|---|---|---|---|---|
+| Sign-in, account migration (v1 → v2) | existing suites | auth, accounts schemas | unit | unit | phone |
+| Membership and permissions | orgs, channel_permissions, b15_isolation | org schemas | — | — | phone |
+| Messaging: order, duplicates, history, paging | messaging, ordering, history_* | message, queue, history | unit | unit | two phones |
+| Cross-client sync and reconnect | ws_frame_auth, presence, call_reconnect | realtime fixtures | unit | unit | phone + web |
+| Attachments and S3 | direct_uploads, files_1g, storage_s3, s3_live (manual) | attachments | unit | unit | phone |
+| Realtime events and notifications | push_* | realtime fixtures | unit | unit | phone |
+| Calls and screen share | call_* | calls | — | — | two devices |
+| E2EE and privacy | interop_vectors, revoked_sender, identity_pinning | — | crypto tests | crypto tests | — |
+| AI: streaming, provider failure, authorisation, quotas | new ai_* suites with FakeProvider | ai schemas | unit | unit | phone |
+| Client compatibility | old-client fixtures (frames and responses from the last two releases) | yes | — | — | old APK |
+| Migrations and rollback | mongo_migration, backup | — | — | — | rehearsal on snapshot |
+| Boundaries | architecture_boundaries | — | — | — | — |
+
+### 8.3 Rollout
+
+- Work on a dedicated local branch `architecture-1.0` (plain name), one commit per step, owner-only attribution.
+  `internal-beta` keeps the release candidate; the branch merges into it only after the owner's approval.
+- Phases B and C change no route, event or data: they ship as a normal API release after the full suite, a rehearsal
+  on a snapshot copy, and the usual rollback image.
+- Data moves (MongoDB cutovers) are separate, owner-approved releases (§5.4).
+- Health checks: `/healthz` (exists). Added: structured logs with a request id, per-route metrics (exists in memory),
+  a `/v1/admin/health` field per module store. No message plaintext, keys or tokens in logs (the logger already
+  redacts headers and never logs bodies).
+
+## 9. Implementation sequence and affected files
+
+| Step | Phase | What | Main files | Changes behaviour? |
+|---|---|---|---|---|
+| A | A | Audit and this plan | `docs/architecture/*` | No |
+| B0 | B | CI's MongoDB pass uses the current domain list (`accounts,preferences,history,reports,relationships`) | `.github/workflows/ci.yml` | No |
+| B1 | B | Create `app/`, `shared/`, `infrastructure/`; move bootstrap, config, errors, validation, storage, database | `app.ts`, `index.ts`, `config.ts`, `util.ts`, `context.ts`, `db.ts`, `mongo/*`, `storage/*` | No |
+| B2 | B | Move modules one per commit, boundary test with allowlist | all of `src/routes/*` and domain folders | No |
+| C1 | C | Contracts: realtime union, error catalog, typed `Hub` | `hub.ts`, `ws.ts`, every `sendTo*` caller, `util.ts` | No |
+| C2 | C | HTTP schemas, OpenAPI generation, contract tests, fixtures | every route file | No |
+| D1 | D | `RelayStore` (SQLite) behind the messaging use cases | `routes/messages.ts`, `hub.ts`, `jobs.ts` | No |
+| D2 | D | Files store, then `MongoRelayStore`, tests on both stores | `routes/attachments.ts`, `mongo/*` | No (until a cutover) |
+| E1 | E | AI module with FakeProvider, disabled by default, quotas, usage, streaming, cancellation | `modules/ai/*`, `infrastructure/ai-providers/*` | Additive, off |
+| E2 | E | First real provider adapter (owner's choice) | `infrastructure/ai-providers/*` | Off until enabled |
+| F1 | F | Web: generated types, typed realtime handling, remove calls to the retired AI routes | `meldiq-web/src/*` | No visible change |
+| F2 | F | Android: fixture tests, one realtime event type, AI consent sheet | `android/app/src/main/java/.../data/api/*` | AI sheet only |
+| F3 | F | iOS gap report (done here) and, if approved, the app project | new repository | — |
+| G | G | Verification matrix run, parity checklist, release | `docs/architecture/*` | — |
+
+Existing features affected: none functionally in B, C and D1 (pure moves and typing). D2's MongoDB store is used only
+after a cutover. E adds routes behind flags. F changes client internals, with the web's removal of dead AI calls as the
+only visible difference (a Settings entry that already fails today, per the web audit).
+
+## 10. Owner decisions needed
+
+1. **D1:** keep React + Vite for the web (recommended) or migrate to Next.js.
+2. **D2:** iOS stays a gap report in 1.0 (recommended) or a native iOS project starts now.
+3. **D3:** when to provision a MongoDB cluster (Atlas M10 in ap-southeast-1 is the earlier recommendation, a monthly
+   cost). Until then the code becomes MongoDB-ready and production stays on SQLite.
+4. **AI provider and first feature** (Amazon Bedrock in the existing AWS account, or a direct provider API), and
+   the first feature (draft help is the smallest that respects encryption).
+5. **Sequencing** against the open batch plan (B13b is next in `MELDIQ_IMPLEMENTATION_PLAN.md`): run Architecture 1.0
+   on its own branch alongside the batches (recommended), or pause the batches.
+
+## ADR 0008 (proposed): keep Meldiq Web on React + Vite
+
+- **Context:** the brief names Next.js; the existing web app is React + Vite, served as static files, with its own
+  service worker, IndexedDB key storage and WebCrypto.
+- **Decision:** keep React + Vite. Adopt the shared contracts instead.
+- **Why:** every screen shows end-to-end encrypted content that only the browser can decrypt, so server rendering
+  would render empty shells; the current static hosting has no Node process to run, patch or scale; the CSP is strict
+  (`script-src 'self'`) and works today; a migration would touch every file for no user-visible gain.
+- **Revisit when:** a public, SEO-relevant surface is needed (marketing pages, public community previews). Those can
+  be a separate small Next.js site without moving the app.
