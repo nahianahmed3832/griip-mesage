@@ -1,0 +1,27 @@
+{
+  "orgs": [
+    {
+      "id": "o_iTw5fKIcgLvdeqyi3VIYoA",
+      "name": "Gate Co",
+      "slug": "gate-co",
+      "description": null,
+      "myRole": "MEMBER",
+      "memberCount": 2,
+      "createdAt": 1792676686179,
+      "photoRev": null,
+      "guestsAllowed": true,
+      "guestMaxDays": null,
+      "kind": "community",
+      "visibility": "private",
+      "joinPolicy": "invite",
+      "rules": null,
+      "invitesPausedUntil": null,
+      "dmsPausedUntil": null,
+      "joinQuestions": null,
+      "guide": null,
+      "onboarding": false,
+      "activityAlerts": true,
+      "activityAlert": null
+    }
+  ]
+}

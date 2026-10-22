@@ -1,0 +1,20 @@
+{
+  "accessToken": "<redacted>",
+  "accessTokenExpiresAt": 1792677575199,
+  "refreshToken": "<redacted>",
+  "refreshTokenExpiresAt": 1797860675199,
+  "session": {
+    "id": "s_qIKapWRvQh-nNecLRLBEAA",
+    "deviceId": null,
+    "createdAt": 1792676675196
+  },
+  "account": {
+    "id": "acc_yavPl_9-yeyTJQQahYbQOg",
+    "email": "rotate.mvjlenaa15@example.test",
+    "name": "Test Person",
+    "createdAt": 1792676675177,
+    "legacyLinkedAt": null,
+    "selectedWorkspaceId": null,
+    "identity": null
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "user": {
+    "id": "u_gI73Pjc1i44hhe0e5zKv2g",
+    "username": "statusada8654",
+    "displayName": "statusada",
+    "avatarColor": 4,
+    "homeServer": null,
+    "statusText": "In a meeting",
+    "statusEmoji": "📅",
+    "statusExpiresAt": 1792680286183,
+    "privacy": {
+      "photo": "everyone",
+      "bio": "everyone",
+      "name": "everyone",
+      "birthday": "nobody",
+      "phone": "nobody",
+      "lastSeen": "contacts",
+      "findByPhone": "nobody",
+      "findByUsername": "everyone"
+    },
+    "notificationsPausedUntil": null,
+    "presenceMode": "auto",
+    "presenceUntil": null,
+    "identityKey": "jPUwUioTfQYSTWpHvlfDy+I2Ca77+3XxtV1SQEtiPmc=",
+    "fingerprint": "26911 08969 76957 82103 39850 44621",
+    "createdAt": 1792676686106
+  }
+}

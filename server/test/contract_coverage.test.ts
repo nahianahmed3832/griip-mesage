@@ -69,4 +69,23 @@ describe("contract coverage", () => {
     for (const j of joiners) await j.req("POST", `/v1/communities/${open}/join`);
     expect(await frame(owner, "org.alert")).toMatchObject({ orgId: open, kind: "joins" });
   });
+
+  it("shows a safety-number fingerprint", async () => {
+    expect((await owner.req("GET", `/v1/fingerprint/${member.userId}`))).toBeTruthy();
+  });
+
+  it("lists and renames categories", async () => {
+    const created = await owner.req("POST", `/v1/orgs/${orgId}/categories`, { name: "Contract category" });
+    const list = await owner.req("GET", `/v1/orgs/${orgId}/categories`);
+    expect(list.categories.length).toBeGreaterThan(0);
+    const id = created.category?.id ?? list.categories[0].id;
+    expect(await owner.req("PATCH", `/v1/categories/${id}`, { name: "Renamed" })).toBeTruthy();
+  });
+
+  it("answers the platform administration routes", async () => {
+    expect(await owner.req("GET", "/v1/platform/me")).toEqual({ platformAdmin: false });
+    (h.ctx.config.platformAdmins as Set<string>).add(owner.userId);
+    expect(await owner.req("GET", "/v1/platform/me")).toEqual({ platformAdmin: true });
+    expect(await owner.req("GET", "/v1/admin/experiments")).toBeTruthy();
+  });
 });

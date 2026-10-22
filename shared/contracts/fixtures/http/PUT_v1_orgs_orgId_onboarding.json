@@ -1,0 +1,31 @@
+{
+  "enabled": true,
+  "prompts": [
+    {
+      "id": "q_nsCwRwGgMnqkyW_T0wQWtw",
+      "title": "What brings you here?",
+      "single": true,
+      "required": true,
+      "options": [
+        {
+          "id": "a_DutiV9115_UmWP-7wGKYrA",
+          "title": "Painting",
+          "emoji": "🎨",
+          "roleIds": [
+            "rl_umBXbC67VwkgyPTT_N7XJg"
+          ],
+          "channelIds": [
+            "c_93NpXrxSXr8-dsNt2fItsA"
+          ]
+        },
+        {
+          "id": "a_vfihP3oMvFfY4ipNGBIPZQ",
+          "title": "Just looking",
+          "emoji": null,
+          "roleIds": [],
+          "channelIds": []
+        }
+      ]
+    }
+  ]
+}

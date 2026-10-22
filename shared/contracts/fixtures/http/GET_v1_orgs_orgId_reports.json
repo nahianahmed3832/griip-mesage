@@ -1,0 +1,36 @@
+{
+  "reports": [
+    {
+      "id": "rep_8M2vXjTusSXWHiXWm-8oBA",
+      "orgId": "o_K8yDl7zSMJrG31cYcXIKFg",
+      "reason": "harassment",
+      "note": "keeps doing this",
+      "status": "open",
+      "createdAt": 1792676692908,
+      "handledAt": null,
+      "handledBy": null,
+      "handledNote": null,
+      "target": {
+        "id": "u_jZknApe3xMF9pE6GUbmyYw",
+        "username": "other4",
+        "displayName": "other"
+      },
+      "conversationId": "c_LykjfHiM1KaTKWKE30Hfow",
+      "conversationName": "talk",
+      "messageId": "1cbc64d4-49f8-42e9-8d40-bef9f4e7f7ef",
+      "content": {
+        "text": "rude words",
+        "sentAt": 1,
+        "context": [
+          {
+            "senderUserId": "u_ybRzstXN7L8TFV4PgTHWRg",
+            "text": "please stop",
+            "sentAt": 0
+          }
+        ]
+      }
+    }
+  ],
+  "open": 1,
+  "nextBefore": null
+}

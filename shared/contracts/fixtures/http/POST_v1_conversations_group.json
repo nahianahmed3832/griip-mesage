@@ -1,0 +1,62 @@
+{
+  "conversation": {
+    "id": "c_uNgpxYgv366U9KugCVBHFQ",
+    "type": "GROUP",
+    "orgId": null,
+    "scope": null,
+    "scopeId": null,
+    "scopeName": null,
+    "categoryId": null,
+    "categoryName": null,
+    "position": 0,
+    "format": "text",
+    "forumTags": [],
+    "guidelines": null,
+    "kind": null,
+    "name": "Upload test",
+    "topic": null,
+    "archived": false,
+    "photoRev": null,
+    "createdAt": 1792676683912,
+    "updatedAt": 1792676683912,
+    "memberCount": 2,
+    "members": [
+      {
+        "id": "u_5fCvF11AZ41K4TYXdfGiVQ",
+        "username": "alice1",
+        "displayName": "alice",
+        "avatarColor": 0,
+        "statusText": null,
+        "statusEmoji": null,
+        "homeServer": null,
+        "role": "ADMIN",
+        "online": false,
+        "presence": "offline",
+        "notificationsPaused": false
+      },
+      {
+        "id": "u_XCXkVOtXeuLgxanmFz9KkA",
+        "username": "bob2",
+        "displayName": "bob",
+        "avatarColor": 0,
+        "statusText": null,
+        "statusEmoji": null,
+        "homeServer": null,
+        "role": "MEMBER",
+        "online": false,
+        "presence": "offline",
+        "notificationsPaused": false
+      }
+    ],
+    "joined": true,
+    "myRole": "ADMIN",
+    "canPost": true,
+    "canAttach": true,
+    "canManage": true,
+    "canManageAccess": false,
+    "canMentionAll": true,
+    "activeCall": null,
+    "voice": false,
+    "federation": null
+  }
+}

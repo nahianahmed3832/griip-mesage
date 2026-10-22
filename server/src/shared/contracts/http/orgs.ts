@@ -1,6 +1,7 @@
 import { z } from "zod/v4";
 import { PresenceState } from "../realtime.js";
 import { zCount, zTime } from "./primitives.js";
+import { ConversationView } from "./conversations.js";
 import { route } from "./route.js";
 
 /**
@@ -110,66 +111,8 @@ export const CommunityMember = z.strictObject({
 /** One of the first members of a conversation, as conversation views list them. */
 const ConversationMember = z.strictObject({ ...personFields, role: z.enum(["ADMIN", "MEMBER"]) });
 
-/** A channel as the caller sees it (conversationView; the same shape as GET /v1/conversations/:id). */
-export const ChannelView = z.strictObject({
-  id: z.string(),
-  type: z.enum(["DM", "GROUP", "CHANNEL"]),
-  orgId: z.string().nullable(),
-  /** For older apps: "TEAM" for a channel in a category (scopeId/scopeName are the category), else "ORG". */
-  scope: z.enum(["ORG", "TEAM"]).nullable(),
-  scopeId: z.string().nullable(),
-  scopeName: z.string().nullable(),
-  categoryId: z.string().nullable(),
-  categoryName: z.string().nullable(),
-  position: z.number().int(),
-  format: z.enum(["text", "forum"]),
-  forumTags: z.array(z.strictObject({ id: z.string(), name: z.string() })),
-  guidelines: z.string().nullable(),
-  kind: z.enum(["PUBLIC", "PRIVATE", "ANNOUNCEMENT"]).nullable(),
-  name: z.string().nullable(),
-  topic: z.string().nullable(),
-  archived: z.boolean(),
-  photoRev: zTime.nullable(),
-  createdAt: zTime,
-  updatedAt: zTime,
-  memberCount: zCount,
-  /** The first 12 members; absent for channels with more than 12. */
-  members: z.array(ConversationMember).optional(),
-  joined: z.boolean(),
-  myRole: z.enum(["ADMIN", "MEMBER"]).nullable(),
-  canPost: z.boolean(),
-  /** While the caller is timed out in the community: when it ends. */
-  timedOutUntil: zTime.optional(),
-  canAttach: z.boolean(),
-  canManage: z.boolean(),
-  canManageAccess: z.boolean(),
-  canMentionAll: z.boolean(),
-  activeCall: z
-    .strictObject({
-      id: z.string(),
-      video: z.boolean(),
-      state: z.enum(["RINGING", "ACTIVE"]),
-      startedAt: zTime,
-      /** Voice channels: who is in the room (at most 12). */
-      participantIds: z.array(z.string()).optional(),
-    })
-    .nullable(),
-  voice: z.boolean(),
-  /** Channels only: slowmode, whether it applies to the caller, and when they may post next (null: now). */
-  slowmodeSec: zCount.optional(),
-  slowmodeExempt: z.boolean().optional(),
-  nextPostAt: zTime.nullable().optional(),
-  /** Voice channels only. */
-  canConnect: z.boolean().optional(),
-  canSpeak: z.boolean().optional(),
-  /** People from other servers in it: each server and its queued deliveries; null otherwise. */
-  federation: z
-    .strictObject({
-      servers: z.array(z.strictObject({ serverId: z.string(), domain: z.string().nullable(), state: z.string(), pending: zCount })),
-      calls: z.boolean(),
-    })
-    .nullable(),
-});
+/** A channel as the caller sees it: the conversation view (GET /v1/conversations/:id). */
+export const ChannelView = ConversationView;
 
 /** A category in the community view (categoryViews). */
 export const CategorySummary = z.strictObject({

@@ -1,0 +1,67 @@
+{
+  "activity": [
+    {
+      "id": 40,
+      "at": 1792676692040,
+      "action": "channel.create",
+      "actorId": "u_9XmYmxVegjYsd8HSYfNGkw",
+      "actorName": "cowner",
+      "target": "c_nx6WV7lWd6lsnrJWTiW_dw",
+      "detail": "PUBLIC den"
+    },
+    {
+      "id": 34,
+      "at": 1792676691972,
+      "action": "channel.create",
+      "actorId": "u_9XmYmxVegjYsd8HSYfNGkw",
+      "actorName": "cowner",
+      "target": "c_u21YYwppHV497eaQ-gERmA",
+      "detail": "PUBLIC quiet"
+    },
+    {
+      "id": 23,
+      "at": 1792676691845,
+      "action": "invite.accept",
+      "actorId": "u_yyUNCdl2jm9mJjwrfVLrcw",
+      "actorName": "cguest",
+      "target": "inv_USh9MucipjD0p_lpc5zRYw",
+      "detail": "GUEST"
+    },
+    {
+      "id": 21,
+      "at": 1792676691840,
+      "action": "invite.accept",
+      "actorId": "u_iZ822erlD1fS_bmKIsTlLQ",
+      "actorName": "cmember",
+      "target": "inv_naqLWi3gtNl9sYllZ5cFKg",
+      "detail": "MEMBER"
+    },
+    {
+      "id": 18,
+      "at": 1792676691833,
+      "action": "invite.accept",
+      "actorId": "u_ejtU3Pyw1TVHqyAOCNSfbg",
+      "actorName": "cmod",
+      "target": "inv_liCydUbHrC7Q46H32qSX1g",
+      "detail": "MEMBER"
+    },
+    {
+      "id": 16,
+      "at": 1792676691826,
+      "action": "invite.accept",
+      "actorId": "u_lVxr8blWSGGNXIybMfz-_g",
+      "actorName": "cstaff",
+      "target": "inv_HfURF-o9n2b-BxNi8UCGog",
+      "detail": "MEMBER"
+    },
+    {
+      "id": 14,
+      "at": 1792676691820,
+      "action": "invite.accept",
+      "actorId": "u_08nkmsP4hGv3YDKjAKnlkQ",
+      "actorName": "cadmin",
+      "target": "inv_WWFPkNFX_obkeZsO1GvVhA",
+      "detail": "ADMIN"
+    }
+  ]
+}

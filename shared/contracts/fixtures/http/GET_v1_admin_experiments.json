@@ -1,0 +1,136 @@
+{
+  "mode": "off",
+  "analytics": false,
+  "from": "2026-09-25",
+  "events": [
+    {
+      "name": "app.opened",
+      "value": null,
+      "description": "The app came to the foreground signed in."
+    },
+    {
+      "name": "onboarding.completed",
+      "value": "ms",
+      "description": "Finished the first-run steps; value: time from sign-up."
+    },
+    {
+      "name": "first_action.done",
+      "value": "ms",
+      "description": "First meaningful action (a message sent, a call or a channel joined); value: time from sign-up."
+    },
+    {
+      "name": "conversation.opened",
+      "value": null,
+      "description": "A conversation opened; surface: where from."
+    },
+    {
+      "name": "message.sent",
+      "value": null,
+      "description": "A message sent (counted, never read)."
+    },
+    {
+      "name": "community.created",
+      "value": null,
+      "description": "A community created."
+    },
+    {
+      "name": "workspace.created",
+      "value": null,
+      "description": "A team workspace created."
+    },
+    {
+      "name": "community.joined",
+      "value": null,
+      "description": "Joined a community by invitation."
+    },
+    {
+      "name": "channel.joined",
+      "value": null,
+      "description": "Joined a channel."
+    },
+    {
+      "name": "search.performed",
+      "value": null,
+      "description": "A search ran; results: how many came back, bucketed."
+    },
+    {
+      "name": "search.result_opened",
+      "value": null,
+      "description": "A search result opened."
+    },
+    {
+      "name": "call.joined",
+      "value": null,
+      "description": "Joined a call or voice room."
+    },
+    {
+      "name": "error.shown",
+      "value": null,
+      "description": "An error message shown; code: the server's error code."
+    },
+    {
+      "name": "experiment.exposed",
+      "value": null,
+      "description": "The person saw an experiment's variant (counted once per app start)."
+    }
+  ],
+  "overall": [],
+  "experiments": [
+    {
+      "id": "home-layout",
+      "description": "Home as one list of channels and DMs grouped by section (control) or as cards for each area first (cards).",
+      "layer": "navigation",
+      "traffic": 0.5,
+      "control": "sections",
+      "variants": [
+        {
+          "id": "sections",
+          "weight": 1
+        },
+        {
+          "id": "cards",
+          "weight": 1
+        }
+      ],
+      "status": "draft",
+      "startsAt": null,
+      "endsAt": null,
+      "metrics": [
+        "conversation.opened",
+        "search.performed",
+        "app.opened"
+      ],
+      "successCriteria": "More conversations opened from Home per active day, with no rise in searches for a conversation people already belong to.",
+      "effectiveStatus": "draft",
+      "results": []
+    },
+    {
+      "id": "community-onboarding",
+      "description": "New community members land in #welcome with a short checklist (checklist) or in the community's channel list (control).",
+      "layer": "onboarding",
+      "traffic": 1,
+      "control": "channel-list",
+      "variants": [
+        {
+          "id": "channel-list",
+          "weight": 1
+        },
+        {
+          "id": "checklist",
+          "weight": 1
+        }
+      ],
+      "status": "draft",
+      "startsAt": null,
+      "endsAt": null,
+      "metrics": [
+        "community.joined",
+        "message.sent",
+        "onboarding.completed"
+      ],
+      "successCriteria": "A higher share of people who join a community send their first message there within a day.",
+      "effectiveStatus": "draft",
+      "results": []
+    }
+  ]
+}

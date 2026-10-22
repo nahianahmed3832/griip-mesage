@@ -1,6 +1,7 @@
 import { z } from "zod/v4";
 import { idParams, zCount, zTime } from "./primitives.js";
 import { route } from "./route.js";
+import { UserSummary } from "./users.js";
 
 /**
  * Conversations: direct messages, groups and community channels (docs/COMMUNITY_REBUILD_2026-10-21.md,
@@ -19,19 +20,8 @@ export const FORUM_GUIDELINES_MAX = 2000;
 
 const zConvId = z.string().max(64);
 
-/** What lists and search show of a person: only what they publish to everyone (docs/PROFILE_AND_PRIVACY.md). */
-export const UserSummary = z.strictObject({
-  id: z.string(),
-  username: z.string(),
-  displayName: z.string(),
-  avatarColor: z.number().int(),
-  statusText: z.string().nullable(),
-  statusEmoji: z.string().nullable(),
-  /** Present when the person shows their photo (GET /v1/users/:id/photo). */
-  photoRev: zTime.optional(),
-  /** Set for people on another server: their home server's id (username is then "name:domain"). */
-  homeServer: z.string().nullable(),
-});
+/** What lists and search show of a person (defined with the users routes). */
+export { UserSummary };
 
 export const PresenceShown = z.enum(["online", "idle", "dnd", "offline"]);
 

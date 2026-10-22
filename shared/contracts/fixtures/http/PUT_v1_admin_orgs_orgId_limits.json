@@ -1,0 +1,12 @@
+{
+  "limits": [
+    {
+      "key": "members",
+      "limit": 2
+    },
+    {
+      "key": "roles.custom",
+      "limit": 1
+    }
+  ]
+}

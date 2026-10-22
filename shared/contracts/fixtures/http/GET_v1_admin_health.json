@@ -1,0 +1,118 @@
+{
+  "health": {
+    "version": "0.26.0",
+    "generatedAt": 1792676691710,
+    "uptimeSeconds": 1,
+    "checks": {
+      "database": {
+        "available": true,
+        "ok": true,
+        "sizeBytes": 1380352
+      },
+      "mongodb": {
+        "available": false,
+        "reason": "not configured"
+      },
+      "livekit": {
+        "available": true,
+        "configured": true
+      },
+      "storage": {
+        "available": true,
+        "backend": "local",
+        "reachable": true
+      }
+    },
+    "process": {
+      "rssBytes": 235864064,
+      "heapUsedBytes": 94709152,
+      "eventLoopDelayP99Ms": 170
+    },
+    "realtime": {
+      "onlineDevices": 0
+    },
+    "queues": {
+      "delivery": {
+        "items": 0,
+        "oldestAgeSeconds": null
+      },
+      "reminders": {
+        "overdueUndelivered": 0,
+        "retrying": 0
+      },
+      "integrations": {
+        "available": false,
+        "reason": "apps were removed from this server"
+      }
+    },
+    "metrics": {
+      "since": 1792676691606,
+      "window": {
+        "minutes": 15,
+        "requests": 9,
+        "serverErrors": 0,
+        "errorRate": 0,
+        "p95Ms": 25
+      },
+      "routes": [
+        {
+          "route": "POST /v1/auth/challenge",
+          "count": 2,
+          "clientErrors": 0,
+          "serverErrors": 0,
+          "avgMs": 4,
+          "p95Ms": 10,
+          "maxMs": 7
+        },
+        {
+          "route": "POST /v1/auth/register",
+          "count": 2,
+          "clientErrors": 0,
+          "serverErrors": 0,
+          "avgMs": 7,
+          "p95Ms": 25,
+          "maxMs": 11
+        },
+        {
+          "route": "GET /v1/admin/health",
+          "count": 2,
+          "clientErrors": 2,
+          "serverErrors": 0,
+          "avgMs": 1,
+          "p95Ms": 10,
+          "maxMs": 1
+        },
+        {
+          "route": "POST /v1/conversations/dm",
+          "count": 1,
+          "clientErrors": 0,
+          "serverErrors": 0,
+          "avgMs": 5,
+          "p95Ms": 10,
+          "maxMs": 5
+        },
+        {
+          "route": "GET /v1/conversations/:id",
+          "count": 1,
+          "clientErrors": 0,
+          "serverErrors": 0,
+          "avgMs": 1,
+          "p95Ms": 10,
+          "maxMs": 1
+        },
+        {
+          "route": "POST /v1/orgs",
+          "count": 1,
+          "clientErrors": 0,
+          "serverErrors": 0,
+          "avgMs": 3,
+          "p95Ms": 10,
+          "maxMs": 3
+        }
+      ],
+      "jobs": [],
+      "providers": []
+    },
+    "warnings": []
+  }
+}

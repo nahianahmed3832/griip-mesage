@@ -1,0 +1,17 @@
+{
+  "org": {
+    "id": "o_5F-jvGtsDVt3kacvlM-3ZQ",
+    "name": "GriipBuddy",
+    "slug": "griipbuddy",
+    "description": "test",
+    "rules": null,
+    "memberCount": 1
+  },
+  "role": "MEMBER",
+  "branch": null,
+  "team": null,
+  "grantRole": null,
+  "alreadyMember": false,
+  "banned": false,
+  "invitesPaused": false
+}

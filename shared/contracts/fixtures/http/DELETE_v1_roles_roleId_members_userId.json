@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "permissions": [
+    "channels.view",
+    "members.view",
+    "messages.attach",
+    "messages.post",
+    "roles.view",
+    "voice.connect",
+    "voice.speak"
+  ]
+}

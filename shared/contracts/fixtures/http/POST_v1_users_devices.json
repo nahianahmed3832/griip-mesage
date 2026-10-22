@@ -1,0 +1,17 @@
+{
+  "users": [
+    {
+      "userId": "u_qtmlb7KhGFxCQT2ezOkBng",
+      "identityKey": "nD6cJcF5bYBlbWyDZLOS54rjeJAMntYQXAaf9ZK+6Mg=",
+      "devices": [
+        {
+          "id": "d_vmJQ1dv9Z8svr2kyeuQqAQ",
+          "signingKey": "HTRc2w3QJz+sgAzQoIG/X3VlE9/Fc7rDEMl29qvlphw=",
+          "encryptionKey": "d+1EtXSSruoHYCmIierNE7j7Am6xV01Whq2BvG68QQc=",
+          "certificate": "9SiYclMDO/V0U1cpJmVEHZq0GCL7stmDr8gUrqzd6aUXhTvcsN77XHhEBXYNbDrk5UsnMTSs6RXvD8TyZygzBA=="
+        }
+      ],
+      "revokedDevices": []
+    }
+  ]
+}

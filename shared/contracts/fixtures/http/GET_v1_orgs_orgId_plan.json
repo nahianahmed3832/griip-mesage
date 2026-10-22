@@ -1,0 +1,31 @@
+{
+  "plan": null,
+  "source": "server",
+  "capabilities": [
+    {
+      "key": "roles.custom",
+      "label": "Custom roles",
+      "limit": 50,
+      "used": 0,
+      "available": true,
+      "source": "server"
+    },
+    {
+      "key": "members",
+      "label": "Members (including guests)",
+      "limit": null,
+      "used": 2,
+      "available": true,
+      "source": "none"
+    },
+    {
+      "key": "storage.bytes",
+      "label": "Stored file bytes",
+      "limit": null,
+      "used": 1000,
+      "available": true,
+      "source": "none"
+    }
+  ],
+  "upgrade": null
+}

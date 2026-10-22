@@ -1,0 +1,26 @@
+{
+  "user": {
+    "id": "u_K333EQqQlQD9aQ3Fsox3QA",
+    "username": "signin31",
+    "displayName": "signin31",
+    "avatarColor": 0,
+    "homeServer": null,
+    "privacy": {
+      "photo": "everyone",
+      "bio": "everyone",
+      "name": "everyone",
+      "birthday": "nobody",
+      "phone": "nobody",
+      "lastSeen": "contacts",
+      "findByPhone": "nobody",
+      "findByUsername": "everyone"
+    },
+    "notificationsPausedUntil": null,
+    "presenceMode": "auto",
+    "presenceUntil": null,
+    "identityKey": "/NVsAXcYhyrfGutnSpB0+IAxt3xGK37Uy2IfkdiZESc=",
+    "fingerprint": "85717 54699 32647 64256 60723 40672",
+    "createdAt": 1792676675817
+  },
+  "deviceId": "d_VLGYC0NFTHYQcoYCzlNJTQ"
+}

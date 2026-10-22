@@ -1,0 +1,94 @@
+{
+  "community": {
+    "id": "o_tkC0dd9DaRrYzhsL7AtKaw",
+    "name": "Night Sky Club",
+    "slug": "night-sky-club",
+    "description": "Amateur astronomy",
+    "myRole": null,
+    "memberCount": 7,
+    "createdAt": 1792676691754,
+    "photoRev": null,
+    "guestsAllowed": true,
+    "guestMaxDays": null,
+    "kind": "community",
+    "visibility": "public",
+    "joinPolicy": "open",
+    "rules": "Be kind. No spam.",
+    "invitesPausedUntil": null,
+    "dmsPausedUntil": null,
+    "joinQuestions": null,
+    "guide": null,
+    "onboarding": false,
+    "activityAlerts": true,
+    "activityAlert": null
+  },
+  "channels": [
+    {
+      "id": "c_TACEiMpNZA_igvGBwxXKPQ",
+      "name": "general",
+      "topic": "Everyday conversation",
+      "kind": "PUBLIC",
+      "voice": false,
+      "format": "text"
+    },
+    {
+      "id": "c_u21YYwppHV497eaQ-gERmA",
+      "name": "quiet",
+      "topic": null,
+      "kind": "PUBLIC",
+      "voice": false,
+      "format": "text"
+    },
+    {
+      "id": "c_EwIit4aA7oVbU3DthtHQ5Q",
+      "name": "welcome",
+      "topic": "What this community is about and how it works",
+      "kind": "ANNOUNCEMENT",
+      "voice": false,
+      "format": "text"
+    },
+    {
+      "id": "c_MqHetCu7wuUnQ05HQLd9Kg",
+      "name": "announcements",
+      "topic": "News from the people who run the community",
+      "kind": "ANNOUNCEMENT",
+      "voice": false,
+      "format": "text"
+    },
+    {
+      "id": "c_nx6WV7lWd6lsnrJWTiW_dw",
+      "name": "den",
+      "topic": null,
+      "kind": "PUBLIC",
+      "voice": false,
+      "format": "text"
+    },
+    {
+      "id": "c_cIcKMWZzuOerJ10qg3oKIw",
+      "name": "introductions",
+      "topic": "Say hello and tell people what brings you here",
+      "kind": "PUBLIC",
+      "voice": false,
+      "format": "text"
+    },
+    {
+      "id": "c_ymRaDd4rmUYliJxcDnN1KQ",
+      "name": "lounge",
+      "topic": "Drop in to talk",
+      "kind": "PUBLIC",
+      "voice": true,
+      "format": "text"
+    },
+    {
+      "id": "c_uHz-U9ColPvbgxHUYukNxA",
+      "name": "questions",
+      "topic": null,
+      "kind": "PUBLIC",
+      "voice": false,
+      "format": "text"
+    }
+  ],
+  "joined": false,
+  "banned": false,
+  "application": null
+}

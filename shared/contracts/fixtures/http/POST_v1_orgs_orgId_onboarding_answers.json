@@ -1,0 +1,17 @@
+{
+  "roleIds": [
+    "rl_umBXbC67VwkgyPTT_N7XJg"
+  ],
+  "channelIds": [
+    "c_93NpXrxSXr8-dsNt2fItsA"
+  ],
+  "permissions": [
+    "channels.view",
+    "members.view",
+    "messages.attach",
+    "messages.post",
+    "roles.view",
+    "voice.connect",
+    "voice.speak"
+  ]
+}

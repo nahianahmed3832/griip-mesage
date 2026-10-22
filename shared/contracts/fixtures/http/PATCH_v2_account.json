@@ -1,0 +1,15 @@
+{
+  "account": {
+    "id": "acc_LiP1U5NgMD0M0_QAuj9uhg",
+    "email": "rename.mvjleux416@example.test",
+    "name": "New Name",
+    "createdAt": 1792676685073,
+    "legacyLinkedAt": null,
+    "selectedWorkspaceId": null,
+    "identity": {
+      "userId": "u_9t34ChGONU6wfHh0giWyRw",
+      "username": "rename4630",
+      "identityKey": "wJH4zKEeJHoyYJhqKmu7Li8gtzJPyWsUwyyYFEoXX9E="
+    }
+  }
+}

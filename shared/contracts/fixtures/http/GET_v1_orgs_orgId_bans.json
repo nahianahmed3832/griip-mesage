@@ -1,0 +1,13 @@
+{
+  "bans": [
+    {
+      "userId": "u_XjAascCDqPchETgLql_W3g",
+      "displayName": "cnewcomer",
+      "username": "cnewcomer8",
+      "reason": "spam",
+      "bannedAt": 1792676692654,
+      "bannedBy": "u_ejtU3Pyw1TVHqyAOCNSfbg",
+      "bannedByName": "cmod"
+    }
+  ]
+}

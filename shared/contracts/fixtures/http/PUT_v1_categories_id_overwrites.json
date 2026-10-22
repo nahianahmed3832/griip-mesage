@@ -1,0 +1,70 @@
+{
+  "overwrites": [
+    {
+      "subject": "everyone",
+      "kind": "everyone",
+      "label": "@everyone",
+      "color": null,
+      "allow": [],
+      "deny": [
+        "channels.view"
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "key": "channels.view",
+      "label": "See channels",
+      "description": "See the community's public channels and be in them. Channel and category permissions can take it away."
+    },
+    {
+      "key": "messages.post",
+      "label": "Post in channels",
+      "description": "Send messages in the community's channels."
+    },
+    {
+      "key": "messages.attach",
+      "label": "Share files",
+      "description": "Send photos, videos, voice messages and files in channels."
+    },
+    {
+      "key": "messages.announce",
+      "label": "Post announcements",
+      "description": "Post in announcement channels, where only managers can post."
+    },
+    {
+      "key": "channels.manage",
+      "label": "Manage channels",
+      "description": "Rename, reorder, move, archive and manage the members and permissions of channels and categories."
+    },
+    {
+      "key": "channels.create",
+      "label": "Create channels and categories",
+      "description": "Create channels, voice channels, forums and categories."
+    },
+    {
+      "key": "voice.connect",
+      "label": "Join voice channels",
+      "description": "Join the calls in voice channels."
+    },
+    {
+      "key": "voice.speak",
+      "label": "Speak in voice channels",
+      "description": "Talk, share video and share the screen in voice channels. Without it, people listen only."
+    }
+  ],
+  "roles": [
+    {
+      "id": "rl_KMr17Vk9aHwSjJwxaaKuZA",
+      "name": "Staff",
+      "color": null
+    },
+    {
+      "id": "rl_tXG9SLkVEqrzrD1SS7QqSg",
+      "name": "Moderator",
+      "color": null
+    }
+  ],
+  "canManage": true,
+  "removed": 0
+}

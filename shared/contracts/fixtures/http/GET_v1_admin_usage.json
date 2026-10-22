@@ -1,0 +1,33 @@
+{
+  "days": 7,
+  "workspaces": [
+    {
+      "id": "o_9LEHbxafolcA6inF79O16w",
+      "name": "Meter Co",
+      "createdAt": 1792676702836,
+      "usage": {
+        "files.upload_bytes": 1000,
+        "files.download_bytes": 1000,
+        "seats.members": 2,
+        "seats.active_30d": 2,
+        "storage.bytes": 1000,
+        "calls.participant_minutes": 0
+      },
+      "limits": []
+    },
+    {
+      "id": "o_zCXE3TNrqaRQbS1QwSDZ-g",
+      "name": "Pure Co",
+      "createdAt": 1792676702846,
+      "usage": {
+        "files.upload_bytes": 4,
+        "files.download_bytes": 0,
+        "seats.members": 1,
+        "seats.active_30d": 1,
+        "storage.bytes": 0,
+        "calls.participant_minutes": 0
+      },
+      "limits": []
+    }
+  ]
+}

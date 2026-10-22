@@ -1,0 +1,23 @@
+{
+  "role": {
+    "id": "rl_DkI3WBE9IfBfX6NgMDlsTA",
+    "name": "Moderators",
+    "description": null,
+    "color": null,
+    "icon": null,
+    "permissions": [],
+    "denies": [],
+    "template": null,
+    "position": 1,
+    "hoist": false,
+    "rev": 2,
+    "memberCount": 1,
+    "archived": false,
+    "archivedAt": null,
+    "createdBy": "u_KpVDYSDiANrNfD-sKGjovA",
+    "createdAt": 1792676696129,
+    "updatedAt": 1792676696151,
+    "canEdit": true,
+    "canAssign": true
+  }
+}

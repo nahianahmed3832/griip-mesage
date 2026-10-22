@@ -1,0 +1,21 @@
+{
+  "workspaces": [
+    {
+      "id": "personal",
+      "kind": "personal",
+      "name": "Personal",
+      "role": "OWNER",
+      "slug": null,
+      "photoRev": null
+    },
+    {
+      "id": "o_v9El8NKHSh6QAZOtXxgzCg",
+      "kind": "organization",
+      "name": "Legacy Org 1792676678489",
+      "role": "OWNER",
+      "slug": "legacy-org-1792676678489",
+      "photoRev": null
+    }
+  ],
+  "selectedWorkspaceId": "personal"
+}

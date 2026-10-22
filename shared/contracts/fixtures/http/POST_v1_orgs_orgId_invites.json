@@ -1,0 +1,14 @@
+{
+  "invite": {
+    "id": "inv_PUckDbtrFFfTiyRQNzhshg",
+    "code": "4K4K-W7WU-HJZE",
+    "role": "MEMBER",
+    "branchId": null,
+    "teamId": null,
+    "roleId": null,
+    "maxUses": 1,
+    "uses": 0,
+    "expiresAt": 1792935874884,
+    "guestDays": null
+  }
+}

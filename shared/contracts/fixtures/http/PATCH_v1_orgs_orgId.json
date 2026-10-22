@@ -1,0 +1,25 @@
+{
+  "org": {
+    "id": "o_phFRIIohoQRrZ-GaPQrsTA",
+    "name": "Bangla Makers",
+    "slug": "bangla-makers",
+    "description": "Makers in Dhaka",
+    "myRole": "ADMIN",
+    "memberCount": 2,
+    "createdAt": 1792676688126,
+    "photoRev": null,
+    "guestsAllowed": true,
+    "guestMaxDays": null,
+    "kind": "community",
+    "visibility": "private",
+    "joinPolicy": "invite",
+    "rules": null,
+    "invitesPausedUntil": null,
+    "dmsPausedUntil": null,
+    "joinQuestions": null,
+    "guide": null,
+    "onboarding": false,
+    "activityAlerts": true,
+    "activityAlert": null
+  }
+}

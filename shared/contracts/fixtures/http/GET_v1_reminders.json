@@ -1,0 +1,19 @@
+{
+  "reminders": [
+    {
+      "id": "rem_mvjlex4s_1",
+      "sealed": "c2VhbGVkLXJlbWluZGVyLWNvbnRlbnQAAAAAAAA",
+      "dueAt": 1792680287932,
+      "timeZone": "Asia/Dhaka",
+      "repeat": null,
+      "state": "scheduled",
+      "firedAt": null,
+      "deliveredAt": null,
+      "delivery": null,
+      "rev": 1,
+      "createdAt": 1792676687934,
+      "updatedAt": 1792676687934,
+      "completedAt": null
+    }
+  ]
+}

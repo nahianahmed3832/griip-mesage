@@ -1,0 +1,252 @@
+{
+  "templates": [
+    {
+      "id": "starter",
+      "categories": [
+        {
+          "name": "Start here",
+          "channels": [
+            {
+              "name": "welcome",
+              "voice": false,
+              "format": "text",
+              "kind": "ANNOUNCEMENT"
+            },
+            {
+              "name": "announcements",
+              "voice": false,
+              "format": "text",
+              "kind": "ANNOUNCEMENT"
+            }
+          ]
+        },
+        {
+          "name": "Talk",
+          "channels": [
+            {
+              "name": "general",
+              "voice": false,
+              "format": "text",
+              "kind": "PUBLIC"
+            },
+            {
+              "name": "introductions",
+              "voice": false,
+              "format": "text",
+              "kind": "PUBLIC"
+            },
+            {
+              "name": "lounge",
+              "voice": true,
+              "format": "text",
+              "kind": "PUBLIC"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "friends",
+      "categories": [
+        {
+          "name": "Hang out",
+          "channels": [
+            {
+              "name": "general",
+              "voice": false,
+              "format": "text",
+              "kind": "PUBLIC"
+            },
+            {
+              "name": "photos",
+              "voice": false,
+              "format": "text",
+              "kind": "PUBLIC"
+            },
+            {
+              "name": "plans",
+              "voice": false,
+              "format": "text",
+              "kind": "PUBLIC"
+            }
+          ]
+        },
+        {
+          "name": "Voice",
+          "channels": [
+            {
+              "name": "hangout",
+              "voice": true,
+              "format": "text",
+              "kind": "PUBLIC"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gaming",
+      "categories": [
+        {
+          "name": "Start here",
+          "channels": [
+            {
+              "name": "welcome",
+              "voice": false,
+              "format": "text",
+              "kind": "ANNOUNCEMENT"
+            },
+            {
+              "name": "announcements",
+              "voice": false,
+              "format": "text",
+              "kind": "ANNOUNCEMENT"
+            }
+          ]
+        },
+        {
+          "name": "Play",
+          "channels": [
+            {
+              "name": "general",
+              "voice": false,
+              "format": "text",
+              "kind": "PUBLIC"
+            },
+            {
+              "name": "looking-for-group",
+              "voice": false,
+              "format": "text",
+              "kind": "PUBLIC"
+            },
+            {
+              "name": "clips",
+              "voice": false,
+              "format": "forum",
+              "kind": "PUBLIC"
+            }
+          ]
+        },
+        {
+          "name": "Voice",
+          "channels": [
+            {
+              "name": "lobby",
+              "voice": true,
+              "format": "text",
+              "kind": "PUBLIC"
+            },
+            {
+              "name": "squad",
+              "voice": true,
+              "format": "text",
+              "kind": "PUBLIC"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "study",
+      "categories": [
+        {
+          "name": "Start here",
+          "channels": [
+            {
+              "name": "welcome",
+              "voice": false,
+              "format": "text",
+              "kind": "ANNOUNCEMENT"
+            },
+            {
+              "name": "announcements",
+              "voice": false,
+              "format": "text",
+              "kind": "ANNOUNCEMENT"
+            }
+          ]
+        },
+        {
+          "name": "Study",
+          "channels": [
+            {
+              "name": "general",
+              "voice": false,
+              "format": "text",
+              "kind": "PUBLIC"
+            },
+            {
+              "name": "homework-help",
+              "voice": false,
+              "format": "text",
+              "kind": "PUBLIC"
+            },
+            {
+              "name": "resources",
+              "voice": false,
+              "format": "forum",
+              "kind": "PUBLIC"
+            },
+            {
+              "name": "study-room",
+              "voice": true,
+              "format": "text",
+              "kind": "PUBLIC"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "club",
+      "categories": [
+        {
+          "name": "Start here",
+          "channels": [
+            {
+              "name": "welcome",
+              "voice": false,
+              "format": "text",
+              "kind": "ANNOUNCEMENT"
+            },
+            {
+              "name": "announcements",
+              "voice": false,
+              "format": "text",
+              "kind": "ANNOUNCEMENT"
+            }
+          ]
+        },
+        {
+          "name": "Club",
+          "channels": [
+            {
+              "name": "general",
+              "voice": false,
+              "format": "text",
+              "kind": "PUBLIC"
+            },
+            {
+              "name": "introductions",
+              "voice": false,
+              "format": "text",
+              "kind": "PUBLIC"
+            },
+            {
+              "name": "ideas",
+              "voice": false,
+              "format": "forum",
+              "kind": "PUBLIC"
+            },
+            {
+              "name": "meeting-room",
+              "voice": true,
+              "format": "text",
+              "kind": "PUBLIC"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

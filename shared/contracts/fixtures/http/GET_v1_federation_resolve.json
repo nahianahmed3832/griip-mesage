@@ -1,0 +1,22 @@
+{
+  "user": {
+    "id": "u_8_eW43g8Txa75pQE9YHlOA",
+    "username": "bob2:b.test",
+    "displayName": "Bob",
+    "avatarColor": 0,
+    "statusText": null,
+    "statusEmoji": null,
+    "homeServer": "gs1nlygr6m5wbwpkrqtci3gdrgiu7",
+    "identityKey": "5zE+mIibISqaC0r9QWWI9GajXrG9r8Hj/esL7yiLD90=",
+    "fingerprint": "20270 70893 33182 65619 66496 67509",
+    "address": "@bob2:b.test"
+  },
+  "server": {
+    "serverId": "gs1nlygr6m5wbwpkrqtci3gdrgiu7",
+    "domain": "b.test",
+    "state": "active",
+    "verifiedBy": 3,
+    "source": "quorum",
+    "identityChanged": false
+  }
+}

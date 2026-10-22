@@ -1,0 +1,24 @@
+{
+  "devices": [
+    {
+      "id": "d_KRiHvH5cy4slexrffe1zqw",
+      "name": "test-bot",
+      "signingKey": "mIIo3KJcGrfvIH/G3N6OoFFV1m3y4Dm5ZD2wpT83Kuw=",
+      "createdAt": 1792676692480,
+      "lastSeenAt": 1792676692481,
+      "revokedAt": null,
+      "current": false,
+      "online": false
+    },
+    {
+      "id": "d_R5HLFRPdCwNLJYqYgtqiCg",
+      "name": "Pixel 2",
+      "signingKey": "iSbtLk65ZEBwpn5KiNImRKtFaSemgQi4OyYowbgGjNE=",
+      "createdAt": 1792676692489,
+      "lastSeenAt": 1792676692489,
+      "revokedAt": null,
+      "current": true,
+      "online": false
+    }
+  ]
+}

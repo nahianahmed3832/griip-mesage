@@ -1,0 +1,27 @@
+{
+  "applications": [
+    {
+      "id": "apl_-BURBO7eJPhcDV8X2Vv6iA",
+      "orgId": "o_ETROXhIVbC4IqjsQ4kpvCA",
+      "user": {
+        "id": "u_7SgNqAu_Xy38h9cjjeMWOw",
+        "username": "applicant4",
+        "displayName": "applicant"
+      },
+      "questions": [
+        "Why do you want to join?",
+        "How did you find us?"
+      ],
+      "answers": [
+        "I like labs",
+        "A friend"
+      ],
+      "status": "pending",
+      "createdAt": 1792676697192,
+      "handledAt": null,
+      "handledByName": null,
+      "note": null
+    }
+  ],
+  "pending": 1
+}

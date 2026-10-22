@@ -1,0 +1,31 @@
+{
+  "meeting": {
+    "id": "mtg_MyUiGoj2KxGHkeAWVzS_vQ",
+    "orgId": "o_u1NxmofejE_Btm35sW8YwQ",
+    "title": "Weekly sync",
+    "description": null,
+    "room": {
+      "id": "c_6X4B40BfQIRMqO6jVcj8Yw",
+      "name": "boardroom"
+    },
+    "startsAt": 1792677060718,
+    "endsAt": 1792678860718,
+    "timeZone": "Asia/Dhaka",
+    "organizer": {
+      "id": "u_20dBDmUrQuHs5yOsSBTmOg",
+      "name": "c5owner"
+    },
+    "participants": [
+      {
+        "id": "u_0UsTiavyT4h_-mG8Q-XjBg",
+        "name": "c5member",
+        "response": "pending"
+      }
+    ],
+    "myResponse": null,
+    "cancelled": true,
+    "repeat": null,
+    "canEdit": true,
+    "rev": 2
+  }
+}

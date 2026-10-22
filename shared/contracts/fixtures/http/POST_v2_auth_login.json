@@ -1,0 +1,20 @@
+{
+  "accessToken": "<redacted>",
+  "accessTokenExpiresAt": 1792677574439,
+  "refreshToken": "<redacted>",
+  "refreshTokenExpiresAt": 1797860674439,
+  "session": {
+    "id": "s_l-s_6RWqtsrENJgEG6Mz8A",
+    "deviceId": null,
+    "createdAt": 1792676674439
+  },
+  "account": {
+    "id": "acc_K7wJaEy45ZPN8Orsus19HA",
+    "email": "ada.mvjlemh51@example.test",
+    "name": "Ada",
+    "createdAt": 1792676674202,
+    "legacyLinkedAt": null,
+    "selectedWorkspaceId": null,
+    "identity": null
+  }
+}

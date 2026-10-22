@@ -1,0 +1,19 @@
+{
+  "guide": {
+    "welcome": "Welcome to the club!",
+    "tasks": [
+      {
+        "id": "g_PSWvGCJX1V9HCgZmV83xKw",
+        "title": "Show your work",
+        "channelId": "c_93NpXrxSXr8-dsNt2fItsA"
+      }
+    ],
+    "resources": [
+      {
+        "id": "g_rEAIvOjnQbk8Qjk-Oqo9ZA",
+        "title": "Club board",
+        "channelId": "c_ejoLxksRNSCtYBhbFGO9fA"
+      }
+    ]
+  }
+}

@@ -69,6 +69,10 @@ afterAll(async () => {
 });
 
 describe("global identity and discovery", () => {
+  it("tells a person their global address", async () => {
+    expect(await alice.req("GET", "/v1/federation/info")).toMatchObject({ enabled: true, address: `@${alice.username}:a.test` });
+  });
+
   it("resolves @bob:b.test from server A through a core-node quorum, with Bob's real ids and keys", async () => {
     const r = await alice.req("GET", `/v1/federation/resolve?address=${encodeURIComponent(`@${bob.username}:b.test`)}`);
     expect(r.user.id).toBe(bob.userId); // same id on both servers (envelopes are signed over it)

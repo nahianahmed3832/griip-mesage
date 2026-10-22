@@ -1,0 +1,26 @@
+{
+  "report": {
+    "id": "rep_0gFEedBiu-1PYZAu4juUTg",
+    "orgId": "o_K8yDl7zSMJrG31cYcXIKFg",
+    "reason": "spam",
+    "note": null,
+    "status": "actioned",
+    "createdAt": 1792676692981,
+    "handledAt": 1792676692987,
+    "handledBy": {
+      "id": "u__vJu6gSxZ7BpAW-rBDqO7Q",
+      "username": "mod2",
+      "displayName": "mod"
+    },
+    "handledNote": "timed out",
+    "target": {
+      "id": "u_jZknApe3xMF9pE6GUbmyYw",
+      "username": "other4",
+      "displayName": "other"
+    },
+    "conversationId": null,
+    "conversationName": null,
+    "messageId": null,
+    "content": null
+  }
+}

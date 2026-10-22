@@ -1,0 +1,512 @@
+{
+  "catalog": [
+    {
+      "key": "workspace.edit",
+      "category": "workspace",
+      "label": "Edit the community",
+      "description": "Change the community's name, description, photo, rules, visibility and who may join.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "workspace.usage.view",
+      "category": "workspace",
+      "label": "View usage and storage",
+      "description": "See member, channel and file storage figures.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "workspace.delete",
+      "category": "workspace",
+      "label": "Delete the community",
+      "description": "Permanently delete the community and its channels.",
+      "admin": true,
+      "ownerOnly": true,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "workspace.transfer",
+      "category": "workspace",
+      "label": "Transfer ownership",
+      "description": "Hand ownership of the community to another member.",
+      "admin": true,
+      "ownerOnly": true,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "members.view",
+      "category": "members",
+      "label": "View the member list",
+      "description": "Browse and search everyone in the community.",
+      "admin": false,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": true
+    },
+    {
+      "key": "members.invite",
+      "category": "members",
+      "label": "Invite people",
+      "description": "Create invitations for members and guests.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "members.invites.manage",
+      "category": "members",
+      "label": "Manage all invitations",
+      "description": "See and revoke invitations created by anyone.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "members.roles",
+      "category": "members",
+      "label": "Change member access",
+      "description": "Switch people between Member and Guest.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "members.titles",
+      "category": "members",
+      "label": "Edit titles",
+      "description": "Change the short title shown next to members' names.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "members.remove",
+      "category": "members",
+      "label": "Remove people",
+      "description": "Remove members and guests from the community (they can come back with an invitation).",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "members.ban",
+      "category": "members",
+      "label": "Ban people",
+      "description": "Remove people and keep them out until the ban is lifted, and see the ban list.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "members.timeout",
+      "category": "members",
+      "label": "Time out people",
+      "description": "Stop someone posting, sharing files and joining voice channels for up to 28 days.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "members.approve",
+      "category": "members",
+      "label": "Approve applications",
+      "description": "Approve or deny people who applied to join.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "roles.view",
+      "category": "roles",
+      "label": "View roles",
+      "description": "See the community's roles and what each one allows.",
+      "admin": false,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "roles.manage",
+      "category": "roles",
+      "label": "Create and edit roles",
+      "description": "Create, edit, clone and archive custom roles (only with powers you hold).",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "roles.assign",
+      "category": "roles",
+      "label": "Assign roles",
+      "description": "Give custom roles to people and take them away (only roles within your own powers).",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "roles.delegate",
+      "category": "roles",
+      "label": "Delegate admin powers",
+      "description": "Put administrative powers into roles and assign such roles.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "channels.view",
+      "category": "channels",
+      "label": "See channels",
+      "description": "See the community's public channels and be in them. Channel and category permissions can take it away.",
+      "admin": false,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": true
+    },
+    {
+      "key": "channels.create",
+      "category": "channels",
+      "label": "Create channels and categories",
+      "description": "Create channels, voice channels, forums and categories.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "channels.manage",
+      "category": "channels",
+      "label": "Manage channels",
+      "description": "Rename, reorder, move, archive and manage the members and permissions of channels and categories.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "channels.visibility",
+      "category": "channels",
+      "label": "Change channel access",
+      "description": "Make any channel public, private or announcement-only.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "messages.post",
+      "category": "messaging",
+      "label": "Post in channels",
+      "description": "Send messages in the community's channels.",
+      "admin": false,
+      "ownerOnly": false,
+      "guestAllowed": true,
+      "restrictable": true
+    },
+    {
+      "key": "messages.attach",
+      "category": "messaging",
+      "label": "Share files",
+      "description": "Send photos, videos, voice messages and files in channels.",
+      "admin": false,
+      "ownerOnly": false,
+      "guestAllowed": true,
+      "restrictable": true
+    },
+    {
+      "key": "messages.announce",
+      "category": "messaging",
+      "label": "Post announcements",
+      "description": "Post in announcement channels, where only managers can post.",
+      "admin": false,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "messages.bypass_slowmode",
+      "category": "messaging",
+      "label": "Skip slowmode",
+      "description": "Post without waiting in channels with slowmode on.",
+      "admin": false,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "expressions.manage",
+      "category": "messaging",
+      "label": "Manage emoji and stickers",
+      "description": "Upload, rename and remove the community's own emoji and stickers.",
+      "admin": false,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "voice.connect",
+      "category": "voice",
+      "label": "Join voice channels",
+      "description": "Join the calls in voice channels.",
+      "admin": false,
+      "ownerOnly": false,
+      "guestAllowed": true,
+      "restrictable": true
+    },
+    {
+      "key": "voice.speak",
+      "category": "voice",
+      "label": "Speak in voice channels",
+      "description": "Talk, share video and share the screen in voice channels. Without it, people listen only.",
+      "admin": false,
+      "ownerOnly": false,
+      "guestAllowed": true,
+      "restrictable": true
+    },
+    {
+      "key": "audit.view",
+      "category": "security",
+      "label": "View the audit log",
+      "description": "See every administrative change in the community.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    },
+    {
+      "key": "reports.view",
+      "category": "security",
+      "label": "Handle reports",
+      "description": "See what members reported to the moderators, and close reports.",
+      "admin": true,
+      "ownerOnly": false,
+      "guestAllowed": false,
+      "restrictable": false
+    }
+  ],
+  "templates": [
+    {
+      "key": "moderator",
+      "name": "Moderator",
+      "description": "Keeps conversations healthy: manages channels and their access, posts announcements, times out, removes and bans people.",
+      "color": "#E39B7B",
+      "icon": "shield",
+      "permissions": [
+        "channels.manage",
+        "channels.visibility",
+        "messages.announce",
+        "messages.bypass_slowmode",
+        "members.remove",
+        "members.ban",
+        "members.timeout",
+        "members.approve",
+        "reports.view"
+      ],
+      "denies": []
+    },
+    {
+      "key": "community_manager",
+      "name": "Community Manager",
+      "description": "Grows the community: invites people, sets up channels and categories, keeps titles right.",
+      "color": "#C9A27A",
+      "icon": "star",
+      "permissions": [
+        "members.invite",
+        "members.invites.manage",
+        "members.approve",
+        "members.titles",
+        "channels.create",
+        "channels.manage",
+        "expressions.manage"
+      ],
+      "denies": []
+    },
+    {
+      "key": "announcer",
+      "name": "Announcer",
+      "description": "Posts in announcement channels.",
+      "color": "#7FA7D9",
+      "icon": "megaphone",
+      "permissions": [
+        "messages.announce"
+      ],
+      "denies": []
+    },
+    {
+      "key": "helper",
+      "name": "Helper",
+      "description": "A recognised helper: invites newcomers.",
+      "color": "#8FB59A",
+      "icon": "support",
+      "permissions": [
+        "members.invite"
+      ],
+      "denies": []
+    },
+    {
+      "key": "read_only",
+      "name": "Read-Only Member",
+      "description": "Reads channels but can't post or share files in them.",
+      "color": "#9A9A9A",
+      "icon": "eye",
+      "permissions": [],
+      "denies": [
+        "messages.post",
+        "messages.attach"
+      ]
+    }
+  ],
+  "icons": [
+    "shield",
+    "star",
+    "people",
+    "briefcase",
+    "support",
+    "code",
+    "finance",
+    "eye",
+    "megaphone",
+    "badge"
+  ],
+  "baseRoles": [
+    {
+      "key": "OWNER",
+      "name": "Owner",
+      "permissions": [
+        "workspace.edit",
+        "workspace.usage.view",
+        "workspace.delete",
+        "workspace.transfer",
+        "members.view",
+        "members.invite",
+        "members.invites.manage",
+        "members.roles",
+        "members.titles",
+        "members.remove",
+        "members.ban",
+        "members.timeout",
+        "members.approve",
+        "roles.view",
+        "roles.manage",
+        "roles.assign",
+        "roles.delegate",
+        "channels.view",
+        "channels.create",
+        "channels.manage",
+        "channels.visibility",
+        "messages.post",
+        "messages.attach",
+        "messages.announce",
+        "messages.bypass_slowmode",
+        "expressions.manage",
+        "voice.connect",
+        "voice.speak",
+        "audit.view",
+        "reports.view"
+      ],
+      "memberCount": 1,
+      "protected": true
+    },
+    {
+      "key": "ADMIN",
+      "name": "Admin",
+      "permissions": [
+        "workspace.edit",
+        "workspace.usage.view",
+        "members.view",
+        "members.invite",
+        "members.invites.manage",
+        "members.roles",
+        "members.titles",
+        "members.remove",
+        "members.ban",
+        "members.timeout",
+        "members.approve",
+        "roles.view",
+        "roles.manage",
+        "roles.assign",
+        "channels.view",
+        "channels.create",
+        "channels.manage",
+        "channels.visibility",
+        "messages.post",
+        "messages.attach",
+        "messages.announce",
+        "messages.bypass_slowmode",
+        "expressions.manage",
+        "voice.connect",
+        "voice.speak",
+        "audit.view",
+        "reports.view"
+      ],
+      "memberCount": 1,
+      "protected": true
+    },
+    {
+      "key": "MEMBER",
+      "name": "Member",
+      "permissions": [
+        "members.view",
+        "roles.view",
+        "channels.view",
+        "messages.post",
+        "messages.attach",
+        "voice.connect",
+        "voice.speak"
+      ],
+      "memberCount": 2,
+      "protected": true
+    },
+    {
+      "key": "GUEST",
+      "name": "Guest",
+      "permissions": [
+        "messages.post",
+        "messages.attach",
+        "voice.connect",
+        "voice.speak"
+      ],
+      "memberCount": 1,
+      "protected": true
+    }
+  ],
+  "roles": [],
+  "limits": {
+    "activeRoles": 50,
+    "rolesPerMember": 20,
+    "nameMax": 40,
+    "descriptionMax": 200
+  },
+  "me": {
+    "base": "MEMBER",
+    "permissions": [
+      "channels.view",
+      "members.view",
+      "messages.attach",
+      "messages.post",
+      "roles.view",
+      "voice.connect",
+      "voice.speak"
+    ],
+    "canManage": false,
+    "canAssign": false,
+    "canDelegate": false
+  }
+}

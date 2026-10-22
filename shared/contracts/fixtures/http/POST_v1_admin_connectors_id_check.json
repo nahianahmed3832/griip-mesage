@@ -1,0 +1,111 @@
+{
+  "result": {
+    "ok": true,
+    "errorKind": null
+  },
+  "connectors": [
+    {
+      "id": "email",
+      "name": "Email",
+      "category": "email",
+      "missing": [
+        "MAIL_TRANSPORT"
+      ],
+      "detail": "No email is sent: sign-up by email and recovery are unavailable.",
+      "usage": {},
+      "checkable": false,
+      "ownerAction": null,
+      "docs": "docs/EMAIL.md",
+      "lastOkAt": null,
+      "lastFailureAt": null,
+      "lastErrorKind": null,
+      "state": "needs_configuration"
+    },
+    {
+      "id": "storage",
+      "name": "File storage (this server's disk)",
+      "category": "storage",
+      "missing": [],
+      "detail": "Encrypted attachments and photos.",
+      "usage": {},
+      "checkable": true,
+      "ownerAction": null,
+      "docs": "docs/AWS_STORAGE_PLAN.md",
+      "lastOkAt": 1792676687016,
+      "lastFailureAt": null,
+      "lastErrorKind": null,
+      "state": "working"
+    },
+    {
+      "id": "push-unifiedpush",
+      "name": "UnifiedPush wake-ups",
+      "category": "push",
+      "missing": [
+        "PUSH_UNIFIEDPUSH_HOSTS"
+      ],
+      "detail": "Wakes phones without Google services (for example through ntfy). Wake-ups carry no content.",
+      "usage": {
+        "devices": 0
+      },
+      "checkable": false,
+      "ownerAction": null,
+      "docs": "docs/PUSH_SERVER.md",
+      "lastOkAt": null,
+      "lastFailureAt": null,
+      "lastErrorKind": null,
+      "state": "needs_configuration"
+    },
+    {
+      "id": "push-fcm",
+      "name": "Firebase Cloud Messaging",
+      "category": "push",
+      "missing": [
+        "FCM_PROJECT_ID",
+        "FCM_SERVICE_ACCOUNT_FILE"
+      ],
+      "detail": "Wakes Android phones through Google. Wake-ups carry no content.",
+      "usage": {
+        "devices": 0
+      },
+      "checkable": false,
+      "ownerAction": "Create a Firebase project for com.meldiq.android, add the app's google-services.json to the build, and give the server a service account with the Firebase Cloud Messaging API role.",
+      "docs": "docs/PUSH_FCM.md",
+      "lastOkAt": null,
+      "lastFailureAt": null,
+      "lastErrorKind": null,
+      "state": "needs_configuration"
+    },
+    {
+      "id": "calls",
+      "name": "Calls (LiveKit)",
+      "category": "calls",
+      "missing": [],
+      "detail": "Voice and video calls, screen sharing and voice rooms.",
+      "usage": {},
+      "checkable": false,
+      "ownerAction": null,
+      "docs": "docs/CALLING_AND_E2EE.md",
+      "lastOkAt": null,
+      "lastFailureAt": null,
+      "lastErrorKind": null,
+      "state": "configured"
+    },
+    {
+      "id": "mongodb",
+      "name": "MongoDB",
+      "category": "database",
+      "missing": [
+        "MONGODB_URI"
+      ],
+      "detail": "Not used: everything is in the server's own database.",
+      "usage": {},
+      "checkable": false,
+      "ownerAction": null,
+      "docs": "docs/MONGODB.md",
+      "lastOkAt": null,
+      "lastFailureAt": null,
+      "lastErrorKind": null,
+      "state": "needs_configuration"
+    }
+  ]
+}

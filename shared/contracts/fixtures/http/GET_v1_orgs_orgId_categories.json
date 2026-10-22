@@ -1,0 +1,28 @@
+{
+  "categories": [
+    {
+      "id": "cat_-oMumxss9FhroaWVdcNNvA",
+      "name": "Start here",
+      "position": 0,
+      "channelCount": 2,
+      "canManage": true,
+      "canCreateChannels": true
+    },
+    {
+      "id": "cat_J-0YjI0JsRZWPJaCgdk32g",
+      "name": "Talk",
+      "position": 1,
+      "channelCount": 3,
+      "canManage": true,
+      "canCreateChannels": true
+    },
+    {
+      "id": "cat_UArRI2xrusXkW5Xjw9rs6w",
+      "name": "Contract category",
+      "position": 2,
+      "channelCount": 0,
+      "canManage": true,
+      "canCreateChannels": true
+    }
+  ]
+}

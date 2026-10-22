@@ -5,7 +5,8 @@ The canonical contract every client (Android, web, iOS) builds against. Architec
 
 | File | What |
 |---|---|
-| [`openapi.json`](openapi.json) | OpenAPI 3.1 for the documented HTTP routes, with the error-code catalog as `x-error-codes` |
+| [`openapi.json`](openapi.json) | OpenAPI 3.1 for every client-facing HTTP route, with the error-code catalog as `x-error-codes` |
+| [`COVERAGE.md`](COVERAGE.md) | Which routes and frames the test suite has verified against their schemas |
 | [`realtime.schema.json`](realtime.schema.json) | JSON Schema of every WebSocket frame on `/v1/ws` (`ServerEvent`, `ClientEvent`) |
 | [`../../shared/contracts/fixtures/`](../../shared/contracts/fixtures) | Golden examples: real answers (`http/`), error answers (`http/errors/`) and frames (`realtime/`) captured from the server's test suite |
 
@@ -27,7 +28,13 @@ Credentials in them are replaced by `<redacted>`; ids and times are from test ru
 - Unknown queue item kinds or payloads get a placeholder, never a silent drop.
 - Decode every fixture in your unit tests with your own models, so a contract change shows up as a failing test.
 
-**Coverage:** 30 of the server's routes are documented so far (system, messaging and queue, history, files, calls);
-the rest are added area by area. Undocumented routes still answer with the same error envelope (checked on every test).
+**Coverage:** all 211 client-facing routes are documented, and the test suite has seen a real answer to every one of
+them match its schema ([`COVERAGE.md`](COVERAGE.md), generated). Not documented here, on purpose: the server-to-server
+federation protocol (`/fed/v1/*`, the core node, [`docs/FEDERATION_PROTOCOL.md`](../FEDERATION_PROTOCOL.md)), the
+LiveKit webhook (`POST /v1/livekit/webhook`) and the WebSocket upgrade itself (`GET /v1/ws`, whose frames are in
+`realtime.schema.json`). Frames not yet seen by a test: `prefs.updated`, `meeting.updated`, `meeting.soon`.
+
+Validation messages: the input errors of documented routes now come from zod 4, so the wording of `details[].message`
+for built-in checks changed (custom messages didn't). Clients branch on `code` and show `message`, which are unchanged.
 Known exception: a path that matches no route answers Fastify's own 404 body (`{ message, error, statusCode }`), which
 the Android app relies on to detect an older server; it will move to the envelope in a compatible way.

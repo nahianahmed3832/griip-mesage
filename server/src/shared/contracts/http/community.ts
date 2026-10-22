@@ -1,5 +1,6 @@
 import { z } from "zod/v4";
 import { zCount, zTime } from "./primitives.js";
+import { CommunityView } from "./orgs.js";
 import { route } from "./route.js";
 
 /**
@@ -56,38 +57,8 @@ export const Guide = z.strictObject({ welcome: z.string().nullable(), tasks: z.a
 /** A recent burst of joins, shown to moderators (batch B4b). */
 export const ActivityAlert = z.strictObject({ kind: z.literal("joins"), count: zCount, at: zTime });
 
-/** A community's summary (the server's orgSummary), as the preview and joining answer it. */
-export const CommunitySummary = z.strictObject({
-  id: z.string(),
-  name: z.string(),
-  slug: z.string(),
-  description: z.string().nullable(),
-  /** null: the viewer isn't a member (a public community's preview). */
-  myRole: OrgRoleName.nullable(),
-  memberCount: zCount,
-  createdAt: zTime,
-  /** The avatar's revision (GET /v1/orgs/:orgId/photo), null without one. */
-  photoRev: z.number().int().nullable(),
-  guestsAllowed: z.boolean(),
-  guestMaxDays: z.number().int().nullable(),
-  /** Every workspace is a community since the rebuild; kept for apps that read it. */
-  kind: z.literal("community"),
-  visibility: z.enum(["public", "private"]),
-  joinPolicy: JoinPolicy,
-  rules: z.string().nullable(),
-  /** Security actions running now (null otherwise). */
-  invitesPausedUntil: zTime.nullable(),
-  dmsPausedUntil: zTime.nullable(),
-  /** The join application's questions, or null when the community doesn't take applications. */
-  joinQuestions: z.array(z.string()).nullable(),
-  /** Members only (null for others, or without a guide). */
-  guide: Guide.nullable(),
-  /** Whether onboarding questions are on. */
-  onboarding: z.boolean(),
-  activityAlerts: z.boolean(),
-  /** Moderators only, while recent. */
-  activityAlert: ActivityAlert.nullable(),
-});
+/** A community's summary as the preview and joining answer it: the same view as GET /v1/orgs (orgSummary). */
+export const CommunitySummary = CommunityView;
 
 // ───────────── Categories and layout ─────────────
 

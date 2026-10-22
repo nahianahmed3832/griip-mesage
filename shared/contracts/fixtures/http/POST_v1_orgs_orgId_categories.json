@@ -1,0 +1,10 @@
+{
+  "category": {
+    "id": "cat_Re3KDWjLragjszz0LJZFLA",
+    "name": "Staff room",
+    "position": 2,
+    "channelCount": 0,
+    "canManage": true,
+    "canCreateChannels": true
+  }
+}

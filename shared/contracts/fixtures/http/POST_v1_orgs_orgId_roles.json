@@ -1,0 +1,23 @@
+{
+  "role": {
+    "id": "rl_W3E_MJzS_rYnQJB4cnt52w",
+    "name": "Sales",
+    "description": null,
+    "color": null,
+    "icon": null,
+    "permissions": [],
+    "denies": [],
+    "template": null,
+    "position": 1,
+    "hoist": false,
+    "rev": 1,
+    "memberCount": 0,
+    "archived": false,
+    "archivedAt": null,
+    "createdBy": "u_HuklsqCRx8aQGoVLKxtC3Q",
+    "createdAt": 1792676686184,
+    "updatedAt": 1792676686184,
+    "canEdit": true,
+    "canAssign": true
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "base": "MEMBER",
+  "roles": [
+    {
+      "id": "rl_jpn4wAK65uPnvG9c4lj22g",
+      "name": "Announcer",
+      "color": null
+    }
+  ],
+  "effective": [
+    "channels.view",
+    "members.view",
+    "messages.announce",
+    "messages.attach",
+    "messages.post",
+    "roles.view",
+    "voice.connect",
+    "voice.speak"
+  ],
+  "sources": {
+    "members.view": [
+      "base"
+    ],
+    "roles.view": [
+      "base"
+    ],
+    "channels.view": [
+      "base"
+    ],
+    "messages.post": [
+      "base"
+    ],
+    "messages.attach": [
+      "base"
+    ],
+    "voice.connect": [
+      "base"
+    ],
+    "voice.speak": [
+      "base"
+    ],
+    "messages.announce": [
+      "rl_jpn4wAK65uPnvG9c4lj22g"
+    ]
+  },
+  "restricted": []
+}

@@ -1,0 +1,26 @@
+{
+  "org": {
+    "id": "o_45VMJGuKnx-kAsQjgjGCYA",
+    "name": "Second's own",
+    "slug": "second-s-own",
+    "description": null,
+    "myRole": "MEMBER",
+    "memberCount": 2,
+    "createdAt": 1792676674875,
+    "photoRev": null,
+    "guestsAllowed": true,
+    "guestMaxDays": null,
+    "kind": "community",
+    "visibility": "private",
+    "joinPolicy": "invite",
+    "rules": null,
+    "invitesPausedUntil": null,
+    "dmsPausedUntil": null,
+    "joinQuestions": null,
+    "guide": null,
+    "onboarding": false,
+    "activityAlerts": true,
+    "activityAlert": null
+  },
+  "alreadyMember": false
+}

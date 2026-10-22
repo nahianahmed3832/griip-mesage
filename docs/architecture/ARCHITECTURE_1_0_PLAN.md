@@ -476,3 +476,42 @@ Open in C2:
 - A path that matches no route answers Fastify's own 404 body; Android detects older servers by it. Moving it to the
   envelope needs a compatible form first.
 - Client side (phase F): Android and web unit tests decode the fixtures; web types generated from the JSON Schemas.
+
+### C2 part 1 merged (2026-10-22)
+
+`internal-beta` fast-forwarded to `e83d222` (local, not pushed). Main folder: 731 passed / 10 skipped.
+
+### Step C2, remaining routes (2026-10-22, branch `architecture-1.0`)
+
+Done area by area in five parallel worktrees (one commit each, cherry-picked here), then integrated:
+
+| Commit | Area | Routes |
+|---|---|---|
+| `042edce` | one contract file per area, so the areas share no file | — |
+| `3a14861` | `docs/api/COVERAGE.md` (generated) and tests for frames no suite reached | — |
+| `340be1f` | accounts (`/v2/auth`, `/v2/account`, `/v2/migration`, `/v2/workspaces`); `modules/accounts/schemas.ts` removed | 30 |
+| `3f82e41` | community features (categories, overwrites, discovery, bans, guest policy, security, timeouts, applications, expressions, onboarding, guide, reports) | 37 |
+| `6340c36` | identity (v1 auth, pairing, devices, users, blocks, presence, push, connections, preferences, reminders) | 47 |
+| `e948958` | identity modules take enums and rules from the contracts instead of copies | — |
+| `79d0f32` | communities and roles (orgs, members, invites, channels, roles, ownership, usage, plan, audit) | 34 |
+| `1fc9c55` | conversations, search, meetings, admin, experiments, federation client routes (`requires: "federation"`) | 34 |
+| (this step) | one definition each for the user summary, conversation view and community view; tests for the last unexercised routes; recovery codes redacted in fixtures | — |
+
+Result: **211 of 211 client-facing routes documented and verified at runtime** (every one answered in the suite and
+matched its strict schema); frames 25 of 28. Excluded on purpose: the federation peer protocol, the core node, the
+LiveKit webhook, the WebSocket upgrade. Server 741 passed / 10 skipped on SQLite and in MongoDB mode; build passes.
+
+Behaviour notes (no route, status or code changed):
+- Built-in validation messages of documented routes now come from zod 4 (wording of `details[].message`).
+- zod 4's `int()` accepts only safe integers, so an integer above 2^53 in a request is now a 400 (none is meaningful).
+- Inconsistencies documented as they are, to settle in a later compatible change: `POST /v1/orgs/:orgId/categories`
+  can answer `{}` and `PATCH /v1/categories/:id` `{ category: null }` when the creator can't see an empty category;
+  `GET /v1/auth/username-available` has two shapes; the success bodies vary (`{ok:true}`, `{blocked}`,
+  `{status:"sent_if_pending"}` …); `GET /v1/devices` reports the person's online state on every device; hidden profile
+  fields are sometimes null and sometimes absent; fixed legacy fields (`branches`, `teams` …) remain for older apps.
+- Constants that shared/contracts can't import from modules are copied once with a compile-time equality check
+  (permission keys, role icons, template ids, channel capabilities, report reasons, event repeats); identity's copies
+  were replaced by imports in the other direction.
+
+Next: phase D (persistence interfaces) and, in parallel on the client side, phase F's first step: the Android and web
+unit tests decode `shared/contracts/fixtures`.

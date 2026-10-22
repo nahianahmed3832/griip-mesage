@@ -1,0 +1,12 @@
+{
+  "privacy": {
+    "photo": "everyone",
+    "bio": "everyone",
+    "name": "everyone",
+    "birthday": "nobody",
+    "phone": "nobody",
+    "lastSeen": "nobody",
+    "findByPhone": "nobody",
+    "findByUsername": "everyone"
+  }
+}

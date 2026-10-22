@@ -1,0 +1,30 @@
+{
+  "users": [
+    {
+      "userId": "u_Zf6ECU5MO0duogjoIofh7g",
+      "identityKey": "u0bOC0oFzB75vK2YVhuSxjOX431il+RdtITP6MjiMXE=",
+      "devices": [
+        {
+          "id": "d_8TnX9xk6J6ZpwgMzBTZMeQ",
+          "signingKey": "04FuQ5A1ztevIaxhlC1hi1NgdRorDTaflpY/8fiNpAI=",
+          "encryptionKey": "zFB6xQDGJqG2bVxuTHaeGfmTzkK2BxprLRZj3uZJ4Fo=",
+          "certificate": "D1bnjP6598h8yUbu2T+fnsUBYzpcDPZNwsTH0RGbjq8Lh3uc7Pi9Ewnzf8j2qA+VY71x5X8cEBcSttE357SqDQ=="
+        }
+      ],
+      "revokedDevices": []
+    },
+    {
+      "userId": "u_qtmlb7KhGFxCQT2ezOkBng",
+      "identityKey": "nD6cJcF5bYBlbWyDZLOS54rjeJAMntYQXAaf9ZK+6Mg=",
+      "devices": [
+        {
+          "id": "d_vmJQ1dv9Z8svr2kyeuQqAQ",
+          "signingKey": "HTRc2w3QJz+sgAzQoIG/X3VlE9/Fc7rDEMl29qvlphw=",
+          "encryptionKey": "d+1EtXSSruoHYCmIierNE7j7Am6xV01Whq2BvG68QQc=",
+          "certificate": "9SiYclMDO/V0U1cpJmVEHZq0GCL7stmDr8gUrqzd6aUXhTvcsN77XHhEBXYNbDrk5UsnMTSs6RXvD8TyZygzBA=="
+        }
+      ],
+      "revokedDevices": []
+    }
+  ]
+}

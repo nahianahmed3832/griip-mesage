@@ -1,0 +1,17 @@
+{
+  "reminder": {
+    "id": "rem_mvjlex65_8",
+    "sealed": "c2VhbGVkLXJlbWluZGVyLWNvbnRlbnQAAAAAAAA",
+    "dueAt": 1792676747981,
+    "timeZone": "Asia/Dhaka",
+    "repeat": null,
+    "state": "fired",
+    "firedAt": 1792676747982,
+    "deliveredAt": 1792676687988,
+    "delivery": null,
+    "rev": 2,
+    "createdAt": 1792676687982,
+    "updatedAt": 1792676747982,
+    "completedAt": null
+  }
+}

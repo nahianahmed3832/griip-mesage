@@ -1,0 +1,17 @@
+{
+  "reminder": {
+    "id": "rem_mvjlex5q_7",
+    "sealed": "c2VhbGVkLXJlbWluZGVyLWNvbnRlbnQAAAAAAAAA",
+    "dueAt": 1792680287966,
+    "timeZone": "Asia/Dhaka",
+    "repeat": null,
+    "state": "scheduled",
+    "firedAt": null,
+    "deliveredAt": null,
+    "delivery": null,
+    "rev": 2,
+    "createdAt": 1792676687966,
+    "updatedAt": 1792676687969,
+    "completedAt": null
+  }
+}

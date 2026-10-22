@@ -1,0 +1,63 @@
+{
+  "conversation": {
+    "id": "c_42IbzveMKLZs17y7tAmfcg",
+    "type": "DM",
+    "orgId": null,
+    "scope": null,
+    "scopeId": null,
+    "scopeName": null,
+    "categoryId": null,
+    "categoryName": null,
+    "position": 0,
+    "format": "text",
+    "forumTags": [],
+    "guidelines": null,
+    "kind": null,
+    "name": null,
+    "topic": null,
+    "archived": false,
+    "photoRev": null,
+    "createdAt": 1792676674177,
+    "updatedAt": 1792676674177,
+    "memberCount": 2,
+    "members": [
+      {
+        "id": "u_0la94aVOJenMxr8H77IFBg",
+        "username": "pushb2",
+        "displayName": "pushb",
+        "avatarColor": 0,
+        "statusText": null,
+        "statusEmoji": null,
+        "homeServer": null,
+        "role": "MEMBER",
+        "online": false,
+        "presence": "offline",
+        "notificationsPaused": false
+      },
+      {
+        "id": "u_UqQvY_gJnKWlmV9XEVVXag",
+        "username": "pusha1",
+        "displayName": "pusha",
+        "avatarColor": 0,
+        "statusText": null,
+        "statusEmoji": null,
+        "homeServer": null,
+        "role": "MEMBER",
+        "online": false,
+        "presence": "offline",
+        "notificationsPaused": false
+      }
+    ],
+    "joined": true,
+    "myRole": "MEMBER",
+    "canPost": true,
+    "canAttach": true,
+    "canManage": false,
+    "canManageAccess": false,
+    "canMentionAll": false,
+    "activeCall": null,
+    "voice": false,
+    "federation": null,
+    "request": null
+  }
+}

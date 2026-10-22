@@ -1,0 +1,20 @@
+{
+  "sessions": [
+    {
+      "id": "s_Zrl6jYtkanxaCUMjz_tk1g",
+      "label": "test phone",
+      "deviceId": null,
+      "createdAt": 1792676675462,
+      "lastUsedAt": 1792676675462,
+      "current": false
+    },
+    {
+      "id": "s_zc3VPHaTNR_dYzFVw_UZ7A",
+      "label": "test phone",
+      "deviceId": null,
+      "createdAt": 1792676675454,
+      "lastUsedAt": 1792676675454,
+      "current": true
+    }
+  ]
+}

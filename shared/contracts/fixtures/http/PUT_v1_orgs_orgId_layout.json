@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "removed": 3,
+  "categories": [
+    {
+      "id": "cat_1thIVHpWxrEIXGdN2RqG0A",
+      "name": "Start here",
+      "position": 0,
+      "channelCount": 2,
+      "canManage": true,
+      "canCreateChannels": true
+    },
+    {
+      "id": "cat_SOpr7X_JEWQsbTVGR_n9uA",
+      "name": "Talk",
+      "position": 1,
+      "channelCount": 2,
+      "canManage": true,
+      "canCreateChannels": true
+    },
+    {
+      "id": "cat_Re3KDWjLragjszz0LJZFLA",
+      "name": "Staff room",
+      "position": 2,
+      "channelCount": 3,
+      "canManage": true,
+      "canCreateChannels": true
+    }
+  ]
+}

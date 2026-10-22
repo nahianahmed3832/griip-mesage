@@ -1,0 +1,34 @@
+{
+  "members": [
+    {
+      "id": "u_PPhu6rxAmERqyk1mpDhhDQ",
+      "username": "b14bowner1",
+      "displayName": "b14bowner",
+      "avatarColor": 0,
+      "statusText": null,
+      "statusEmoji": null,
+      "homeServer": null,
+      "role": "ADMIN",
+      "joinedAt": 1792676689118,
+      "orgRole": "OWNER",
+      "online": false,
+      "presence": "offline",
+      "notificationsPaused": false
+    },
+    {
+      "id": "u_Gsg8z9z1VJYq93GKhxOiQw",
+      "username": "b14bmember2",
+      "displayName": "b14bmember",
+      "avatarColor": 0,
+      "statusText": null,
+      "statusEmoji": null,
+      "homeServer": null,
+      "role": "MEMBER",
+      "joinedAt": 1792676689118,
+      "orgRole": "MEMBER",
+      "online": false,
+      "presence": "offline",
+      "notificationsPaused": false
+    }
+  ]
+}

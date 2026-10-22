@@ -1,0 +1,61 @@
+{
+  "members": [
+    {
+      "id": "u_I3xLCmN5UHg_T5g4B_VLOw",
+      "username": "edgeowner1",
+      "displayName": "edgeowner",
+      "avatarColor": 0,
+      "statusText": null,
+      "statusEmoji": null,
+      "homeServer": null,
+      "orgRole": "OWNER",
+      "title": null,
+      "expiresAt": null,
+      "timeoutUntil": null,
+      "branches": [],
+      "teams": [],
+      "customRoles": [],
+      "online": false,
+      "presence": "offline",
+      "notificationsPaused": false
+    },
+    {
+      "id": "u_fYMyMgL_b6dOJw3xngFNZQ",
+      "username": "edgeearly3",
+      "displayName": "edgeearly",
+      "avatarColor": 0,
+      "statusText": null,
+      "statusEmoji": null,
+      "homeServer": null,
+      "orgRole": "MEMBER",
+      "title": null,
+      "expiresAt": null,
+      "timeoutUntil": null,
+      "branches": [],
+      "teams": [],
+      "customRoles": [],
+      "online": false,
+      "presence": "offline",
+      "notificationsPaused": false
+    },
+    {
+      "id": "u_bcjpId-4BSVeVYSOXL4OWw",
+      "username": "edgemanager2",
+      "displayName": "edgemanager",
+      "avatarColor": 0,
+      "statusText": null,
+      "statusEmoji": null,
+      "homeServer": null,
+      "orgRole": "MEMBER",
+      "title": null,
+      "expiresAt": null,
+      "timeoutUntil": null,
+      "branches": [],
+      "teams": [],
+      "customRoles": [],
+      "online": false,
+      "presence": "offline",
+      "notificationsPaused": false
+    }
+  ]
+}
