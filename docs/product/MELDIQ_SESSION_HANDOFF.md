@@ -21,10 +21,10 @@ go-ahead (2026-10-22) it was pushed to GitHub and deployed (below).
 - **Meldiq Web** `0.2.4-beta-e9f8d2b` on `https://web.meldiq.app`.
 - A backup was taken before and after. To roll back, see `docs/DEPLOYMENT.md`.
 
-**For employees:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b15-production-debug.apk`
-(B4–B16; byte-identical to the B16 file, as B15 changed no Android code). It's "Meldiq Test" (debug-signed, installs next to the regular app) and talks only to
-`https://msg.meldiq.app`. **SHA-256:** `849ffbb39cd1d2592771b78bed09f0c0f26dab7b4591461c80b8e3c0fc615992`. The
-checklists are in §6n (B14), §6o (B16) and §6p (B15).
+**For employees:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b14b-production-debug.apk`
+(B4–B16 plus B14b, the channel screen; SHA-256 in §6q). The B15 file (`meldiq-test-b15-production-debug.apk`) is the
+same as B16's. It's "Meldiq Test" (debug-signed, installs next to the regular app) and talks only to
+`https://msg.meldiq.app`. The checklists are in §6n (B14), §6o (B16), §6p (B15) and §6q (B14b).
 - **Registration on production is open** (`REGISTRATION_MODE=open`, found in B15): anyone who reaches the server
   can sign up with a verified email. Switching to invitation only (a community invite code or `admin.js reg-invite`)
   is the owner's call (`MELDIQ_RELEASE_READINESS.md` §5).
@@ -56,6 +56,7 @@ src/index.ts`, `adb reverse tcp:8080 tcp:8080`).
 | B14 | `22d5303` | Minimal DM screen and details, voice channels as rooms | §6n |
 | B16 | `5733864` | Transitions and interaction polish | §6o |
 | B15 | see §6p | Final gate: isolation, removal, sign-out, email sender, calls on two phones | §6p |
+| B14b | see §6q | Channel header and details like the owner's Discord screenshots; no Leave Channel | §6q |
 
 **Waiting on you:**
 - the phone tests above, as pass or fail per batch;
@@ -1193,6 +1194,97 @@ Run the B14 (§6n) and B16 (§6o) checklists first, then these:
 8. Limits stated: **met.**
 
 **Stopped here** for the owner's test. No further deploy.
+
+## 6q. Batch B14b: channel screen and details (built 2026-10-22, not phone-tested)
+
+The owner's unified master prompt (2026-10-22, afternoon) came with three screenshots:
+- a Discord channel: the header is only `# name ›`, an online count and search;
+- the Discord channel's details: search, notifications and settings icons, then the tabs Members · Media · Pins ·
+  Threads · Links · Files, with "Manage channel access";
+- Meldiq's channel: pins, threads, padlock and search in the header, a name cut to "#disc…", and a Files chip.
+
+B14b gives channels what B14 gave DMs. The master prompt's other requirements are mapped to lettered follow-up
+batches in `MELDIQ_IMPLEMENTATION_PLAN.md` ("Master prompt of 2026-10-22"); there is no B17.
+
+### What changed
+
+| Before | Now | Code |
+|---|---|---|
+| Channel header: picture, `#name`, category · members · online, then pins, threads, padlock, search; a Files/Saved strip below | `#name ›` (tap for details) and "N online" with a green dot (or the member count), then search only. No strip | `ConversationScreen.kt` |
+| Pins, threads and security had their own header buttons and sheets | Pins and Threads are tabs of the details; security is the "Encryption and security" row at the end of the details (the key-change banner in the chat stays) | `DmDetails.kt` (`ConversationDetailsList`), `ThreadRows.kt` |
+| Channel details: one long page of cards (about, access, notifications, pins, files, members) | Top bar with search, notifications (mute) and settings; header with the channel's icon, name, kind and topic; tabs Members · Media · Pins · Threads · Links · Files (no Threads tab for a forum, whose posts are its threads); Members starts with "Manage channel access" for people who manage the channel | `DmDetails.kt`, `DetailsRules.kt` |
+| Channel settings were on the same page | The gear opens "Channel settings" (about, access, notifications, edit, permissions, forum, archive) | `ConversationInfoScreen.kt` (`settings = true`), route `conversation/{id}/settings` |
+| "Leave" on a channel (Android and web) | Gone: you leave the **community** (its menu), not one of its channels. A group can still be left | Android `ConversationInfoScreen.kt`; web `SidePanel.tsx` |
+| The server let anyone leave a community channel | Refused with `leave_community` (403). A manager can still take someone out of a channel | `server/src/routes/conversations.ts`, API **0.26.0** (not deployed) |
+| Web channel subtitle: topic · members · online · category | Topic, then online or the member count | web `ConversationView.tsx` |
+
+Removed as unused after the move: `PinnedMessages.kt` (header pin button and sheet), the context strip,
+`SecurityPadlock`, the channel files section, and the Threads sheet (its rows live on in `ThreadRows.kt`).
+
+**Not changed, on purpose:**
+- **Web layout:** the web keeps its desktop header (pins, padlock, details panel). Matching B14/B14b's details tabs on
+  the web goes into the web parity matrix (B13b).
+- **The empty DM's "Say hello" text:** it still mentions end-to-end encryption once. It's true, and it's in one place,
+  not repeated in the header.
+
+### How it was checked
+
+- **Android:**
+  - `DetailsRulesTest` adds a test: a channel's tabs, and no Threads tab for a forum;
+  - full suite **651 tests, 0 failures**; lint 0 errors.
+- **Server:** new `b14b_leave.test.ts` (3 tests):
+  - a member can't leave a community channel, and keeps it;
+  - a manager can still take someone out of a channel;
+  - a group can still be left.
+  - Full suite **717 passed**, 10 skipped (the same 10 as before), on SQLite and on the MongoDB domains; tsc clean.
+- **Web:** tsc and eslint clean, 262 tests passed.
+- **Emulator** (this APK; the emulator's account belongs to the local test server, so it showed "Connecting…" and
+  worked from the phone's own data):
+  - the channel header is `#general ›` and "5 members", with search only;
+  - the details show the bell, gear and search, "#general · Text channel", and the six tabs;
+  - Threads shows its empty state;
+  - the gear opens "Channel settings", with no Leave;
+  - "Encryption and security" opens the security sheet in the chat.
+- **Not checked on the emulator:**
+  - the members list and "Manage channel access", which need the server;
+  - "N online" with its green dot.
+  - These are steps 1 and 3 of the checklist below.
+
+### B14b APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b14b-production-debug.apk`
+  (150 MB).
+- **SHA-256:** `d7f92f44d52a883c10625154557d0f7b28b263db1ac3edb649c514194ea37d43`.
+- **Variant:** debug, side by side ("Meldiq Test"), production server `https://msg.meldiq.app`. It contains B4–B16 plus
+  B14b and updates the earlier "Meldiq Test" in place.
+- **Server:** production still runs API 0.25.0, which still accepts leaving a channel from older apps. API 0.26.0, which
+  refuses it, is ready but **not deployed** (owner's go-ahead).
+
+### Owner's phone checklist (B14b)
+
+1. **Channel header:** open a text channel. **Expected:**
+   - only `#name ›` and "N online", with a green dot (or the member count when nobody's online);
+   - search on the right;
+   - no pin, threads or padlock buttons, and no Files chip;
+   - a long name isn't cut short by icons.
+2. **Details:** tap the name. **Expected:**
+   - the top bar has back, search, a bell and a gear;
+   - the header shows the channel's icon, name and "Text channel";
+   - the tabs are Members · Media · Pins · Threads · Links · Files.
+3. **Members tab:** as a community owner or manager, "Manage channel access" comes first and opens the channel's
+   permissions. As an ordinary member it isn't there.
+4. **Tabs:**
+   - Pins, Media and Files open the message in the chat;
+   - Threads lists the channel's threads, with search, and opens one;
+   - Links opens the link (after the usual check).
+5. **Bell:** mute, then unmute. The bell's look follows, and the channel list shows it muted.
+6. **Search** (top bar): goes back to the chat with search open.
+7. **Gear:** "Channel settings" shows the about card, access, the notification switch and, for managers, edit,
+   permissions, forum and archive. **There's no Leave.**
+8. **Encryption and security** (the last row of the details): opens the security sheet in the chat.
+9. **Forum channel:** its details have no Threads tab.
+10. **Group and DM:** their details are as in B14 (unchanged). A group can still be left.
+11. **Report back:** pass or fail per step, with screenshots where it looks off.
 
 ## 7. Things the owner should know (carried over)
 

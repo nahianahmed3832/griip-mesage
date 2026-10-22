@@ -13,11 +13,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.Link
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -110,6 +113,65 @@ internal fun DetailsHeader(cv: ConversationEntity, me: String?, title: String, s
     }
 }
 
+/**
+ * Batch B14b: a channel's top bar (search, notifications, settings on the right) and its header (icon, name and the
+ * kind of channel), as in the owner's Discord reference, in Meldiq's own style.
+ */
+@Composable
+internal fun ChannelDetailsTopBar(onBack: () -> Unit, onSearch: () -> Unit, muted: Boolean, onMute: () -> Unit, onSettings: () -> Unit) {
+    val c = Griip.colors
+    Row(
+        Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        com.meldiq.android.ui.components.CircleIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.b5_back), onBack)
+        Spacer(Modifier.weight(1f))
+        com.meldiq.android.ui.components.CircleIconButton(Icons.Outlined.Search, stringResource(R.string.b14_search), onSearch, tint = c.textSecondary)
+        com.meldiq.android.ui.components.CircleIconButton(
+            if (muted) Icons.Outlined.NotificationsOff else Icons.Outlined.Notifications,
+            stringResource(if (muted) R.string.b14_unmute else R.string.b14_mute), onMute, tint = if (muted) c.primary else c.textSecondary,
+        )
+        com.meldiq.android.ui.components.CircleIconButton(Icons.Outlined.Settings, stringResource(R.string.b14b_channel_settings), onSettings, tint = c.textSecondary)
+    }
+}
+
+@Composable
+internal fun ChannelDetailsHeader(cv: ConversationEntity, me: String?, title: String) {
+    val c = Griip.colors
+    Row(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        ConversationAvatar(cv, me, size = 52.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = Griip.type.headline, color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                stringResource(
+                    when {
+                        cv.format == "forum" -> R.string.b14b_forum_channel
+                        cv.kind == "ANNOUNCEMENT" -> R.string.b14b_announcement_channel
+                        else -> R.string.b14b_text_channel
+                    },
+                ),
+                style = Griip.type.bodySmall, color = c.textSecondary,
+            )
+            cv.topic?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = Griip.type.caption, color = c.textTertiary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            }
+        }
+    }
+}
+
+/** Batch B14b: the first row of a channel's Members tab, for people who may change who sees the channel. */
+@Composable
+internal fun ManageAccessRow(onClick: () -> Unit) {
+    val c = Griip.colors
+    ListCard(
+        stringResource(R.string.b14b_manage_access), Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        leading = { com.meldiq.android.ui.components.IconTile(Icons.Outlined.Settings, c.textPrimary, c.surfaceVariant, size = 40.dp) },
+        trailing = { com.meldiq.android.ui.components.ArrowKnob() },
+        onClick = onClick,
+    )
+}
+
 /** A round action with its label under it (Search, Mute, Profile…). */
 @Composable
 internal fun DetailsAction(icon: ImageVector, label: String, onClick: () -> Unit, active: Boolean = false) {
@@ -166,6 +228,7 @@ private fun tabLabel(t: DetailsRules.Tab) = when (t) {
     DetailsRules.Tab.MEMBERS -> R.string.b14_tab_members
     DetailsRules.Tab.MEDIA -> R.string.b14_tab_media
     DetailsRules.Tab.PINS -> R.string.b14_tab_pins
+    DetailsRules.Tab.THREADS -> R.string.b5_threads
     DetailsRules.Tab.LINKS -> R.string.b14_tab_links
     DetailsRules.Tab.FILES -> R.string.b14_tab_files
 }
@@ -274,9 +337,13 @@ internal fun DetailsSectionTitle(text: String) {
     )
 }
 
-/** The whole DM or group details screen (the info screen hands it the settings card and member rows it shares with channels). */
+/**
+ * The whole details screen of a DM, a group or (batch B14b) a channel. The info screen hands it the settings card and
+ * member rows. A channel's settings are on their own page ([onOpenSettings]); [onManageAccess] is set for people who
+ * may change who sees the channel.
+ */
 @Composable
-internal fun DmDetailsList(
+internal fun ConversationDetailsList(
     nav: NavHostController,
     cv: ConversationEntity,
     me: String?,
@@ -287,11 +354,14 @@ internal fun DmDetailsList(
     settingsCard: @Composable () -> Unit,
     memberItems: LazyListScope.(List<com.meldiq.android.data.api.UserDto>) -> Unit,
     onAdd: (() -> Unit)?,
+    onManageAccess: (() -> Unit)? = null,
+    onOpenSettings: (() -> Unit)? = null,
 ) {
     val container = com.meldiq.android.ui.LocalContainer.current
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    val tabs = DetailsRules.tabs(cv.type)
+    val channel = cv.type == "CHANNEL"
+    val tabs = DetailsRules.tabs(cv.type, forum = cv.format == "forum")
     var tabName by rememberSaveable(cv.id) { mutableStateOf(tabs.first().name) }
     val tab = DetailsRules.Tab.valueOf(tabName)
     val withFiles by remember(cv.id) { container.messages.observeWithFiles(cv.id, SHARED_SHOWN) }.collectAsStateWithLifecycle(emptyList())
@@ -318,9 +388,32 @@ internal fun DmDetailsList(
         else com.meldiq.android.ui.LinkOpener.open(ctx, url, chat.linkOpening == com.meldiq.android.data.repo.LinkOpening.IN_APP)
     }
     val open: (String) -> Unit = { id -> returnToChat(nav, DetailsActions.jump(id)) }
+    // Batch B14b: a channel's threads (the chat no longer has its own Threads button).
+    val threadRoots by remember(cv.id, channel) {
+        if (channel) container.messages.observeThreadRoots(cv.id, com.meldiq.android.data.model.ThreadListRules.SHOWN) else kotlinx.coroutines.flow.flowOf(emptyList())
+    }.collectAsStateWithLifecycle(emptyList())
+    val threadFile = stringResource(R.string.b5_thread_file)
+    val threads = remember(threadRoots) {
+        threadRoots.map { t ->
+            com.meldiq.android.data.model.ThreadListRules.Row(
+                t.root.id, com.meldiq.android.data.model.ThreadListRules.title(container.messages.rich(t.root)?.title, t.root.text, threadFile),
+                t.root.senderUserId, t.root.outgoing, t.replyCount, t.lastReplyTs,
+            )
+        }
+    }
+    var threadQuery by rememberSaveable(cv.id) { mutableStateOf("") }
+    val onMute: () -> Unit = { scope.launch { container.navPrefs.setMuted(cv, !cv.muted) } }
     androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 40.dp)) {
-        item(key = "bar") { com.meldiq.android.ui.components.GriipTopBar(stringResource(if (cv.type == "GROUP") R.string.b5_group_info else R.string.b5_contact), onBack = { nav.popBackStack() }) }
-        item(key = "header") {
+        if (channel) {
+            item(key = "bar") {
+                ChannelDetailsTopBar(
+                    onBack = { nav.popBackStack() }, onSearch = { returnToChat(nav, DetailsActions.SEARCH) }, muted = cv.muted, onMute = onMute,
+                    onSettings = { onOpenSettings?.invoke() },
+                )
+            }
+            item(key = "header") { ChannelDetailsHeader(cv, me, "#$title") }
+        } else item(key = "bar") { com.meldiq.android.ui.components.GriipTopBar(stringResource(if (cv.type == "GROUP") R.string.b5_group_info else R.string.b5_contact), onBack = { nav.popBackStack() }) }
+        if (!channel) item(key = "header") {
             DetailsHeader(
                 cv, me, title,
                 subtitle = if (peer != null) "@${peer.username}" else stringResource(R.string.b14_members_n, members.size.takeIf { it > 0 } ?: cv.memberCount),
@@ -328,9 +421,7 @@ internal fun DmDetailsList(
             )
         }
         error?.let { item(key = "error") { com.meldiq.android.ui.components.StatusBanner(it, com.meldiq.android.ui.components.BannerKind.Error, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) } }
-        item(key = "actions") {
-            DetailsActionsRow(nav, cv, peer?.id, onMute = { scope.launch { container.navPrefs.setMuted(cv, !cv.muted) } }, onAdd = onAdd)
-        }
+        if (!channel) item(key = "actions") { DetailsActionsRow(nav, cv, peer?.id, onMute = onMute, onAdd = onAdd) }
         if (peer != null) item(key = "new-group") {
             NewGroupWithRow(peer.displayName) { nav.navigate(com.meldiq.android.ui.Routes.NEW_CHAT + "?mode=group&with=${peer.id}") }
         }
@@ -338,19 +429,42 @@ internal fun DmDetailsList(
             Spacer(Modifier.height(6.dp))
             DetailsTabRow(
                 tabs, tab,
-                counts = mapOf(DetailsRules.Tab.MEMBERS to members.size, DetailsRules.Tab.MEDIA to media.size, DetailsRules.Tab.PINS to pinned.size, DetailsRules.Tab.LINKS to links.size, DetailsRules.Tab.FILES to files.size),
+                counts = mapOf(
+                    DetailsRules.Tab.MEMBERS to members.size, DetailsRules.Tab.MEDIA to media.size, DetailsRules.Tab.PINS to pinned.size,
+                    DetailsRules.Tab.THREADS to threads.size, DetailsRules.Tab.LINKS to links.size, DetailsRules.Tab.FILES to files.size,
+                ),
             ) { tabName = it.name }
             Spacer(Modifier.height(6.dp))
         }
         when (tab) {
-            DetailsRules.Tab.MEMBERS -> memberItems(members)
+            DetailsRules.Tab.MEMBERS -> {
+                onManageAccess?.let { manage -> item(key = "manage-access") { ManageAccessRow(manage) } }
+                memberItems(members)
+            }
             DetailsRules.Tab.MEDIA -> mediaGrid(media, { container.messages.localAttachment(it) }, open)
             DetailsRules.Tab.PINS -> pinRows(pinned, senderName, preview, open)
+            DetailsRules.Tab.THREADS -> threadRows(
+                threads, threadQuery, { threadQuery = it }, senderName = { r -> senderName(r.senderId) },
+                onOpen = { root -> nav.navigate(com.meldiq.android.ui.Routes.conversation(cv.id, root)) },
+            )
             DetailsRules.Tab.LINKS -> linkRows(links, senderName, openLink)
             DetailsRules.Tab.FILES -> fileRows(files, senderName, open)
         }
-        item(key = "settings-title") { DetailsSectionTitle(stringResource(R.string.b14_settings)) }
-        item(key = "settings") { settingsCard() }
+        if (channel) {
+            // Batch B14b: the truthful security details stay one tap away, without a padlock in every header.
+            item(key = "security") {
+                val c = Griip.colors
+                ListCard(
+                    stringResource(R.string.b14b_security), Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                    subtitle = stringResource(R.string.b14b_security_sub),
+                    leading = { com.meldiq.android.ui.components.IconTile(Icons.Outlined.Shield, c.textSecondary, c.surfaceVariant, size = 40.dp) },
+                    onClick = { returnToChat(nav, DetailsActions.SECURITY) },
+                )
+            }
+        } else {
+            item(key = "settings-title") { DetailsSectionTitle(stringResource(R.string.b14_settings)) }
+            item(key = "settings") { settingsCard() }
+        }
     }
     linkToConfirm?.let { url ->
         com.meldiq.android.ui.components.ConfirmDialog(

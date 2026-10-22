@@ -25,6 +25,16 @@ class DetailsRulesTest {
     }
 
     @Test
+    fun `a channel starts on members and lists its threads, a forum doesn't repeat its posts`() {
+        assertEquals(
+            listOf(DetailsRules.Tab.MEMBERS, DetailsRules.Tab.MEDIA, DetailsRules.Tab.PINS, DetailsRules.Tab.THREADS, DetailsRules.Tab.LINKS, DetailsRules.Tab.FILES),
+            DetailsRules.tabs("CHANNEL"),
+        )
+        assertEquals(false, DetailsRules.Tab.THREADS in DetailsRules.tabs("CHANNEL", forum = true))
+        assertEquals(false, DetailsRules.Tab.THREADS in DetailsRules.tabs("GROUP"))
+    }
+
+    @Test
     fun `photos and videos are media, newest first, without deleted or unsent ones`() {
         assertEquals(listOf("v1", "p1"), DetailsRules.media(messages, isVisual).map { it.value.id })
         assertEquals("m2", DetailsRules.media(messages, isVisual).first().messageId)

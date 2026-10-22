@@ -524,6 +524,11 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
     if (!c || !authz.isMember(c.id, actor)) throw notFound("Conversation not found");
     if (c.type === "DM") throw badRequest("You can't leave a direct conversation");
     if (actor !== p.userId && !authz.canManageConversation(c, actor)) throw forbidden();
+    // Batch B14b (master prompt §5.2): people leave a community, not one of its channels. Who sees a channel follows
+    // community membership and permissions; a manager can still take someone out of a channel.
+    if (c.type === "CHANNEL" && c.org_id && actor === p.userId) {
+      throw new ApiError(403, "leave_community", "Leave the community instead of one of its channels");
+    }
     if (c.type === "CHANNEL" && c.kind === "ANNOUNCEMENT" && actor === p.userId && !authz.canManageConversation(c, actor)) {
       throw forbidden("Announcement channels can't be left");
     }

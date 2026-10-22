@@ -648,4 +648,13 @@ S = {
 "b14_voice_in_call": ("You're in this room", "你在这个房间里", "আপনি এই রুমে আছেন"),
 "b14_voice_open_call": ("Open the call", "打开通话", "কল খুলুন"),
 "b14_voice_details": ("Channel details", "频道详情", "চ্যানেলের বিবরণ"),
+# Batch B14b: a channel's screen and details, like the DM's (owner's Discord screenshots, 2026-10-22).
+"b14b_manage_access": ("Manage channel access", "管理频道访问权限", "চ্যানেলের অ্যাক্সেস পরিচালনা করুন"),
+"b14b_text_channel": ("Text channel", "文字频道", "টেক্সট চ্যানেল"),
+"b14b_announcement_channel": ("Announcement channel", "公告频道", "ঘোষণা চ্যানেল"),
+"b14b_forum_channel": ("Forum channel", "论坛频道", "ফোরাম চ্যানেল"),
+"b14b_none_threads": ("No threads yet", "还没有话题", "এখনও কোনো থ্রেড নেই"),
+"b14b_channel_settings": ("Channel settings", "频道设置", "চ্যানেলের সেটিংস"),
+"b14b_security": ("Encryption and security", "加密与安全", "এনক্রিপশন ও নিরাপত্তা"),
+"b14b_security_sub": ("How messages here are protected", "这里的消息如何受到保护", "এখানের মেসেজ কীভাবে সুরক্ষিত থাকে"),
 }

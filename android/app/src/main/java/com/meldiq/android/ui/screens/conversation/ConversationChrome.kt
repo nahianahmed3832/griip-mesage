@@ -56,40 +56,6 @@ import com.meldiq.android.ui.components.pressable
 import com.meldiq.android.ui.theme.Griip
 import com.meldiq.android.ui.theme.Shapes
 
-/**
- * Under the conversation header: a row of quiet chips for what the conversation holds (files, what
- * you saved for later). Each chip opens the matching view. Pinned messages are the header's pin button since round 7
- * ([PinnedButton]) and encryption its padlock since round 6
- * ([SecurityPadlock]), not a permanent chip.
- */
-@Composable
-fun ConversationContextStrip(saved: Int, onFiles: () -> Unit, onSaved: () -> Unit) {
-    val c = Griip.colors
-    Row(
-        Modifier.fillMaxWidth().background(c.surface).horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        StripChip(Icons.Outlined.Folder, stringResource(R.string.conv_files), onFiles)
-        if (saved > 0) StripChip(Icons.Outlined.BookmarkBorder, stringResource(R.string.conv_saved, saved), onSaved)
-    }
-}
-
-@Composable
-private fun StripChip(icon: ImageVector, label: String, onClick: (() -> Unit)?) {
-    val c = Griip.colors
-    Row(
-        Modifier.heightIn(min = 32.dp).clip(Shapes.pill).background(c.surfaceVariant)
-            .then(if (onClick != null) Modifier.pressable(onClick) else Modifier)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, null, tint = if (onClick != null) c.primary else c.textSecondary, modifier = Modifier.size(14.dp))
-        Spacer(Modifier.width(5.dp))
-        Text(label, style = Griip.type.caption.copy(fontWeight = FontWeight.SemiBold), color = c.textSecondary, maxLines = 1)
-    }
-}
-
 /** The header while searching this conversation: back, the query (focused), and clear. */
 @Composable
 fun ConversationSearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> Unit) {

@@ -6,22 +6,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,31 +26,38 @@ import androidx.compose.ui.unit.dp
 import com.meldiq.android.R
 import com.meldiq.android.data.model.ThreadListRules
 import com.meldiq.android.ui.TimeFmt
-import com.meldiq.android.ui.components.GlassSheet
+import com.meldiq.android.ui.components.EmptyState
 import com.meldiq.android.ui.components.GriipTextField
 import com.meldiq.android.ui.components.pressable
 import com.meldiq.android.ui.theme.Griip
 import com.meldiq.android.ui.theme.Shapes
+import com.meldiq.android.ui.theme.Space
 
-/** The channel's threads (batch B5): search by name; tapping one opens it. [senderName] names a root's sender. */
-@Composable
-fun ThreadsSheet(rows: List<ThreadListRules.Row>, senderName: (ThreadListRules.Row) -> String, onOpen: (String) -> Unit, onDismiss: () -> Unit) {
-    val c = Griip.colors
-    var query by remember { mutableStateOf("") }
-    GlassSheet(onDismiss, title = stringResource(R.string.b5_threads)) {
-        if (rows.isEmpty()) {
-            Text(stringResource(R.string.b5_threads_empty), style = Griip.type.body, color = c.textPrimary, modifier = Modifier.padding(top = 4.dp))
-            Text(stringResource(R.string.b5_threads_empty_hint), style = Griip.type.bodySmall, color = c.textSecondary, modifier = Modifier.padding(top = 4.dp, bottom = 16.dp))
-            return@GlassSheet
+/**
+ * The channel's threads (batch B5), as the Threads tab of its details (batch B14b): search by name; tapping one opens
+ * it. [senderName] names a root's sender.
+ */
+internal fun LazyListScope.threadRows(
+    rows: List<ThreadListRules.Row>, query: String, onQuery: (String) -> Unit, senderName: (ThreadListRules.Row) -> String, onOpen: (String) -> Unit,
+) {
+    if (rows.isEmpty()) {
+        item(key = "threads-none") {
+            EmptyState(Icons.Outlined.Forum, stringResource(R.string.b14b_none_threads), stringResource(R.string.b5_threads_empty_hint))
         }
-        GriipTextField(query, { query = it.take(100) }, stringResource(R.string.b5_threads_search))
-        Spacer(Modifier.height(8.dp))
-        val shown = remember(rows, query) { ThreadListRules.filter(rows, query) }
-        if (shown.isEmpty()) Text(stringResource(R.string.b5_threads_none_match), style = Griip.type.bodySmall, color = c.textSecondary, modifier = Modifier.padding(vertical = 12.dp))
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
-            items(shown, key = { it.rootId }) { r -> ThreadRow(r, senderName(r)) { onOpen(r.rootId) } }
-        }
-        Spacer(Modifier.height(8.dp))
+        return
+    }
+    item(key = "threads-search") {
+        GriipTextField(query, { onQuery(it.take(100)) }, stringResource(R.string.b5_threads_search), modifier = Modifier.padding(horizontal = Space.gutter, vertical = 4.dp))
+    }
+    val shown = ThreadListRules.filter(rows, query)
+    if (shown.isEmpty()) item(key = "threads-no-match") {
+        Text(
+            stringResource(R.string.b5_threads_none_match), style = Griip.type.bodySmall, color = Griip.colors.textSecondary,
+            modifier = Modifier.padding(horizontal = Space.gutter, vertical = 12.dp),
+        )
+    }
+    items(shown, key = { "thread-" + it.rootId }) { r ->
+        Box(Modifier.padding(horizontal = 12.dp)) { ThreadRow(r, senderName(r)) { onOpen(r.rootId) } }
     }
 }
 

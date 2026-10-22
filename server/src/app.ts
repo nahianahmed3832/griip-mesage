@@ -60,7 +60,7 @@ import { Metrics } from "./ops/metrics.js";
 import { ApiError, now } from "./util.js";
 import wsRoutes from "./ws.js";
 
-export const VERSION = "0.25.0";
+export const VERSION = "0.26.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.

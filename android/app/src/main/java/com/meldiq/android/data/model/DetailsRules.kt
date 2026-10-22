@@ -1,16 +1,21 @@
 package com.meldiq.android.data.model
 
 /**
- * Batch B14: what a DM's or group's details screen shows (docs/product/MELDIQ_BACKLOG_B14_B16_B15.md §B14). Every tab is
+ * Batch B14: what a DM's, group's or (B14b) channel's details screen shows (docs/product/MELDIQ_BACKLOG_B14_B16_B15.md §B14). Every tab is
  * backed by data already on the phone: the conversation's members, its photos and videos, its pinned messages, the
  * links in its messages and its other files. Pure, unit-tested in `DetailsRulesTest`.
  */
 object DetailsRules {
-    enum class Tab { MEMBERS, MEDIA, PINS, LINKS, FILES }
+    enum class Tab { MEMBERS, MEDIA, PINS, THREADS, LINKS, FILES }
 
-    /** A DM opens on Media (its two members are already in the header); a group on Members. */
-    fun tabs(type: String): List<Tab> = when (type) {
+    /**
+     * A DM opens on Media (its two members are already in the header); a group and a channel on Members. A channel also
+     * lists its threads (batch B14b), except a forum, whose posts are already its threads.
+     */
+    fun tabs(type: String, forum: Boolean = false): List<Tab> = when (type) {
         "GROUP" -> listOf(Tab.MEMBERS, Tab.MEDIA, Tab.PINS, Tab.LINKS, Tab.FILES)
+        "CHANNEL" -> if (forum) listOf(Tab.MEMBERS, Tab.MEDIA, Tab.PINS, Tab.LINKS, Tab.FILES)
+            else listOf(Tab.MEMBERS, Tab.MEDIA, Tab.PINS, Tab.THREADS, Tab.LINKS, Tab.FILES)
         else -> listOf(Tab.MEDIA, Tab.PINS, Tab.LINKS, Tab.FILES)
     }
 

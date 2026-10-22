@@ -138,6 +138,8 @@ object Routes {
     fun conversation(id: String, thread: String? = null, message: String? = null) =
         "conversation/$id" + listOfNotNull(thread?.let { "thread=$it" }, message?.let { "message=$it" }).joinToString("&").let { if (it.isEmpty()) "" else "?$it" }
     fun info(id: String) = "conversation/$id/info"
+    /** Batch B14b: a channel's settings page (its details' gear). */
+    fun channelSettings(id: String) = "conversation/$id/settings"
     fun members(orgId: String) = "members/$orgId"
     fun invites(orgId: String) = "invites/$orgId"
     fun activity(orgId: String) = "activity/$orgId"
@@ -304,6 +306,7 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
                 ConversationScreen(nav, it.arguments!!.getString("id")!!, it.arguments?.getString("thread"), it.arguments?.getString("message"))
             }
             composable("conversation/{id}/info") { ConversationInfoScreen(nav, it.arguments!!.getString("id")!!) }
+            composable("conversation/{id}/settings") { ConversationInfoScreen(nav, it.arguments!!.getString("id")!!, settings = true) }
             composable("members/{orgId}") { MembersScreen(nav, it.arguments!!.getString("orgId")!!) }
             composable("invites/{orgId}") { InvitesScreen(nav, it.arguments!!.getString("orgId")!!) }
             composable("activity/{orgId}") { ActivityScreen(nav, it.arguments!!.getString("orgId")!!) }

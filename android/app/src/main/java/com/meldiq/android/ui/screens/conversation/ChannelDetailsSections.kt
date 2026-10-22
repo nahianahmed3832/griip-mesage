@@ -50,9 +50,6 @@ import com.meldiq.android.ui.theme.Griip
 import com.meldiq.android.ui.theme.Space
 import kotlinx.coroutines.launch
 
-/** How many recent files the channel details list (from this phone's history). */
-const val CHANNEL_FILES_SHOWN = 20
-
 /** A channel's access mode in the interface language. */
 @Composable
 fun channelModeLabel(kind: String?): String = when (kind) {
@@ -172,27 +169,5 @@ fun ChannelAccessCard(cv: ConversationEntity, dto: ConversationDto?, featureOn: 
             },
             onDismiss = { confirm = null },
         )
-    }
-}
-
-/** Files on this phone: the newest messages with attachments in this conversation (no server index exists). */
-fun LazyListScope.channelFilesSection(files: List<MessageEntity>, names: (MessageEntity) -> List<Pair<String, Long>>, onOpen: () -> Unit) {
-    item(key = "files-header") { SectionHeader(stringResource(R.string.ch_files), Modifier.padding(top = 12.dp, bottom = 2.dp)) }
-    item(key = "files-note") {
-        Text(
-            stringResource(if (files.isEmpty()) R.string.ch_files_none else R.string.ch_files_note), style = Griip.type.caption, color = Griip.colors.textTertiary,
-            modifier = Modifier.padding(horizontal = Space.gutter + 4.dp, vertical = 2.dp),
-        )
-    }
-    items(files, key = { "file" + it.id }) { m ->
-        val c = Griip.colors
-        names(m).forEachIndexed { i, (name, size) ->
-            ListCard(
-                name, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                subtitle = listOf(humanSize(size), TimeFmt.listStamp(m.sortTs)).joinToString(" · "),
-                leading = { if (i == 0) IconTile(Icons.Outlined.AttachFile, c.textSecondary, c.surfaceVariant, size = 38.dp) else Spacer(Modifier.size(38.dp)) },
-                onClick = onOpen,
-            )
-        }
     }
 }

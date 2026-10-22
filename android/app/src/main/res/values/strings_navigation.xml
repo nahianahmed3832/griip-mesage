@@ -633,4 +633,12 @@
     <string name="b14_voice_in_call">You\'re in this room</string>
     <string name="b14_voice_open_call">Open the call</string>
     <string name="b14_voice_details">Channel details</string>
+    <string name="b14b_manage_access">Manage channel access</string>
+    <string name="b14b_text_channel">Text channel</string>
+    <string name="b14b_announcement_channel">Announcement channel</string>
+    <string name="b14b_forum_channel">Forum channel</string>
+    <string name="b14b_none_threads">No threads yet</string>
+    <string name="b14b_channel_settings">Channel settings</string>
+    <string name="b14b_security">Encryption and security</string>
+    <string name="b14b_security_sub">How messages here are protected</string>
 </resources>

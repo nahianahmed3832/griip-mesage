@@ -73,8 +73,12 @@ import com.meldiq.android.ui.theme.Space
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/**
+ * A conversation's details. For a channel (batch B14b) that's the tabbed details screen; [settings] opens the channel's
+ * settings page instead (its gear): about, access, notifications and the managers' actions.
+ */
 @Composable
-fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
+fun ConversationInfoScreen(nav: NavHostController, conversationId: String, settings: Boolean = false) {
     val container = LocalContainer.current
     val c = Griip.colors
     val scope = rememberCoroutineScope()
@@ -105,7 +109,6 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
     var accessFeature by remember { mutableStateOf<Boolean?>(null) }
     // Channel permissions and forums exist only on servers with communities.
     var communityChannels by remember { mutableStateOf(false) }
-    val files by container.messages.observeWithFiles(conversationId, CHANNEL_FILES_SHOWN).collectAsStateWithLifecycle(emptyList())
     LaunchedEffect(reload) {
         runCatching { container.conversations.members(conversationId) }.onSuccess { members = it }.onFailure { error = it.friendly() }
         if (conv?.type == "CHANNEL" || conv == null) {
@@ -162,7 +165,8 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
                     onClick = { scope.launch { runCatching { container.conversations.update(conversationId, archived = !cv.archived) }.onFailure { error = it.friendly() } } },
                 )
             }
-            if (cv.type != "DM" && cv.joined && !(cv.kind == "ANNOUNCEMENT" && !cv.canManage)) {
+            // Batch B14b: people leave a community, not one of its channels (master prompt §5.2); groups can still be left.
+            if (cv.type == "GROUP" && cv.joined) {
                 MenuRow(Icons.AutoMirrored.Outlined.ExitToApp, stringResource(R.string.b5_leave), tint = c.danger, tintBg = c.dangerSoft, onClick = { confirmLeave = true }, trailing = null)
             }
         }
@@ -196,10 +200,16 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
             )
         }
     }
-    if (cv.type != "CHANNEL") {
-        DmDetailsList(nav, cv, me, title, members, pinned, error, settingsCard, memberItems, onAdd = if (cv.canManage) ({ showAdd = true }) else null)
+    if (cv.type != "CHANNEL" || !settings) {
+        val manageAccess = cv.type == "CHANNEL" && cv.canManage && cv.orgId != null && communityChannels
+        ConversationDetailsList(
+            nav, cv, me, title, members, pinned, error, settingsCard, memberItems,
+            onAdd = if (cv.canManage) ({ showAdd = true }) else null,
+            onManageAccess = if (manageAccess) ({ nav.navigate(Routes.permissions(category = false, id = conversationId, name = cv.name.orEmpty())) }) else null,
+            onOpenSettings = { nav.navigate(Routes.channelSettings(conversationId)) },
+        )
     } else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
-        item { GriipTopBar(stringResource(if (cv.type == "CHANNEL") R.string.b5_channel_info else if (cv.type == "GROUP") R.string.b5_group_info else R.string.b5_contact), onBack = { nav.popBackStack() }) }
+        item { GriipTopBar(stringResource(R.string.b14b_channel_settings), onBack = { nav.popBackStack() }) }
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp)) {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -228,21 +238,7 @@ fun ConversationInfoScreen(nav: NavHostController, conversationId: String) {
         }
         item(key = "settings-header") { SectionHeader(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ch_notifications), Modifier.padding(top = 10.dp, bottom = 2.dp)) }
         item { settingsCard() }
-        if (pinned.isNotEmpty()) {
-            item { SectionHeader(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ch_pinned), Modifier.padding(top = 12.dp, bottom = 6.dp)) }
-            items(pinned, key = { "pin" + it.id }) { m ->
-                ListCard(
-                    m.text.ifEmpty { "📎 Attachment" }, Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
-                    subtitle = (if (m.outgoing) stringResource(R.string.pin_you) + " · " else "") + TimeFmt.listStamp(m.sortTs),
-                    leading = { com.meldiq.android.ui.components.IconTile(Icons.Outlined.PushPin, c.peach, c.peachSoft, size = 38.dp) },
-                    // Batch B14: opens the pinned message itself (it used to only go back to the chat).
-                    onClick = { returnToChat(nav, DetailsActions.jump(m.id)) },
-                )
-            }
-        }
-        channelFilesSection(files, names = { m -> container.messages.attachments(m).map { it.name to it.size } }, onOpen = { nav.popBackStack() })
-        item { SectionHeader(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ch_members, members.size), Modifier.padding(top = 12.dp, bottom = 6.dp)) }
-        memberItems(members)
+        // Batch B14b: pins, files and members are tabs of the channel's details; this page keeps its settings.
     }
     if (showAdd) AddMembersSheet(cv.orgId, members.map { it.id }.toSet(), onDismiss = { showAdd = false }) { ids ->
         scope.launch {

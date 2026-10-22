@@ -633,4 +633,12 @@
     <string name="b14_voice_in_call">你在这个房间里</string>
     <string name="b14_voice_open_call">打开通话</string>
     <string name="b14_voice_details">频道详情</string>
+    <string name="b14b_manage_access">管理频道访问权限</string>
+    <string name="b14b_text_channel">文字频道</string>
+    <string name="b14b_announcement_channel">公告频道</string>
+    <string name="b14b_forum_channel">论坛频道</string>
+    <string name="b14b_none_threads">还没有话题</string>
+    <string name="b14b_channel_settings">频道设置</string>
+    <string name="b14b_security">加密与安全</string>
+    <string name="b14b_security_sub">这里的消息如何受到保护</string>
 </resources>

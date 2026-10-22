@@ -119,6 +119,7 @@ import androidx.compose.material.icons.outlined.BookmarkRemove
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.GppMaybe
 import androidx.compose.material.icons.rounded.Lock
@@ -202,7 +203,6 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val typing by vm.typing.collectAsStateWithLifecycle()
     val threadCounts by vm.threadCounts.collectAsStateWithLifecycle()
     val forumReplies by vm.forumReplies.collectAsStateWithLifecycle()
-    val pinned by vm.pinned.collectAsStateWithLifecycle()
     val transfers by vm.transfers.collectAsStateWithLifecycle()
     val conn by vm.connection.collectAsStateWithLifecycle()
     val call by vm.call.collectAsStateWithLifecycle()
@@ -297,8 +297,6 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     // Batch B9: the community's own emoji and stickers (servers with `community-expressions`).
     val expressionLists by vm.c.expressions.lists.collectAsStateWithLifecycle()
     val convOrg = conv?.orgId
-    // Batch B14: DMs and groups get the simpler header (calls and search) and their details screen.
-    val dmLike = conv?.type == "DM" || conv?.type == "GROUP"
     val communityExpressions = convOrg?.let { expressionLists[it] }.orEmpty()
     LaunchedEffect(convOrg) {
         if (convOrg != null && vm.c.features.has(com.meldiq.android.data.repo.ServerFeatures.COMMUNITY_EXPRESSIONS) == true) runCatching { vm.c.expressions.refresh(convOrg) }
@@ -309,7 +307,6 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val saved by vm.saved.collectAsStateWithLifecycle()
     val savingSupported by vm.savingSupported.collectAsStateWithLifecycle()
     val savedIds = remember(saved) { saved.map { it.messageId }.toSet() }
-    val savedHere = remember(saved) { saved.count { it.conversationId == conversationId && !it.done } }
     // Search in this conversation: messages are decrypted only on this phone, so the search runs here.
     var searching by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -479,8 +476,6 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             else -> DetailsActions.jumpTarget(a)?.let { jumpTo(it) }
         }
     }
-    var showPinned by remember { mutableStateOf(false) }
-    var showThreads by remember { mutableStateOf(false) }
     // Batch B8: forum post guidelines (servers with `forum-guidelines`).
     val forumGuidelines by vm.c.conversations.guidelines.collectAsStateWithLifecycle()
     // The composer's attach/emoji buttons step aside while typing (round 7, [ComposerAux]); any touch on the messages
@@ -528,11 +523,10 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             // Round 3: their status as they show it to you.
             listOfNotNull(peer?.statusEmoji, peer?.statusText).joinToString(" ").ifBlank { null },
         ).joinToString(" · ")
-        conv?.type == "CHANNEL" -> listOfNotNull(
-            conv?.scopeName, com.meldiq.android.ui.screens.community.memberCountLabel(conv?.memberCount ?: 0),
-            // Round 3 (the reference's "2 Online"): servers with conversation-presence.
-            onlineCount?.takeIf { it > 0 }?.let { onlineLabel(it) },
-        ).joinToString(" · ")
+        // Batch B14b (the owner's reference: "3 Online"): who's online here, or the member count when nobody is (or the
+        // server doesn't share it).
+        conv?.type == "CHANNEL" -> onlineCount?.takeIf { it > 0 }?.let { onlineLabel(it) }
+            ?: com.meldiq.android.ui.screens.community.memberCountLabel(conv?.memberCount ?: 0)
         else -> com.meldiq.android.ui.screens.community.memberCountLabel(conv?.memberCount ?: 0)
     }
 
@@ -564,12 +558,29 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     Modifier.weight(1f).clip(Shapes.small).pressable({ nav.navigate(Routes.info(conversationId)) }, onClickLabel = stringResource(R.string.b5_open_info)).padding(vertical = 6.dp, horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    conv?.let { ConversationAvatar(it, me, size = 40.dp, online = peerUser?.online, presence = peerUser?.presence) }
-                    Spacer(Modifier.width(10.dp))
+                    // Batch B14b: a channel's header is its name and "›" (tap for details), with no picture beside it.
+                    val channelHeader = conv?.type == "CHANNEL"
+                    if (!channelHeader) {
+                        conv?.let { ConversationAvatar(it, me, size = 40.dp, online = peerUser?.online, presence = peerUser?.presence) }
+                        Spacer(Modifier.width(10.dp))
+                    }
                     Column(Modifier.weight(1f)) {
                         val postTitle = if (threadRoot != null && conv?.format == "forum") root?.let { r -> com.meldiq.android.data.model.ForumRules.titleOf(vm.c.messages.rich(r)?.title, r.text) } else null
-                        Text(postTitle ?: if (conv?.type == "CHANNEL") "#$title" else title, style = Griip.type.titleSmall, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(subtitle, style = Griip.type.caption, color = if (typing.isNotEmpty() || peerUser?.online == true) c.primary else c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                postTitle ?: if (channelHeader) "#$title" else title, style = Griip.type.titleSmall, color = c.textPrimary, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                            )
+                            if (channelHeader && threadRoot == null) Icon(Icons.Rounded.ChevronRight, null, tint = c.textTertiary, modifier = Modifier.size(20.dp))
+                        }
+                        val online = typing.isEmpty() && (peerUser?.online == true || (channelHeader && (onlineCount ?: 0) > 0))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (channelHeader && online && threadRoot == null) {
+                                Box(Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(c.success))
+                                Spacer(Modifier.width(5.dp))
+                            }
+                            Text(subtitle, style = Griip.type.caption, color = if (typing.isNotEmpty() || peerUser?.online == true) c.primary else c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
                 // With people on another server, calls need this server to host them (it says so per conversation).
@@ -582,8 +593,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     CircleIconButton(Icons.Rounded.Call, stringResource(R.string.b5_voice_call), { permission(false) { vm.startCall(false) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
                     CircleIconButton(Icons.Rounded.Videocam, stringResource(R.string.b5_video_call), { permission(true) { vm.startCall(true) } }, tint = c.primary, enabled = call.phase == CallPhase.Idle)
                 }
-                // Batch B14: a DM's or group's header keeps calls and search; pins, files and security are in its details.
-                if (threadRoot == null && !dmLike) PinnedButton(pinned.size) { showPinned = true }
+                // Batch B14 and B14b: the header keeps calls (DMs and groups) and search; pins, threads, files and security
+                // are tabs and rows of the details screen.
                 // Batch B8: follow a thread or forum post, so its replies show in Activity.
                 if (threadRoot != null) {
                     val followed by vm.c.followedThreads.followed.collectAsStateWithLifecycle()
@@ -593,11 +604,6 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                         { scope.launch { vm.c.followedThreads.set(threadRoot, !following) } },
                     )
                 }
-                // Batch B5: the channel's threads (forum channels list their posts already).
-                if (threadRoot == null && conv?.type == "CHANNEL" && conv?.format != "forum") {
-                    CircleIconButton(Icons.Outlined.Forum, stringResource(R.string.b5_threads), { showThreads = true }, tint = c.textSecondary, size = 40.dp)
-                }
-                if (threadRoot == null && !dmLike) SecurityPadlock(securityFacts) { showSecurity = true }
                 CircleIconButton(Icons.Rounded.Search, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.conv_search), { searching = true }, tint = c.textSecondary)
             }
             if (showSecurity) {
@@ -605,41 +611,6 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     securityFacts, peerUser?.displayName ?: peer?.displayName,
                     onVerify = peer?.let { p -> { showSecurity = false; nav.navigate(Routes.user(p.id)) } },
                     onDismiss = { showSecurity = false },
-                )
-            }
-            if (showThreads) {
-                val roots by remember(conversationId) { vm.c.messages.observeThreadRoots(conversationId, com.meldiq.android.data.model.ThreadListRules.SHOWN) }
-                    .collectAsStateWithLifecycle(null)
-                val fileLabel = stringResource(R.string.b5_thread_file)
-                roots?.let { list ->
-                    val rows = remember(list) {
-                        list.map { t ->
-                            com.meldiq.android.data.model.ThreadListRules.Row(
-                                t.root.id, com.meldiq.android.data.model.ThreadListRules.title(vm.c.messages.rich(t.root)?.title, t.root.text, fileLabel),
-                                t.root.senderUserId, t.root.outgoing, t.replyCount, t.lastReplyTs,
-                            )
-                        }
-                    }
-                    ThreadsSheet(
-                        rows, senderName = { r -> if (r.outgoing) youLabel else users[r.senderId]?.displayName ?: someoneLabel },
-                        onOpen = { root -> showThreads = false; nav.navigate(Routes.conversation(conversationId, root)) },
-                        onDismiss = { showThreads = false },
-                    )
-                }
-            }
-            if (showPinned) {
-                PinnedMessagesSheet(
-                    pinned, users, ::previewOf, canUnpin = conv?.canPost != false,
-                    onOpen = { m -> showPinned = false; jumpTo(m.id) },
-                    onUnpin = { m -> vm.pin(m) },
-                    onDismiss = { showPinned = false },
-                )
-            }
-            if (!searching && threadRoot == null && !dmLike) {
-                ConversationContextStrip(
-                    saved = savedHere,
-                    onFiles = { nav.navigate(Routes.info(conversationId)) },
-                    onSaved = { nav.navigate(com.meldiq.android.ui.Routes.LATER) },
                 )
             }
             HorizontalDivider(thickness = 1.dp, color = c.border)

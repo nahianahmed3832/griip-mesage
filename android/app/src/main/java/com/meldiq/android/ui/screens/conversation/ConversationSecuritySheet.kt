@@ -42,21 +42,6 @@ import com.meldiq.android.ui.components.PillButton
 import com.meldiq.android.ui.theme.Griip
 import com.meldiq.android.ui.theme.Shapes
 
-/**
- * The padlock in the conversation header (round 6): small and quiet, in the warning colour only when a member's key
- * changed. It replaces the permanent "End-to-end encrypted" chip; the details are one tap away.
- */
-@Composable
-fun SecurityPadlock(facts: ConversationSecurity.Facts, onOpen: () -> Unit) {
-    val c = Griip.colors
-    val attention = ConversationSecurity.needsAttention(facts)
-    CircleIconButton(
-        if (attention) Icons.Outlined.GppMaybe else Icons.Outlined.Lock,
-        stringResource(if (attention) R.string.sec_padlock_attention else R.string.sec_padlock),
-        onOpen, tint = if (attention) c.warning else c.textSecondary, size = 40.dp,
-    )
-}
-
 /** What protects this conversation, and what doesn't: only facts that apply to it ([ConversationSecurity.points]). */
 @Composable
 fun ConversationSecuritySheet(

@@ -633,4 +633,12 @@
     <string name="b14_voice_in_call">আপনি এই রুমে আছেন</string>
     <string name="b14_voice_open_call">কল খুলুন</string>
     <string name="b14_voice_details">চ্যানেলের বিবরণ</string>
+    <string name="b14b_manage_access">চ্যানেলের অ্যাক্সেস পরিচালনা করুন</string>
+    <string name="b14b_text_channel">টেক্সট চ্যানেল</string>
+    <string name="b14b_announcement_channel">ঘোষণা চ্যানেল</string>
+    <string name="b14b_forum_channel">ফোরাম চ্যানেল</string>
+    <string name="b14b_none_threads">এখনও কোনো থ্রেড নেই</string>
+    <string name="b14b_channel_settings">চ্যানেলের সেটিংস</string>
+    <string name="b14b_security">এনক্রিপশন ও নিরাপত্তা</string>
+    <string name="b14b_security_sub">এখানের মেসেজ কীভাবে সুরক্ষিত থাকে</string>
 </resources>

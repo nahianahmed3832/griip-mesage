@@ -39,6 +39,7 @@ go-ahead (`docs/DEPLOYMENT.md`).
 | B13 | Integration and stability: security pass with three fixes, both-store regression, web parity notes; files domain to MongoDB left for its own batch | **Done (server only); waiting for the owner's phone test of B4–B13** (2026-10-22) |
 | B14 | Minimal DM screen and details, voice channels as rooms (owner's go-ahead to start without the B13 phone test) | **Built; APK ready; stopped for the owner's phone test** (2026-10-22) |
 | B16 | Transitions and interaction polish (motion tokens, list motion, media size reservation, tab bar, reduced motion) | **Built; APK ready; stopped for the owner's phone test** (2026-10-22) |
+| B14b | Channel screen and details like the owner's Discord screenshots; no Leave Channel (master prompt §5.2, §19) | **Built; APK ready; stopped for the owner's phone test** (2026-10-22); API 0.26.0 not deployed |
 | B15 | Final quality gate (`MELDIQ_BACKLOG_B14_B16_B15.md`): coverage, isolation tests, header fix, restore test, read-only AWS review, release readiness (`MELDIQ_RELEASE_READINESS.md`) | **Done; APK ready; stopped for the owner's phone test** (2026-10-22) |
 
 > **Gate changed 2026-10-21 23:13:** the owner asked for the remaining batches to be built one after another without
@@ -53,6 +54,29 @@ Already built earlier the same day and included in the B1 APK (to be checked wit
 - full emoji picker (B9);
 - member timeouts (B4);
 - history in MongoDB (B13).
+
+## Master prompt of 2026-10-22 (afternoon): where each requirement goes
+
+The owner's unified master prompt adds requirements on top of B1–B16. They go into the existing batches as lettered
+follow-ups (B14b, B5b, …), as B4b and B8b did; **there is no B17**. B15 stays the last gate and runs again at the
+end. The audit below was checked against the code on 2026-10-22 (`internal-beta` `cf92add`).
+
+| Prompt § | Requirement | What the code has today | Batch |
+|---|---|---|---|
+| 19.1, 19.2, 5.2 | Discord-style channel screen: `#name ›` and online count, search only; channel details with Members · Media · Pins · Threads · Links · Files and "Manage channel access"; no padlock or Files chip in the header; no Leave Channel | Channel header has pins, threads, padlock and search plus a Files/Saved strip; the details screen is the older card list and offers **Leave** for channels | **B14b** (now) |
+| 4 | Stable IDs for users, communities, channels, messages, attachments, roles, invites; Copy ID; `MELDIQ_ENTITY_ID_SPEC.md` | Server IDs come from `newId(prefix)` (users, orgs, channels, roles, invites); a message's ID is a client UUID kept through retries (`MessageRepository`), with the server's duplicate check. **No Copy ID action anywhere**; no spec | **B13b** |
+| 7 | Forwarding with source provenance: community sources link back (access checked when opened); DM sources show a neutral label with no link | Only `forwarded: Boolean` inside the encrypted message; no source | **B5b** |
+| 8, 9 | Drag-and-drop order: your own community list; shared categories and channels (managers). Announcement channels with a comment policy enforced by the server | Categories and channels move with Move up/down for managers; no personal community order; announcement channels are "managers post, nobody comments" | **B3b** |
+| 5.1 | New invitation experience (create with channel, expiry, uses; manage and revoke; preview and join states) | B4 invite choices and B4b https links exist; the screens are the older design | **B4c** |
+| 19.3 | Animated startup from `meldiq_animation.mp4` (checked: 2880 × 2880, HEVC, 30 fps, 5.0 s, 45 MB) | System splash with the static logo only | **B16b** |
+| 15, 16 | Camera-switch investigation on real phones; web screen-share cropping; web push notifications | B10/B11 built, not phone-tested; web crop and push not investigated yet | **B10b / B11b** |
+| 11 | Simple sign-in; recovery choices only on demand | B1 (approved on the phone 2026-10-21) put recovery behind help links on Android; the web to be checked against §11 | **B1b** (check, web) |
+| 20 | Web parity for B1–B16, with `MELDIQ_WEB_PARITY_MATRIX.md` | Web has the community rebuild up to B14's voice rule; no matrix | Each batch above ships its web part; the matrix is started in B13b |
+| 12, 13 | MongoDB as the only server database; AWS | 5 domains run on MongoDB; 7 are copy-and-verify only; production runs SQLite | **B13c**, the cutover itself only on the owner's authorisation |
+| 18 | AI architecture keyed by entity IDs | `MELDIQ_AI_ARCHITECTURE.md` (PLAT-05); nothing built | After B13b, design only |
+
+Order: B14b → B13b → B5b → B3b → B4c → B16b → B10b/B11b → B1b → B13c → B15 again. Each stops for the owner's phone
+test, as before.
 
 ## Batches
 
