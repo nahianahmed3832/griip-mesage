@@ -548,7 +548,7 @@ Production: unchanged (SQLite). The relay's cutover waits for Atlas and a load t
 
 | Commit | What |
 |---|---|
-| (D2) | `FileStore` (async) with `SqliteFileStore` (the existing SQL) and `MongoFileStore` (`files` domain); attachments, direct uploads, retention, kept files, quotas, usage figures, plan limits, federation's pushed attachments and three deletion cascades use it; the files tables now belong to the files module alone (14 table exceptions gone; the operator-only org repair report still counts them in SQLite) |
+| `aa1f26c` | `FileStore` (async) with `SqliteFileStore` (the existing SQL) and `MongoFileStore` (`files` domain); attachments, direct uploads, retention, kept files, quotas, usage figures, plan limits, federation's pushed attachments and three deletion cascades use it; the files tables now belong to the files module alone (14 table exceptions gone; the operator-only org repair report still counts them in SQLite) |
 
 What changed to keep today's guarantees on an asynchronous store:
 
