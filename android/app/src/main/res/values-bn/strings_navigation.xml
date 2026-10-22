@@ -334,7 +334,7 @@
     <string name="b5_info_read">যাঁরা পড়েছেন</string>
     <string name="b5_info_relay">রিলে গ্রহণ করেছে</string>
     <string name="b5_info_sent">পাঠানো হয়েছে</string>
-    <string name="b5_info_signed">griip-envelope-v1 · এই ডিভাইসের স্বাক্ষর</string>
+    <string name="b5_info_signed">এন্ড-টু-এন্ড এনক্রিপ্টেড · এই ডিভাইসের স্বাক্ষর</string>
     <string name="b5_info_status">অবস্থা</string>
     <string name="b5_join">যোগ দিন</string>
     <string name="b5_jump_latest">সর্বশেষ মেসেজে যান</string>

@@ -334,7 +334,7 @@
     <string name="b5_info_read">Read by</string>
     <string name="b5_info_relay">Accepted by relay</string>
     <string name="b5_info_sent">Sent</string>
-    <string name="b5_info_signed">griip-envelope-v1 · signed by this device</string>
+    <string name="b5_info_signed">End-to-end encrypted · signed by this device</string>
     <string name="b5_info_status">Status</string>
     <string name="b5_join">Join</string>
     <string name="b5_jump_latest">Jump to latest message</string>

@@ -349,7 +349,7 @@ S = {
 "b5_info_read": ("Read by", "已读", "যাঁরা পড়েছেন"),
 "b5_info_relay": ("Accepted by relay", "中继已接收", "রিলে গ্রহণ করেছে"),
 "b5_info_sent": ("Sent", "发送时间", "পাঠানো হয়েছে"),
-"b5_info_signed": ("griip-envelope-v1 · signed by this device", "griip-envelope-v1 · 由此设备签名", "griip-envelope-v1 · এই ডিভাইসের স্বাক্ষর"),
+"b5_info_signed": ("End-to-end encrypted · signed by this device", "端到端加密 · 由此设备签名", "এন্ড-টু-এন্ড এনক্রিপ্টেড · এই ডিভাইসের স্বাক্ষর"),
 "b5_info_status": ("Status", "状态", "অবস্থা"),
 "b5_join": ("Join", "加入", "যোগ দিন"),
 "b5_jump_latest": ("Jump to latest message", "跳到最新消息", "সর্বশেষ মেসেজে যান"),

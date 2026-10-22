@@ -223,7 +223,7 @@
     <string name="link_linked">লিংক হয়েছে। সাইন ইন হচ্ছে…</string>
     <string name="link_footer">আপনার অন্য ফোনটি এই ডিভাইসে আপনার পরিচয় কী এন্ড-টু-এন্ড এনক্রিপ্ট করে (HPKE) পাঠায়। সার্ভার শুধু সাইফারটেক্সট পৌঁছে দেয়।</string>
     <string name="server_title">সার্ভার</string>
-    <string name="server_body">Meldiq আপনার প্রতিষ্ঠানের রিলে সার্ভারে যুক্ত হয়। অভ্যন্তরীণ বেটার ডিফল্ট: GriipBuddy পরীক্ষামূলক সার্ভার।</string>
+    <string name="server_body">Meldiq আপনার কমিউনিটির রিলে সার্ভারে যুক্ত হয়। ডিফল্ট: Meldiq সার্ভার।</string>
     <string name="server_address">সার্ভারের ঠিকানা</string>
     <string name="server_test">পরীক্ষা</string>
     <string name="server_save">সংরক্ষণ</string>

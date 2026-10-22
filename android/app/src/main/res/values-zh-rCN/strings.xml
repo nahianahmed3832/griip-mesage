@@ -223,7 +223,7 @@
     <string name="link_linked">已关联，正在登录…</string>
     <string name="link_footer">另一部手机会把你的身份密钥以端到端加密（HPKE）方式发送到这台设备。服务器只转发密文。</string>
     <string name="server_title">服务器</string>
-    <string name="server_body">Meldiq 连接到你所在社区的中继服务器。内部测试版默认：GriipBuddy 测试服务器。</string>
+    <string name="server_body">Meldiq 连接到你所在社区的中继服务器。默认：Meldiq 服务器。</string>
     <string name="server_address">服务器地址</string>
     <string name="server_test">测试</string>
     <string name="server_save">保存</string>

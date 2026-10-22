@@ -225,7 +225,7 @@
     <string name="link_linked">Linked. Signing in…</string>
     <string name="link_footer">Your other phone sends this device your identity key encrypted end-to-end (HPKE). The server only relays ciphertext.</string>
     <string name="server_title">Server</string>
-    <string name="server_body">Meldiq connects to your community\'s relay. Internal beta default: the GriipBuddy test server.</string>
+    <string name="server_body">Meldiq connects to your community\'s relay. Default: the Meldiq server.</string>
     <string name="server_address">Server address</string>
     <string name="server_test">Test</string>
     <string name="server_save">Save</string>

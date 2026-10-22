@@ -214,7 +214,7 @@ fun StorageScreen(nav: NavHostController) {
                     Icons.Outlined.Info, "What a backup holds",
                     subtitle = "Your chats, messages and the people in them, and if you choose, downloaded photos, videos and files, encrypted on this phone " +
                         "with your backup password before the file is written. It never holds your private keys or recovery key: on a new phone, sign in with " +
-                        "your recovery key first, then restore. Without the backup password the file can't be opened, by anyone, including GriipBuddy. If you " +
+                        "your recovery key first, then restore. Without the backup password the file can't be opened, by anyone, including Meldiq. If you " +
                         "lose every signed-in device and your recovery key, your account and anything not backed up can't be recovered.",
                     trailing = null,
                 )

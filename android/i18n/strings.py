@@ -226,7 +226,7 @@ S = {
 "link_linked": ("Linked. Signing in…", "已关联，正在登录…", "লিংক হয়েছে। সাইন ইন হচ্ছে…"),
 "link_footer": ("Your other phone sends this device your identity key encrypted end-to-end (HPKE). The server only relays ciphertext.", "另一部手机会把你的身份密钥以端到端加密（HPKE）方式发送到这台设备。服务器只转发密文。", "আপনার অন্য ফোনটি এই ডিভাইসে আপনার পরিচয় কী এন্ড-টু-এন্ড এনক্রিপ্ট করে (HPKE) পাঠায়। সার্ভার শুধু সাইফারটেক্সট পৌঁছে দেয়।"),
 "server_title": ("Server", "服务器", "সার্ভার"),
-"server_body": ("Meldiq connects to your community's relay. Internal beta default: the GriipBuddy test server.", "Meldiq 连接到你所在社区的中继服务器。内部测试版默认：GriipBuddy 测试服务器。", "Meldiq আপনার প্রতিষ্ঠানের রিলে সার্ভারে যুক্ত হয়। অভ্যন্তরীণ বেটার ডিফল্ট: GriipBuddy পরীক্ষামূলক সার্ভার।"),
+"server_body": ("Meldiq connects to your community's relay. Default: the Meldiq server.", "Meldiq 连接到你所在社区的中继服务器。默认：Meldiq 服务器。", "Meldiq আপনার কমিউনিটির রিলে সার্ভারে যুক্ত হয়। ডিফল্ট: Meldiq সার্ভার।"),
 "server_address": ("Server address", "服务器地址", "সার্ভারের ঠিকানা"),
 "server_test": ("Test", "测试", "পরীক্ষা"),
 "server_save": ("Save", "保存", "সংরক্ষণ"),
