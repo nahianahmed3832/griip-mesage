@@ -245,14 +245,38 @@ reference's friendly geometric feel and holds up better than a pure geometric fa
   bottom-right (success green or tertiary grey).
 - Organisation, branch and team marks are rounded-square tiles with initials.
 
-### 3.6 Motion
+### 3.6 Motion (rewritten in batch B16, 2026-10-22)
 
-- Standard duration 220 ms on FastOutSlowIn. Enter is fade + 12 dp rise. Exit is fade.
-- Pressable cards and pills scale to 0.97 on press with a spring.
-- Selection pills animate colour (180 ms). The segmented control slides its thumb.
-- New messages fade and slide up. Status ticks crossfade between states.
-- Loading uses a soft shimmer on glass placeholders. There are no spinners on full screens, only on buttons.
-- Motion never blocks input, and nothing loops forever except the "calling…" pulse and the "connecting" shimmer.
+One set of tokens (`ui/theme/Tokens.kt` › `Motion`), chosen by purpose rather than one duration for everything:
+
+| Purpose | Token | Used for |
+|---|---|---|
+| Immediate feedback | `INSTANT` 90 ms | a leaving list row, the old tab's fade-out |
+| Small controls | `QUICK` 160 ms, FastOutSlowIn | selected tab colour, chips, mic ⇄ Send crossfade, a new list row fading in, the reaction row resizing |
+| Content | `STANDARD` 220 ms | the tab bar coming back, sheet contents |
+| Navigation | `PAGE` 260 ms, emphasized decelerate in and accelerate out | opening a screen (slides from the end edge, a quarter of the width) and Back (reversed); a tab switch is a fade-through (`FADE_THROUGH_DELAY` 60 ms, scale from 0.985), never a slide |
+| Entrances | `ENTRANCE` 420 ms | first-run and empty-state illustrations only |
+| Placement | spring, medium-low stiffness | list rows sliding to their new place (`listItemMotion`) |
+
+Rules:
+- **Motion follows state.** A message animates in when it's in the list, never before; "sent" ticks change only when
+  the server answered.
+- **Lists:** rows have stable keys and use `listItemMotion()`, so only rows that changed move (a category opening or
+  closing, a message arriving). Nothing animates on first load or when a row is edited. A chat follows new messages
+  only when you're at the bottom; otherwise the "jump to latest" button appears.
+- **Media keeps its space:** photos and videos carry their size (`AttachmentRef.w/h`), so the bubble has its final
+  shape before the picture loads.
+- **Tabs keep their state:** each tab keeps its back stack and scroll position (`switchTab`: save and restore state,
+  single top). Rapid taps can't stack screens.
+- **The tab bar** slides away under a screen opened from a tab and back on return.
+- **Sheets and dialogs** use Material 3's own motion and gestures (one look everywhere); destructive confirmations
+  are plain dialogs that open at once.
+- **Calls:** the call screen slides up from a third of the height; camera, screen-share and audio work never waits
+  for an animation.
+- **Animations off** (Settings › Accessibility › Remove animations, or an animator scale of 0): every transition
+  above is instant, including navigation, the tab bar, list rows, the crossfade and resizing
+  (`rememberReducedMotion`). The web app follows `prefers-reduced-motion` the same way.
+- Motion never blocks input. Nothing loops forever except the "calling…" pulse and the "connecting" shimmer.
 
 ### 3.7 States
 

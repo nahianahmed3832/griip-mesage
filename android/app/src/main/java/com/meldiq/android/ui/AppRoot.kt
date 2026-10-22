@@ -343,12 +343,19 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
             composable(Routes.BLOCKED) { com.meldiq.android.ui.screens.profile.BlockedUsersScreen(nav) }
         }
         }
-        if (route in Routes.tabs) {
-            // The floating bar (UI-002). No action button: each tab offers its own New action where an existing flow
-            // supports it.
-            val homeBadge = remember(convs) { WorkspaceHomeRules.homeBadge(convs) }
-            val dmBadge = remember(convs) { WorkspaceHomeRules.dmBadge(convs) }
-            val activityBadge = remember(convs) { WorkspaceHomeRules.activityBadge(convs) }
+        // The floating bar (UI-002). No action button: each tab offers its own New action where an existing flow
+        // supports it. Batch B16: it slides away under a screen opened from a tab and back on return (still when
+        // animations are off), instead of vanishing at once.
+        val homeBadge = remember(convs) { WorkspaceHomeRules.homeBadge(convs) }
+        val dmBadge = remember(convs) { WorkspaceHomeRules.dmBadge(convs) }
+        val activityBadge = remember(convs) { WorkspaceHomeRules.activityBadge(convs) }
+        val stillBar = com.meldiq.android.ui.theme.rememberReducedMotion()
+        AnimatedVisibility(
+            visible = route in Routes.tabs,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = if (stillBar) EnterTransition.None else slideInVertically(Motion.enter(Motion.STANDARD)) { it } + fadeIn(Motion.enter(Motion.QUICK)),
+            exit = if (stillBar) ExitTransition.None else slideOutVertically(Motion.exit(Motion.QUICK)) { it } + fadeOut(Motion.exit(Motion.QUICK)),
+        ) {
             FloatingNavBar(
                 items = listOf(
                     NavItem(Routes.HOME, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.nav_home), Icons.Outlined.Home, Icons.Rounded.Home, badge = homeBadge),
@@ -358,7 +365,7 @@ private fun MainNav(container: AppContainer, pendingConversation: String?, pendi
                 ),
                 selectedRoute = route,
                 onSelect = { item -> nav.switchTab(item.route) },
-                modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { barHeight = it.height },
+                modifier = Modifier.onSizeChanged { barHeight = it.height },
             )
         }
     }
@@ -411,11 +418,9 @@ object NavMotionRules {
     fun animationsEnabled(animatorScale: Float): Boolean = animatorScale > 0f
 }
 
+/** Batch B16: the same "animations off" check as the rest of the app (`rememberReducedMotion`). */
 @Composable
 private fun rememberNavMotion(): NavMotion {
-    val ctx = LocalContext.current
-    return remember {
-        val scale = runCatching { android.provider.Settings.Global.getFloat(ctx.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) }.getOrDefault(1f)
-        NavMotion(NavMotionRules.animationsEnabled(scale))
-    }
+    val reduced = com.meldiq.android.ui.theme.rememberReducedMotion()
+    return remember(reduced) { NavMotion(!reduced) }
 }

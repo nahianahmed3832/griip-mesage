@@ -2,6 +2,7 @@ package com.meldiq.android.ui.theme
 
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
@@ -71,6 +72,23 @@ object Motion {
 }
 
 /**
+ * Batch B16: how a list row moves when the list changes (a category opening or closing, a message arriving, a row
+ * moving): it fades in or out and slides to its new place. Rows keep their keys, so only the rows that changed move;
+ * nothing animates on first load or on an edit of a row. Still when animations are off.
+ */
+@androidx.compose.runtime.Composable
+fun androidx.compose.foundation.lazy.LazyItemScope.listItemMotion(): androidx.compose.ui.Modifier =
+    if (rememberReducedMotion()) androidx.compose.ui.Modifier
+    else androidx.compose.ui.Modifier.animateItem(
+        fadeInSpec = tween(Motion.QUICK, easing = FastOutSlowInEasing),
+        placementSpec = androidx.compose.animation.core.spring(
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
+            visibilityThreshold = androidx.compose.ui.unit.IntOffset.VisibilityThreshold,
+        ),
+        fadeOutSpec = tween(Motion.INSTANT),
+    )
+
+/**
  * Whether the person turned animations off (Settings › Accessibility › Remove animations, or an animator scale of 0).
  * Decorative motion (entrances, stickers, loops) stays still then; state changes simply snap.
  */
@@ -81,6 +99,6 @@ fun rememberReducedMotion(): Boolean {
         val scale = runCatching {
             android.provider.Settings.Global.getFloat(ctx.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
         }.getOrDefault(1f)
-        scale == 0f
+        !com.meldiq.android.ui.NavMotionRules.animationsEnabled(scale)
     }
 }

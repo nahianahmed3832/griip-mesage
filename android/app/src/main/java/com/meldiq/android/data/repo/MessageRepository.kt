@@ -448,7 +448,8 @@ class MessageRepository(
         try {
             val meta = withContext(Dispatchers.IO) { AttachmentCrypto.encryptFile(local, enc) }
             val up = uploader.upload(cid, enc, meta.sha256) { p -> _transfer.update { it + (id to p) } }
-            val ref = AttachmentRef(up.id, name, pending.mime, local.length(), meta.key, meta.nonce, meta.sha256, pending.voice, pending.durationMs)
+            val dims = com.meldiq.android.media.MediaDims.of(local, pending.mime).takeIf { pending.voice != true }
+            val ref = AttachmentRef(up.id, name, pending.mime, local.length(), meta.key, meta.nonce, meta.sha256, pending.voice, pending.durationMs, w = dims?.first, h = dims?.second)
             local.renameTo(files.fileFor(up.id, name))
             sendText(cid, caption, replyTo = db.messages().get(id)?.replyToId, attachments = listOf(ref), presetId = id)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
@@ -624,9 +625,12 @@ class MessageRepository(
                             if (chunked) ChunkedAttachmentCrypto.encryptFile(local, enc) else AttachmentCrypto.encryptFile(local, enc)
                         }
                         val up = uploader.upload(cid, enc, meta.sha256) { p -> progress(i, "Uploading$what", 0.5f + p * 0.5f) }
+                        // Batch B16: the size as shown, so the other phones keep the picture's space while it loads.
+                        val dims = com.meldiq.android.media.MediaDims.of(local, ref.mime).takeIf { ref.voice != true }
                         AttachmentRef(
                             up.id, ref.name, ref.mime, local.length(), meta.key, meta.nonce, meta.sha256, ref.voice, ref.durationMs,
                             chunk = if (chunked) ChunkedAttachmentCrypto.DEFAULT_CHUNK else null,
+                            w = dims?.first, h = dims?.second,
                         )
                     } finally {
                         enc.delete()

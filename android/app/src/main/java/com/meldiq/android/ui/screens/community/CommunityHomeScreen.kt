@@ -1,5 +1,7 @@
 package com.meldiq.android.ui.screens.community
 
+import com.meldiq.android.ui.theme.listItemMotion
+
 import android.content.ClipData
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -305,17 +307,20 @@ fun CommunityHomeScreen(nav: NavHostController) {
                 sections.forEach { section ->
                     val category = section.categoryId?.let { id -> d?.categories?.firstOrNull { it.id == id } }
                     val canCreateHere = category?.canCreateChannels == true || (section.categoryId == null && d?.permissions?.canCreateChannels == true)
+                    // Batch B16: opening or closing a category moves only its rows (they fade, the rest slides into place).
                     item(key = "section-" + section.key) {
+                        Box(listItemMotion()) {
                         PanelSectionHeader(
                             section.title ?: stringResource(R.string.cm_channels), section.collapsed, section.unreadChannels,
                             onToggle = { orgId?.let { container.navPrefs.change(it, NavOp.Collapse(section.key, !section.collapsed)) } },
                             onLongPress = { sheet = PanelSheet.Category(section.key) },
                             onAdd = if (canCreateHere) ({ sheet = PanelSheet.NewChannel(section.categoryId) }) else null,
                         )
+                        }
                     }
-                    if (section.all.isEmpty() && !section.collapsed && canArrange) item(key = "empty-" + section.key) { PanelEmptyCategory() }
+                    if (section.all.isEmpty() && !section.collapsed && canArrange) item(key = "empty-" + section.key) { Box(listItemMotion()) { PanelEmptyCategory() } }
                     items(section.shown, key = { "ch-" + it.id }) { ch ->
-                        Column {
+                        Column(listItemMotion()) {
                             PanelChannelRow(ch, ch.id == selectedChannel, onClick = { open(ch) }, onLongPress = { sheet = PanelSheet.Channel(ch.id) })
                             if (ch.voice) ch.conv?.let { conv -> roomPeople(conv).takeIf { it.isNotEmpty() }?.let { PanelVoicePeople(it, usersById) } }
                         }

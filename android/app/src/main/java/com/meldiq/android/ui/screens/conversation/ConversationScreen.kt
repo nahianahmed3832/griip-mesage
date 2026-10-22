@@ -1,5 +1,7 @@
 package com.meldiq.android.ui.screens.conversation
 
+import com.meldiq.android.ui.theme.listItemMotion
+
 import com.meldiq.android.R
 import com.meldiq.android.data.model.MentionSpan
 import com.meldiq.android.data.model.MentionRules
@@ -762,8 +764,9 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                         // Same rule as the long-press menu's "Reply": a posted text/attachment message where you may post.
                         val canSwipeReply = conv?.canPost != false && !m.deleted && m.kind == "text"
                         val hasFiles = !m.deleted && vm.c.messages.attachments(m).isNotEmpty()
+                        // Batch B16: a new message fades in and the others slide up to make room (keys are message ids).
                         Column(
-                            Modifier.bulkSelectable(selected != null, m.id in selected.orEmpty(), hasFiles, c.primary) {
+                            listItemMotion().bulkSelectable(selected != null, m.id in selected.orEmpty(), hasFiles, c.primary) {
                                 val now = selected.orEmpty()
                                 selected = if (m.id in now) now - m.id else now + m.id
                             },
@@ -1384,24 +1387,28 @@ private fun Composer(
                 }
                 Spacer(Modifier.width(6.dp))
                 val enabled = text.text.isNotBlank()
-                if (!enabled && voice.available) {
-                    val recordLabel = stringResource(R.string.b5_record_voice)
-                    Box(
+                val recordLabel = stringResource(R.string.b5_record_voice)
+                val sendLabel = stringResource(R.string.b5_send_message)
+                val sendClick = stringResource(R.string.b5_send)
+                // Batch B16: the mic and Send trade places with a quick crossfade as you start or clear typing.
+                androidx.compose.animation.Crossfade(
+                    !enabled && voice.available, animationSpec = if (reduced) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(com.meldiq.android.ui.theme.Motion.QUICK),
+                    label = "micOrSend",
+                ) { mic ->
+                    if (mic) Box(
                         Modifier.size(48.dp).clip(CircleShape).background(c.actionStart)
                             .pressable(onMic, onClickLabel = recordLabel)
                             .semantics { contentDescription = recordLabel },
                         contentAlignment = Alignment.Center,
                     ) { Icon(Icons.Rounded.Mic, null, tint = c.onAction, modifier = Modifier.size(24.dp)) }
-                    return@Row
+                    else Box(
+                        Modifier.size(48.dp).clip(CircleShape)
+                            .background(if (enabled) c.actionStart else c.surfaceVariant)
+                            .pressable(if (enabled) onSend else null, onClickLabel = sendClick)
+                            .semantics { contentDescription = sendLabel },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.AutoMirrored.Rounded.Send, null, tint = if (enabled) c.onAction else c.textTertiary, modifier = Modifier.size(22.dp)) }
                 }
-                val sendLabel = stringResource(R.string.b5_send_message)
-                Box(
-                    Modifier.size(48.dp).clip(CircleShape)
-                        .background(if (enabled) c.actionStart else c.surfaceVariant)
-                        .pressable(if (enabled) onSend else null, onClickLabel = stringResource(R.string.b5_send))
-                        .semantics { contentDescription = sendLabel },
-                    contentAlignment = Alignment.Center,
-                ) { Icon(Icons.AutoMirrored.Rounded.Send, null, tint = if (enabled) c.onAction else c.textTertiary, modifier = Modifier.size(22.dp)) }
             }
         }
     }

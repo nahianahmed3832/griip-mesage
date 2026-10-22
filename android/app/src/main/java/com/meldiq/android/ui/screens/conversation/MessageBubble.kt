@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -430,8 +431,10 @@ private fun MessageExtras(b: BubbleModel, me: String?, alignEnd: Boolean, cb: Me
         )
     }
     if (b.reactions.isNotEmpty()) {
+        // Batch B16: a reaction added or taken away grows or shrinks the row smoothly (still when animations are off).
+        val still = com.meldiq.android.ui.theme.rememberReducedMotion()
         FlowRow(
-            Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp, if (alignEnd) Alignment.End else Alignment.Start),
+            Modifier.padding(top = 4.dp).then(if (still) Modifier else Modifier.animateContentSize(com.meldiq.android.ui.theme.Motion.quick())), horizontalArrangement = Arrangement.spacedBy(4.dp, if (alignEnd) Alignment.End else Alignment.Start),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             val communityEmoji = com.meldiq.android.ui.components.LocalCommunityEmoji.current
@@ -540,10 +543,28 @@ private fun AttachmentView(a: AttachmentRef, out: Boolean, transfer: Float?, loc
         }
     }
     val bmp = bitmap
+    // Batch B16: the sender's size for this photo or video, when it sent one: its space is kept before the picture is
+    // downloaded or decoded, so nothing jumps when it appears.
+    val reserved = if (kind != null && com.meldiq.android.media.MediaDims.valid(a.w, a.h)) MediaGallery.previewRatio(a.w!!, a.h!!) else null
+    if (bmp == null && reserved != null) {
+        Box(
+            Modifier.width(MEDIA_PREVIEW_WIDTH).aspectRatio(reserved).clip(Shapes.tile).background(if (out) c.primary.copy(alpha = 0.10f) else c.surfaceVariant)
+                .pressable(if (a.id != "pending") ({ onOpen(a) }) else null, onClickLabel = if (kind == MediaKind.Video) "Play video" else "View photo"),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (transfer != null) CircularProgressIndicator(progress = { transfer }, modifier = Modifier.size(36.dp), color = c.primary, strokeWidth = 3.dp)
+            else Icon(
+                if (local == null && a.id != "pending") Icons.Rounded.Download else if (kind == MediaKind.Video) Icons.Rounded.Videocam else Icons.Rounded.Image,
+                if (local == null && a.id != "pending") "Download" else null, tint = c.textSecondary, modifier = Modifier.size(28.dp),
+            )
+            Text(humanSize(a.size), style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp))
+        }
+        return
+    }
     if (bmp != null) {
         // Batch B14: one width for every photo and video, its own shape within 3:4 and 16:9 (MediaGallery.previewRatio).
         Box(
-            Modifier.width(MEDIA_PREVIEW_WIDTH).aspectRatio(MediaGallery.previewRatio(bmp.width, bmp.height)).clip(Shapes.tile)
+            Modifier.width(MEDIA_PREVIEW_WIDTH).aspectRatio(reserved ?: MediaGallery.previewRatio(bmp.width, bmp.height)).clip(Shapes.tile)
                 .pressable({ onOpen(a) }, onClickLabel = if (kind == MediaKind.Video) "Play video" else "View photo"),
         ) {
             Image(bmp, a.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)

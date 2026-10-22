@@ -139,6 +139,12 @@ data class AttachmentRef(
      * Absent: the original single-message format. Older apps can't open chunked files and say so.
      */
     val chunk: Int? = null,
+    /**
+     * Batch B16: a photo's or video's width and height as shown, so a chat keeps its space before it appears. Optional and
+     * omitted when absent; older apps and the web ignore them. Checked with MediaDims.valid before use.
+     */
+    val w: Int? = null,
+    val h: Int? = null,
 )
 
 @Serializable

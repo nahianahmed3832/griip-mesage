@@ -21,10 +21,10 @@ go-ahead (2026-10-22) it was pushed to GitHub and deployed (below).
 - **Meldiq Web** `0.2.4-beta-e9f8d2b` on `https://web.meldiq.app`.
 - A backup was taken before and after. To roll back, see `docs/DEPLOYMENT.md`.
 
-**For employees:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b14-production-debug.apk`
-(B4–B14). It's "Meldiq Test" (debug-signed, installs next to the regular app) and talks only to
-`https://msg.meldiq.app`. **SHA-256:** `a7aaee23068621600e192f39d7033ca12451c13ff94c5b9120f1b34b2ff8f4c3`. The B14
-checklist is in §6n.
+**For employees:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b16-production-debug.apk`
+(B4–B16). It's "Meldiq Test" (debug-signed, installs next to the regular app) and talks only to
+`https://msg.meldiq.app`. **SHA-256:** `849ffbb39cd1d2592771b78bed09f0c0f26dab7b4591461c80b8e3c0fc615992`. The
+checklists are in §6n (B14) and §6o (B16).
 - Registration is by invitation: a community owner's invite code, or `admin.js reg-invite` on the server
   (`docs/DEPLOYMENT.md`).
 - For the regular Meldiq app, sign a release in Android Studio from the main folder. Release builds now default to
@@ -1028,6 +1028,91 @@ and won't be have any message options either".
    and no messages. Join from both phones: both appear as tiles; Open the call returns to the call.
 9. **Small phone:** if you have one, repeat steps 1, 2 and 8.
 10. **Report back:** pass or fail per step, with screenshots.
+
+## 6o. Batch B16: transitions and interaction polish (built 2026-10-22, not phone-tested)
+
+Specification: `MELDIQ_BACKLOG_B14_B16_B15.md` §B16. Started on the owner's go-ahead after B14.
+
+### Audit first (what was already right)
+
+- Tab switches were already a short fade-through and kept each tab's history, scroll position and drafts. Rapid
+  taps couldn't stack screens.
+- Opening a screen already slid it in, and Back reversed it.
+- The tab bar already animated its selected tab; sheets use Material 3 motion.
+- Drafts survive opening the details screen and coming back.
+- The web app already honoured `prefers-reduced-motion`.
+
+So B16 fixes the gaps rather than adding effects everywhere.
+
+### What changed
+
+| Gap found | Now | Code |
+|---|---|---|
+| Opening or closing a category made the whole channel list jump | Only that category's rows fade in or out; the rest slide into place | `listItemMotion()` (`ui/theme/Tokens.kt`), `CommunityHomeScreen.kt` |
+| A new message appeared with a jump | It fades in and the others slide up to make room; edits and ticks don't animate; nothing on first load | `ConversationScreen.kt` |
+| A photo or video jumped the chat when it finished loading | The sender sends its size (rotation applied) inside the encrypted message; the bubble has its final shape at once, with progress or a download icon until the picture is there. Optional: older apps and the web ignore it | `media/MediaDims.kt`, `AttachmentRef.w/h`, `MessageBubble.kt` |
+| The tab bar vanished at once when a chat opened | It slides away and back with the screen | `AppRoot.kt` |
+| Mic and Send swapped abruptly | Quick crossfade | `ConversationScreen.kt` (`Composer`) |
+| The reaction row jumped when a reaction was added or removed | It resizes smoothly | `MessageBubble.kt` |
+| Two separate "animations off" checks | One (`rememberReducedMotion`, using the tested rule); everything above is instant when animations are off | `Tokens.kt`, `AppRoot.kt` |
+| The design document described motion that didn't exist | Rewritten from the code: tokens by purpose, rules | `docs/DESIGN_SYSTEM.md` §3.6 |
+
+**Not changed, on purpose:**
+- Sheets and dialogs already share Material 3's motion.
+- The call screen's motion (it already slides up, and media never waits for it).
+- The web app (already reduced-motion aware; no B16 web gaps found in this pass).
+- Re-tapping the current tab doesn't scroll to the top yet: noted for later.
+
+### How it was checked
+
+- **Android:**
+  - `MediaDimsTest`: quarter turns swap the size; EXIF orientations including the mirrored ones; a received size is
+    used only when believable; the size is left out of the message when unknown, so the format is unchanged for
+    older apps.
+  - Full suite **650 tests, 0 failures**; lint 0 errors.
+- **Frame pacing** (`dumpsys gfxinfo`, the same scripted run on both builds: 12 tab switches, a chat opened and
+  closed twice, a category collapsed and expanded):
+
+  | Build | Median frame | 90th percentile |
+  |---|---|---|
+  | B14 | 61 ms | 150 ms |
+  | B16 | 57 ms and 61 ms (two runs) | 150 ms |
+
+  No regression. The headless emulator renders in software, so these are comparisons, not phone figures.
+- **Emulator:**
+  - the category collapsed and expanded;
+  - the tab bar was gone inside a chat and back after Back.
+  - **With animations off** (`animator_duration_scale 0`, restored to 1 afterwards): the same steps, all instant and
+    working.
+- **Not checked on the emulator:** how smooth it feels on a real phone (the emulator can't show that), and the size
+  reservation from another phone's photo (needs two phones on this build).
+
+### B16 APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b16-production-debug.apk`
+  (148 MB). **SHA-256:** `849ffbb39cd1d2592771b78bed09f0c0f26dab7b4591461c80b8e3c0fc615992`.
+- **Variant:** debug, side by side ("Meldiq Test"), production server `https://msg.meldiq.app` (API 0.25.0; B16 needs no
+  server change). It contains B4–B16 and updates the earlier "Meldiq Test" in place.
+
+### Owner's phone checklist (B16)
+
+1. **Tabs:** tap Home, DMs, Activity and You quickly, several times. **Expected:** quick fades, no stacking or flicker;
+   each tab comes back where you left it (scroll position, filters).
+2. **Open and back:** open a chat from DMs. **Expected:** the chat slides in and the tab bar slides away; Back reverses
+   both, and the list is where it was.
+3. **Categories:** collapse and expand a category in a community. **Expected:** only its channels move; the rest of the
+   list doesn't jump.
+4. **New messages:** at the bottom of a chat, have the other phone send messages. **Expected:** each fades in smoothly.
+   Scrolled up, the list stays put and the jump button appears.
+5. **Photos:** have the other phone (also on this build) send a tall photo and a video. **Expected:** the bubble
+   appears at its final size first, then the picture fills it, with no jump.
+6. **Composer and reactions:** type and clear text (mic ⇄ Send crossfade); add and remove reactions (the row resizes
+   smoothly).
+7. **Calls:** during a call, switch tabs and open a sheet. **Expected:** the call keeps going; the camera switch isn't
+   delayed.
+8. **Animations off:** Settings › Accessibility › Remove animations, then repeat 1–3. **Expected:** everything
+   switches instantly and works.
+9. **Report back:** pass or fail per step, with screen recordings if something feels slow.
 
 ## 7. Things the owner should know (carried over)
 

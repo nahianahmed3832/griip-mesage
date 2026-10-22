@@ -57,7 +57,7 @@ Meldiq differs from Discord by design in two ways:
 | NAV-09 | Settings | I | I | I | — | — | |
 | NAV-10 | Back behaviour | E2E | I | — | — | — | |
 | NAV-11 | Reorder communities in the rail | E2E (emulator) | I | — | I | — | B2 2026-10-21: long-press the rail or community sheet › Arrange communities; `railOrder` in the personal document (`community_navigation.test.ts`, `CommunityNavigationRulesTest`). Phone test pending. Web: not yet |
-| NAV-12 | Motion system, smooth tab switching with kept state, transitions and micro-interactions, reduced motion | S | — | — | — | P2 (B16) | Owner request 2026-10-22: `MELDIQ_BACKLOG_B14_B16_B15.md` §B16. After B14, before B15 |
+| NAV-12 | Motion system, smooth tab switching with kept state, transitions and micro-interactions, reduced motion | E2E (emulator) | I | I (reduced motion) | — | — | B16 2026-10-22: tokens by purpose (`docs/DESIGN_SYSTEM.md` §3.6); list rows animate only when they change (categories, new messages); media keeps its size before loading (`AttachmentRef.w/h`); tab bar slides with screens; mic ⇄ Send crossfade; reactions resize; one "animations off" check. Frame pacing unchanged on the emulator. **Awaiting phone validation** |
 
 ## C. Communities and discovery
 
