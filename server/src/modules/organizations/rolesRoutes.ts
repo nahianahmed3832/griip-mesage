@@ -1,13 +1,27 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import { type OrgRole, parsePermissionList } from "./authz.js";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
 import { parse } from "../../shared/validation/index.js";
+import { OrgMemberParams, OrgParams } from "../../shared/contracts/http/orgs.js";
+import {
+  AuditQuery,
+  OwnershipBody,
+  PERMISSION_CATEGORIES,
+  type PermissionKey,
+  ROLE_DESCRIPTION_MAX,
+  ROLE_ICON_NAMES,
+  ROLE_NAME_MAX,
+  RoleCreateBody,
+  RoleMemberParams,
+  RoleParams,
+  RolesQuery,
+  RoleUpdateBody,
+} from "../../shared/contracts/http/roles.js";
 import {
   BASE_ROLE_PERMISSIONS,
-  isPermission,
   type Permission,
+  type PermissionCategory,
   PERMISSIONS,
   ROLE_ICONS,
   ROLE_TEMPLATES,
@@ -28,9 +42,6 @@ import { notifyOrg } from "./orgsRoutes.js";
 /** At most this many active custom roles per workspace, and roles per person. */
 export const MAX_ACTIVE_ROLES = 50;
 export const MAX_ROLES_PER_MEMBER = 20;
-const ROLE_NAME_MAX = 40;
-const ROLE_DESCRIPTION_MAX = 200;
-const AUDIT_PAGE_MAX = 100;
 const BASE_NAMES: Record<OrgRole, string> = { OWNER: "Owner", ADMIN: "Admin", MEMBER: "Member", GUEST: "Guest" };
 
 interface RoleRow {
@@ -53,12 +64,10 @@ interface RoleRow {
   hoist?: number;
 }
 
-const zPermission = z.string().refine(isPermission, { message: "Unknown permission" }) as unknown as z.ZodType<Permission>;
-const zPermissionList = z.array(zPermission).max(64).transform((l) => [...new Set(l)]);
-const zRoleName = z.string().trim().min(1).max(ROLE_NAME_MAX);
-const zColor = z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Use a colour like #E39B7B").nullable();
-const zIcon = z.enum(ROLE_ICONS).nullable();
-const zId = z.string().max(64);
+/** The contract's lists (src/shared/contracts/http/roles.ts) are the catalog's: checked when the server compiles. */
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+const contractMatchesCatalog: Same<PermissionKey, Permission> & Same<(typeof ROLE_ICON_NAMES)[number], (typeof ROLE_ICONS)[number]> & Same<(typeof PERMISSION_CATEGORIES)[number], PermissionCategory> = true;
+void contractMatchesCatalog;
 
 const grantOf = (r: RoleRow): RoleGrant => ({ permissions: parsePermissionList(r.permissions), denies: parsePermissionList(r.denies) });
 const sameKeys = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x));
@@ -151,8 +160,8 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
   // ───────────── The catalog and the workspace's roles ─────────────
   app.get("/v1/orgs/:orgId/roles", auth, async (req) => {
     const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: zId }), req.params);
-    const { includeArchived } = parse(z.object({ includeArchived: z.enum(["true", "false"]).optional() }), req.query);
+    const { orgId } = parse(OrgParams, req.params);
+    const { includeArchived } = parse(RolesQuery, req.query);
     authz.requirePermission(orgId, userId, "roles.view", "Your role doesn't include viewing roles");
     const actor = authz.actor(orgId, userId)!;
     const rows = db
@@ -186,22 +195,8 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.post("/v1/orgs/:orgId/roles", auth, async (req) => {
     const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: zId }), req.params);
-    const body = parse(
-      z.object({
-        name: zRoleName.optional(),
-        description: z.string().trim().max(ROLE_DESCRIPTION_MAX).nullable().optional(),
-        color: zColor.optional(),
-        icon: zIcon.optional(),
-        hoist: z.boolean().optional(),
-        permissions: zPermissionList.optional(),
-        denies: zPermissionList.optional(),
-        // Start from a starter template or by cloning an existing role; explicit fields override what's copied.
-        template: z.string().max(40).optional(),
-        cloneOf: zId.optional(),
-      }),
-      req.body,
-    );
+    const { orgId } = parse(OrgParams, req.params);
+    const body = parse(RoleCreateBody, req.body);
     authz.requireOrgMember(orgId, userId);
     const actor = authz.actor(orgId, userId)!;
     let start: { name: string; description: string | null; color: string | null; icon: string | null; grant: RoleGrant; template: string | null } = {
@@ -262,21 +257,8 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.patch("/v1/roles/:roleId", auth, async (req) => {
     const { userId } = me(req);
-    const { roleId } = parse(z.object({ roleId: zId }), req.params);
-    const body = parse(
-      z.object({
-        baseRev: z.number().int().min(1),
-        name: zRoleName.optional(),
-        description: z.string().trim().max(ROLE_DESCRIPTION_MAX).nullable().optional(),
-        color: zColor.optional(),
-        icon: zIcon.optional(),
-        hoist: z.boolean().optional(),
-        permissions: zPermissionList.optional(),
-        denies: zPermissionList.optional(),
-        archived: z.boolean().optional(),
-      }),
-      req.body,
-    );
+    const { roleId } = parse(RoleParams, req.params);
+    const body = parse(RoleUpdateBody, req.body);
     const { role, actor } = loadRole(roleId, userId);
     const before = grantOf(role);
     const after: RoleGrant = { permissions: body.permissions ?? before.permissions, denies: body.denies ?? before.denies };
@@ -330,7 +312,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
   /** Deleting is for archived roles only: archive first (assignments stop counting), then delete for good. */
   app.delete("/v1/roles/:roleId", auth, async (req) => {
     const { userId } = me(req);
-    const { roleId } = parse(z.object({ roleId: zId }), req.params);
+    const { roleId } = parse(RoleParams, req.params);
     const { role, actor } = loadRole(roleId, userId);
     const refusal = roleDefinitionRefusal(actor, grantOf(role), grantOf(role));
     if (refusal) throwRefusal(refusal);
@@ -348,7 +330,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
   // ───────────── Assignments ─────────────
   app.get("/v1/roles/:roleId/members", auth, async (req) => {
     const { userId } = me(req);
-    const { roleId } = parse(z.object({ roleId: zId }), req.params);
+    const { roleId } = parse(RoleParams, req.params);
     const { role, actor } = loadRole(roleId, userId);
     if (!actor.perms.has("roles.view") || !actor.perms.has("members.view")) throw forbidden("Your role doesn't include seeing who holds roles");
     const rows = db
@@ -371,7 +353,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.put("/v1/roles/:roleId/members/:userId", auth, async (req) => {
     const actorId = me(req).userId;
-    const p = parse(z.object({ roleId: zId, userId: zId }), req.params);
+    const p = parse(RoleMemberParams, req.params);
     const { role, actor } = loadRole(p.roleId, actorId);
     if (role.archived_at) throw new ApiError(409, "archived", "This role is archived. Restore it before assigning it.");
     const target = targetIn(role.org_id, p.userId, actorId);
@@ -394,7 +376,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.delete("/v1/roles/:roleId/members/:userId", auth, async (req) => {
     const actorId = me(req).userId;
-    const p = parse(z.object({ roleId: zId, userId: zId }), req.params);
+    const p = parse(RoleMemberParams, req.params);
     const { role, actor } = loadRole(p.roleId, actorId);
     const target = targetIn(role.org_id, p.userId, actorId);
     const refusal = roleRemovalRefusal(actor, target, grantOf(role));
@@ -410,7 +392,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
   /** One person's effective permissions and where each comes from (their base role, which custom roles). */
   app.get("/v1/orgs/:orgId/members/:userId/permissions", auth, async (req) => {
     const viewer = me(req).userId;
-    const p = parse(z.object({ orgId: zId, userId: zId }), req.params);
+    const p = parse(OrgMemberParams, req.params);
     authz.requireOrgMember(p.orgId, viewer);
     if (viewer !== p.userId && !(authz.can(p.orgId, viewer, "roles.view") && authz.can(p.orgId, viewer, "members.view"))) {
       throw forbidden("Your role doesn't include seeing other people's permissions");
@@ -439,8 +421,8 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
   // previous owner becomes an admin, so there is always exactly the owners someone chose.
   app.post("/v1/orgs/:orgId/ownership", auth, async (req) => {
     const actorId = me(req).userId;
-    const { orgId } = parse(z.object({ orgId: zId }), req.params);
-    const body = parse(z.object({ userId: zId, confirmName: z.string().max(200) }), req.body);
+    const { orgId } = parse(OrgParams, req.params);
+    const body = parse(OwnershipBody, req.body);
     authz.requirePermission(orgId, actorId, "workspace.transfer", "Only an owner can transfer ownership");
     if (body.userId === actorId) throw new ApiError(400, "bad_request", "Choose someone else to become the owner");
     const org = db.prepare("SELECT name FROM orgs WHERE id = ?").get(orgId) as { name: string };
@@ -464,7 +446,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
   // ───────────── Usage and storage ─────────────
   app.get("/v1/orgs/:orgId/usage", auth, async (req) => {
     const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: zId }), req.params);
+    const { orgId } = parse(OrgParams, req.params);
     authz.requirePermission(orgId, userId, "workspace.usage.view", "Your role doesn't include usage figures");
     const count = (sql: string, ...args: unknown[]) => (db.prepare(sql).get(...args) as { n: number | null }).n ?? 0;
     const byRole = new Map(
@@ -511,7 +493,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
   // Every member may see what their workspace can use. No plans exist yet: the answer says so, with any server-wide limits.
   app.get("/v1/orgs/:orgId/plan", auth, async (req) => {
     const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: zId }), req.params);
+    const { orgId } = parse(OrgParams, req.params);
     authz.requireOrgMember(orgId, userId);
     const customRoles = (db.prepare("SELECT COUNT(*) n FROM org_roles WHERE org_id = ? AND archived_at IS NULL").get(orgId) as { n: number }).n;
     return ctx.entitlements.plan(planUsage(ctx, orgId, customRoles), orgId);
@@ -521,17 +503,8 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
   // For people with `audit.view`: every recorded change, newest first, a page at a time (`before` is the last id seen).
   app.get("/v1/orgs/:orgId/audit", auth, async (req) => {
     const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: zId }), req.params);
-    const q = parse(
-      z.object({
-        before: z.coerce.number().int().min(1).optional(),
-        limit: z.coerce.number().int().min(1).max(AUDIT_PAGE_MAX).default(50),
-        action: z.string().regex(/^[a-z_.]{1,40}$/).optional(),
-        /** Batch B4: only changes made by this person (Discord's "Filter by User"). */
-        actorId: z.string().min(1).max(64).optional(),
-      }),
-      req.query,
-    );
+    const { orgId } = parse(OrgParams, req.params);
+    const q = parse(AuditQuery, req.query);
     authz.requirePermission(orgId, userId, "audit.view", "Your role doesn't include the audit log");
     const rows = db
       .prepare(

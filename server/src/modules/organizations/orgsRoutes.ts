@@ -1,9 +1,24 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import { type ConversationRow, parsePermissionList } from "./authz.js";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
-import { parse, zName, zText } from "../../shared/validation/index.js";
+import { parse } from "../../shared/validation/index.js";
+import {
+  ChannelCreateBody,
+  ChannelListQuery,
+  COMMUNITY_TEMPLATE_IDS,
+  InviteCodeBody,
+  InviteCodeParams,
+  InviteCreateBody,
+  InviteIdParams,
+  MemberSearchQuery,
+  MemberUpdateBody,
+  OrgCreateBody,
+  OrgDeleteBody,
+  OrgMemberParams,
+  OrgParams,
+  OrgUpdateBody,
+} from "../../shared/contracts/http/orgs.js";
 import { memberView } from "../accounts/profile.js";
 import { ApiError, badRequest, conflict, forbidden, notFound } from "../../shared/errors.js";
 import { humanCode, newId, now, sha256Hex } from "../../shared/utilities/util.js";
@@ -18,11 +33,13 @@ import { photoBlobId, readJpegBody, storePhoto } from "../accounts/photos.js";
 import { evictRemovedMember } from "../calls/routes.js";
 import { conversationView } from "../messaging/conversationsRoutes.js";
 import { orgRoleChangeRefusal, removalAllowed, titleChangeAllowed } from "./roleRules.js";
-import { createCommunityStart, TEMPLATE_IDS, templateList } from "./communityStart.js";
+import { createCommunityStart, type TemplateId, templateList } from "./communityStart.js";
 import { roleAssignmentRefusal } from "./permissions/rules.js";
 import { categoryViews } from "./communityRoutes.js";
 
-const zOptText = zText.nullable().optional();
+/** The contract's template ids are the ones communityStart.ts creates (checked when the server compiles). */
+const templateIdsMatch: [(typeof COMMUNITY_TEMPLATE_IDS)[number]] extends [TemplateId] ? ([TemplateId] extends [(typeof COMMUNITY_TEMPLATE_IDS)[number]] ? true : never) : never = true;
+void templateIdsMatch;
 
 function slugify(name: string): string {
   return (
@@ -44,12 +61,6 @@ export function inviteStatus(r: { revoked_at: number | null; expires_at: number;
   return "active";
 }
 
-/** Accepted from older apps and ignored: every workspace is a community since the rebuild. */
-const zOrgKind = z.enum(["team", "community"]);
-/** Listed in discovery or not, and how people get in (docs/COMMUNITY_REBUILD_2026-10-21.md §5). */
-export const zVisibility = z.enum(["private", "public"]);
-export const zJoinPolicy = z.enum(["invite", "open"]);
-const zRules = z.string().trim().max(4000).nullable().optional();
 /** At most this many channels in one community and in one category (Discord's documented 50 per category). */
 export const CHANNEL_LIMITS = { perCommunity: 500, perCategory: 50 } as const;
 
@@ -139,20 +150,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   // ───────────── Organisations ─────────────
   app.post("/v1/orgs", auth, async (req) => {
     const { userId } = me(req);
-    const body = parse(
-      z.object({
-        name: zName,
-        description: zOptText,
-        requestId: z.string().trim().min(8).max(64).optional(),
-        kind: zOrgKind.optional(),
-        visibility: zVisibility.optional(),
-        joinPolicy: zJoinPolicy.optional(),
-        rules: zRules,
-        /** The starter channels (batch B2); "starter" when left out. */
-        template: z.enum(TEMPLATE_IDS).optional(),
-      }),
-      req.body,
-    );
+    const body = parse(OrgCreateBody, req.body);
     // Idempotent: the app sends one request id per create form, so a retry or a double tap returns the first result.
     if (body.requestId) {
       const prior = db.prepare("SELECT * FROM orgs WHERE created_by = ? AND create_request_id = ?").get(userId, body.requestId);
@@ -198,7 +196,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   /** Full navigable structure visible to the caller: branches → departments → teams, plus permissions. */
   app.get("/v1/orgs/:orgId", auth, async (req) => {
     const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const { orgId } = parse(OrgParams, req.params);
     const role = authz.requireOrgMember(orgId, userId);
     const org = db.prepare("SELECT * FROM orgs WHERE id = ?").get(orgId);
     const perms = authz.permissions(orgId, userId);
@@ -250,12 +248,9 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.patch("/v1/orgs/:orgId", auth, async (req) => {
     const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const { orgId } = parse(OrgParams, req.params);
     authz.requirePermission(orgId, userId, "workspace.edit", "Only people who can edit the workspace can do that");
-    const body = parse(
-      z.object({ name: zName.optional(), description: zOptText, kind: zOrgKind.optional(), visibility: zVisibility.optional(), joinPolicy: zJoinPolicy.optional(), rules: zRules }),
-      req.body,
-    );
+    const body = parse(OrgUpdateBody, req.body);
     const o = db.prepare("SELECT * FROM orgs WHERE id = ?").get(orgId) as any;
     // Listing a community publicly or opening it to anyone changes who can find and enter it: owners decide that.
     const opening = (body.visibility && body.visibility !== o.visibility) || (body.joinPolicy && body.joinPolicy !== o.join_policy);
@@ -279,7 +274,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   // end-to-end encrypted: like the organisation's name, the server can see it.
   app.put("/v1/orgs/:orgId/photo", auth, async (req) => {
     const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const { orgId } = parse(OrgParams, req.params);
     authz.requirePermission(orgId, userId, "workspace.edit", "Only people who can edit the workspace can change its photo");
     const buf = await readJpegBody(req, "Workspace photos");
     const previous = (db.prepare("SELECT photo_rev FROM orgs WHERE id = ?").get(orgId) as { photo_rev: number | null } | undefined)?.photo_rev ?? null;
@@ -298,7 +293,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.delete("/v1/orgs/:orgId/photo", auth, async (req) => {
     const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const { orgId } = parse(OrgParams, req.params);
     authz.requirePermission(orgId, userId, "workspace.edit", "Only people who can edit the workspace can change its photo");
     const previous = (db.prepare("SELECT photo_rev FROM orgs WHERE id = ?").get(orgId) as { photo_rev: number | null }).photo_rev;
     db.prepare("UPDATE orgs SET photo_rev = NULL, updated_at = ? WHERE id = ?").run(now(), orgId);
@@ -312,7 +307,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.get("/v1/orgs/:orgId/photo", auth, async (req, reply) => {
     const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const { orgId } = parse(OrgParams, req.params);
     authz.requireOrgMember(orgId, userId);
     const rev = (db.prepare("SELECT photo_rev FROM orgs WHERE id = ?").get(orgId) as { photo_rev: number | null }).photo_rev;
     const stream = rev ? await ctx.blobs.get("profile-photos", photoBlobId(orgId, rev)) : null;
@@ -327,8 +322,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   // with the same requestId gets the same answer; anything else afterwards gets 404.
   app.delete("/v1/orgs/:orgId", auth, async (req) => {
     const actor = me(req).userId;
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
-    const body = parse(z.object({ confirmName: z.string().max(200), requestId: z.string().min(8).max(64).optional() }), req.body ?? {});
+    const { orgId } = parse(OrgParams, req.params);
+    const body = parse(OrgDeleteBody, req.body ?? {});
     const previous = () =>
       db.prepare("SELECT * FROM org_deletions WHERE org_id = ?").get(orgId) as
         | { deleted_by: string; request_id: string | null; members: number; channels: number; files: number }
@@ -408,7 +403,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
 
   /** Archived branches and teams went with them (docs/COMMUNITY_REBUILD_2026-10-21.md); empty for apps that still ask. */
   app.get("/v1/orgs/:orgId/archived", auth, async (req) => {
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const { orgId } = parse(OrgParams, req.params);
     authz.requireOrgMember(orgId, me(req).userId);
     return { branches: [], teams: [] };
   });
@@ -416,11 +411,11 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   // ───────────── Membership & roles ─────────────
   app.get("/v1/orgs/:orgId/members", auth, async (req) => {
     const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const { orgId } = parse(OrgParams, req.params);
     const role = authz.requireOrgMember(orgId, userId);
     if (role === "GUEST") throw forbidden("Guests cannot browse the member list");
     if (!authz.can(orgId, userId, "members.view")) throw forbidden("Your role doesn't include the member directory");
-    const { q } = parse(z.object({ q: z.string().trim().max(40).optional() }), req.query);
+    const { q } = parse(MemberSearchQuery, req.query);
     const like = q ? `%${q.toLowerCase().replace(/[%_\\]/g, (c) => "\\" + c)}%` : "%";
     const rows = db
       .prepare(
@@ -460,8 +455,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.patch("/v1/orgs/:orgId/members/:userId", auth, async (req) => {
     const actor = me(req).userId;
-    const p = parse(z.object({ orgId: z.string().max(64), userId: z.string().max(64) }), req.params);
-    const body = parse(z.object({ role: z.enum(["OWNER", "ADMIN", "MEMBER", "GUEST"]).optional(), title: zOptText }), req.body);
+    const p = parse(OrgMemberParams, req.params);
+    const body = parse(MemberUpdateBody, req.body);
     authz.requireOrgMember(p.orgId, actor);
     const actorNow = authz.actor(p.orgId, actor)!;
     const targetRole = authz.orgRole(p.orgId, p.userId);
@@ -501,7 +496,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.delete("/v1/orgs/:orgId/members/:userId", auth, async (req) => {
     const actor = me(req).userId;
-    const p = parse(z.object({ orgId: z.string().max(64), userId: z.string().max(64) }), req.params);
+    const p = parse(OrgMemberParams, req.params);
     const actorRole = authz.requireOrgMember(p.orgId, actor);
     const targetRole = authz.orgRole(p.orgId, p.userId);
     if (!targetRole) throw notFound("Member not found");
@@ -523,22 +518,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   // ───────────── Invitations ─────────────
   app.post("/v1/orgs/:orgId/invites", auth, async (req) => {
     const actor = me(req).userId;
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
-    const body = parse(
-      z.object({
-        role: z.enum(["ADMIN", "MEMBER", "GUEST"]).default("MEMBER"),
-        // Branches and teams became roles: older apps send null here, anything else is refused below.
-        branchId: z.string().max(64).nullable().optional(),
-        teamId: z.string().max(64).nullable().optional(),
-        /** A custom role the invitation gives on joining (the inviter must be able to assign it). */
-        roleId: z.string().max(64).nullable().optional(),
-        maxUses: z.number().int().min(1).max(500).default(1),
-        expiresInHours: z.number().int().min(1).max(24 * 30).default(72),
-        // Round 7: how long a guest's membership lasts once they join (docs/WORKSPACE_C5.md).
-        guestDays: z.number().int().min(1).max(365).nullish(),
-      }),
-      req.body,
-    );
+    const { orgId } = parse(OrgParams, req.params);
+    const body = parse(InviteCreateBody, req.body);
     const actorRole = authz.requireOrgMember(orgId, actor);
     const policy = db.prepare("SELECT guests_allowed, guest_max_days FROM orgs WHERE id = ?").get(orgId) as { guests_allowed: number; guest_max_days: number | null } | undefined;
     if (body.role === "GUEST" && policy && !policy.guests_allowed) throw conflict("This community doesn't allow guests");
@@ -577,7 +558,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.get("/v1/orgs/:orgId/invites", auth, async (req) => {
     const actor = me(req).userId;
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const { orgId } = parse(OrgParams, req.params);
     authz.requireOrgMember(orgId, actor);
     const isAdmin = authz.can(orgId, actor, "members.invites.manage");
     const rows = db
@@ -610,7 +591,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.delete("/v1/invites/:id", auth, async (req) => {
     const actor = me(req).userId;
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(InviteIdParams, req.params);
     const inv = db.prepare("SELECT * FROM invitations WHERE id = ?").get(id) as any;
     if (!inv) throw notFound("Invite not found");
     authz.requireOrgMember(inv.org_id, actor);
@@ -631,7 +612,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   const inviteRate = { preHandler: requireAuth(ctx), config: { rateLimit: { max: 20, timeWindow: "1 minute" } } };
 
   app.post("/v1/invites/preview", inviteRate, async (req) => {
-    const { code } = parse(z.object({ code: z.string().min(8).max(40) }), req.body);
+    const { code } = parse(InviteCodeBody, req.body);
     const inv = findInvite(code);
     const org = db.prepare("SELECT * FROM orgs WHERE id = ?").get(inv.org_id) as any;
     return {
@@ -652,7 +633,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
    * size, never its channels or members; the same problem codes as the signed-in preview. Rate limited per address.
    */
   app.get("/v1/invites/:code/public", { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req) => {
-    const { code } = parse(z.object({ code: z.string().min(8).max(40) }), req.params);
+    const { code } = parse(InviteCodeParams, req.params);
     const inv = findInvite(code);
     const org = db.prepare("SELECT id, name, description, photo_rev FROM orgs WHERE id = ?").get(inv.org_id) as { id: string; name: string; description: string | null; photo_rev: number | null };
     return {
@@ -667,7 +648,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.post("/v1/invites/accept", inviteRate, async (req) => {
     const userId = me(req).userId;
-    const { code } = parse(z.object({ code: z.string().min(8).max(40) }), req.body);
+    const { code } = parse(InviteCodeBody, req.body);
     const t = now();
     // One transaction: two taps (or two people racing for the last use) can't both pass the checks and over-use it.
     const result = db.transaction(() => {
@@ -688,25 +669,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   // ───────────── Channels ─────────────
   app.post("/v1/orgs/:orgId/channels", auth, async (req) => {
     const actor = me(req).userId;
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
-    const body = parse(
-      z.object({
-        name: z.string().trim().min(1).max(60),
-        topic: zOptText,
-        // Older apps always send a scope; only the whole community remains.
-        scope: z.enum(["ORG", "BRANCH", "TEAM"]).default("ORG"),
-        scopeId: z.string().max(64).nullable().optional(),
-        kind: z.enum(["PUBLIC", "PRIVATE", "ANNOUNCEMENT"]).default("PUBLIC"),
-        autoJoin: z.boolean().optional(),
-        memberIds: z.array(z.string().max(64)).max(200).default([]),
-        /** A voice channel (docs/VOICE_ROOMS.md): a channel whose call anyone in it can join, without ringing. */
-        voice: z.boolean().default(false),
-        /** The category it goes into (null: none), and text or forum (posts with titles and their replies). */
-        categoryId: z.string().max(64).nullable().optional(),
-        format: z.enum(["text", "forum"]).default("text"),
-      }),
-      req.body,
-    );
+    const { orgId } = parse(OrgParams, req.params);
+    const body = parse(ChannelCreateBody, req.body);
     authz.requireOrgMember(orgId, actor);
     if (body.scope !== "ORG") throw badRequest("Branches and teams are now roles and categories: create the channel in a category");
     if (body.voice && body.kind === "ANNOUNCEMENT") throw badRequest("A voice channel can be public or private, not an announcement channel");
@@ -763,9 +727,9 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   /** Browse channels visible to the caller (joined + joinable public ones). */
   app.get("/v1/orgs/:orgId/channels", auth, async (req) => {
     const actor = me(req).userId;
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const { orgId } = parse(OrgParams, req.params);
     authz.requireOrgMember(orgId, actor);
-    const { q, includeArchived } = parse(z.object({ q: z.string().trim().max(40).optional(), includeArchived: z.enum(["true", "false"]).optional() }), req.query);
+    const { q, includeArchived } = parse(ChannelListQuery, req.query);
     const rows = db
       .prepare("SELECT * FROM conversations WHERE org_id = ? AND type = 'CHANNEL' ORDER BY name")
       .all(orgId) as ConversationRow[];
@@ -806,7 +770,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
   };
   app.get("/v1/orgs/:orgId/activity", auth, async (req) => {
     const actor = me(req).userId;
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const { orgId } = parse(OrgParams, req.params);
     const role = authz.requireOrgMember(orgId, actor);
     if (role === "GUEST") throw forbidden();
     const isAdmin = authz.can(orgId, actor, "audit.view");
