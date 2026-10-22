@@ -1,4 +1,5 @@
 import type { AppContext } from "../../../app/context.js";
+import { CONNECTOR_CHECKS } from "../../../shared/contracts/http/admin.js";
 import { now } from "../../../shared/utilities/util.js";
 import { storageCheck } from "./health.js";
 import type { ProviderStats as ProviderMetric } from "./metrics.js";
@@ -169,7 +170,7 @@ export async function connectorReport(ctx: AppContext): Promise<ConnectorStatus[
 }
 
 /** Connector ids [checkConnector] can test. */
-export const CHECKS = ["email", "storage", "push-fcm", "mongodb"] as const;
+export const CHECKS = CONNECTOR_CHECKS;
 
 /**
  * Tests one connector without sending anything to anyone and without spending money: signs in to SMTP, lists storage,

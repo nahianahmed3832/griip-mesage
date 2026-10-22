@@ -32,7 +32,10 @@ describe("contracts", () => {
   });
 
   it("documents only routes the server has", () => {
-    const missing = ROUTE_CONTRACTS.map((c) => `${c.method} ${c.url}`).filter((r) => !h.contracts.routes.has(r));
+    // Routes of an optional feature (`requires`, e.g. federation) aren't registered by the default test server.
+    const missing = ROUTE_CONTRACTS.filter((c) => !c.requires)
+      .map((c) => `${c.method} ${c.url}`)
+      .filter((r) => !h.contracts.routes.has(r));
     expect(missing).toEqual([]);
   });
 

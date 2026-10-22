@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { AnalyticsBatch } from "../../../shared/contracts/http/experiments.js";
 
 /**
  * Product analytics events (docs/product/EXPERIMENTS.md §3). The catalogue is closed: an event the server doesn't know,
@@ -6,7 +7,6 @@ import { z } from "zod";
  * email addresses, channel names and workspace names can't travel this way. The server keeps only daily counts (per
  * event, property values, platform and experiment variant), never who sent an event.
  */
-const platform = z.enum(["android", "web"]);
 const bucket = z.enum(["0", "1", "2-5", "6+"]);
 const surface = z.enum(["home", "dms", "activity", "search", "channel", "thread", "notification", "directory", "other"]);
 const kind = z.enum(["team", "community"]);
@@ -46,20 +46,6 @@ export const ANALYTICS_EVENTS: Record<string, EventDef> = {
   "experiment.exposed": { props: props.exposure, value: null, description: "The person saw an experiment's variant (counted once per app start)." },
 };
 
-export const zAnalyticsBatch = z.object({
-  platform,
-  events: z
-    .array(
-      z.object({
-        name: z.string().max(40),
-        props: z.record(z.string().max(40), z.string().max(40)).optional(),
-        value: z.number().finite().min(0).max(31 * 24 * 3600 * 1000).optional(),
-      }),
-    )
-    .min(1)
-    .max(50),
-});
-
 export interface CleanEvent {
   name: string;
   dims: string;
@@ -67,7 +53,7 @@ export interface CleanEvent {
 }
 
 /** The events of a batch that fit the catalogue, with their properties in a canonical order. */
-export function cleanEvents(batch: z.infer<typeof zAnalyticsBatch>): CleanEvent[] {
+export function cleanEvents(batch: AnalyticsBatch): CleanEvent[] {
   const out: CleanEvent[] = [];
   for (const e of batch.events) {
     const def = ANALYTICS_EVENTS[e.name];

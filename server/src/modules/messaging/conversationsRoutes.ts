@@ -2,11 +2,24 @@ import type { FastifyInstance } from "fastify";
 import { availableUser, blockedEitherWay, dmDecision, notAvailable, REQUEST_MESSAGE_LIMIT, requireRequestBudget } from "../accounts/relationships/rules.js";
 import type { DmRequestRow } from "../accounts/relationships/store.js";
 import { mentionAllPermission } from "./mentions.js";
-import { z } from "zod";
 import type { ConversationRow } from "../organizations/authz.js";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
-import { parse, zText } from "../../shared/validation/index.js";
+import { parse } from "../../shared/validation/index.js";
+import {
+  ConversationDeleteBody,
+  ConversationListQuery,
+  ConversationPatchBody,
+  DmBody,
+  FORUM_GUIDELINES_MAX,
+  FORUM_TAG_LIMIT,
+  GroupBody,
+  MAX_GROUP,
+  MemberParams,
+  MemberPutBody,
+  SLOWMODE_STEPS,
+} from "../../shared/contracts/http/conversations.js";
+import { idParams } from "../../shared/contracts/http/primitives.js";
 import { appearsOnline, canSeeLastSeen, memberView, type ProfileRow } from "../accounts/profile.js";
 import { ApiError, badRequest, conflict, forbidden, notFound } from "../../shared/errors.js";
 import { newId, now } from "../../shared/utilities/util.js";
@@ -19,10 +32,7 @@ import { reconcileAccess } from "../organizations/communityRoutes.js";
 import { notifyConversation } from "../organizations/orgsRoutes.js";
 import { deviceDirectory } from "../accounts/usersRoutes.js";
 
-const MAX_GROUP = 50;
-
-/** The slowmode intervals a channel can have, in seconds (0: off), as Discord-style apps offer them. */
-export const SLOWMODE_STEPS = [0, 5, 10, 30, 60, 300, 900, 3600, 21600] as const;
+export { FORUM_GUIDELINES_MAX, FORUM_TAG_LIMIT, SLOWMODE_STEPS };
 
 export function conversationView(ctx: AppContext, c: ConversationRow, userId: string) {
   const { db, authz } = ctx;
@@ -101,9 +111,6 @@ export interface ForumTag {
   name: string;
 }
 
-/** Up to this many tags per forum (the reference forum allows the same). */
-export const FORUM_TAG_LIMIT = 20;
-
 /** A forum's tags as stored; anything malformed reads as no tags. */
 export function forumTags(c: Pick<ConversationRow, "forum_tags">): ForumTag[] {
   try {
@@ -159,9 +166,6 @@ function federationInfo(ctx: AppContext, convId: string) {
  * declined: the conversation is hidden from them), the sender always sees "pending" until it's accepted, so a decline
  * isn't revealed. [sent]: the sender's messages so far (at most REQUEST_MESSAGE_LIMIT before an answer).
  */
-/** Batch B8: the longest a forum's post guidelines may be. */
-export const FORUM_GUIDELINES_MAX = 2000;
-
 export function requestView(r: DmRequestRow | null | undefined, userId: string) {
   if (!r) return null;
   const incoming = r.recipient === userId;
@@ -174,7 +178,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
 
   app.get("/v1/conversations", auth, async (req) => {
     const { userId } = me(req);
-    const { requests } = parse(z.object({ requests: z.enum(["0", "1"]).optional() }), req.query);
+    const { requests } = parse(ConversationListQuery, req.query);
     const rows = db
       .prepare(
         `SELECT c.* FROM conversations c JOIN conversation_members m ON m.conversation_id = c.id
@@ -198,7 +202,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
    */
   app.get("/v1/conversations/:id/presence", { ...auth, config: { rateLimit: { max: 60, timeWindow: "1 minute" } } }, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     authz.requireMember(id, userId);
     const members = ctx.db
       .prepare("SELECT u.* FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? AND u.disabled_at IS NULL")
@@ -209,7 +213,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
 
   app.get("/v1/conversations/:id", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const c = authz.conversation(id);
     if (!c) throw notFound("Conversation not found");
     const visible = c.type === "CHANNEL" ? authz.canViewChannel(c, userId) : authz.isMember(c.id, userId);
@@ -221,7 +225,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
 
   app.get("/v1/conversations/:id/members", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const c = authz.conversation(id);
     if (!c || !(c.type === "CHANNEL" ? authz.canViewChannel(c, userId) : authz.isMember(c.id, userId))) throw notFound("Conversation not found");
     const rows = db
@@ -242,7 +246,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
   /** Public keys of every active device of every member: what a sender must encrypt to. */
   app.get("/v1/conversations/:id/devices", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     authz.requireMember(id, userId);
     const ids = (db.prepare("SELECT user_id FROM conversation_members WHERE conversation_id = ?").all(id) as { user_id: string }[]).map((r) => r.user_id);
     await ctx.federation?.refreshStale(ids); // remote members' keys come from their home server, refreshed when stale
@@ -251,7 +255,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
 
   app.post("/v1/conversations/dm", auth, async (req) => {
     const { userId } = me(req);
-    const { userId: other } = parse(z.object({ userId: z.string().max(64) }), req.body);
+    const { userId: other } = parse(DmBody, req.body);
     if (other === userId) throw badRequest("You can't start a direct conversation with yourself");
     const target = availableUser(ctx, other);
     // Batch B6: unknown, disabled and blocked (either way) all answer the same, so a block isn't revealed.
@@ -309,7 +313,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
 
   app.put("/v1/conversations/:id/photo", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const c = groupFor(id, userId, true);
     const buf = await readJpegBody(req, "Group photos");
     const previous = c.photo_rev ?? null;
@@ -326,7 +330,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
 
   app.delete("/v1/conversations/:id/photo", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const c = groupFor(id, userId, true);
     if (c.photo_rev) {
       db.prepare("UPDATE conversations SET photo_rev = NULL, updated_at = ? WHERE id = ?").run(now(), id);
@@ -338,7 +342,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
 
   app.get("/v1/conversations/:id/photo", auth, async (req, reply) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const c = groupFor(id, userId, false);
     const stream = c.photo_rev ? await ctx.blobs.get("profile-photos", photoBlobId(id, c.photo_rev)) : null;
     if (!stream) throw notFound("No photo");
@@ -347,7 +351,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
 
   app.post("/v1/conversations/group", auth, async (req) => {
     const { userId } = me(req);
-    const body = parse(z.object({ name: z.string().trim().min(1).max(60), memberIds: z.array(z.string().max(64)).min(1).max(MAX_GROUP - 1) }), req.body);
+    const body = parse(GroupBody, req.body);
     const ids = [...new Set(body.memberIds.filter((m) => m !== userId))];
     // Groups are server-local in this release: people on other servers can't be added (FEDERATION_PROTOCOL.md §7).
     const found = db.prepare(`SELECT id FROM users WHERE disabled_at IS NULL AND home_server_id IS NULL AND id IN (${ids.map(() => "?").join(",")})`).all(...ids) as { id: string }[];
@@ -366,27 +370,10 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
 
   app.patch("/v1/conversations/:id", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const c = authz.requireMember(id, userId);
     if (!authz.canManageConversation(c, userId)) throw forbidden();
-    const body = parse(
-      z.object({
-        name: z.string().trim().min(1).max(60).optional(),
-        topic: zText.nullable().optional(),
-        archived: z.boolean().optional(),
-        kind: z.enum(["PUBLIC", "PRIVATE", "ANNOUNCEMENT"]).optional(),
-        format: z.enum(["text", "forum"]).optional(),
-        forumTags: z
-          .array(z.object({ id: z.string().max(64).optional(), name: z.string().max(20) }))
-          .max(FORUM_TAG_LIMIT)
-          .optional(),
-        /** Batch B8: a forum's post guidelines (null removes them). */
-        guidelines: z.string().trim().max(FORUM_GUIDELINES_MAX).nullable().optional(),
-        /** Batch B3: seconds between one person's messages; only the intervals the apps offer. */
-        slowmodeSec: z.number().int().refine((n) => (SLOWMODE_STEPS as readonly number[]).includes(n), { message: "Pick one of the offered intervals" }).optional(),
-      }),
-      req.body,
-    );
+    const body = parse(ConversationPatchBody, req.body);
     if (body.slowmodeSec !== undefined && c.type !== "CHANNEL") throw badRequest("Only channels have slowmode");
     if (body.format !== undefined && (c.type !== "CHANNEL" || c.voice)) throw badRequest("Only text channels can become forums");
     if (body.archived !== undefined && c.type !== "CHANNEL") throw badRequest("Only channels can be archived");
@@ -442,8 +429,8 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
    */
   app.delete("/v1/conversations/:id", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
-    const body = parse(z.object({ confirmName: z.string().max(200) }), req.body ?? {});
+    const { id } = parse(idParams, req.params);
+    const body = parse(ConversationDeleteBody, req.body ?? {});
     const c = authz.requireMember(id, userId);
     if (c.type !== "CHANNEL" || !c.org_id) throw badRequest("Only community channels can be deleted; leave a group or conversation instead");
     if (!authz.canManageConversation(c, userId)) throw forbidden("Only people who manage this channel can delete it");
@@ -481,7 +468,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
 
   app.post("/v1/conversations/:id/join", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const c = authz.conversation(id);
     if (!c || c.type !== "CHANNEL" || !authz.canViewChannel(c, userId)) throw notFound("Channel not found");
     if (c.kind === "PRIVATE") throw forbidden("Private channels require an invitation from a channel manager");
@@ -494,8 +481,8 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
 
   app.put("/v1/conversations/:id/members/:userId", auth, async (req) => {
     const actor = me(req).userId;
-    const p = parse(z.object({ id: z.string().max(64), userId: z.string().max(64) }), req.params);
-    const { role } = parse(z.object({ role: z.enum(["ADMIN", "MEMBER"]).default("MEMBER") }), req.body ?? {});
+    const p = parse(MemberParams, req.params);
+    const { role } = parse(MemberPutBody, req.body ?? {});
     const c = authz.conversation(p.id);
     if (!c) throw notFound("Conversation not found");
     if (c.type === "DM") throw badRequest("Direct conversations have fixed members");
@@ -522,7 +509,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
 
   app.delete("/v1/conversations/:id/members/:userId", auth, async (req) => {
     const actor = me(req).userId;
-    const p = parse(z.object({ id: z.string().max(64), userId: z.string().max(64) }), req.params);
+    const p = parse(MemberParams, req.params);
     const c = authz.conversation(p.id);
     if (!c || !authz.isMember(c.id, actor)) throw notFound("Conversation not found");
     if (c.type === "DM") throw badRequest("You can't leave a direct conversation");

@@ -10,6 +10,7 @@ import type { Readable } from "node:stream";
 import { z } from "zod";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
+import { ResolveQuery } from "../../shared/contracts/http/federation.js";
 import { parse } from "../../shared/validation/index.js";
 import { privacyOf } from "../accounts/profile.js";
 import { keyFingerprint } from "../../shared/utilities/crypto.js";
@@ -186,7 +187,7 @@ export async function federationClientRoutes(app: FastifyInstance, ctx: AppConte
   app.get("/v1/federation/resolve", { ...auth, config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req) => {
     const { userId } = me(req);
     if (!fed.userLookupLimit.take(userId)) throw new FederationError(429, "rate_limited", "Too many lookups. Try again in a minute.");
-    const { address } = parse(z.object({ address: z.string().trim().min(3).max(300) }), req.query);
+    const { address } = parse(ResolveQuery, req.query);
     const r = await fed.lookup(address);
     if (r.userId === userId) throw badRequest("That's you");
     const u = ctx.db.prepare("SELECT * FROM users WHERE id = ?").get(r.userId) as any;

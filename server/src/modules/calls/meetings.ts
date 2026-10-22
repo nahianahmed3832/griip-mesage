@@ -2,6 +2,7 @@ import type { ConversationRow } from "../organizations/authz.js";
 import type { AppContext } from "../../app/context.js";
 import { errorKind } from "../administration/ops/metrics.js";
 import { isValidTimeZone } from "../accounts/reminders/schedule.js";
+import { MEETING_INPUT_LIMITS } from "../../shared/contracts/http/meetings.js";
 import { ApiError, badRequest, conflict, forbidden, notFound } from "../../shared/errors.js";
 import { newId, now } from "../../shared/utilities/util.js";
 import { currentOccurrence, type EventRepeat } from "../organizations/eventRepeat.js";
@@ -30,7 +31,7 @@ interface MeetingRow {
   repeat: EventRepeat | null;
 }
 
-export const MEETING_LIMITS = { maxHours: 24, participants: 200, titleChars: 120, descriptionChars: 2000, soonMs: 10 * 60_000, pastGraceMs: 5 * 60_000 } as const;
+export const MEETING_LIMITS = { ...MEETING_INPUT_LIMITS, maxHours: 24, soonMs: 10 * 60_000, pastGraceMs: 5 * 60_000 } as const;
 
 export interface MeetingInput {
   roomId: string;

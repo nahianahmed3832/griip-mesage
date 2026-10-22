@@ -27,6 +27,8 @@ export interface RouteContract {
   status?: number;
   /** Error codes this route is documented to answer with (besides the common ones: bad_request, unauthorized, rate_limited). */
   errors?: readonly ErrorCode[];
+  /** The route exists only with an optional feature: "federation" when FEDERATION_DOMAIN is set. */
+  requires?: "federation";
 }
 
 export const route = (c: RouteContract): RouteContract => c;

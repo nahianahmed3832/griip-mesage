@@ -1,18 +1,16 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import { type AppContext } from "../../../app/context.js";
 import { me, requireAuth } from "../../auth/index.js";
+import { AnalyticsBatch, ExperimentReportQuery } from "../../../shared/contracts/http/experiments.js";
 import { parse } from "../../../shared/validation/index.js";
 import { forbidden } from "../../../shared/errors.js";
 import { type Assignment, assignments, effectiveStatus } from "./assign.js";
 import { EXPERIMENTS } from "./definitions.js";
-import { ANALYTICS_EVENTS, type CleanEvent, cleanEvents, zAnalyticsBatch } from "./events.js";
+import { ANALYTICS_EVENTS, type CleanEvent, cleanEvents } from "./events.js";
 
 /** Analytics batches per person per minute: an app sends one every minute or so at most. */
 const ANALYTICS_RATE_LIMIT = { max: 30, timeWindow: "1 minute" };
 const DAY_MS = 86_400_000;
-/** Longest report window, in days. */
-const MAX_REPORT_DAYS = 400;
 
 /**
  * Experiments and product analytics (docs/product/EXPERIMENTS.md). Off unless the operator turns them on
@@ -45,7 +43,7 @@ export default async function experimentRoutes(app: FastifyInstance, ctx: AppCon
 
   app.post("/v1/analytics/events", { ...auth, config: { rateLimit: ANALYTICS_RATE_LIMIT } }, async (req, reply) => {
     if (!ctx.config.analyticsEnabled) return reply.code(202).send({ accepted: 0, enabled: false });
-    const batch = parse(zAnalyticsBatch, req.body);
+    const batch = parse(AnalyticsBatch, req.body);
     const events = cleanEvents(batch);
     const day = new Date().toISOString().slice(0, 10);
     record(events, batch.platform, assignmentsFor(me(req).userId), day);
@@ -55,7 +53,7 @@ export default async function experimentRoutes(app: FastifyInstance, ctx: AppCon
   app.get("/v1/admin/experiments", auth, async (req) => {
     const { userId } = me(req);
     if (!isPlatformAdmin(userId)) throw forbidden("Only platform administrators can do that");
-    const q = parse(z.object({ days: z.coerce.number().int().min(1).max(MAX_REPORT_DAYS).default(28) }), req.query);
+    const q = parse(ExperimentReportQuery, req.query);
     const from = new Date(Date.now() - (q.days - 1) * DAY_MS).toISOString().slice(0, 10);
     const rows = ctx.db
       .prepare(

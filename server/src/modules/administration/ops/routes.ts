@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import { type AppContext } from "../../../app/context.js";
 import { me, requireAuth } from "../../auth/index.js";
+import { ConnectorParams, LimitsBody, LimitsParams, UsageQuery } from "../../../shared/contracts/http/admin.js";
 import { parse } from "../../../shared/validation/index.js";
 import { ENTITLEMENT_KEYS, type EntitlementKey, isEntitlementKey } from "../entitlements.js";
 import { badRequest, forbidden, notFound } from "../../../shared/errors.js";
@@ -38,7 +38,7 @@ export default async function opsRoutes(app: FastifyInstance, ctx: AppContext, v
   app.post("/v1/admin/connectors/:id/check", auth, async (req) => {
     const userId = me(req).userId;
     requirePlatformAdmin(userId);
-    const { id } = parse(z.object({ id: z.enum(CHECKS) }), req.params);
+    const { id } = parse(ConnectorParams, req.params);
     const result = await checkConnector(ctx, id);
     ctx.audit({ actorId: userId, action: "connector.check", target: id, detail: result.ok ? "ok" : result.errorKind });
     return { result, connectors: await connectorReport(ctx) };
@@ -48,7 +48,7 @@ export default async function opsRoutes(app: FastifyInstance, ctx: AppContext, v
   /** Every workspace with its size and measured usage over [days]: counts only, no content or member names. */
   app.get("/v1/admin/usage", auth, async (req) => {
     requirePlatformAdmin(me(req).userId);
-    const { days } = parse(z.object({ days: z.coerce.number().int().min(1).max(90).default(30) }), req.query);
+    const { days } = parse(UsageQuery, req.query);
     ctx.usage.snapshot();
     const totals = new Map(ctx.usage.totals(days).map((r) => [r.orgId, r.metrics]));
     const orgs = ctx.db.prepare("SELECT id, name, created_at FROM orgs ORDER BY created_at").all() as { id: string; name: string; created_at: number }[];
@@ -65,9 +65,9 @@ export default async function opsRoutes(app: FastifyInstance, ctx: AppContext, v
   app.put("/v1/admin/orgs/:orgId/limits", auth, async (req) => {
     const actor = me(req).userId;
     requirePlatformAdmin(actor);
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const { orgId } = parse(LimitsParams, req.params);
     if (!ctx.db.prepare("SELECT 1 FROM orgs WHERE id = ?").get(orgId)) throw notFound("Workspace not found");
-    const { limits } = parse(z.object({ limits: z.record(z.string(), z.number().int().min(0).nullable()) }), req.body);
+    const { limits } = parse(LimitsBody, req.body);
     const unknown = Object.keys(limits).filter((k) => !isEntitlementKey(k));
     if (unknown.length) throw badRequest(`Unknown limits: ${unknown.join(", ")}`, { known: ENTITLEMENT_KEYS });
     ctx.entitlements.setLimits(orgId, actor, limits as Partial<Record<EntitlementKey, number | null>>, Date.now());
