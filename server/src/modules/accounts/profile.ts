@@ -1,4 +1,5 @@
 import type { AppContext } from "../../app/context.js";
+import { Audience as AudienceEnum, PHONE, PresenceMode as PresenceModeEnum, validBirthday } from "../../shared/contracts/http/users.js";
 
 /**
  * Profiles and who may see each part of them (2026-10-17, docs/PROFILE_AND_PRIVACY.md).
@@ -10,8 +11,8 @@ import type { AppContext } from "../../app/context.js";
  * The username, display name and avatar colour are always visible (conversations need them). Someone the person has
  * blocked sees only those. Birthday and phone start as "nobody", last seen as "contacts", the rest as "everyone".
  */
-export type Audience = "everyone" | "contacts" | "nobody";
-export const AUDIENCES: readonly Audience[] = ["everyone", "contacts", "nobody"];
+export type Audience = (typeof AudienceEnum.options)[number];
+export const AUDIENCES: readonly Audience[] = AudienceEnum.options;
 
 export const PRIVACY_DEFAULTS = {
   photo: "everyone",
@@ -53,7 +54,7 @@ export interface ProfileRow {
 }
 
 /** Batch B6b: what a person chose to appear as. "auto": online while an app is connected. */
-export const PRESENCE_MODES = ["auto", "idle", "dnd", "invisible"] as const;
+export const PRESENCE_MODES = PresenceModeEnum.options;
 export type PresenceMode = (typeof PRESENCE_MODES)[number];
 /** What others see: "offline" also while someone is invisible. */
 export type ShownPresence = "online" | "idle" | "dnd" | "offline";
@@ -174,20 +175,8 @@ export function canSeeLastSeen(ctx: AppContext, viewerId: string, u: ProfileRow)
   return allows(privacyOf(u).lastSeen, relation(ctx, viewerId, u.id));
 }
 
-/** Birthday: a real calendar date, with or without the year; years from 1900 to this year. */
-export function validBirthday(s: string): boolean {
-  const m = /^(?:(\d{4})|-)-(\d{2})-(\d{2})$/.exec(s);
-  if (!m) return false;
-  const year = m[1] ? Number(m[1]) : 2000; // a leap year, so --02-29 is allowed
-  const month = Number(m[2]);
-  const day = Number(m[3]);
-  if (m[1] && (year < 1900 || year > new Date().getUTCFullYear())) return false;
-  const d = new Date(Date.UTC(year, month - 1, day));
-  return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
-}
-
-/** Phone numbers in E.164 form: "+" and 7 to 15 digits, no leading zero after the "+". */
-export const PHONE = /^\+[1-9]\d{6,14}$/;
+/** Birthday and phone rules live with the request schemas (src/shared/contracts/http/users.ts). */
+export { PHONE, validBirthday };
 
 /** JPEG, the only profile photo format (re-encoded on the phone, so metadata is already gone). */
 export function isJpeg(b: Buffer): boolean {

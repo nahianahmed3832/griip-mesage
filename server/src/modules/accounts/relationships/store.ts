@@ -1,11 +1,12 @@
 import type { DB } from "../../../infrastructure/database/db.js";
+import { DmPolicy as DmPolicyEnum, RequestPolicy as RequestPolicyEnum } from "../../../shared/contracts/http/relationships.js";
 
 /** Batch B6 (docs/product/MELDIQ_FRIENDS_AND_DMS_SPEC.md): who is connected, DMs waiting for an answer, messaging settings. */
 export type ConnectionState = "pending" | "accepted";
 export type DmPolicy = "everyone" | "communities" | "connections";
 export type RequestPolicy = "everyone" | "communities" | "nobody";
-export const DM_POLICIES: readonly DmPolicy[] = ["everyone", "communities", "connections"];
-export const REQUEST_POLICIES: readonly RequestPolicy[] = ["everyone", "communities", "nobody"];
+export const DM_POLICIES: readonly DmPolicy[] = DmPolicyEnum.options;
+export const REQUEST_POLICIES: readonly RequestPolicy[] = RequestPolicyEnum.options;
 
 export interface ConnectionRow {
   pair: string;

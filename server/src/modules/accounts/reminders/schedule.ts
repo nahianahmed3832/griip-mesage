@@ -4,7 +4,10 @@
  * Pure functions on top of the runtime's time-zone database (Intl), unit-tested in test/reminders_schedule.test.ts.
  */
 
-export const RECURRENCES = ["daily", "weekdays", "weekly", "monthly"] as const;
+import { isValidTimeZone, LOCAL_DATE, LOCAL_TIME, Recurrence as RecurrenceEnum } from "../../../shared/contracts/http/reminders.js";
+
+export { isValidTimeZone, LOCAL_DATE, LOCAL_TIME };
+export const RECURRENCES = RecurrenceEnum.options;
 export type Recurrence = (typeof RECURRENCES)[number];
 
 /** A repeating reminder's rule: the local time and the first local date it applies from. */
@@ -28,8 +31,6 @@ const DAY_MS = 86_400_000;
 /** How far ahead the next occurrence is searched (a monthly rule on the 31st finds one well within this). */
 const SEARCH_DAYS = 400;
 
-export const LOCAL_TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
-export const LOCAL_DATE = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
@@ -49,17 +50,6 @@ function formatter(timeZone: string): Intl.DateTimeFormat {
     formatters.set(timeZone, f);
   }
   return f;
-}
-
-/** Whether [tz] is an IANA zone this runtime knows ("Asia/Dhaka", "UTC"). */
-export function isValidTimeZone(tz: string): boolean {
-  if (tz.length === 0 || tz.length > 64) return false;
-  try {
-    formatter(tz);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /** The wall-clock fields of instant [ms] in [tz]. */

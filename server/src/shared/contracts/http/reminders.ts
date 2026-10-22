@@ -12,9 +12,9 @@ export const Recurrence = z.enum(["daily", "weekdays", "weekly", "monthly"]);
 export const ReminderState = z.enum(["scheduled", "fired", "done", "dismissed"]);
 
 /** "HH:MM", 24-hour. */
-const LOCAL_TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
+export const LOCAL_TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
 /** "YYYY-MM-DD". */
-const LOCAL_DATE = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+export const LOCAL_DATE = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 /** Whether [tz] is an IANA time zone this runtime knows ("Asia/Dhaka", "UTC"). */
 export function isValidTimeZone(tz: string): boolean {
