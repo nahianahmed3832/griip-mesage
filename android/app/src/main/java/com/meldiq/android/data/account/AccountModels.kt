@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 /*
  * Wire models of the Orbit 2.0 account API (docs/ORBIT_2_ARCHITECTURE_2026-10-18.md §6). They mirror the server's zod
- * schemas in server/src/accounts/schemas.ts. Plain Kotlin with no Android imports, so they can move into a Kotlin
+ * schemas in server/src/shared/contracts/http/accounts.ts (docs/api/openapi.json). Plain Kotlin with no Android imports, so they can move into a Kotlin
  * Multiplatform module for iOS unchanged.
  */
 

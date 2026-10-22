@@ -72,7 +72,7 @@ another module's tables). Both lists may only shrink.
 | `accounts/recovery.ts` | `modules/accounts/recovery.ts` |
 | `accounts/recoveryStore.ts` | `modules/accounts/recoveryStore.ts` |
 | `accounts/routes.ts` | `modules/accounts/routes.ts` |
-| `accounts/schemas.ts` | `modules/accounts/schemas.ts` |
+| `accounts/schemas.ts` | `modules/accounts/schemas.ts`, then (step C2) `shared/contracts/http/accounts.ts` |
 | `accounts/service.ts` | `modules/accounts/service.ts` |
 | `accounts/sessions.ts` | `modules/accounts/sessions.ts` |
 | `accounts/store.ts` | `modules/accounts/store.ts` |
