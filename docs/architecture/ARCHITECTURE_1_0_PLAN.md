@@ -495,7 +495,7 @@ Done area by area in five parallel worktrees (one commit each, cherry-picked her
 | `e948958` | identity modules take enums and rules from the contracts instead of copies | — |
 | `79d0f32` | communities and roles (orgs, members, invites, channels, roles, ownership, usage, plan, audit) | 34 |
 | `1fc9c55` | conversations, search, meetings, admin, experiments, federation client routes (`requires: "federation"`) | 34 |
-| (this step) | one definition each for the user summary, conversation view and community view; tests for the last unexercised routes; recovery codes redacted in fixtures | — |
+| `a51f9ad` | one definition each for the user summary, conversation view and community view; tests for the last unexercised routes; recovery codes redacted in fixtures | — |
 
 Result: **211 of 211 client-facing routes documented and verified at runtime** (every one answered in the suite and
 matched its strict schema); frames 25 of 28. Excluded on purpose: the federation peer protocol, the core node, the
