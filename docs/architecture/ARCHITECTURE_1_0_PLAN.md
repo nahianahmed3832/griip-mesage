@@ -1,6 +1,7 @@
 # Meldiq Architecture 1.0: target architecture and plan (2026-10-22)
 
-**Status: proposed, waiting for the owner's approval.** Nothing in this document is implemented yet. The audit it
+**Status: approved with the owner's decisions of 2026-10-22 (§10).** Phase B is in progress on the local branch
+`architecture-1.0`. The audit it
 rests on is [`ARCHITECTURE_1_0_AUDIT.md`](ARCHITECTURE_1_0_AUDIT.md). Section numbers below follow the brief's list of
 required deliverables (§9): 1 is the audit, 2 to 9 are here.
 
@@ -9,14 +10,14 @@ cleanly, and complexity introduced only when it earns its place.
 
 ## 0. Where the brief and the repository disagree
 
-The audit found four places where the brief describes something the repository doesn't have. Each needs an owner
-decision before the phase that depends on it (§10). The plan below assumes the recommendation.
+The audit found four places where the brief describes something the repository doesn't have. The owner decided
+D1–D3 on 2026-10-22 (§10); the last column is the decision.
 
-| # | Brief says | Repository and production say | Recommendation |
+| # | Brief says | Repository and production say | Decision |
 |---|---|---|---|
-| D1 | Web is an existing Next.js application | Meldiq Web is a **React + Vite single-page app** (`meldiq-web`, static files behind nginx on web.meldiq.app). There is no Next.js code anywhere. | **Keep React + Vite** (ADR 0008 below). The web app is an end-to-end encrypted client: the server can't render its content, so server-side rendering brings nothing, and a framework migration would be a rewrite. |
+| D1 | Web is an existing Next.js application | Meldiq Web is a **React + Vite single-page app** (`meldiq-web`, static files behind nginx on web.meldiq.app). There is no Next.js code anywhere. | **Migrate to Next.js** (owner, ADR 0008 below), incrementally in phase F once the contracts are stable. I recommended keeping Vite (encrypted content can't be server-rendered); the risks are handled in the F0 spike. |
 | D2 | Preserve the existing native iOS stack | `/Volumes/code_files/meldiq_ios` is **empty**. No Swift code exists in any accessible repository. | **Gap report and implementation plan only** in 1.0 (§7.3). Building the app is a separate, owner-approved project. |
-| D3 | MongoDB initially, including message storage | **Production runs on SQLite** (`/healthz` reports `mongodb: null`, checked 2026-10-22). 5 of 12 data domains can run on MongoDB; about 650 SQL statements in 7 domains can't yet. No MongoDB cluster exists. | Keep the existing domain-by-domain move (`MELDIQ_MONGODB_MIGRATION.md`), now as part of the module refactor: every module gets a store interface; MongoDB becomes the production home only after the owner provisions a cluster and approves each cutover. |
+| D3 | MongoDB initially, including message storage | **Production runs on SQLite** (`/healthz` reports `mongodb: null`, checked 2026-10-22). 5 of 12 data domains can run on MongoDB; about 650 SQL statements in 7 domains can't yet. No MongoDB cluster exists. | Keep the existing domain-by-domain move (`MELDIQ_MONGODB_MIGRATION.md`), now as part of the module refactor: every module gets a store interface; The owner provisions **MongoDB Atlas now** (§10); each domain's cutover still needs its own go-ahead. |
 | D4 | The server stores messages | Meldiq is **end-to-end encrypted**. The server stores ciphertext envelopes for at most 7 days (relay queue) and each account's history as ciphertext under opaque tags. It never holds message plaintext. | "Message storage" means the relay queue and the encrypted history store. Both move behind persistence interfaces (§5). Server-side AI cannot read messages (§6). |
 
 ## 2. Target architecture
@@ -253,7 +254,10 @@ different model than the server would use).
 Clients move only after the contract for their area is published (fixtures and OpenAPI exist) and the server passes
 its contract tests. Mixed versions must keep working throughout: no client is forced to update by this work.
 
-### 7.1 Web (React + Vite, repository `meldiq-web`)
+### 7.1 Web (repository `meldiq-web`: React + Vite today, Next.js by ADR 0008)
+
+The contract adoption below comes first, on the current build; the Next.js migration (ADR 0008 steps F0–F3) follows
+on top of it, so each step is testable on its own.
 
 - Generated contract types replace hand-written payload types area by area; the WebSocket client switches on the
   `RealtimeEvent` union; unknown events are ignored.
@@ -341,9 +345,11 @@ MongoDB-capable domains in MongoDB; web typecheck clean, 363 passed / 1 skipped;
 | C2 | C | HTTP schemas, OpenAPI generation, contract tests, fixtures | every route file | No |
 | D1 | D | `RelayStore` (SQLite) behind the messaging use cases | `routes/messages.ts`, `hub.ts`, `jobs.ts` | No |
 | D2 | D | Files store, then `MongoRelayStore`, tests on both stores | `routes/attachments.ts`, `mongo/*` | No (until a cutover) |
+| D3 | D | Atlas connected (no data moved), then owner-approved cutovers domain by domain | VPS `.env`, `admin mongo-migrate` | Data home changes, behaviour doesn't |
 | E1 | E | AI module with FakeProvider, disabled by default, quotas, usage, streaming, cancellation | `modules/ai/*`, `infrastructure/ai-providers/*` | Additive, off |
 | E2 | E | First real provider adapter (owner's choice) | `infrastructure/ai-providers/*` | Off until enabled |
 | F1 | F | Web: generated types, typed realtime handling, remove calls to the retired AI routes | `meldiq-web/src/*` | No visible change |
+| F1n | F | Web: Next.js migration (ADR 0008: spike, shell, routes, build and deploy scripts) | `meldiq-web/*` | No visible change intended |
 | F2 | F | Android: fixture tests, one realtime event type, AI consent sheet | `android/app/src/main/java/.../data/api/*` | AI sheet only |
 | F3 | F | iOS gap report (done here) and, if approved, the app project | new repository | — |
 | G | G | Verification matrix run, parity checklist, release | `docs/architecture/*` | — |
@@ -352,24 +358,48 @@ Existing features affected: none functionally in B, C and D1 (pure moves and typ
 after a cutover. E adds routes behind flags. F changes client internals, with the web's removal of dead AI calls as the
 only visible difference (a Settings entry that already fails today, per the web audit).
 
-## 10. Owner decisions needed
+## 10. Owner decisions (answered 2026-10-22)
 
-1. **D1:** keep React + Vite for the web (recommended) or migrate to Next.js.
-2. **D2:** iOS stays a gap report in 1.0 (recommended) or a native iOS project starts now.
-3. **D3:** when to provision a MongoDB cluster (Atlas M10 in ap-southeast-1 is the earlier recommendation, a monthly
-   cost). Until then the code becomes MongoDB-ready and production stays on SQLite.
-4. **AI provider and first feature** (Amazon Bedrock in the existing AWS account, or a direct provider API), and
-   the first feature (draft help is the smallest that respects encryption).
-5. **Sequencing** against the open batch plan (B13b is next in `MELDIQ_IMPLEMENTATION_PLAN.md`): run Architecture 1.0
-   on its own branch alongside the batches (recommended), or pause the batches.
+| # | Question | Owner's answer | Consequence |
+|---|---|---|---|
+| D1 | Web framework | **Migrate Meldiq Web to Next.js** | ADR 0008 below; phase F gains a web migration track (§7.1) |
+| D2 | iOS | **Gap report and plan only** | §7.3 stays a plan; no iOS code in 1.0 |
+| D3 | MongoDB | **The owner provisions MongoDB Atlas now** | Cutovers are scheduled during phase D, each still with a backup, a rehearsal, a maintenance window and the owner's go-ahead (§5.4) |
+| 5 | Sequencing | **Own branch, alongside the batches** | Local branch `architecture-1.0`; merged into internal-beta only with approval |
+| 4 | AI provider and first feature | Open | Needed before step E2 (E1 runs on the fake provider) |
 
-## ADR 0008 (proposed): keep Meldiq Web on React + Vite
+### What the owner does for Atlas (nothing is sent to Claude)
 
-- **Context:** the brief names Next.js; the existing web app is React + Vite, served as static files, with its own
-  service worker, IndexedDB key storage and WebCrypto.
-- **Decision:** keep React + Vite. Adopt the shared contracts instead.
-- **Why:** every screen shows end-to-end encrypted content that only the browser can decrypt, so server rendering
-  would render empty shells; the current static hosting has no Node process to run, patch or scale; the CSP is strict
-  (`script-src 'self'`) and works today; a migration would touch every file for no user-visible gain.
-- **Revisit when:** a public, SEO-relevant surface is needed (marketing pages, public community previews). Those can
-  be a separate small Next.js site without moving the app.
+1. Create an Atlas project and a dedicated cluster on AWS in **ap-southeast-1** (M10 or larger: replica set, backups,
+   transactions; M0/M2 only for a staging rehearsal).
+2. Create a database user with `readWrite` on the database `meldiq` only.
+3. Network access: allow only the VPS address 72.60.107.88.
+4. Put `MONGODB_URI` (a `mongodb+srv://` address) and `MONGODB_DB=meldiq` into `/opt/griip-internal-messaging/.env` on
+   the VPS yourself, and leave `MONGODB_DOMAINS` empty. Don't paste the URI or password into a chat.
+5. Say when it's done. The first server release after that only connects and prepares collections and indexes
+   (`/healthz` then shows `mongodb: true`); no data moves until a cutover you approve.
+
+First cutover candidates (already run on both stores in CI): preferences, relationships, reports, history,
+accounts. Then files, federation, relay, conversations + workspace, identity, each after its store move in phase D.
+
+## ADR 0008 (accepted 2026-10-22): migrate Meldiq Web to Next.js
+
+- **Context:** the brief names Next.js; the existing web app is React 19 + Vite 7, served as static files by nginx,
+  with a hash router, a custom store, a service worker, IndexedDB key storage and WebCrypto. The owner chose Next.js.
+- **Decision:** move Meldiq Web to Next.js in phase F, after the contracts are stable, without changing behaviour.
+- **How (incremental, no big-bang rewrite):**
+  1. **F0 spike:** a Next.js shell that mounts the existing React tree as one client component, built with static
+     export so hosting stays static files behind nginx. It must keep the current CSP (`script-src 'self'`): Next.js
+     App Router pages emit inline scripts, so the spike decides between the Pages Router (whose page data is a
+     non-executed JSON script), CSP hashes, or a small Node runtime with per-request nonces. The spike also proves
+     the service worker build, IndexedDB/WebCrypto, LiveKit and the E2EE worker, and Safari 16.4+.
+  2. Replace the hash router with Next.js routes screen by screen; keep the engine (`sync/engine.ts`), crypto and
+     store unchanged. All app screens stay client components: content is encrypted, so the server renders only the
+     shell.
+  3. Swap the build and `deploy/scripts/*` to the Next.js output; keep the release, install and rollback scripts'
+     shape so the live release process doesn't change.
+  4. Done when the unit suite, the live suite and the 47 Playwright tests pass on the Next.js build in Chromium,
+     Firefox and WebKit.
+- **Consequences:** a large diff in `meldiq-web`; risk to the strict CSP and to the service worker (handled in F0);
+  the work belongs to the web parity session's release process ([`web-deploys`] rule: check the live release before
+  installing). Public pages (marketing, community previews) can later use server rendering where it helps.
