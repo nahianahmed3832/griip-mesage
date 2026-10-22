@@ -18,7 +18,8 @@ go-ahead (2026-10-22) it was pushed to GitHub and deployed (below).
 **In production since 2026-10-22 01:14 UTC** (owner's go-ahead; `docs/DEPLOYMENT.md`):
 - **API 0.26.0** (B14b, 07:22 UTC; 0.25.0 at 02:31, 0.24.0 at 01:14) on **`https://msg.meldiq.app`**, calls on `wss://rtc.meldiq.app`. The former `msg.griipbuddy.cloud`
   answers too, so apps installed earlier keep working.
-- **Meldiq Web** `0.5.0-beta-ea703df` on `https://web.meldiq.app` (the web parity session's release).
+- **Meldiq Web** `0.5.0-beta-b327e82` on `https://web.meldiq.app` (the web parity session's release, built from meldiq-web
+  `main` `70d7c15`, with B14b's web change).
 - A backup was taken before and after. To roll back, see `docs/DEPLOYMENT.md`.
 
 **For employees:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b14b-production-debug.apk`
@@ -1258,9 +1259,7 @@ Removed as unused after the move: `PinnedMessages.kt` (header pin button and she
 - **Variant:** debug, side by side ("Meldiq Test"), production server `https://msg.meldiq.app`. It contains B4–B16 plus
   B14b and updates the earlier "Meldiq Test" in place.
 - **Server:** API **0.26.0 is in production** (2026-10-22 07:22 UTC, owner's go-ahead; `docs/DEPLOYMENT.md`). It refuses
-  leaving one channel, from any app version. The web's B14b change is in meldiq-web `main` and ships with the web
-  session's next release. Production web is `0.5.0-beta-ea703df` (that session's), whose "Leave channel" now gets the
-  server's refusal.
+  leaving one channel, from any app version. The web's B14b change is live in web `0.5.0-beta-b327e82`.
 
 ### Owner's phone checklist (B14b)
 
