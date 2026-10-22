@@ -1,5 +1,7 @@
 package com.meldiq.android.data.api
 
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialInfo
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -191,7 +193,7 @@ import kotlinx.serialization.json.JsonObject
 /** Who can message you directly, and who can send you requests (Settings › Privacy). */
 @Serializable data class MessagingSettingsDto(val dmPolicy: String = "everyone", val requestPolicy: String = "everyone")
 /** Times a community member out until [until] (epoch ms, at most 28 days ahead), or ends their timeout (null). */
-@Serializable data class TimeoutReq(val until: Long?, val reason: String? = null)
+@Serializable @SendNulls data class TimeoutReq(val until: Long?, val reason: String? = null)
 @Serializable data class TimeoutRes(val userId: String, val timeoutUntil: Long? = null)
 /** A label a forum offers for its posts. The server knows the names; a post's own tags are inside its encrypted message. */
 @Serializable data class ForumTagDto(val id: String, val name: String)
@@ -471,7 +473,7 @@ object CommunityAccess {
 @Serializable data class CategoryRes(val category: CategoryDto? = null)
 @Serializable data class NameReq(val name: String)
 @Serializable data class LayoutChannel(val id: String, val categoryId: String?, val position: Int)
-@Serializable data class LayoutReq(val categories: List<String> = emptyList(), val channels: List<LayoutChannel> = emptyList())
+@Serializable @SendNulls data class LayoutReq(val categories: List<String> = emptyList(), val channels: List<LayoutChannel> = emptyList())
 @Serializable data class LayoutRes(val ok: Boolean = true, val removed: Int = 0, val categories: List<CategoryDto> = emptyList())
 /** An overwrite: for "everyone", a role id, or "user:<id>"; [kind] everyone | role | member. */
 @Serializable data class OverwriteDto(
@@ -584,6 +586,16 @@ object CommunityAccess {
 /** Voice rooms (round 6): raise or lower your hand; a manager's moderation of someone. */
 @Serializable data class HandReq(val raised: Boolean)
 @Serializable data class ModerateReq(val userId: String, val action: String)
+
+/**
+ * On a request model whose nulls mean "clear it" where the server requires the key (`z.….nullable()`): its body is
+ * sent with explicit nulls ([encodeBody]); GriipJson would leave them out and the server would refuse the request.
+ * RequestContractTest finds the models that need it.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+@SerialInfo
+@Target(AnnotationTarget.CLASS)
+annotation class SendNulls
 
 @Serializable data class ApiErrorBody(val error: ApiErrorDetail? = null)
 @Serializable data class ApiErrorDetail(val code: String = "", val message: String = "", val details: JsonElement? = null)

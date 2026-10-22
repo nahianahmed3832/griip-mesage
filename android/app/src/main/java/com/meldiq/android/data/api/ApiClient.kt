@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.serializer
@@ -28,6 +29,13 @@ val GriipJson = Json {
     encodeDefaults = true
     coerceInputValues = true
 }
+
+/** GriipJson that writes nulls, for the [SendNulls] request models. */
+private val GriipJsonWithNulls = Json(GriipJson) { explicitNulls = true }
+
+/** A request body as JSON: GriipJson leaves nulls out, except in a [SendNulls] model, where a null clears a value. */
+fun <B> encodeBody(ser: KSerializer<B>, body: B): String =
+    (if (ser.descriptor.annotations.any { it is SendNulls }) GriipJsonWithNulls else GriipJson).encodeToString(ser, body)
 
 /**
  * REST client. Bearer session token; on 401 it re-authenticates once by signing a fresh server
@@ -54,12 +62,12 @@ class ApiClient(
     private val jsonType = "application/json".toMediaType()
 
     suspend inline fun <reified T> get(path: String): T = request("GET", path, null, serializer<T>())
-    suspend inline fun <reified B, reified T> post(path: String, body: B): T = request("POST", path, GriipJson.encodeToString(serializer<B>(), body), serializer<T>())
+    suspend inline fun <reified B, reified T> post(path: String, body: B): T = request("POST", path, encodeBody(serializer<B>(), body), serializer<T>())
     suspend inline fun <reified T> post(path: String): T = request("POST", path, "{}", serializer<T>())
-    suspend inline fun <reified B, reified T> put(path: String, body: B): T = request("PUT", path, GriipJson.encodeToString(serializer<B>(), body), serializer<T>())
-    suspend inline fun <reified B, reified T> patch(path: String, body: B): T = request("PATCH", path, GriipJson.encodeToString(serializer<B>(), body), serializer<T>())
+    suspend inline fun <reified B, reified T> put(path: String, body: B): T = request("PUT", path, encodeBody(serializer<B>(), body), serializer<T>())
+    suspend inline fun <reified B, reified T> patch(path: String, body: B): T = request("PATCH", path, encodeBody(serializer<B>(), body), serializer<T>())
     suspend inline fun <reified T> delete(path: String): T = request("DELETE", path, null, serializer<T>())
-    suspend inline fun <reified B, reified T> delete(path: String, body: B): T = request("DELETE", path, GriipJson.encodeToString(serializer<B>(), body), serializer<T>())
+    suspend inline fun <reified B, reified T> delete(path: String, body: B): T = request("DELETE", path, encodeBody(serializer<B>(), body), serializer<T>())
 
     suspend fun <T> request(method: String, path: String, body: String?, de: kotlinx.serialization.KSerializer<T>, auth: Boolean = true): T {
         val first = execute(method, path, body?.toRequestBody(jsonType), auth)

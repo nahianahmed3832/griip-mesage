@@ -4,8 +4,8 @@ import kotlinx.serialization.Serializable
 
 // ───────── Round 7 slice C5 (docs/WORKSPACE_C5.md): guests, meetings (templates and user groups were retired) ─────────
 
-@Serializable data class GuestPolicyReq(val guestsAllowed: Boolean, val guestMaxDays: Int? = null)
-@Serializable data class GuestExpiryReq(val expiresAt: Long?)
+@Serializable @SendNulls data class GuestPolicyReq(val guestsAllowed: Boolean, val guestMaxDays: Int? = null)
+@Serializable @SendNulls data class GuestExpiryReq(val expiresAt: Long?)
 
 @Serializable data class MeetingPersonDto(val id: String, val name: String? = null, val response: String? = null)
 @Serializable data class MeetingRoomDto(val id: String, val name: String? = null)

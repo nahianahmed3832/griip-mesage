@@ -1,0 +1,5 @@
+# Request-body gaps known when written (RequestContractTest); may only shrink. Key, a tab, then why it's safe.
+POST /v1/orgs/{orgId}/meetings MeetingReq.rev	# null when creating, so never sent (MeetingReq is shared with the edit)
+PUT /v1/history/items HistoryPutReq.items[].body	# HistorySync always sets it (a sealed record); deletions use DELETE
+PUT /v1/history/items HistoryPutReq.items[].seq	# HistoryItemDto doubles as the answer's item; seq is the server's, ignored on upload
+PUT /v1/meetings/{id} MeetingReq.rev	# an edit always has the meeting's rev (MeetingDto.rev isn't nullable)
