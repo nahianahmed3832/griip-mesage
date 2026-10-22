@@ -115,6 +115,13 @@ Not verifiable on production yet: no one can connect an app there (`integrations
 provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
 `up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
 
+### nginx security headers (2026-10-22, 03:16 UTC, batch B15)
+
+`deploy/nginx/meldiq-msg.conf` adds `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` to
+msg.meldiq.app and rtc.meldiq.app. The previous file is `/etc/nginx/sites-available/meldiq-msg.conf.pre-b15`. After
+`nginx -t` and a reload, `/healthz` answered 0.25.0 with both headers. The API container was not restarted. To revert,
+copy the `.pre-b15` file back, then run `nginx -t && systemctl reload nginx`.
+
 ### API 0.25.0 and Meldiq Web e9f8d2b (2026-10-22, 02:31 UTC, owner's go-ahead)
 
 Batch B14 (`internal-beta` `22d5303`): voice channels take no messages (`403 voice_channel`; the call's encrypted controls

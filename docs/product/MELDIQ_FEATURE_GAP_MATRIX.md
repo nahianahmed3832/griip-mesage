@@ -202,5 +202,5 @@ Meldiq differs from Discord by design in two ways:
 | PLAT-03 | S3 for file bytes | IT | Production bucket in ap-southeast-1; CORS fix confirmed on production (web) |
 | PLAT-04 | Infrastructure as code | S | `MELDIQ_AWS_ARCHITECTURE.md` |
 | PLAT-05 | AI service boundary | S | `MELDIQ_AI_ARCHITECTURE.md`; nothing reads encrypted content |
-| PLAT-06 | Workplace modules removed | I | Android and server (API 0.12.0); **web still has AI, workflows, documents and inbox screens**, to remove in the web community rebuild |
-| PLAT-07 | Final quality gate: coverage audit, journeys, security, MongoDB and AWS, hardware calls, performance, release readiness (no deploy) | S | Owner request 2026-10-22: `MELDIQ_BACKLOG_B14_B16_B15.md` §B15. Always the last batch |
+| PLAT-06 | Workplace modules removed | I | Android and server (API 0.12.0); **web still has AI, workflows, documents and inbox screens** (hidden: `canViewApps: false`), to remove in the web community rebuild; B15 removed their mentions from the web intro and start checklist (meldiq-web `1988d91`) |
+| PLAT-07 | Final quality gate: coverage audit, journeys, security, MongoDB and AWS, hardware calls, performance, release readiness (no deploy) | I | B15 2026-10-22: `MELDIQ_RELEASE_READINESS.md`. Not phone-tested; hardware calls, live S3 and the MongoDB cutover open |

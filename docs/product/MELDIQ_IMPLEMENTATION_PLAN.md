@@ -39,7 +39,7 @@ go-ahead (`docs/DEPLOYMENT.md`).
 | B13 | Integration and stability: security pass with three fixes, both-store regression, web parity notes; files domain to MongoDB left for its own batch | **Done (server only); waiting for the owner's phone test of B4–B13** (2026-10-22) |
 | B14 | Minimal DM screen and details, voice channels as rooms (owner's go-ahead to start without the B13 phone test) | **Built; APK ready; stopped for the owner's phone test** (2026-10-22) |
 | B16 | Transitions and interaction polish (motion tokens, list motion, media size reservation, tab bar, reduced motion) | **Built; APK ready; stopped for the owner's phone test** (2026-10-22) |
-| B15 | Final quality gate (`MELDIQ_BACKLOG_B14_B16_B15.md`) | Last; starts when the owner says so |
+| B15 | Final quality gate (`MELDIQ_BACKLOG_B14_B16_B15.md`): coverage, isolation tests, header fix, restore test, read-only AWS review, release readiness (`MELDIQ_RELEASE_READINESS.md`) | **Done; APK ready; stopped for the owner's phone test** (2026-10-22) |
 
 > **Gate changed 2026-10-21 23:13:** the owner asked for the remaining batches to be built one after another without
 > waiting, and to phone-test them all together at the end. Each batch is still committed on its own, with its own APK

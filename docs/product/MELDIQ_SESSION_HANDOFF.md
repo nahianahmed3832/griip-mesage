@@ -21,12 +21,15 @@ go-ahead (2026-10-22) it was pushed to GitHub and deployed (below).
 - **Meldiq Web** `0.2.4-beta-e9f8d2b` on `https://web.meldiq.app`.
 - A backup was taken before and after. To roll back, see `docs/DEPLOYMENT.md`.
 
-**For employees:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b16-production-debug.apk`
-(B4–B16). It's "Meldiq Test" (debug-signed, installs next to the regular app) and talks only to
+**For employees:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b15-production-debug.apk`
+(B4–B16; byte-identical to the B16 file, as B15 changed no Android code). It's "Meldiq Test" (debug-signed, installs next to the regular app) and talks only to
 `https://msg.meldiq.app`. **SHA-256:** `849ffbb39cd1d2592771b78bed09f0c0f26dab7b4591461c80b8e3c0fc615992`. The
-checklists are in §6n (B14) and §6o (B16).
-- Registration is by invitation: a community owner's invite code, or `admin.js reg-invite` on the server
-  (`docs/DEPLOYMENT.md`).
+checklists are in §6n (B14), §6o (B16) and §6p (B15).
+- **Registration on production is open** (`REGISTRATION_MODE=open`, found in B15): anyone who reaches the server
+  can sign up with a verified email. Switching to invitation only (a community invite code or `admin.js reg-invite`)
+  is the owner's call (`MELDIQ_RELEASE_READINESS.md` §5).
+- Account emails come from `Meldiq <no-reply@meldiq.app>` (Hostinger Mail) since 2026-10-19 14:10 UTC. Older ones
+  in an inbox show `Orbit <no-reply@griipbuddy.cloud>` (SES, before the switch).
 - For the regular Meldiq app, sign a release in Android Studio from the main folder. Release builds now default to
   `msg.meldiq.app`. Check your versionCode and versionName first.
 
@@ -52,6 +55,7 @@ src/index.ts`, `adb reverse tcp:8080 tcp:8080`).
 | B13 | `1c92e93` | Server fixes only: nothing new to try on the phone | §6m |
 | B14 | `22d5303` | Minimal DM screen and details, voice channels as rooms | §6n |
 | B16 | `5733864` | Transitions and interaction polish | §6o |
+| B15 | see §6p | Final gate: isolation, removal, sign-out, email sender, calls on two phones | §6p |
 
 **Waiting on you:**
 - the phone tests above, as pass or fail per batch;
@@ -59,8 +63,8 @@ src/index.ts`, `adb reverse tcp:8080 tcp:8080`).
 - two-step sign-in's design (§6l);
 - when to move the files domain to MongoDB (§6m).
 
-**After that:** B14 (minimal DM screen), then B16 (transitions), then B15 (final quality gate), each after your
-approval of the one before (`MELDIQ_BACKLOG_B14_B16_B15.md`).
+**B14, B16 and B15 are built** (owner's go-ahead to run them without waiting). B15's release-readiness report is
+`MELDIQ_RELEASE_READINESS.md`. Next: your phone tests of B4–B16, then the decisions in that report's §5 and §13.
 
 ## 1. Repositories and branches
 
@@ -1114,6 +1118,81 @@ So B16 fixes the gaps rather than adding effects everywhere.
 8. **Animations off:** Settings › Accessibility › Remove animations, then repeat 1–3. **Expected:** everything
    switches instantly and works.
 9. **Report back:** pass or fail per step, with screen recordings if something feels slow.
+
+## 6p. Batch B15: final quality gate (2026-10-22, not phone-tested)
+
+Specification: `MELDIQ_BACKLOG_B14_B16_B15.md` §B15. The full report is `MELDIQ_RELEASE_READINESS.md`; this section is
+the summary and the checklist.
+
+### What was done
+
+- **Coverage audit:** Android has no placeholder screens or callbacks. The web intro and start checklist still
+  advertised retired tools and HR; fixed in meldiq-web `1988d91`, pushed but **not deployed**.
+- **Security:** new `server/test/b15_isolation.test.ts` covers three cases:
+  - every B4–B14 community route is refused to outsiders;
+  - removal takes access away at once, and nothing is queued for the removed member afterwards;
+  - logout ends the token.
+- **Production:** `nosniff` and `Referrer-Policy: no-referrer` added to the API and LiveKit sites. This was **applied
+  on the VPS** (header-only; the previous file is `meldiq-msg.conf.pre-b15`; the revert command is in the report §2).
+- **Findings for the owner:**
+  - `REGISTRATION_MODE=open` and `APP_ENV` unset on production (report §5);
+  - SES is still in the sandbox, and its only domain is griipbuddy.cloud. Mail correctly goes through Hostinger as
+    meldiq.app (report §6).
+- **Backup restore test:** the latest production backup was restored into the project's rehearsal folder, with no
+  network: integrity ok, schema 44, 33 users, 6 orgs, 43 conversations. The copy was deleted.
+- **AWS (read-only):** the bucket is private and encrypted; the IAM runtime user is scoped and bounded; the root
+  access key is still present (owner).
+- **Dependencies:** `npm audit` shows 0 vulnerabilities for the server and the web.
+
+### Regression
+
+| Suite | Result |
+|---|---|
+| Server, SQLite and MongoDB domains | 714 passed and 10 skipped on each (the 9 `s3_live` tests need the test bucket; 1 needs a live MongoDB) |
+| Server type check | clean |
+| Web | tsc and eslint clean, 262 tests |
+| Android | 650 tests, 0 failures; lint 0 errors |
+
+### B15 APK
+
+- **File:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b15-production-debug.apk`
+  (148 MB).
+- **SHA-256:** `849ffbb39cd1d2592771b78bed09f0c0f26dab7b4591461c80b8e3c0fc615992`. This is the same as B16's, because
+  B15 changed no Android code.
+- **Variant:** debug, side by side ("Meldiq Test", `com.meldiq.android.test`, 0.5.0-beta), production server
+  `https://msg.meldiq.app`.
+
+### Owner's phone checklist (B15)
+
+Run the B14 (§6n) and B16 (§6o) checklists first, then these:
+
+1. **Isolation:** with two accounts in different communities, open the other community's private channel link.
+   **Expected:** no access, nothing shown.
+2. **Removal:** remove the second phone's account from a community while it has the community open. **Expected:** its
+   channels disappear at once, and later messages never arrive.
+3. **Sign out and back in:** **Expected:** the session ends, and history comes back from the key backup.
+4. **Email:** register or reset a password with a fresh address. **Expected:** the sender is `no-reply@meldiq.app`.
+   If griipbuddy.cloud appears, send the email's date and full headers.
+5. **Calls on two real phones:**
+   - camera switch;
+   - remote video;
+   - a group of three;
+   - screen share;
+   - reconnect after switching Wi-Fi to mobile data.
+6. **Report back:** pass or fail per step.
+
+### Gate (8 points)
+
+1. Statuses: **met.**
+2. Journeys: **partly.** API-level tests only; phone runs are yours.
+3. Security: **met for the code.** Open registration is your decision.
+4. MongoDB and AWS: **met within limits.** No cutover, no live S3 test, no off-site restore.
+5. Regressions: **met.**
+6. Builds and tests recorded: **met.**
+7. APK: **met.**
+8. Limits stated: **met.**
+
+**Stopped here** for the owner's test. No further deploy.
 
 ## 7. Things the owner should know (carried over)
 
