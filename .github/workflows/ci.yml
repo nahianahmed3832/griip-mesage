@@ -44,10 +44,10 @@ jobs:
       # fetched by mongodb-memory-server). No shared or production database, no credentials.
       - name: Unit and integration tests
         run: npm test
-      - name: The same tests with accounts, preferences and integrations in MongoDB (docs/MONGODB.md)
+      - name: The same tests with the MongoDB-capable domains in MongoDB (docs/MONGODB.md, docs/product/MELDIQ_MONGODB_MIGRATION.md)
         run: npm test
         env:
-          MELDIQ_TEST_MONGO_DOMAINS: accounts,preferences,integrations
+          MELDIQ_TEST_MONGO_DOMAINS: accounts,preferences,history,reports,relationships
       - name: Build
         run: npm run build
 
