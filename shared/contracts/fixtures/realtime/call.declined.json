@@ -1,0 +1,22 @@
+{
+  "t": "call",
+  "event": "declined",
+  "call": {
+    "id": "call_mQqrylK95wdWBVx1GS0SEA",
+    "conversationId": "c_vC0H9DizFoXLVNp15wR5ew",
+    "conversationType": "GROUP",
+    "createdBy": "u_-l7VxfZHJ1X_Q4_L4kordg",
+    "video": false,
+    "state": "RINGING",
+    "createdAt": 1792676041489,
+    "answeredAt": null,
+    "alertedAt": null,
+    "endedAt": null,
+    "endReason": null,
+    "participants": [],
+    "voiceRoom": false,
+    "hands": []
+  },
+  "userId": "u_dN8lbw2ZgRPlMX8r6eZl1w",
+  "reason": "busy"
+}

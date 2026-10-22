@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { fixtureName } from "../../scripts/contracts.js";
 import type { ContractObserver } from "../../src/app/contractObserver.js";
 import { ErrorEnvelope, ROUTE_CONTRACTS, type RouteContract } from "../../src/shared/contracts/http/index.js";
 import { ServerEvent } from "../../src/shared/contracts/realtime.js";
@@ -64,7 +65,7 @@ export function contractCheck(): ContractCheck {
       if (!contract || status !== (contract.status ?? 200)) return;
       const r = contract.response.safeParse(json);
       if (!r.success) return note(where, r.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; "));
-      sample(`http/${fileName(`${method} ${url}`)}`, json);
+      sample(`http/${fixtureName(method, url)}`, json);
     },
     frame: (e) => {
       const r = ServerEvent.safeParse(e);
@@ -81,10 +82,6 @@ export function contractCheck(): ContractCheck {
       if (violations.length) throw new Error(`Contract violations (src/shared/contracts):\n${violations.join("\n")}`);
     },
   };
-}
-
-function fileName(key: string): string {
-  return key.replace(/[/:]+/g, "_").replace(/\s+/g, "").replace(/_+/g, "_").replace(/^_|_$/g, "");
 }
 
 function redact(v: unknown): unknown {

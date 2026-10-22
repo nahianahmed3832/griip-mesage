@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { API_DOCS, renderContracts } from "../scripts/contracts.js";
+import { API_DOCS, fixtureName, renderContracts } from "../scripts/contracts.js";
 import { ErrorEnvelope, ROUTE_CONTRACTS } from "../src/shared/contracts/http/index.js";
 import { ServerEvent } from "../src/shared/contracts/realtime.js";
 import { FIXTURES } from "./support/contracts.js";
@@ -43,7 +43,7 @@ describe("contracts", () => {
   });
 
   it("keeps every golden fixture valid against its schema", () => {
-    const byFile = new Map(ROUTE_CONTRACTS.map((c) => [`${c.method} ${c.url}`.replace(/[/:]+/g, "_").replace(/\s+/g, "").replace(/_+/g, "_").replace(/^_|_$/g, ""), c]));
+    const byFile = new Map(ROUTE_CONTRACTS.map((c) => [fixtureName(c.method, c.url), c]));
     const files = walk(FIXTURES).filter((f) => f.endsWith(".json"));
     expect(files.length).toBeGreaterThan(0);
     const bad: string[] = [];
