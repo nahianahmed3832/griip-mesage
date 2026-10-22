@@ -130,7 +130,7 @@ Batches B4–B13 (`internal-beta`, docs/product/MELDIQ_SESSION_HANDOFF.md §0) a
 | Config | `.env`: `PUBLIC_API_URL=https://msg.meldiq.app`, `LIVEKIT_PUBLIC_URL=wss://rtc.meldiq.app`; `validate-env.sh` 0 errors (the 2 usual warnings) |
 | Switch | `compose.yaml` image 0.24.0, `config -q`, `up -d --no-deps --no-build api`; healthy; LiveKit and ntfy not restarted |
 | Checks after | `/healthz` 0.24.0 on msg.meldiq.app and msg.griipbuddy.cloud; restarts 0; no warnings or errors in the log; every feature flag the Android app checks is listed (except `push-unifiedpush`, off before too: `PUSH_UNIFIEDPUSH_HOSTS` isn't set); new routes refuse requests without a session; `reports.key` created; `backups/post-0.24.0-*` verified (schema 44) and includes `reports.key` |
-| Web | release `0.2.4-beta-6ecfc81` installed for web.meldiq.app (CSP `connect-src` adds rtc.meldiq.app); `verify.sh` all checks passed, API through the web origin 0.24.0 |
+| Web | release `0.2.4-beta-6ecfc81` (the same code as meldiq-web `dbf67ce` on GitHub: the commit messages were cleaned after the build) installed for web.meldiq.app (CSP `connect-src` adds rtc.meldiq.app); `verify.sh` all checks passed, API through the web origin 0.24.0 |
 
 Rollback: `image: griip-internal-messaging-api:0.13.0-rollback`, then `up -d --no-deps --no-build api`. Migrations 034–044 only
 add tables and columns, which 0.13.0 ignores. The `.env` addresses can stay (both names reach the same server). The web
