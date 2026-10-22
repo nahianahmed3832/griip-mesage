@@ -6,9 +6,12 @@ import { pipeline } from "node:stream/promises";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { hasNewAccountLimits, HOUR_MS, SlidingWindow } from "../../app/middleware/abuse.js";
-import { type AppContext, me, parse, requireAuth } from "../../app/context.js";
+import { type AppContext } from "../../app/context.js";
+import { me, requireAuth } from "../auth/index.js";
+import { parse } from "../../shared/validation/index.js";
 import type { BlobKind } from "../../infrastructure/storage/index.js";
-import { ApiError, badRequest, newId, notFound, now } from "../../shared/utilities/util.js";
+import { ApiError, badRequest, notFound } from "../../shared/errors.js";
+import { newId, now } from "../../shared/utilities/util.js";
 
 /**
  * Encrypted attachment relay. Clients encrypt files locally (AES-256-GCM, key travels inside the

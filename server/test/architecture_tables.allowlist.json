@@ -54,6 +54,8 @@
   "modules/administration/usage/meter.ts -> devices",
   "modules/administration/usage/meter.ts -> org_members",
   "modules/administration/usage/meter.ts -> orgs",
+  "modules/auth/index.ts -> devices",
+  "modules/auth/index.ts -> users",
   "modules/auth/routes.ts -> account_sessions",
   "modules/auth/routes.ts -> conversation_members",
   "modules/auth/routes.ts -> delivery_queue",

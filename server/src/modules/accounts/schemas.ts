@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { zKey, zName, zSig } from "../../app/context.js";
+import { zKey, zName, zSig } from "../../shared/validation/index.js";
 import { PASSWORD_MAX_LENGTH } from "./passwords.js";
 
 /**

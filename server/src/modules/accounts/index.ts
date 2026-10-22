@@ -1,4 +1,5 @@
-import type { AppContext, AuthInfo } from "../../app/context.js";
+import type { AppContext } from "../../app/context.js";
+import type { AuthInfo } from "../auth/index.js";
 import { now } from "../../shared/utilities/util.js";
 import { IdentityService } from "./identity.js";
 import { LegacyMigrationService } from "./legacy.js";

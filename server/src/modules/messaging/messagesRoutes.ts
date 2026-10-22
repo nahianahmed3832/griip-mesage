@@ -1,10 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { REQUEST_MESSAGE_LIMIT } from "../accounts/relationships/rules.js";
 import { z } from "zod";
-import { type AppContext, me, parse, requireAuth, zB64, zKey, zSig } from "../../app/context.js";
+import { type AppContext } from "../../app/context.js";
+import { me, requireAuth } from "../auth/index.js";
+import { parse, zB64, zKey, zSig } from "../../shared/validation/index.js";
 import { canonical, verifyEd25519 } from "../../shared/utilities/crypto.js";
 import { type QueueItemRow, queueItemToWire } from "../realtime/hub.js";
-import { ApiError, conflict, forbidden, now } from "../../shared/utilities/util.js";
+import { ApiError, conflict, forbidden } from "../../shared/errors.js";
+import { now } from "../../shared/utilities/util.js";
 import { MENTION_ALL_MESSAGES, mentionAllPermission, mentionAllRateLimited } from "./mentions.js";
 
 const MAX_CIPHERTEXT_B64 = 128 * 1024; // ≈ 96 KiB of ciphertext per message (attachments go via /v1/attachments)

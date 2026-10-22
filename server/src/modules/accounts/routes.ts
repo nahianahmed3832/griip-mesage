@@ -1,8 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { type AppContext, bearer, parse } from "../../app/context.js";
+import { type AppContext } from "../../app/context.js";
+import { bearer } from "../auth/index.js";
+import { parse } from "../../shared/validation/index.js";
 import { removePushEndpoint } from "../notifications/service.js";
-import { notFound, now, unauthorized } from "../../shared/utilities/util.js";
+import { notFound, unauthorized } from "../../shared/errors.js";
+import { now } from "../../shared/utilities/util.js";
 import { DELETE_ACCOUNT_RATE_LIMIT, deleteOwnAccount } from "./deletion.js";
 import type { Accounts } from "./index.js";
 import {

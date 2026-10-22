@@ -1,9 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { type ConversationRow, parsePermissionList } from "./authz.js";
-import { type AppContext, me, parse, requireAuth, zName, zText } from "../../app/context.js";
+import { type AppContext } from "../../app/context.js";
+import { me, requireAuth } from "../auth/index.js";
+import { parse, zName, zText } from "../../shared/validation/index.js";
 import { memberView } from "../accounts/profile.js";
-import { ApiError, badRequest, conflict, forbidden, humanCode, newId, notFound, now, sha256Hex } from "../../shared/utilities/util.js";
+import { ApiError, badRequest, conflict, forbidden, notFound } from "../../shared/errors.js";
+import { humanCode, newId, now, sha256Hex } from "../../shared/utilities/util.js";
 import { activityAlert, noteJoin } from "./activityAlerts.js";
 import { joinQuestions } from "./applicationsRoutes.js";
 import { guideOf } from "./guideRoutes.js";

@@ -1,7 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { type AppContext, me, parse, requireAuth } from "../../../app/context.js";
-import { forbidden } from "../../../shared/utilities/util.js";
+import { type AppContext } from "../../../app/context.js";
+import { me, requireAuth } from "../../auth/index.js";
+import { parse } from "../../../shared/validation/index.js";
+import { forbidden } from "../../../shared/errors.js";
 import { type Assignment, assignments, effectiveStatus } from "./assign.js";
 import { EXPERIMENTS } from "./definitions.js";
 import { ANALYTICS_EVENTS, type CleanEvent, cleanEvents, zAnalyticsBatch } from "./events.js";

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
-import { type AppContext, type AuthInfo, authenticateToken, stillAuthenticated } from "../../app/context.js";
+import { type AppContext } from "../../app/context.js";
+import { type AuthInfo, authenticateToken, stillAuthenticated } from "../auth/index.js";
 import { canSeeLastSeen, presenceModeOf, type ProfileRow, shownPresence } from "../accounts/profile.js";
 import { acknowledge } from "../messaging/messagesRoutes.js";
 import { now } from "../../shared/utilities/util.js";

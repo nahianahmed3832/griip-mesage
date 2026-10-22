@@ -1,9 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { type AppContext, me, parse, requireAuth } from "../../../app/context.js";
+import { type AppContext } from "../../../app/context.js";
+import { me, requireAuth } from "../../auth/index.js";
+import { parse } from "../../../shared/validation/index.js";
 import { availableUser, blockedEitherWay, notAvailable, requestAllowed, requireRequestBudget, settingsOf, sharesCommunity } from "./rules.js";
 import { type ConnectionRow, DM_POLICIES, type MessagingSettings, pairOf, REQUEST_POLICIES } from "./store.js";
-import { ApiError, badRequest, notFound, now } from "../../../shared/utilities/util.js";
+import { ApiError, badRequest, notFound } from "../../../shared/errors.js";
+import { now } from "../../../shared/utilities/util.js";
 import { userSummary } from "../../auth/routes.js";
 import { notifyConversation } from "../../organizations/orgsRoutes.js";
 

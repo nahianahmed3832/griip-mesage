@@ -1,8 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { type AppContext, me, parse, requireAuth } from "../../../app/context.js";
+import { type AppContext } from "../../../app/context.js";
+import { me, requireAuth } from "../../auth/index.js";
+import { parse } from "../../../shared/validation/index.js";
 import { REPORT_REASONS, type ReportRow } from "./store.js";
-import { ApiError, badRequest, newId, notFound, now } from "../../../shared/utilities/util.js";
+import { ApiError, badRequest, notFound } from "../../../shared/errors.js";
+import { newId, now } from "../../../shared/utilities/util.js";
 
 /**
  * Reports (batch B4, docs/product/MELDIQ_FULLSTACK_SPEC.md §2.2; Discord reference CHAT-MSG-003, FRIEND-CTRL-011).

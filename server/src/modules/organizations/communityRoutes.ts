@@ -1,7 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { ConversationRow } from "./authz.js";
-import { type AppContext, me, parse, requireAuth } from "../../app/context.js";
+import { type AppContext } from "../../app/context.js";
+import { me, requireAuth } from "../auth/index.js";
+import { parse } from "../../shared/validation/index.js";
 import { BASE_ROLE_PERMISSIONS, type Permission, permissionDef } from "./permissions/catalog.js";
 import {
   CHANNEL_CAPABILITIES,
@@ -13,7 +15,8 @@ import {
   USER_PREFIX,
 } from "./permissions/channel.js";
 import { banAllowed, timeoutAllowed } from "./roleRules.js";
-import { ApiError, badRequest, conflict, forbidden, newId, notFound, now } from "../../shared/utilities/util.js";
+import { ApiError, badRequest, conflict, forbidden, notFound } from "../../shared/errors.js";
+import { newId, now } from "../../shared/utilities/util.js";
 import { noteJoin } from "./activityAlerts.js";
 import { joinQuestions } from "./applicationsRoutes.js";
 import { evictFromCall, evictRemovedMember, type CallRow } from "../calls/routes.js";

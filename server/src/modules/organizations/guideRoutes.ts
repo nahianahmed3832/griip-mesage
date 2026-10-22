@@ -1,7 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { type AppContext, me, parse, requireAuth } from "../../app/context.js";
-import { ApiError, forbidden, newId } from "../../shared/utilities/util.js";
+import { type AppContext } from "../../app/context.js";
+import { me, requireAuth } from "../auth/index.js";
+import { parse } from "../../shared/validation/index.js";
+import { ApiError, forbidden } from "../../shared/errors.js";
+import { newId } from "../../shared/utilities/util.js";
 import { notifyOrg } from "./orgsRoutes.js";
 
 /**

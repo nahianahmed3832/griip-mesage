@@ -1,5 +1,6 @@
 import type { AppContext } from "../../../app/context.js";
-import { ApiError, now } from "../../../shared/utilities/util.js";
+import { ApiError } from "../../../shared/errors.js";
+import { now } from "../../../shared/utilities/util.js";
 import { nextOccurrence, type Recurrence, type RepeatRule, retryDelayMs } from "./schedule.js";
 
 /** Reminders a person may have waiting (scheduled or fired) at once. */

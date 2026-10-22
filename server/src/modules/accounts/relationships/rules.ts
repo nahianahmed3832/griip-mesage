@@ -1,5 +1,5 @@
 import type { AppContext } from "../../../app/context.js";
-import { ApiError } from "../../../shared/utilities/util.js";
+import { ApiError } from "../../../shared/errors.js";
 import type { MessagingSettings } from "./store.js";
 
 /**

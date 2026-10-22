@@ -14,7 +14,8 @@ import { canonical, isValidPublicKey, verifyEd25519 } from "../../shared/utiliti
 import type { QueueItemRow } from "../realtime/hub.js";
 import { type CallRow, callView } from "../calls/routes.js";
 import { readAll } from "../../infrastructure/storage/blobstore.js";
-import { ApiError, now } from "../../shared/utilities/util.js";
+import { ApiError } from "../../shared/errors.js";
+import { now } from "../../shared/utilities/util.js";
 import { type ServerDescriptor, ServerIdentity, verifyServerText } from "./identity.js";
 import { FederationError, type ResolvedServer, Resolver } from "./resolver.js";
 import { sha256b64 } from "./sign.js";

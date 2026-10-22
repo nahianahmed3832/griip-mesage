@@ -5,7 +5,7 @@ import type { Readable } from "node:stream";
 import type { FastifyRequest } from "fastify";
 import type { AppContext } from "../../app/context.js";
 import { isJpeg } from "./profile.js";
-import { ApiError, badRequest } from "../../shared/utilities/util.js";
+import { ApiError, badRequest } from "../../shared/errors.js";
 
 /** Largest photo accepted, a person's or an organisation's (the app sends a 512 px JPEG of about 60 KB). */
 export const MAX_PHOTO_BYTES = 512 * 1024;

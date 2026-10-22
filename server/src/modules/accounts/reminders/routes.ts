@@ -1,7 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { type AppContext, me, parse, requireAuth } from "../../../app/context.js";
-import { badRequest } from "../../../shared/utilities/util.js";
+import { type AppContext } from "../../../app/context.js";
+import { me, requireAuth } from "../../auth/index.js";
+import { parse } from "../../../shared/validation/index.js";
+import { badRequest } from "../../../shared/errors.js";
 import { isValidTimeZone, LOCAL_DATE, LOCAL_TIME, RECURRENCES } from "./schedule.js";
 
 /** Sealed content: base64url, small (a title, a note and what it points at, encrypted on the phone). */

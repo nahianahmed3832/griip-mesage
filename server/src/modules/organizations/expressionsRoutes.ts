@@ -2,9 +2,12 @@ import crypto from "node:crypto";
 import type { Readable } from "node:stream";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { type AppContext, me, parse, requireAuth } from "../../app/context.js";
+import { type AppContext } from "../../app/context.js";
+import { me, requireAuth } from "../auth/index.js";
+import { parse } from "../../shared/validation/index.js";
 import { storePhoto } from "../accounts/photos.js";
-import { ApiError, badRequest, conflict, forbidden, newId, notFound, now } from "../../shared/utilities/util.js";
+import { ApiError, badRequest, conflict, forbidden, notFound } from "../../shared/errors.js";
+import { newId, now } from "../../shared/utilities/util.js";
 import { deleteBlobNow } from "../files/routes.js";
 import { notifyOrg } from "./orgsRoutes.js";
 

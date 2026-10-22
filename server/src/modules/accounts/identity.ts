@@ -7,7 +7,8 @@ import { joinOrgByInvite, type OrgInviteRow } from "../organizations/invites.js"
 import { notifyKeyChange, revokeDeviceRows, zUsername } from "../auth/routes.js";
 import { evictUserDevicesFromCalls } from "../calls/routes.js";
 import { deleteHistoryAfterCommit } from "../messaging/history/routes.js";
-import { ApiError, badRequest, newId, now } from "../../shared/utilities/util.js";
+import { ApiError, badRequest } from "../../shared/errors.js";
+import { newId, now } from "../../shared/utilities/util.js";
 import type { enrollDeviceBody, resetIdentityBody } from "./schemas.js";
 import { consumeChallenge, type AccountService } from "./service.js";
 import type { AccountRow, ActiveSession } from "./store.js";

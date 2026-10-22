@@ -1,8 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { PERSONAL_WORKSPACE_ID } from "../workspaces.js";
-import { type AppContext, me, parse, requireAuth } from "../../../app/context.js";
-import { ApiError, now } from "../../../shared/utilities/util.js";
+import { type AppContext } from "../../../app/context.js";
+import { me, requireAuth } from "../../auth/index.js";
+import { parse } from "../../../shared/validation/index.js";
+import { ApiError } from "../../../shared/errors.js";
+import { now } from "../../../shared/utilities/util.js";
 import { EMPTY_PREFS, type NavPrefs, normalizePrefs, type StoredPrefs, zNavPrefs } from "./schema.js";
 
 const zWorkspaceId = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);

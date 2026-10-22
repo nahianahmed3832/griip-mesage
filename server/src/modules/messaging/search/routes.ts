@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { type AppContext, me, parse, requireAuth } from "../../../app/context.js";
+import { type AppContext } from "../../../app/context.js";
+import { me, requireAuth } from "../../auth/index.js";
+import { parse } from "../../../shared/validation/index.js";
 import { search, SEARCH_KINDS, type SearchKind } from "./service.js";
 
 /** Universal search over what the server can read (docs/SEARCH.md, round 7 slice C2). */

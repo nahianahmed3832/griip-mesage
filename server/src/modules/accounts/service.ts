@@ -4,7 +4,8 @@ import { DAY_MS, HOUR_MS, networkKey, openRegistrationsToday, SlidingWindow } fr
 import type { AppContext } from "../../app/context.js";
 import { canonical, verifyEd25519 } from "../../shared/utilities/crypto.js";
 import { findOrgInvite, findRegistrationInvite } from "../organizations/invites.js";
-import { ApiError, humanCode, newId, normalizeCode, now, sha256Hex } from "../../shared/utilities/util.js";
+import { ApiError } from "../../shared/errors.js";
+import { humanCode, newId, normalizeCode, now, sha256Hex } from "../../shared/utilities/util.js";
 import type { Mailer } from "../../infrastructure/mail/mailer.js";
 import { mailTexts } from "../../infrastructure/mail/mailer.js";
 import { burnPasswordCheck, hashPassword, needsRehash, PASSWORD_PROBLEMS, passwordProblem, verifyPassword } from "./passwords.js";

@@ -8,13 +8,16 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { Readable } from "node:stream";
 import { z } from "zod";
-import { type AppContext, me, parse, requireAuth } from "../../app/context.js";
+import { type AppContext } from "../../app/context.js";
+import { me, requireAuth } from "../auth/index.js";
+import { parse } from "../../shared/validation/index.js";
 import { privacyOf } from "../accounts/profile.js";
 import { keyFingerprint } from "../../shared/utilities/crypto.js";
 import { notifyConversation } from "../organizations/orgsRoutes.js";
 import { userSummary } from "../auth/routes.js";
 import { callActions, loadCall } from "../calls/routes.js";
-import { badRequest, notFound, now } from "../../shared/utilities/util.js";
+import { badRequest, notFound } from "../../shared/errors.js";
+import { now } from "../../shared/utilities/util.js";
 import { isServerId } from "./identity.js";
 import { FederationError, type ResolvedServer } from "./resolver.js";
 import type { Federation } from "./service.js";

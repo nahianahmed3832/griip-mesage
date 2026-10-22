@@ -1,7 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { type OrgRole, parsePermissionList } from "./authz.js";
-import { type AppContext, me, parse, requireAuth } from "../../app/context.js";
+import { type AppContext } from "../../app/context.js";
+import { me, requireAuth } from "../auth/index.js";
+import { parse } from "../../shared/validation/index.js";
 import {
   BASE_ROLE_PERMISSIONS,
   isPermission,
@@ -11,7 +13,8 @@ import {
   ROLE_TEMPLATES,
 } from "./permissions/catalog.js";
 import { type Actor, canActOn, type RoleGrant, roleAssignmentRefusal, roleDefinitionRefusal, roleRemovalRefusal, type Refusal } from "./permissions/rules.js";
-import { ApiError, conflict, forbidden, newId, notFound, now } from "../../shared/utilities/util.js";
+import { ApiError, conflict, forbidden, notFound } from "../../shared/errors.js";
+import { newId, now } from "../../shared/utilities/util.js";
 import { reconcileAccess } from "./communityRoutes.js";
 import { notifyOrg } from "./orgsRoutes.js";
 

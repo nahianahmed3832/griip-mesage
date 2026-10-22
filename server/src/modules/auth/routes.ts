@@ -2,12 +2,15 @@ import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { DAY_MS, HOUR_MS, networkKey, openRegistrationsToday, SlidingWindow } from "../../app/middleware/abuse.js";
-import { type AppContext, bearer, me, parse, requireAuth, zKey, zName, zSig } from "../../app/context.js";
+import { type AppContext } from "../../app/context.js";
+import { bearer, me, requireAuth } from "./index.js";
+import { parse, zKey, zName, zSig } from "../../shared/validation/index.js";
 import { activeStatus, privacyOf } from "../accounts/profile.js";
 import { canonical, isValidPublicKey, keyFingerprint, verifyEd25519 } from "../../shared/utilities/crypto.js";
 import { findOrgInvite, findRegistrationInvite, INVITE_PROBLEMS, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../organizations/invites.js";
 import { removePushEndpoint } from "../notifications/service.js";
-import { ApiError, badRequest, conflict, forbidden, humanCode, newId, normalizeCode, notFound, now, sha256Hex, unauthorized } from "../../shared/utilities/util.js";
+import { ApiError, badRequest, conflict, forbidden, notFound, unauthorized } from "../../shared/errors.js";
+import { humanCode, newId, normalizeCode, now, sha256Hex } from "../../shared/utilities/util.js";
 import { evictUserDevicesFromCalls } from "../calls/routes.js";
 import { notifyOrg } from "../organizations/orgsRoutes.js";
 

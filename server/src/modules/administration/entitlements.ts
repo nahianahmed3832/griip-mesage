@@ -1,5 +1,5 @@
 import type { DB } from "../../infrastructure/database/db.js";
-import { ApiError } from "../../shared/utilities/util.js";
+import { ApiError } from "../../shared/errors.js";
 
 /**
  * Entitlements (docs/PLANS.md, docs/USAGE_AND_PLANS.md): the one place where plan-based limits live, so the apps and the

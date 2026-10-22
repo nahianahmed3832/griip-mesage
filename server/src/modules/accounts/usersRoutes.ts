@@ -2,7 +2,9 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { deleteBlobNow } from "../files/routes.js";
 import { photoBlobId, readJpegBody, storePhoto } from "./photos.js";
-import { type AppContext, me, parse, requireAuth, zName } from "../../app/context.js";
+import { type AppContext } from "../../app/context.js";
+import { me, requireAuth } from "../auth/index.js";
+import { parse, zName } from "../../shared/validation/index.js";
 import { keyFingerprint } from "../../shared/utilities/crypto.js";
 import {
   AUDIENCES,
@@ -20,7 +22,8 @@ import {
   validBirthday,
 } from "./profile.js";
 import { announcePresence } from "../realtime/ws.js";
-import { ApiError, badRequest, conflict, notFound, now } from "../../shared/utilities/util.js";
+import { ApiError, badRequest, conflict, notFound } from "../../shared/errors.js";
+import { now } from "../../shared/utilities/util.js";
 import { userSummary, zUsername } from "../auth/routes.js";
 
 /** A username can change at most once an hour, so links and mentions don't churn. */

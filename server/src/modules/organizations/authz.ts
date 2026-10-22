@@ -2,7 +2,7 @@ import type { DB } from "../../infrastructure/database/db.js";
 import { isPermission, type Permission, permissionDef } from "./permissions/catalog.js";
 import { type ChannelActor, channelPermissions, type Overwrite, parseCapabilities } from "./permissions/channel.js";
 import { type Actor, effectivePermissions, type RoleGrant } from "./permissions/rules.js";
-import { forbidden, notFound } from "../../shared/utilities/util.js";
+import { forbidden, notFound } from "../../shared/errors.js";
 
 /**
  * Server-side authorisation. Every sensitive route calls into this module; the Android UI

@@ -3,7 +3,8 @@ import type { AppContext } from "../../app/context.js";
 import type { DB } from "../../infrastructure/database/db.js";
 import { type Authz, parsePermissionList } from "./authz.js";
 import { roleAssignmentRefusal } from "./permissions/rules.js";
-import { ApiError, humanCode, newId, normalizeCode, now, sha256Hex } from "../../shared/utilities/util.js";
+import { ApiError } from "../../shared/errors.js";
+import { humanCode, newId, normalizeCode, now, sha256Hex } from "../../shared/utilities/util.js";
 
 export interface OrgInviteRow {
   id: string;

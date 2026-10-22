@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import { DAY_MS, networkKey, SlidingWindow } from "../../app/middleware/abuse.js";
 import type { AppContext } from "../../app/context.js";
-import { ApiError, humanCode, newId, normalizeCode, now, sha256Hex } from "../../shared/utilities/util.js";
+import { ApiError } from "../../shared/errors.js";
+import { humanCode, newId, normalizeCode, now, sha256Hex } from "../../shared/utilities/util.js";
 import { mailTexts } from "../../infrastructure/mail/mailer.js";
 import { hashPassword } from "./passwords.js";
 import type { RecoveryCodeRow, RecoveryStore } from "./recoveryStore.js";

@@ -1,8 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { type AppContext, me, parse, requireAuth } from "../../app/context.js";
+import { type AppContext } from "../../app/context.js";
+import { me, requireAuth } from "../auth/index.js";
+import { parse } from "../../shared/validation/index.js";
 import { isPermission, permissionDef } from "./permissions/catalog.js";
-import { ApiError, badRequest, forbidden, newId, now } from "../../shared/utilities/util.js";
+import { ApiError, badRequest, forbidden } from "../../shared/errors.js";
+import { newId, now } from "../../shared/utilities/util.js";
 import { reconcileAccess } from "./communityRoutes.js";
 import { MAX_ROLES_PER_MEMBER } from "./rolesRoutes.js";
 

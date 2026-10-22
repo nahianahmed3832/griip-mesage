@@ -1,10 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { type AppContext, me, parse, requireAuth } from "../../app/context.js";
+import { type AppContext } from "../../app/context.js";
+import { me, requireAuth } from "../auth/index.js";
+import { parse } from "../../shared/validation/index.js";
 import { checkEndpoint, ENDPOINT_REFUSALS, MAX_ENDPOINT_LENGTH } from "./address.js";
 import { removeUnifiedPushEndpoint } from "./service.js";
 import { MAX_FCM_TOKEN_LENGTH } from "./fcm.js";
-import { ApiError } from "../../shared/utilities/util.js";
+import { ApiError } from "../../shared/errors.js";
 
 /**
  * Push wake-ups (docs/BACKGROUND_DELIVERY.md): the signed-in device registers, replaces or removes its own UnifiedPush

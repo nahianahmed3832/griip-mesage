@@ -1,8 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { hasNewAccountLimits } from "../../../app/middleware/abuse.js";
-import { type AppContext, me, parse, requireAuth } from "../../../app/context.js";
-import { ApiError, now } from "../../../shared/utilities/util.js";
+import { type AppContext } from "../../../app/context.js";
+import { me, requireAuth } from "../../auth/index.js";
+import { parse } from "../../../shared/validation/index.js";
+import { ApiError } from "../../../shared/errors.js";
+import { now } from "../../../shared/utilities/util.js";
 
 /**
  * Encrypted message history (docs/MESSAGE_HISTORY.md). An account's devices upload each message they hold, encrypted

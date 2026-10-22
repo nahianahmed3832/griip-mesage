@@ -30,20 +30,3 @@ export function humanCode(length: number): string {
 export function normalizeCode(code: string): string {
   return code.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
-
-export class ApiError extends Error {
-  constructor(
-    public statusCode: number,
-    public code: string,
-    message: string,
-    public details?: unknown,
-  ) {
-    super(message);
-  }
-}
-
-export const badRequest = (msg: string, details?: unknown) => new ApiError(400, "bad_request", msg, details);
-export const unauthorized = (msg = "Authentication required") => new ApiError(401, "unauthorized", msg);
-export const forbidden = (msg = "You do not have permission to do that") => new ApiError(403, "forbidden", msg);
-export const notFound = (msg = "Not found") => new ApiError(404, "not_found", msg);
-export const conflict = (msg: string, details?: unknown) => new ApiError(409, "conflict", msg, details);

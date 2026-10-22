@@ -1,6 +1,7 @@
 import type { AppContext } from "../../app/context.js";
 import type { OrgRole } from "../organizations/authz.js";
-import { ApiError, now } from "../../shared/utilities/util.js";
+import { ApiError } from "../../shared/errors.js";
+import { now } from "../../shared/utilities/util.js";
 import type { AccountStore, AccountRow } from "./store.js";
 
 /** The workspace every account has: DMs, groups and contacts outside any organisation (audit C6). */

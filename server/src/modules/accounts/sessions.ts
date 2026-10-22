@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
-import { ApiError, newId, sha256Hex } from "../../shared/utilities/util.js";
+import { ApiError } from "../../shared/errors.js";
+import { newId, sha256Hex } from "../../shared/utilities/util.js";
 import type { AccountsConfig } from "./config.js";
 import type { AccountStore, ActiveSession, SessionRotation, SessionRow } from "./store.js";
 

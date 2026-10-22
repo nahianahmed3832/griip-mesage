@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { type AppContext, me, parse, requireAuth } from "../../../app/context.js";
+import { type AppContext } from "../../../app/context.js";
+import { me, requireAuth } from "../../auth/index.js";
+import { parse } from "../../../shared/validation/index.js";
 import { ENTITLEMENT_KEYS, type EntitlementKey, isEntitlementKey } from "../entitlements.js";
-import { badRequest, forbidden, notFound } from "../../../shared/utilities/util.js";
+import { badRequest, forbidden, notFound } from "../../../shared/errors.js";
 import { CHECKS, checkConnector, connectorReport } from "./connectors.js";
 import { healthReport } from "./health.js";
 

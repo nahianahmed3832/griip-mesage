@@ -9,7 +9,7 @@
  *   (until its descriptor expires); an unknown domain needs a live quorum.
  */
 import type { DB } from "../../infrastructure/database/db.js";
-import { ApiError } from "../../shared/utilities/util.js";
+import { ApiError } from "../../shared/errors.js";
 import { chainExtends, isDomain, isServerId, type ServerDescriptor, verifyDescriptor } from "./identity.js";
 import { type CoreAnswer, type FinalRecord, type LifecycleState, verifyAnswer, verifyDecommission, verifyRevocation } from "./records.js";
 

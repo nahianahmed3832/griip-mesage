@@ -2,7 +2,8 @@ import type { ConversationRow } from "../organizations/authz.js";
 import type { AppContext } from "../../app/context.js";
 import { errorKind } from "../administration/ops/metrics.js";
 import { isValidTimeZone } from "../accounts/reminders/schedule.js";
-import { ApiError, badRequest, conflict, forbidden, newId, notFound, now } from "../../shared/utilities/util.js";
+import { ApiError, badRequest, conflict, forbidden, notFound } from "../../shared/errors.js";
+import { newId, now } from "../../shared/utilities/util.js";
 import { currentOccurrence, type EventRepeat } from "../organizations/eventRepeat.js";
 
 /**
