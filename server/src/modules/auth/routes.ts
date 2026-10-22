@@ -1,10 +1,23 @@
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import { DAY_MS, HOUR_MS, networkKey, openRegistrationsToday, SlidingWindow } from "../../app/middleware/abuse.js";
 import { type AppContext } from "../../app/context.js";
 import { bearer, me, requireAuth } from "./index.js";
-import { parse, zKey, zName, zSig } from "../../shared/validation/index.js";
+import { parse } from "../../shared/validation/index.js";
+import {
+  AddDeviceBody,
+  type DeviceKeysBody,
+  LoginBody,
+  PairingApproveBody,
+  PairingBody,
+  PairingCodeParams,
+  PairingIdParams,
+  RegisterBody,
+  UserIdParams,
+  UsernameQuery,
+  zUsername,
+} from "../../shared/contracts/http/auth.js";
+import { idParams } from "../../shared/contracts/http/primitives.js";
 import { activeStatus, privacyOf } from "../accounts/profile.js";
 import { canonical, isValidPublicKey, keyFingerprint, verifyEd25519 } from "../../shared/utilities/crypto.js";
 import { findOrgInvite, findRegistrationInvite, INVITE_PROBLEMS, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../organizations/invites.js";
@@ -14,22 +27,11 @@ import { humanCode, newId, normalizeCode, now, sha256Hex } from "../../shared/ut
 import { evictUserDevicesFromCalls } from "../calls/routes.js";
 import { notifyOrg } from "../organizations/orgsRoutes.js";
 
-const USERNAME = /^[a-z0-9](?:[a-z0-9._]{1,22})[a-z0-9]$/;
 const CHALLENGE_TTL_MS = 2 * 60 * 1000;
 const PAIRING_TTL_MS = 10 * 60 * 1000;
 
-export const zUsername = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .refine((u) => USERNAME.test(u) && !u.includes(".."), "3–24 chars: a–z, 0–9, '.', '_'; must start and end with a letter or digit");
-
-const zDevice = z.object({
-  name: zName,
-  signingKey: zKey,
-  encryptionKey: zKey,
-  certificate: zSig,
-});
+/** The username rule, also used by accounts v2 (src/modules/accounts/identity.ts). */
+export { zUsername };
 
 /**
  * v1 sign-up and device-key sign-in serve apps before Orbit 2.0. The owner turns them off when the migration window ends
@@ -61,7 +63,7 @@ function issueSession(ctx: AppContext, userId: string, deviceId: string) {
   return { token, expiresAt };
 }
 
-function verifyDevice(identityKey: string, d: z.infer<typeof zDevice>): void {
+function verifyDevice(identityKey: string, d: DeviceKeysBody): void {
   if (!isValidPublicKey(identityKey) || !isValidPublicKey(d.signingKey) || !isValidPublicKey(d.encryptionKey)) {
     throw badRequest("Malformed public key");
   }
@@ -116,7 +118,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
   });
 
   app.get("/v1/auth/username-available", strict, async (req) => {
-    const q = parse(z.object({ username: z.string() }), req.query);
+    const q = parse(UsernameQuery, req.query);
     const ok = zUsername.safeParse(q.username);
     if (!ok.success) return { available: false, reason: ok.error.issues[0]?.message };
     const taken = ctx.db.prepare("SELECT 1 FROM users WHERE username = ?").get(ok.data);
@@ -127,19 +129,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
   // binds the device to the account identity key via a certificate signed by that key.
   app.post("/v1/auth/register", strict, async (req, reply) => {
     requireLegacy(ctx, "registration");
-    const body = parse(
-      z.object({
-        username: zUsername,
-        displayName: zName,
-        identityKey: zKey,
-        avatarColor: z.number().int().min(0).max(15).default(0),
-        device: zDevice,
-        nonce: z.string().min(16).max(64),
-        signature: zSig,
-        inviteCode: z.string().trim().min(8).max(40).optional(),
-      }),
-      req.body,
-    );
+    const body = parse(RegisterBody, req.body);
     // Invite-only registration (default): checked before any key work so a missing code costs nothing.
     if (ctx.config.registrationMode === "invite" && !body.inviteCode) {
       throw new ApiError(403, "invite_required", "Registration needs an invitation code");
@@ -219,7 +209,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.post("/v1/auth/login", strict, async (req) => {
     requireLegacy(ctx, "login");
-    const body = parse(z.object({ deviceId: z.string().max(64), nonce: z.string().min(16).max(64), signature: zSig }), req.body);
+    const body = parse(LoginBody, req.body);
     const dev = ctx.db
       // A remote user's stand-in (home_server_id set) can never sign in here, even with its device key.
       .prepare("SELECT d.*, u.disabled_at, u.deleted_at FROM devices d JOIN users u ON u.id = d.user_id WHERE d.id = ? AND u.home_server_id IS NULL")
@@ -243,10 +233,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
   // signed by the account's identity key — only someone holding that key can authorise it.
   app.post("/v1/auth/add-device", strict, async (req) => {
     requireLegacy(ctx, "login");
-    const body = parse(
-      z.object({ username: zUsername, device: zDevice, nonce: z.string().min(16).max(64), signature: zSig }),
-      req.body,
-    );
+    const body = parse(AddDeviceBody, req.body);
     // Key format is checked first, and an unknown username answers like a certificate that doesn't match, so this
     // route doesn't tell anyone which accounts exist.
     if (!isValidPublicKey(body.device.signingKey) || !isValidPublicKey(body.device.encryptionKey)) throw badRequest("Malformed public key");
@@ -295,10 +282,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
 
   // ───────────── Device pairing (link a new phone to an existing account) ─────────────
   app.post("/v1/pairing", strict, async (req) => {
-    const body = parse(
-      z.object({ deviceName: zName, signingKey: zKey, encryptionKey: zKey, transferKey: zKey }),
-      req.body,
-    );
+    const body = parse(PairingBody, req.body);
     if (![body.signingKey, body.encryptionKey, body.transferKey].every(isValidPublicKey)) throw badRequest("Malformed public key");
     const id = crypto.randomBytes(24).toString("base64url");
     const code = humanCode(10);
@@ -313,7 +297,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
   });
 
   app.get("/v1/pairing/:pairingId", async (req) => {
-    const { pairingId } = parse(z.object({ pairingId: z.string().min(20).max(64) }), req.params);
+    const { pairingId } = parse(PairingIdParams, req.params);
     const r = ctx.db.prepare("SELECT * FROM pairing_requests WHERE id = ?").get(pairingId) as
       | {
           approved_user_id: string | null;
@@ -340,7 +324,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
   });
 
   app.get("/v1/pairing/code/:code", { preHandler: requireAuth(ctx) }, async (req) => {
-    const { code } = parse(z.object({ code: z.string().max(32) }), req.params);
+    const { code } = parse(PairingCodeParams, req.params);
     const r = ctx.db
       .prepare("SELECT * FROM pairing_requests WHERE code_hash = ? AND expires_at > ? AND approved_user_id IS NULL")
       .get(sha256Hex(normalizeCode(code)), now()) as
@@ -358,11 +342,8 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.post("/v1/pairing/code/:code/approve", { preHandler: requireAuth(ctx) }, async (req) => {
     const { userId } = me(req);
-    const { code } = parse(z.object({ code: z.string().max(32) }), req.params);
-    const body = parse(
-      z.object({ certificate: zSig, sealedIdentity: z.string().min(10).max(400), sealedEnc: zKey }),
-      req.body,
-    );
+    const { code } = parse(PairingCodeParams, req.params);
+    const body = parse(PairingApproveBody, req.body);
     const r = ctx.db
       .prepare("SELECT * FROM pairing_requests WHERE code_hash = ? AND expires_at > ? AND approved_user_id IS NULL")
       .get(sha256Hex(normalizeCode(code)), now()) as { id: string; signing_key: string; encryption_key: string } | undefined;
@@ -400,7 +381,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.delete("/v1/devices/:id", { preHandler: requireAuth(ctx) }, async (req) => {
     const { userId, deviceId } = me(req);
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const d = ctx.db.prepare("SELECT * FROM devices WHERE id = ? AND user_id = ?").get(id, userId) as
       | { id: string; revoked_at: number | null }
       | undefined;
@@ -415,7 +396,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
   });
 
   app.get("/v1/fingerprint/:userId", { preHandler: requireAuth(ctx) }, async (req) => {
-    const { userId } = parse(z.object({ userId: z.string().max(64) }), req.params);
+    const { userId } = parse(UserIdParams, req.params);
     const u = ctx.db.prepare("SELECT identity_key FROM users WHERE id = ?").get(userId) as { identity_key: string } | undefined;
     if (!u) throw notFound();
     return { fingerprint: keyFingerprint(u.identity_key) };

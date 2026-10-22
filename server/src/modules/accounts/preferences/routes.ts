@@ -1,14 +1,12 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import { PERSONAL_WORKSPACE_ID } from "../workspaces.js";
 import { type AppContext } from "../../../app/context.js";
 import { me, requireAuth } from "../../auth/index.js";
 import { parse } from "../../../shared/validation/index.js";
 import { ApiError } from "../../../shared/errors.js";
 import { now } from "../../../shared/utilities/util.js";
-import { EMPTY_PREFS, type NavPrefs, normalizePrefs, type StoredPrefs, zNavPrefs } from "./schema.js";
-
-const zWorkspaceId = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
+import { PreferencesBody, WorkspaceParams } from "../../../shared/contracts/http/preferences.js";
+import { EMPTY_PREFS, type NavPrefs, normalizePrefs, type StoredPrefs } from "./schema.js";
 
 function view(workspaceId: string, s: StoredPrefs | null) {
   return { workspaceId, rev: s?.rev ?? 0, updatedAt: s?.updatedAt ?? null, prefs: s?.prefs ?? EMPTY_PREFS };
@@ -30,15 +28,15 @@ export default async function preferenceRoutes(app: FastifyInstance, ctx: AppCon
 
   app.get("/v1/me/preferences/:workspaceId", auth, async (req) => {
     const { userId } = me(req);
-    const { workspaceId } = parse(z.object({ workspaceId: zWorkspaceId }), req.params);
+    const { workspaceId } = parse(WorkspaceParams, req.params);
     requireWorkspace(workspaceId, userId);
     return view(workspaceId, await ctx.prefs.get(userId, workspaceId));
   });
 
   app.put("/v1/me/preferences/:workspaceId", { ...auth, config: { rateLimit: { max: 120, timeWindow: "1 minute" } } }, async (req) => {
     const { userId, deviceId } = me(req);
-    const { workspaceId } = parse(z.object({ workspaceId: zWorkspaceId }), req.params);
-    const body = parse(z.object({ baseRev: z.number().int().min(0), prefs: zNavPrefs }), req.body);
+    const { workspaceId } = parse(WorkspaceParams, req.params);
+    const body = parse(PreferencesBody, req.body);
     requireWorkspace(workspaceId, userId);
     // Only the person's own conversations can be arranged; anything else (left meanwhile, never joined) is dropped.
     const mine = new Set(

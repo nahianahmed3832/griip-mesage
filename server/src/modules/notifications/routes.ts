@@ -1,11 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
 import { parse } from "../../shared/validation/index.js";
-import { checkEndpoint, ENDPOINT_REFUSALS, MAX_ENDPOINT_LENGTH } from "./address.js";
+import { FcmBody, UnifiedPushBody } from "../../shared/contracts/http/notifications.js";
+import { checkEndpoint, ENDPOINT_REFUSALS } from "./address.js";
 import { removeUnifiedPushEndpoint } from "./service.js";
-import { MAX_FCM_TOKEN_LENGTH } from "./fcm.js";
 import { ApiError } from "../../shared/errors.js";
 
 /**
@@ -19,7 +18,7 @@ export default async function pushRoutes(app: FastifyInstance, ctx: AppContext) 
     const { deviceId } = me(req);
     const push = ctx.push;
     if (!push) throw new ApiError(404, "push_unavailable", "This server doesn't send push wake-ups");
-    const body = parse(z.object({ kind: z.literal("unifiedpush"), endpoint: z.string().min(1).max(MAX_ENDPOINT_LENGTH) }), req.body);
+    const body = parse(UnifiedPushBody, req.body);
     const checked = checkEndpoint(body.endpoint, push.config.unifiedPushHosts);
     if ("refusal" in checked) {
       const details = checked.refusal === "push_host_not_allowed" ? { allowedHosts: push.config.unifiedPushHosts } : undefined;
@@ -32,7 +31,7 @@ export default async function pushRoutes(app: FastifyInstance, ctx: AppContext) 
   app.put("/v1/devices/current/fcm", auth, async (req) => {
     const { deviceId } = me(req);
     if (!ctx.fcm) throw new ApiError(404, "push_unavailable", "This server doesn't send Firebase wake-ups");
-    const { token } = parse(z.object({ token: z.string().min(20).max(MAX_FCM_TOKEN_LENGTH).regex(/^[A-Za-z0-9_:\-.]+$/) }), req.body);
+    const { token } = parse(FcmBody, req.body);
     return { push: ctx.fcm.register(deviceId, token) };
   });
 

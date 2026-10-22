@@ -1,30 +1,28 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import { deleteBlobNow } from "../files/routes.js";
 import { photoBlobId, readJpegBody, storePhoto } from "./photos.js";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
-import { parse, zName } from "../../shared/validation/index.js";
-import { keyFingerprint } from "../../shared/utilities/crypto.js";
+import { parse } from "../../shared/validation/index.js";
+import { UserIdParams } from "../../shared/contracts/http/auth.js";
+import { idParams } from "../../shared/contracts/http/primitives.js";
 import {
-  AUDIENCES,
-  allows,
-  appearsOnline,
-  canSeeLastSeen,
+  BlockBody,
+  DevicesBody,
   PHONE,
-  PRESENCE_MODES,
-  PRIVACY_FIELDS,
-  type ProfileRow,
-  privacyOf,
-  profileView,
-  relation,
-  shownPresence,
-  validBirthday,
-} from "./profile.js";
+  PhoneQuery,
+  PresenceBody,
+  PresenceQuery,
+  PrivacyBody,
+  ProfileUpdateBody,
+  SearchQuery,
+} from "../../shared/contracts/http/users.js";
+import { keyFingerprint } from "../../shared/utilities/crypto.js";
+import { allows, appearsOnline, canSeeLastSeen, type ProfileRow, privacyOf, profileView, relation, shownPresence } from "./profile.js";
 import { announcePresence } from "../realtime/ws.js";
 import { ApiError, badRequest, conflict, notFound } from "../../shared/errors.js";
 import { now } from "../../shared/utilities/util.js";
-import { userSummary, zUsername } from "../auth/routes.js";
+import { userSummary } from "../auth/routes.js";
 
 /** A username can change at most once an hour, so links and mentions don't churn. */
 const USERNAME_CHANGE_INTERVAL_MS = 60 * 60 * 1000;
@@ -119,48 +117,9 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
   /** Longest status ("Vacationing" for a year at most) and longest notification pause. */
   const STATUS_MAX_MS = 366 * 86_400_000;
   const PAUSE_MAX_MS = 30 * 86_400_000;
-  const zOptText = (max: number) =>
-    z
-      .string()
-      .trim()
-      .max(max)
-      .nullable()
-      .optional()
-      .transform((v) => (v === "" ? null : v));
   app.patch("/v1/users/me", auth, async (req) => {
     const { userId } = me(req);
-    const body = parse(
-      z.object({
-        displayName: zName.optional(),
-        statusText: zOptText(140),
-        // Round 3: an emoji for the status (no letters or digits), its end time, and pausing notifications.
-        statusEmoji: zOptText(16).refine((v) => v == null || !/[\p{L}\p{N}]/u.test(v), "The status emoji can't contain letters or digits"),
-        statusExpiresAt: z.number().int().nullable().optional(),
-        notificationsPausedUntil: z.number().int().nullable().optional(),
-        avatarColor: z.number().int().min(0).max(15).optional(),
-        firstName: zOptText(40),
-        lastName: zOptText(40),
-        // Batch B12: shown with the bio (its privacy setting); free text, as people write their own.
-        pronouns: zOptText(40),
-        birthday: z
-          .string()
-          .trim()
-          .nullable()
-          .optional()
-          .refine((v) => v == null || v === "" || validBirthday(v), "Birthday must be YYYY-MM-DD or --MM-DD")
-          .transform((v) => (v === "" ? null : v)),
-        phone: z
-          .string()
-          .trim()
-          .nullable()
-          .optional()
-          // Absent stays absent (an edit of another field must not clear the number).
-          .transform((v) => (v === undefined ? undefined : v === null || v === "" ? null : v.replace(/[\s()-]/g, "")))
-          .refine((v) => v == null || PHONE.test(v), "Phone numbers start with + and the country code, e.g. +8801712345678"),
-        username: zUsername.optional(),
-      }),
-      req.body,
-    );
+    const body = parse(ProfileUpdateBody, req.body);
     const u = ctx.db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
     let username = u.username as string;
     if (body.username && body.username.toLowerCase() !== username.toLowerCase()) {
@@ -217,7 +176,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
    */
   app.put("/v1/users/me/presence", auth, async (req) => {
     const { userId } = me(req);
-    const body = parse(z.object({ mode: z.enum(PRESENCE_MODES), until: z.number().int().nullable().optional() }).strict(), req.body);
+    const body = parse(PresenceBody, req.body);
     const t = now();
     if (body.until != null && (body.until <= t || body.until > t + PAUSE_MAX_MS)) throw badRequest("A presence choice ends in the future, within 30 days");
     const until = body.mode === "auto" ? null : (body.until ?? null);
@@ -229,8 +188,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
   // Who may see each part of the profile (src/profile.ts). Only the fields sent change.
   app.put("/v1/users/me/privacy", auth, async (req) => {
     const { userId } = me(req);
-    const shape = Object.fromEntries(PRIVACY_FIELDS.map((f) => [f, z.enum(AUDIENCES as [string, ...string[]]).optional()]));
-    const body = parse(z.object(shape).strict(), req.body);
+    const body = parse(PrivacyBody, req.body);
     const u = ctx.db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
     const next = { ...privacyOf(u), ...Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)) };
     ctx.db.prepare("UPDATE users SET privacy = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(next), now(), userId);
@@ -263,7 +221,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
   });
 
   app.get("/v1/users/:id/photo", auth, async (req, reply) => {
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const u = ctx.db.prepare("SELECT * FROM users WHERE id = ? AND disabled_at IS NULL").get(id) as ProfileRow | undefined;
     // Same answer for "no photo" and "not allowed to see it".
     if (!u?.photo_rev || !allows(privacyOf(u).photo, relation(ctx, me(req).userId, u.id))) throw notFound("No photo");
@@ -280,7 +238,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
   // whether nobody has that number or its owner doesn't want to be found. No address book is ever uploaded.
   app.get("/v1/users/by-phone", { ...auth, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req) => {
     const { userId } = me(req);
-    const { phone } = parse(z.object({ phone: z.string().trim().max(24) }), req.query);
+    const { phone } = parse(PhoneQuery, req.query);
     const p = phone.replace(/[\s()-]/g, "");
     if (!PHONE.test(p)) throw badRequest("Phone numbers start with + and the country code");
     const u = ctx.db
@@ -294,7 +252,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
   // display name), plus an exact username match for anyone (Telegram-style @username lookup).
   app.get("/v1/users/search", auth, async (req) => {
     const { userId } = me(req);
-    const { q } = parse(z.object({ q: z.string().trim().min(1).max(40) }), req.query);
+    const { q } = parse(SearchQuery, req.query);
     const term = q.replace(/^@/, "").toLowerCase();
     const like = `${term.replace(/[%_\\]/g, (c) => "\\" + c)}%`;
     const rows = ctx.db
@@ -321,7 +279,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
   });
 
   app.get("/v1/users/:id", auth, async (req) => {
-    const { id } = parse(z.object({ id: z.string().max(64) }), req.params);
+    const { id } = parse(idParams, req.params);
     const u = ctx.db.prepare("SELECT * FROM users WHERE id = ? AND disabled_at IS NULL").get(id) as any;
     if (!u) throw notFound("User not found");
     const viewer = me(req).userId;
@@ -342,7 +300,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
   });
 
   app.post("/v1/users/devices", auth, async (req) => {
-    const { userIds } = parse(z.object({ userIds: z.array(z.string().max(64)).min(1).max(500) }), req.body);
+    const { userIds } = parse(DevicesBody, req.body);
     const ids = [...new Set(userIds)];
     await ctx.federation?.refreshStale(ids);
     return { users: deviceDirectory(ctx, ids) };
@@ -351,7 +309,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
   // Blocking (local or remote people): their messages are dropped for the blocker; the blocked person isn't told.
   app.post("/v1/blocks", auth, async (req) => {
     const { userId } = me(req);
-    const { userId: other } = parse(z.object({ userId: z.string().max(64) }), req.body);
+    const { userId: other } = parse(BlockBody, req.body);
     if (other === userId) throw badRequest("You can't block yourself");
     if (!ctx.db.prepare("SELECT 1 FROM users WHERE id = ?").get(other)) throw notFound("User not found");
     ctx.db.prepare("INSERT OR IGNORE INTO user_blocks (user_id, blocked_user_id, created_at) VALUES (?, ?, ?)").run(userId, other, now());
@@ -360,7 +318,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
 
   app.delete("/v1/blocks/:userId", auth, async (req) => {
     const { userId } = me(req);
-    const { userId: other } = parse(z.object({ userId: z.string().max(64) }), req.params);
+    const { userId: other } = parse(UserIdParams, req.params);
     ctx.db.prepare("DELETE FROM user_blocks WHERE user_id = ? AND blocked_user_id = ?").run(userId, other);
     return { blocked: false };
   });
@@ -373,7 +331,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
   // Users the caller may not see are left out (not nulled): released apps parse `online` as non-null.
   app.get("/v1/presence", auth, async (req) => {
     const { userId } = me(req);
-    const { ids } = parse(z.object({ ids: z.string().max(5000) }), req.query);
+    const { ids } = parse(PresenceQuery, req.query);
     const wanted = [...new Set(ids.split(",").filter(Boolean))].slice(0, 200);
     const rows = wanted.length
       ? // Disabled and deleted accounts are left out: their last-seen time stays in memory until the server restarts.

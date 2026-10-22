@@ -1,10 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import { type AppContext } from "../../../app/context.js";
 import { me, requireAuth } from "../../auth/index.js";
 import { parse } from "../../../shared/validation/index.js";
 import { availableUser, blockedEitherWay, notAvailable, requestAllowed, requireRequestBudget, settingsOf, sharesCommunity } from "./rules.js";
-import { type ConnectionRow, DM_POLICIES, type MessagingSettings, pairOf, REQUEST_POLICIES } from "./store.js";
+import { type ConnectionRow, type MessagingSettings, pairOf } from "./store.js";
+import { ConnectBody, ConnectionUserParams, MessagingSettingsBody, RequestAnswerBody, RequestParams } from "../../../shared/contracts/http/relationships.js";
 import { ApiError, badRequest, notFound } from "../../../shared/errors.js";
 import { now } from "../../../shared/utilities/util.js";
 import { userSummary } from "../../auth/routes.js";
@@ -14,8 +14,6 @@ import { notifyConversation } from "../../organizations/orgsRoutes.js";
  * Batch B6 (docs/product/MELDIQ_FRIENDS_AND_DMS_SPEC.md §4): connections (request, accept, cancel, decline, remove),
  * answering message requests, and who may message you. No suggestions, no mutual lists: only what each person did.
  */
-const zId = z.string().min(1).max(64);
-
 export default async function connectionRoutes(app: FastifyInstance, ctx: AppContext) {
   const { db } = ctx;
   const auth = { preHandler: requireAuth(ctx) };
@@ -45,7 +43,7 @@ export default async function connectionRoutes(app: FastifyInstance, ctx: AppCon
   /** Sends a request, or accepts theirs when they already asked; repeating it changes nothing. */
   app.post("/v1/connections", { preHandler: requireAuth(ctx), config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req) => {
     const userId = me(req).userId;
-    const body = parse(z.union([z.object({ userId: zId }).strict(), z.object({ username: z.string().trim().min(1).max(64) }).strict()]), req.body);
+    const body = parse(ConnectBody, req.body);
     const targetId =
       "userId" in body
         ? body.userId
@@ -73,7 +71,7 @@ export default async function connectionRoutes(app: FastifyInstance, ctx: AppCon
 
   app.post("/v1/connections/:userId/accept", auth, async (req) => {
     const userId = me(req).userId;
-    const { userId: from } = parse(z.object({ userId: zId }), req.params);
+    const { userId: from } = parse(ConnectionUserParams, req.params);
     const row = await rel.connection(userId, from);
     if (!row || row.state !== "pending" || row.requested_by === userId || blockedEitherWay(ctx, userId, from)) throw notFound("Request not found");
     await rel.putConnection({ ...row, state: "accepted", accepted_at: now() });
@@ -84,7 +82,7 @@ export default async function connectionRoutes(app: FastifyInstance, ctx: AppCon
   /** Cancels your request, declines theirs, or removes a connection. The other person isn't told which. */
   app.delete("/v1/connections/:userId", auth, async (req) => {
     const userId = me(req).userId;
-    const { userId: otherId } = parse(z.object({ userId: zId }), req.params);
+    const { userId: otherId } = parse(ConnectionUserParams, req.params);
     if (await rel.deleteConnection(userId, otherId)) changed(userId, otherId);
     return { ok: true };
   });
@@ -96,10 +94,7 @@ export default async function connectionRoutes(app: FastifyInstance, ctx: AppCon
 
   app.put("/v1/users/me/messaging", auth, async (req) => {
     const userId = me(req).userId;
-    const body = parse(
-      z.object({ dmPolicy: z.enum(DM_POLICIES as [string, ...string[]]).optional(), requestPolicy: z.enum(REQUEST_POLICIES as [string, ...string[]]).optional() }).strict(),
-      req.body,
-    );
+    const body = parse(MessagingSettingsBody, req.body);
     const current = await settingsOf(ctx, userId);
     const next = { dm_policy: body.dmPolicy ?? current.dm_policy, request_policy: body.requestPolicy ?? current.request_policy } as MessagingSettings;
     await rel.putSettings(userId, next, now());
@@ -112,8 +107,8 @@ export default async function connectionRoutes(app: FastifyInstance, ctx: AppCon
    */
   app.post("/v1/conversations/:id/request", auth, async (req) => {
     const userId = me(req).userId;
-    const { id } = parse(z.object({ id: zId }), req.params);
-    const { action } = parse(z.object({ action: z.enum(["accept", "decline", "block"]) }).strict(), req.body);
+    const { id } = parse(RequestParams, req.params);
+    const { action } = parse(RequestAnswerBody, req.body);
     const r = await rel.request(id);
     if (!r || r.recipient !== userId || r.state !== "pending") throw notFound("Request not found");
     const t = now();
