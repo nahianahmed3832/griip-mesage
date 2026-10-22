@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "not_archived",
+    "message": "Archive the role before deleting it"
+  }
+}

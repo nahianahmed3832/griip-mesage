@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "request_rate_limited",
+    "message": "You've sent a lot of requests. Try again in an hour.",
+    "details": {
+      "retryAfter": 3600
+    }
+  }
+}

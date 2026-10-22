@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "username_recently_changed",
+    "message": "You can change your username once an hour"
+  }
+}

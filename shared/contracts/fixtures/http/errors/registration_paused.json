@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "registration_paused",
+    "message": "New sign-ups are paused for now. Try again later, or ask for an invitation code."
+  }
+}

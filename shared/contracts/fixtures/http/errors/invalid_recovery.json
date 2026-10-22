@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "invalid_recovery",
+    "message": "That email and recovery code don't match an account, or the code was already used."
+  }
+}

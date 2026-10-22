@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "holder_out_of_reach",
+    "message": "Someone holding this role is an admin or has powers you don't, so only an owner can change what it does"
+  }
+}

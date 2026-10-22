@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "invite_revoked",
+    "message": "This invite was cancelled by the person who created it. Ask them for a new one."
+  }
+}

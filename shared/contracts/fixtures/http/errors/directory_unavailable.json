@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "directory_unavailable",
+    "message": "Not enough directory nodes answered to verify that server"
+  }
+}

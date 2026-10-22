@@ -1,0 +1,15 @@
+{
+  "error": {
+    "code": "device_mismatch",
+    "message": "Recipient devices changed; refresh keys and retry",
+    "details": {
+      "missing": [
+        {
+          "deviceId": "d_6yBq1HeJ4WQVeG22noX8eg",
+          "userId": "u_L8Ewz13BvI4QT3pERe59YA"
+        }
+      ],
+      "extra": []
+    }
+  }
+}

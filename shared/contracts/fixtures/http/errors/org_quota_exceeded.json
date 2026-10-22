@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "org_quota_exceeded",
+    "message": "This workspace has reached its file storage limit. Older files expire after 7 days."
+  }
+}

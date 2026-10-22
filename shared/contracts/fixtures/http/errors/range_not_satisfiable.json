@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "range_not_satisfiable",
+    "message": "Requested range is outside the file"
+  }
+}

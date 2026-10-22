@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "session_revoked",
+    "message": "You were signed out on this device. Sign in again."
+  }
+}

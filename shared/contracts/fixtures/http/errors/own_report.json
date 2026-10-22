@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "own_report",
+    "message": "This report is about you: another moderator handles it"
+  }
+}

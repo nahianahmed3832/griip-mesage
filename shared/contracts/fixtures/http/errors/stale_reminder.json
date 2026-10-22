@@ -1,0 +1,23 @@
+{
+  "error": {
+    "code": "stale_reminder",
+    "message": "This reminder changed on another device.",
+    "details": {
+      "current": {
+        "id": "rem_mvjkn4qx_7",
+        "sealed": "c2VhbGVkLXJlbWluZGVyLWNvbnRlbnQAAAAAAAAA",
+        "dueAt": 1792678991433,
+        "timeZone": "Asia/Dhaka",
+        "repeat": null,
+        "state": "scheduled",
+        "firedAt": null,
+        "deliveredAt": null,
+        "delivery": null,
+        "rev": 2,
+        "createdAt": 1792675391434,
+        "updatedAt": 1792675391440,
+        "completedAt": null
+      }
+    }
+  }
+}

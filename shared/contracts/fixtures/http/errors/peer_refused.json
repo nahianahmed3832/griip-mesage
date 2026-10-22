@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "peer_refused",
+    "message": "That server doesn't accept contact from this server"
+  }
+}

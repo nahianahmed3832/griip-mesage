@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "already_migrated",
+    "message": "This account has already moved to email sign-in. Sign in with m********4@example.test.",
+    "details": {
+      "emailHint": "m********4@example.test"
+    }
+  }
+}

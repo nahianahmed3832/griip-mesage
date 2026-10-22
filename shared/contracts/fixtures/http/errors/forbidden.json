@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "forbidden",
+    "message": "Only managers can post in announcement channels"
+  }
+}

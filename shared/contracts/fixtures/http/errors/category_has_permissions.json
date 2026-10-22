@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "category_has_permissions",
+    "message": "This category's permissions decide who sees its channels. Move its channels out (or delete them) first."
+  }
+}

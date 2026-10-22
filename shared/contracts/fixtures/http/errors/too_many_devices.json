@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "too_many_devices",
+    "message": "This account has as many devices as it can have. Remove one you no longer use (Settings › Devices), or ask the server's administrator."
+  }
+}

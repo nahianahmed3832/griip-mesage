@@ -1,0 +1,14 @@
+{
+  "upload": {
+    "method": "PUT",
+    "url": "http://127.0.0.1:59336/orbit-direct/orbit/attachments/a_14LLBf_g6f-_HpDSPzUM8Q?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIDDIRECTTEST%2F20261022%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20261022T132256Z&X-Amz-Expires=900&X-Amz-Signature=0d7db56df79f27d70e38d26f16d3a0b8dab8f40c9594add3495ff4fc65bfb827&X-Amz-SignedHeaders=content-length%3Bcontent-type%3Bhost%3Bif-none-match%3Bx-amz-checksum-sha256%3Bx-amz-server-side-encryption&x-id=PutObject",
+    "headers": {
+      "content-length": "1500",
+      "content-type": "application/octet-stream",
+      "x-amz-checksum-sha256": "P0JoAg4o++m2MpXm+LcWn9YeV1qrsRZA4bDA+D/LXXw=",
+      "if-none-match": "*",
+      "x-amz-server-side-encryption": "AES256"
+    },
+    "expiresAt": 1792676276920
+  }
+}

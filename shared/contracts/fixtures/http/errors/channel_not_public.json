@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "channel_not_public",
+    "message": "Onboarding can only open this community's public channels",
+    "details": {
+      "channelId": "c_uN3ssffT2RdwUIILVD0duA"
+    }
+  }
+}

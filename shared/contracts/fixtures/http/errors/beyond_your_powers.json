@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "beyond_your_powers",
+    "message": "You can only change \"Post announcements\" if you hold it yourself"
+  }
+}

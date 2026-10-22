@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "push_host_not_allowed",
+    "message": "This server only sends wake-ups to its own push server; set your distributor app to use it",
+    "details": {
+      "allowedHosts": [
+        "push.example.com"
+      ]
+    }
+  }
+}

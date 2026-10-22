@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "leave_community",
+    "message": "Leave the community instead of one of its channels"
+  }
+}

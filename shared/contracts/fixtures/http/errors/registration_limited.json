@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "registration_limited",
+    "message": "Too many new accounts from this network. Try again later, or ask for an invitation code."
+  }
+}

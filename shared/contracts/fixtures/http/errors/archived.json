@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "archived",
+    "message": "This role is archived. Restore it before assigning it."
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "error": {
+    "code": "owns_workspaces",
+    "message": "You're the only owner of a workspace. Make someone else an owner, or delete the workspace, first. Nothing was deleted.",
+    "details": {
+      "workspaces": [
+        {
+          "id": "o_QHOlBVc75ZlsQSUK2BEKgQ",
+          "name": "Deletion Test Workspace",
+          "members": 2
+        }
+      ]
+    }
+  }
+}

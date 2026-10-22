@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "storage_unavailable",
+    "message": "The server couldn't store the file. Try again in a moment."
+  }
+}

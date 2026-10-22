@@ -1,0 +1,24 @@
+{
+  "t": "call",
+  "event": "ring",
+  "call": {
+    "id": "call_mpef6vkIuwCohP1BkkHGQg",
+    "conversationId": "cf_BaqO06BWM2hGNhyxhBQAFi",
+    "conversationType": "DM",
+    "createdBy": "u_vRL6xZuF17CKhIkeVuhi6w",
+    "video": false,
+    "state": "RINGING",
+    "createdAt": 1792675369017,
+    "answeredAt": null,
+    "alertedAt": null,
+    "endedAt": null,
+    "endReason": null,
+    "participants": [],
+    "voiceRoom": false,
+    "hands": []
+  },
+  "from": {
+    "userId": "u_vRL6xZuF17CKhIkeVuhi6w",
+    "displayName": "Bob"
+  }
+}

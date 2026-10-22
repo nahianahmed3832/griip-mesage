@@ -1,0 +1,26 @@
+{
+  "items": [
+    {
+      "id": 1,
+      "kind": "envelope",
+      "conversationId": "c_Ad4qHFkbYaTeVFIu0s4T4w",
+      "messageId": "84f8cb24-6afc-4e9c-b694-fc4e89de7193",
+      "senderUserId": "u_snT0936bbrj9xQhL4Q2tlA",
+      "senderDeviceId": "d_hYwfGPeSBuZs08BF6vZt8w",
+      "createdAt": 1792675373789,
+      "expiresAt": 1792675374789,
+      "payload": {
+        "v": 1,
+        "cls": "message",
+        "sentAt": 1792675373786,
+        "serverTs": 1792675373789,
+        "nonce": "l6Z3Ou/PSVCmOX3W",
+        "ciphertext": "Y0wxaBtCY7RXwOSEkG+hhr+2YXbfKRP7jh8XAFlSPsqTggQRTkGoSE5mf7ct2C6s/GdiwL8c",
+        "signature": "DR6cIFvjLFGhzgKbrAKWaJvxVAARZldHSFpsIl1ur1/K+RpsqQE7Mt0d1H/vtvAeFRw6dqAsbzc3RE5n2BpOCA==",
+        "enc": "n7n/QXYmR4yqyOYwaBCJArzNc3CgFSDxunxPMc24xi0=",
+        "wrappedKey": "ZXEuFFCDicmJNlo0dPyz4jze1rPLhrHUlLjdn7l8UcQRTCONGuhuAD1OCByKdjSx"
+      }
+    }
+  ],
+  "more": false
+}

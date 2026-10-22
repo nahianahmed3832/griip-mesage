@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "invite_expired",
+    "message": "This invite has expired. Ask for a new one."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "invite_unavailable",
+    "message": "This invite can no longer be used: whoever created it can't invite people there any more. Ask for a new one."
+  }
+}

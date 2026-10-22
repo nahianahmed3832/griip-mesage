@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "invalid_certificate",
+    "message": "This device's certificate isn't signed by the account's identity key"
+  }
+}

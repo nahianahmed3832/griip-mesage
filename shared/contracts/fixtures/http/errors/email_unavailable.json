@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "email_unavailable",
+    "message": "This server can't send email yet, so new accounts can't be verified. Try again later."
+  }
+}

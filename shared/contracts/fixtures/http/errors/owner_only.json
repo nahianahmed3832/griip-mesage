@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "owner_only",
+    "message": "\"Delete the community\" stays with owners and can't be put into a role"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "request_pending",
+    "message": "Accept the message request to reply"
+  }
+}

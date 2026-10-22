@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "role_not_givable",
+    "message": "Onboarding can only give this community's roles without administrative permissions",
+    "details": {
+      "roleId": "rl_MZfzKfHiZcMphtdKdgtwPw"
+    }
+  }
+}

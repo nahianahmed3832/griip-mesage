@@ -1,0 +1,18 @@
+{
+  "call": {
+    "id": "call_QhFwbfF-jR2ahA6ndDbmYg",
+    "conversationId": "cf_BaqO06BWM2hGNhyxhBQAFi",
+    "conversationType": "DM",
+    "createdBy": "u_r3sJlaygTkM1PV5-ZROCCQ",
+    "video": true,
+    "state": "RINGING",
+    "createdAt": 1792675368881,
+    "answeredAt": null,
+    "alertedAt": 1792675368902,
+    "endedAt": null,
+    "endReason": null,
+    "participants": [],
+    "voiceRoom": false,
+    "hands": []
+  }
+}

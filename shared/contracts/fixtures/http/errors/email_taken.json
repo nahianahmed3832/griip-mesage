@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "email_taken",
+    "message": "That email already has a Meldiq account. Use another address, or sign in with it."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "confirm_mismatch",
+    "message": "Type your account's email address exactly to delete your account. Nothing was deleted."
+  }
+}

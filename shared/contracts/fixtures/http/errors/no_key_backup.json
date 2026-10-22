@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "no_key_backup",
+    "message": "There's no key backup for this account's current password. Use your recovery key or another signed-in device."
+  }
+}

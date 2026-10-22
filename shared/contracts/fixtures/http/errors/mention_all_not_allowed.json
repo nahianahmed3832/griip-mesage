@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "mention_all_not_allowed",
+    "message": "Only admins and managers can mention everyone in this conversation."
+  }
+}

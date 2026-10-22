@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "limit_reached",
+    "message": "This community's plan allows 2 members (including guests) per workspace, and this workspace has reached it.",
+    "details": {
+      "key": "members",
+      "limit": 2
+    }
+  }
+}

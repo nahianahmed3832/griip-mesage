@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "mention_all_not_in_dm",
+    "message": "@everyone isn't available in direct messages."
+  }
+}

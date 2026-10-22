@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "recovery_throttled",
+    "message": "Too many wrong recovery codes. Wait a while and try again."
+  }
+}

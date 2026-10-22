@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "mention_all_rate_limited",
+    "message": "You've mentioned everyone here too often in the last hour. Try again later, or send it without @everyone."
+  }
+}

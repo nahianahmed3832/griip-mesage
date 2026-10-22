@@ -1,0 +1,31 @@
+{
+  "error": {
+    "code": "stale",
+    "message": "Someone else changed this role. Review the latest version and try again.",
+    "details": {
+      "role": {
+        "id": "rl_WwI8tpVmg4iJu8XM5AyHqQ",
+        "name": "Night moderator",
+        "description": "Keeps conversations healthy: manages channels and their access, posts announcements, times out, removes and bans people.",
+        "color": "#C9A27A",
+        "icon": "shield",
+        "permissions": [
+          "messages.announce"
+        ],
+        "denies": [],
+        "template": "moderator",
+        "position": 2,
+        "hoist": false,
+        "rev": 2,
+        "memberCount": 0,
+        "archived": false,
+        "archivedAt": null,
+        "createdBy": "u_OEIfhZyp02c81u3TwoIjdw",
+        "createdAt": 1792675384700,
+        "updatedAt": 1792675384702,
+        "canEdit": true,
+        "canAssign": true
+      }
+    }
+  }
+}

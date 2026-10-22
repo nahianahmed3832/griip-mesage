@@ -1,0 +1,58 @@
+{
+  "calls": [
+    {
+      "id": "call_-dEupcIPHWwRxfcWZaWVpA",
+      "conversationId": "c_ZG_ZV1261hj52LaUvQ8PxQ",
+      "conversationType": "DM",
+      "createdBy": "u_vQcBOvM5Qq3PTnwf2cXY9Q",
+      "video": true,
+      "state": "ENDED",
+      "createdAt": 1792675391148,
+      "answeredAt": null,
+      "alertedAt": 1792675391165,
+      "endedAt": 1792675391169,
+      "endReason": "declined",
+      "participants": [],
+      "voiceRoom": false,
+      "hands": [],
+      "attended": [
+        {
+          "userId": "u_vQcBOvM5Qq3PTnwf2cXY9Q",
+          "joinedAt": 1792675391150,
+          "leftAt": 1792675391169,
+          "seconds": 0
+        }
+      ]
+    },
+    {
+      "id": "call_O__z72mB6TSDkxr10o2YwA",
+      "conversationId": "c_ZG_ZV1261hj52LaUvQ8PxQ",
+      "conversationType": "DM",
+      "createdBy": "u_vQcBOvM5Qq3PTnwf2cXY9Q",
+      "video": false,
+      "state": "ENDED",
+      "createdAt": 1792675326102,
+      "answeredAt": 1792675326123,
+      "alertedAt": null,
+      "endedAt": 1792675391135,
+      "endReason": "hangup",
+      "participants": [],
+      "voiceRoom": false,
+      "hands": [],
+      "attended": [
+        {
+          "userId": "u_vQcBOvM5Qq3PTnwf2cXY9Q",
+          "joinedAt": 1792675326107,
+          "leftAt": 1792675391135,
+          "seconds": 65
+        },
+        {
+          "userId": "u_HE15xyO0lQpIDV45Y_IeXg",
+          "joinedAt": 1792675326123,
+          "leftAt": 1792675391135,
+          "seconds": 65
+        }
+      ]
+    }
+  ]
+}

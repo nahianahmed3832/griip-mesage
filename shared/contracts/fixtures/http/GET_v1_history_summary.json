@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "items": 0,
+  "bytes": 0,
+  "seq": 0,
+  "maxItems": 500000,
+  "maxBytes": 51200,
+  "maxItemBytes": 65536
+}

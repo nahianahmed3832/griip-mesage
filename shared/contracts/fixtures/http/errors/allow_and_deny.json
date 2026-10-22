@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "allow_and_deny",
+    "message": "An overwrite can't both allow and deny \"Post in channels\""
+  }
+}

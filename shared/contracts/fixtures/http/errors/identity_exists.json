@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "identity_exists",
+    "message": "This account already has encryption keys. Try again."
+  }
+}

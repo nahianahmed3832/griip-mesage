@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "quota_exceeded",
+    "message": "New accounts can upload 2 MB a day for their first 7 days (0 MB left today). An invitation from a member, or an administrator, lifts this limit."
+  }
+}

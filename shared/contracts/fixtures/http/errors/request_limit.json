@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "request_limit",
+    "message": "You can send more once they accept your message request"
+  }
+}

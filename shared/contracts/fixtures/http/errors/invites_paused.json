@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "invites_paused",
+    "message": "This community has paused new members for now. Try again later."
+  }
+}

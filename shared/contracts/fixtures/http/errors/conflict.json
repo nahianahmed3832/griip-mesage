@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "conflict",
+    "message": "An organization needs at least one owner"
+  }
+}

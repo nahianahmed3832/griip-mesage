@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "direct_upload_unavailable",
+    "message": "This server receives uploads itself: use POST /v1/attachments."
+  }
+}

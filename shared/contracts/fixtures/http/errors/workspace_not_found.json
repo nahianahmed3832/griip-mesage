@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "workspace_not_found",
+    "message": "Workspace not found"
+  }
+}

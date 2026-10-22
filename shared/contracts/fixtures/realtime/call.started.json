@@ -1,0 +1,20 @@
+{
+  "t": "call",
+  "event": "started",
+  "call": {
+    "id": "call_s6xNJ2itOKpNrMxOtscSfg",
+    "conversationId": "c_m2v2DGCFVo2DvErDTu1vQQ",
+    "conversationType": "CHANNEL",
+    "createdBy": "u_OtzopCirPDz7n_LeQ4kRCQ",
+    "video": false,
+    "state": "ACTIVE",
+    "createdAt": 1792675386573,
+    "answeredAt": 1792675386573,
+    "alertedAt": null,
+    "endedAt": null,
+    "endReason": null,
+    "participants": [],
+    "voiceRoom": true,
+    "hands": []
+  }
+}

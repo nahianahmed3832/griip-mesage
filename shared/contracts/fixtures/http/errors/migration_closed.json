@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "migration_closed",
+    "message": "Moving older accounts has ended on this server."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "legacy_registration_closed",
+    "message": "This version of the app can't create accounts any more. Update the app to sign up."
+  }
+}

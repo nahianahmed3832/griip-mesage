@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "delegation_required",
+    "message": "Only people who can delegate admin powers can give a role administrative powers"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "email_in_use",
+    "message": "Another account uses that address. Choose a different one."
+  }
+}

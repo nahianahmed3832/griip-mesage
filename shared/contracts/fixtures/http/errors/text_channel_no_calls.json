@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "text_channel_no_calls",
+    "message": "Calls happen in voice rooms, not in text channels"
+  }
+}

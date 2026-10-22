@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "upload_expired",
+    "message": "This upload took too long. Start it again."
+  }
+}

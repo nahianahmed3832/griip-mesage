@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "role_name_taken",
+    "message": "A role called \"moderator\" already exists in this workspace",
+    "details": {
+      "roleId": "rl_t5tnG-AlW9t1suqNrBVgeA"
+    }
+  }
+}

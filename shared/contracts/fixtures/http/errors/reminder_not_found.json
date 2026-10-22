@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "reminder_not_found",
+    "message": "Reminder not found"
+  }
+}

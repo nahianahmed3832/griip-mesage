@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "federation_backlog",
+    "message": "The other person's server isn't keeping up. Try again later."
+  }
+}

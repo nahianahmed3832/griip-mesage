@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "invite_used_up",
+    "message": "This invite has already been used as many times as it allows. Ask for a new one."
+  }
+}

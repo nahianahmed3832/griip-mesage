@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "history_off",
+    "message": "This server doesn't keep message history."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "not_uploaded",
+    "message": "The file hasn't reached the server's storage yet. Upload it again."
+  }
+}

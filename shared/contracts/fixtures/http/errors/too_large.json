@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "too_large",
+    "message": "Attachment is too large"
+  }
+}

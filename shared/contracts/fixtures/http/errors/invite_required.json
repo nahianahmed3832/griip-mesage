@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "invite_required",
+    "message": "Registration needs an invitation code"
+  }
+}

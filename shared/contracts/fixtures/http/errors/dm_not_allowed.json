@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "dm_not_allowed",
+    "message": "This person only accepts messages from people they're connected with"
+  }
+}

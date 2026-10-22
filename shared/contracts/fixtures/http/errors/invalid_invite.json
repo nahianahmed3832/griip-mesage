@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "invalid_invite",
+    "message": "This invitation code is invalid, expired or already used",
+    "details": {
+      "reason": "invite_not_found"
+    }
+  }
+}

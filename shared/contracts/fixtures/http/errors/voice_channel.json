@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "voice_channel",
+    "message": "Voice channels don't take messages"
+  }
+}

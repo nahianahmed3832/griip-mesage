@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "legacy_verification_failed",
+    "message": "That username and recovery key don't match an account. Check both and try again."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "session_expired",
+    "message": "Your session has ended. Sign in again."
+  }
+}

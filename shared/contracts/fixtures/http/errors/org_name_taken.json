@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "org_name_taken",
+    "message": "You already own a community called \"GriipBuddy\". Open it, or choose another name.",
+    "details": {
+      "orgId": "o_wuxcgbl1yfmnpzr2YA3GRA"
+    }
+  }
+}

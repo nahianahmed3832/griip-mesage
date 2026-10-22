@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "bad_address",
+    "message": "Use the form @name:server"
+  }
+}

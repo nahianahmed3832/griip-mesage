@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "invalid_proof",
+    "message": "Invalid proof signature"
+  }
+}

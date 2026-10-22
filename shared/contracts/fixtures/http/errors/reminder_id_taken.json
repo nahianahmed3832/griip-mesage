@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "reminder_id_taken",
+    "message": "Choose another reminder id"
+  }
+}

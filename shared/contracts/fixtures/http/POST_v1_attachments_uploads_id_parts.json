@@ -1,0 +1,16 @@
+{
+  "parts": [
+    {
+      "n": 1,
+      "upload": {
+        "method": "PUT",
+        "url": "http://127.0.0.1:59332/orbit-abuse/orbit/attachments/a_SZsBoiem0forwL32bkkR-A?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIDABUSETEST%2F20261022%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20261022T132255Z&X-Amz-Expires=900&X-Amz-Signature=ba1544054894ed8b633f03a4f5c01579b9d9baf8ed62a821726351354d9b1a56&X-Amz-SignedHeaders=content-length%3Bhost%3Bx-amz-checksum-sha256&partNumber=1&uploadId=2884eca6-bf83-4a82-866f-a2146f25fdfd&x-id=UploadPart",
+        "headers": {
+          "content-length": "5242880",
+          "x-amz-checksum-sha256": "nus9o8O46SfhDRnwTfZ508qwUdGzTZkPWZdSsQIf5mI="
+        },
+        "expiresAt": 1792676275291
+      }
+    }
+  ]
+}

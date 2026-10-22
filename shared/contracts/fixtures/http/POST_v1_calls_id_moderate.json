@@ -1,0 +1,29 @@
+{
+  "call": {
+    "id": "call_s6xNJ2itOKpNrMxOtscSfg",
+    "conversationId": "c_m2v2DGCFVo2DvErDTu1vQQ",
+    "conversationType": "CHANNEL",
+    "createdBy": "u_OtzopCirPDz7n_LeQ4kRCQ",
+    "video": false,
+    "state": "ACTIVE",
+    "createdAt": 1792675386573,
+    "answeredAt": 1792675386573,
+    "alertedAt": null,
+    "endedAt": null,
+    "endReason": null,
+    "participants": [
+      {
+        "userId": "u_OtzopCirPDz7n_LeQ4kRCQ",
+        "deviceId": "d_COWcxvsThTqpmD_a7lyU7w",
+        "joinedAt": 1792675386575
+      },
+      {
+        "userId": "u_D3UImoYQI987g6PmH_13qw",
+        "deviceId": "d_RBQUlzPw0aTg3GTVLnh1rw",
+        "joinedAt": 1792675386582
+      }
+    ],
+    "voiceRoom": true,
+    "hands": []
+  }
+}

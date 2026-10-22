@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "legacy_login_closed",
+    "message": "This version of the app can't sign in any more. Update the app and sign in with your email."
+  }
+}

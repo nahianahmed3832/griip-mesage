@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "invite_not_found",
+    "message": "This invite code doesn't exist. Check the code with the person who sent it."
+  }
+}

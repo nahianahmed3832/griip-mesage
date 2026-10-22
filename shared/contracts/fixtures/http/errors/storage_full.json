@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "storage_full",
+    "message": "File storage for new accounts is full right now. Try again later."
+  }
+}

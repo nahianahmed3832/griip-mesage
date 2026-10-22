@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "slowmode",
+    "message": "Slowmode is on in this channel. Wait a moment before posting again.",
+    "details": {
+      "retryAfter": 30,
+      "nextPostAt": 1792675419663
+    }
+  }
+}

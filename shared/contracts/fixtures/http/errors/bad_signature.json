@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "bad_signature",
+    "message": "Envelope signature does not verify against the sending device"
+  }
+}

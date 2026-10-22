@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "unknown_domain",
+    "message": "No Griip server is registered at that address"
+  }
+}

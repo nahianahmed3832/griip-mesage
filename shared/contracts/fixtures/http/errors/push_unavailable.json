@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "push_unavailable",
+    "message": "This server doesn't send push wake-ups"
+  }
+}

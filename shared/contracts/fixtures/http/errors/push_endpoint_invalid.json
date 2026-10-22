@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "push_endpoint_invalid",
+    "message": "The push endpoint must be an https:// address without a user name, password or #fragment"
+  }
+}

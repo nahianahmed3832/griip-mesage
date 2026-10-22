@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "requests_not_allowed",
+    "message": "This person isn't accepting connection requests"
+  }
+}

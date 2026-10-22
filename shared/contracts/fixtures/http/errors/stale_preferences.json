@@ -1,0 +1,36 @@
+{
+  "error": {
+    "code": "stale_preferences",
+    "message": "These preferences changed on another device. Apply your change to this copy and try again.",
+    "details": {
+      "current": {
+        "workspaceId": "o_MOt63rVodCSanRl2DpIiZg",
+        "rev": 1,
+        "updatedAt": 1792675392764,
+        "prefs": {
+          "starred": [
+            "c_4geQamA6XIICxvwpoLZE7g"
+          ],
+          "sections": [
+            {
+              "id": "s_projects",
+              "name": "Projects",
+              "items": [
+                "c_ZVP6cOMnzQE8NX6TZQ3IXw"
+              ],
+              "collapsed": true
+            }
+          ],
+          "collapsed": [
+            "dms",
+            "branch:b_x"
+          ],
+          "notify": {
+            "c_4geQamA6XIICxvwpoLZE7g": "mentions"
+          },
+          "saved": []
+        }
+      }
+    }
+  }
+}

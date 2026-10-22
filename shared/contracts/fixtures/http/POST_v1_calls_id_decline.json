@@ -1,0 +1,19 @@
+{
+  "call": {
+    "id": "call_mpef6vkIuwCohP1BkkHGQg",
+    "conversationId": "cf_BaqO06BWM2hGNhyxhBQAFi",
+    "conversationType": "DM",
+    "createdBy": "u_vRL6xZuF17CKhIkeVuhi6w",
+    "video": false,
+    "state": "ENDED",
+    "createdAt": 1792675369017,
+    "answeredAt": null,
+    "alertedAt": null,
+    "endedAt": 1792675369031,
+    "endReason": "busy",
+    "participants": [],
+    "voiceRoom": false,
+    "hands": [],
+    "attended": []
+  }
+}

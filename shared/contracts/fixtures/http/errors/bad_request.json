@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "bad_request",
+    "message": "Invalid request",
+    "details": [
+      {
+        "path": "endpoint",
+        "message": "String must contain at most 1024 character(s)"
+      }
+    ]
+  }
+}

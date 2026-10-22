@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "device_revoked",
+    "message": "This phone was removed from your account. Set up encryption again."
+  }
+}

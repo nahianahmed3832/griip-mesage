@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "not_for_guests",
+    "message": "Guests can't hold \"Manage channels\""
+  }
+}

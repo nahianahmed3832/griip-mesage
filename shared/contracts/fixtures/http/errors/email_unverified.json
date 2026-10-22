@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "email_unverified",
+    "message": "Verify your email first: enter the code we sent you.",
+    "details": {
+      "email": "twice.mvjkmlyl5@example.test"
+    }
+  }
+}

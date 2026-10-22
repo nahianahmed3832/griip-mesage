@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "dms_paused",
+    "message": "New direct messages between members of your community are paused for now"
+  }
+}

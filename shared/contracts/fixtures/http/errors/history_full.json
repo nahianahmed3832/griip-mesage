@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "history_full",
+    "message": "This server's message history storage is full. Try again later."
+  }
+}

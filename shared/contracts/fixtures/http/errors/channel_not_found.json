@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "channel_not_found",
+    "message": "Pick a channel of this community",
+    "details": {
+      "channelId": "c_nowhere"
+    }
+  }
+}

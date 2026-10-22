@@ -1,0 +1,19 @@
+{
+  "call": {
+    "id": "call_k-AdaN3UzBUrrEGXi_Yq9w",
+    "conversationId": "c_sRHb2dTuExsaoKp3ZTNvmA",
+    "conversationType": "GROUP",
+    "createdBy": "u_6zgB3H3M8U0EiUIWPhEDbg",
+    "video": true,
+    "state": "ENDED",
+    "createdAt": 1792675378980,
+    "answeredAt": null,
+    "alertedAt": null,
+    "endedAt": 1792675378987,
+    "endReason": "empty",
+    "participants": [],
+    "voiceRoom": false,
+    "hands": [],
+    "attended": []
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "device_required",
+    "message": "Only a device that has this account's keys can back them up."
+  }
+}

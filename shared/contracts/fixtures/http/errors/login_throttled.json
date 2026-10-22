@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "login_throttled",
+    "message": "Too many wrong passwords. Wait a few minutes and try again."
+  }
+}
