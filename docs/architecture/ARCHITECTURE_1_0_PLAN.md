@@ -451,3 +451,28 @@ was never exposed. Extras from peers are now limited to the contract's typed fie
 
 Still to do in C (C2): zod schemas for HTTP bodies and responses, OpenAPI generation, contract tests and golden
 fixtures (the realtime types become zod schemas there too, so fixtures and JSON Schema come from one source).
+
+### C1 merged (2026-10-22)
+
+`internal-beta` fast-forwarded to `3e2361b` (local, not pushed). Main folder: 727 passed / 10 skipped.
+
+### Step C2, first part (2026-10-22, branch `architecture-1.0`)
+
+| Commit | What |
+|---|---|
+| `bdc5d19` | Contracts as zod 4 schemas (`zod/v4` from the installed zod 3.25, no new dependency): `shared/contracts/realtime.ts` and `shared/contracts/http/` for 30 routes (system, messaging and queue, history, files, calls), whose routes now validate input with them. Optional `ContractObserver` in `buildApp` (tests only) checks every documented answer, every error answer on every route, and every frame; `npm run contracts`; `test/contracts.test.ts` (drift, stale contracts, fixtures) |
+| `7c88bde` | Generated `docs/api/openapi.json`, `docs/api/realtime.schema.json`; 162 golden fixtures in `shared/contracts/fixtures/` (28 HTTP, 115 errors, 19 frame types) |
+
+What the checks found on the first full run: every error answer on all routes already had the envelope and a
+catalogued code, and every frame matched; only the catalog's statuses for the five invite codes were wrong (fixed).
+
+Open in C2:
+- The other ~200 routes, area by area (accounts and auth, communities, conversations, users, the rest), each with its
+  input schemas moved into the contract, as done here.
+- Fixtures not captured yet because no test exercises them: `POST /v1/queue/ack` (tests ack over the WebSocket) and
+  the frames `org.reports`, `org.applications`, `org.application`, `org.alert`, `prefs.updated`,
+  `connections.updated`, `meeting.*`.
+- OpenAPI inlines repeated schemas (`CallWire` …); named components come with the next areas.
+- A path that matches no route answers Fastify's own 404 body; Android detects older servers by it. Moving it to the
+  envelope needs a compatible form first.
+- Client side (phase F): Android and web unit tests decode the fixtures; web types generated from the JSON Schemas.
