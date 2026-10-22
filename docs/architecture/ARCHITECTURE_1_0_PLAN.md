@@ -580,7 +580,11 @@ and files in MongoDB (CI's MongoDB pass now includes files); build passes. Two f
 | Where | Commit | What |
 |---|---|---|
 | Android | `f65735a` | `ContractFixturesTest`: the 154 answers the app decodes (table generated from its typed `api.get<T>(…)` calls plus the account client), every frame and every error, with `GriipJson` (must pass) and a strict decoder without coercion (shrink-only allowlist, empty today). Proven to fail on a corrupted fixture. Android 654 passed |
-| Web | (web session) | Asked of the "Meldiq web parity with Android" session, which owns `meldiq-web` releases: the same check with the web's zod schemas, plus detection of its silent `.catch()` defaults |
+| Web | `meldiq-web` `96ab083` (branch `contract-fixtures`, by the web parity session) | `test/contract-fixtures.test.ts`: a copy of the fixtures (`scripts/sync-contract-fixtures.ts`, `--check` fails on drift) decoded with the web's own schemas. The route table is found by scanning `src/**` for `json`/`call` with their schemas: 309 calls reach 184 of 211 routes, 158 decodes against 134 fixtures, none fail. Every frame goes through the new `src/sync/frames.ts` `parseFrame` (the engine uses it; `pong` and `org.alert` are ignored on purpose); every error is read through `ApiClient`. A strict pass records where a `.catch()` replaced a value: 0 today. Proven to fail on a wrong-typed fixture, an unknown enum value and a drifted copy. Web 366 passed / 1 skipped, tsc clean (rerun here) |
+
+The web's allowlist has 99 "unrouted" entries: web calls to routes the server no longer has, all retired features
+(AI, documents, inbox, integrations, workflows, webhooks, api-keys, groups, branches, teams and departments,
+developer catalog, workspace templates, add-group). Removing them is the web side of F1 in the step table above, with F2.
 
 Found while mapping: the app still calls three routes the server no longer has, from retired workspace screens:
 `GET /v1/orgs/:orgId/groups` (MeetingsScreen), `GET /v1/workspace-templates` and `POST /v1/orgs/:orgId/apply-template`
