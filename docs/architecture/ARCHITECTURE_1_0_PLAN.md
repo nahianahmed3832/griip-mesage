@@ -525,7 +525,7 @@ unit tests decode `shared/contracts/fixtures`.
 | Commit | What |
 |---|---|
 | `aedf4aa` | `RelayStore` (async) and `SqliteRelayStore` with the existing SQL; sending, acknowledging, the REST queue, the WebSocket backlog, retention, push wake-ups, health, reports, federation delivery and five deletion cascades use it. The relay tables now belong to messaging alone (13 table exceptions gone). The backlog flush holds live items instead of relying on a synchronous query |
-| (D1b) | `MongoRelayStore` and the `relay` MongoDB domain (calls split into their own `calls` domain); per-device work queue in the hub; outbox room checked before a message is accepted; tests on both stores; CI's MongoDB pass includes `relay`; `deploy/scripts/validate-env.sh` accepts the current domains |
+| `57908cd` | `MongoRelayStore` and the `relay` MongoDB domain (calls split into their own `calls` domain); per-device work queue in the hub; outbox room checked before a message is accepted; tests on both stores; CI's MongoDB pass includes `relay`; `deploy/scripts/validate-env.sh` accepts the current domains |
 
 How the MongoDB relay keeps today's guarantees:
 
