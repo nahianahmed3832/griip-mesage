@@ -4,6 +4,7 @@
  * delivery. It never sees message content: it moves the same ciphertext envelopes the local queue holds.
  */
 import { withoutMentionAll } from "../messaging/mentions.js";
+import type { CallEventExtras, CallEventName, ServerEvent } from "../../shared/contracts/realtime.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -677,7 +678,7 @@ export class Federation {
    * Sends a call event about a call hosted here to the home servers of the remote people in it (or of one person).
    * Realtime and best effort: three quick attempts, then the peer's next sync (join, active list) catches up.
    */
-  relayCall(c: CallRow, event: string, extra: object = {}, targetUserId?: string) {
+  relayCall(c: CallRow, event: CallEventName, extra: CallEventExtras = {}, targetUserId?: string) {
     const homes = targetUserId
       ? (this.ctx.db.prepare("SELECT home_server_id h FROM users WHERE id = ? AND home_server_id IS NOT NULL").all(targetUserId) as { h: string }[])
       : (this.ctx.db
@@ -752,13 +753,12 @@ export class Federation {
     body: { event?: string; call?: any; extra?: object; targetUserId?: string | null; caller?: FedUser | null; members?: string[] },
     notify?: (conversationId: string) => void,
   ) {
-    const allowed = ["ring", "updated", "ended", "alerted", "declined", "dismissed", "started"];
-    if (!body?.event || !allowed.includes(body.event)) throw new FederationError(400, "bad_event", "Unknown call event");
+    const event = body?.event;
+    if (!isRelayedCallEvent(event)) throw new FederationError(400, "bad_event", "Unknown call event");
     this.ensureCallConversation(peer, body, notify);
     const c = this.applyCallState(peer, body.call);
     const view = callView(this.ctx, c);
-    const extra = body.extra && typeof body.extra === "object" ? body.extra : {};
-    const msg = { t: "call", event: body.event, call: view, ...extra };
+    const msg: ServerEvent = { t: "call", event, call: view, ...callExtras(body.extra) };
     if (body.targetUserId) {
       const local = this.ctx.db
         .prepare("SELECT 1 FROM conversation_members m JOIN users u ON u.id = m.user_id WHERE m.conversation_id = ? AND m.user_id = ? AND u.home_server_id IS NULL")
@@ -817,4 +817,22 @@ export class Federation {
 /** A host server's error code passed on to our client: only codes this server's catalog knows (shared/errors.ts). */
 function remoteCode(code: unknown): ErrorCode {
   return typeof code === "string" && isErrorCode(code) ? code : "call_failed";
+}
+
+const RELAYED_CALL_EVENTS: readonly CallEventName[] = ["ring", "updated", "ended", "alerted", "declined", "dismissed", "started"];
+
+export function isRelayedCallEvent(e: unknown): e is CallEventName {
+  return typeof e === "string" && (RELAYED_CALL_EVENTS as readonly string[]).includes(e);
+}
+
+/** The extra fields of a call event from a peer server: only the contract's, with their types checked. */
+export function callExtras(raw: unknown): CallEventExtras {
+  if (!raw || typeof raw !== "object") return {};
+  const x = raw as Record<string, unknown>;
+  const out: CallEventExtras = {};
+  const from = x.from as Record<string, unknown> | undefined;
+  if (from && typeof from.userId === "string" && typeof from.displayName === "string") out.from = { userId: from.userId, displayName: from.displayName };
+  if (typeof x.userId === "string") out.userId = x.userId;
+  if (x.reason === "declined" || x.reason === "busy") out.reason = x.reason;
+  return out;
 }

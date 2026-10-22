@@ -1,5 +1,6 @@
 import type { WebSocket } from "ws";
 import type { DB } from "../../infrastructure/database/db.js";
+import type { QueueItemWire, ServerEvent } from "../../shared/contracts/realtime.js";
 import { now } from "../../shared/utilities/util.js";
 
 export interface QueueItemRow {
@@ -15,7 +16,7 @@ export interface QueueItemRow {
   expires_at: number;
 }
 
-export function queueItemToWire(r: QueueItemRow) {
+export function queueItemToWire(r: QueueItemRow): QueueItemWire {
   return {
     id: r.id,
     kind: r.kind,
@@ -122,21 +123,21 @@ export class Hub {
     return this.byDevice.size;
   }
 
-  sendToDevice(deviceId: string, msg: unknown): boolean {
+  sendToDevice(deviceId: string, msg: ServerEvent): boolean {
     const set = this.byDevice.get(deviceId);
     if (!set || set.size === 0) return false;
-    const data = JSON.stringify(msg);
+    const data = frame(msg);
     for (const c of set) if (c.ws.readyState === 1) c.ws.send(data);
     return true;
   }
 
-  sendToUser(userId: string, msg: unknown, exceptDeviceId?: string): void {
+  sendToUser(userId: string, msg: ServerEvent, exceptDeviceId?: string): void {
     const devs = this.byUser.get(userId);
     if (!devs) return;
     for (const d of devs) if (d !== exceptDeviceId) this.sendToDevice(d, msg);
   }
 
-  sendToUsers(userIds: Iterable<string>, msg: unknown, exceptDeviceId?: string): void {
+  sendToUsers(userIds: Iterable<string>, msg: ServerEvent, exceptDeviceId?: string): void {
     for (const u of userIds) this.sendToUser(u, msg, exceptDeviceId);
   }
 
@@ -172,7 +173,7 @@ export class Hub {
       if (opts.wake !== false && rows.some((r) => r.kind === "envelope")) this.onQueuedOffline(deviceId);
       return;
     }
-    const data = JSON.stringify({ t: "queue", items: rows.map(queueItemToWire), more: false });
+    const data = frame({ t: "queue", items: rows.map(queueItemToWire), more: false });
     for (const c of this.byDevice.get(deviceId) ?? []) if (!c.flushing && c.ws.readyState === 1) c.ws.send(data);
   }
 
@@ -187,12 +188,15 @@ export class Hub {
     const more = rows.length > batchSize;
     const batch = rows.slice(0, batchSize);
     if (conn.ws.readyState !== 1) return;
-    conn.ws.send(JSON.stringify({ t: "queue", items: batch.map(queueItemToWire), more, backlog: true }));
+    conn.ws.send(frame({ t: "queue", items: batch.map(queueItemToWire), more, backlog: true }));
     // Query, send and this switch happen in one synchronous step, so an item queued afterwards is
     // pushed live and one queued before is in this batch: nothing is skipped or sent twice.
     conn.flushing = more;
-    if (!more) conn.ws.send(JSON.stringify({ t: "queue.drained" }));
+    if (!more) conn.ws.send(frame({ t: "queue.drained" }));
   }
 }
 
-
+/** The text of one WebSocket frame: only contract events can be sent (src/shared/contracts/realtime.ts). */
+export function frame(e: ServerEvent): string {
+  return JSON.stringify(e);
+}

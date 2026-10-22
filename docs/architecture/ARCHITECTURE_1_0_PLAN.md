@@ -430,3 +430,24 @@ Known limits, deliberately left for later steps:
 
 Next safe step: C1 (realtime event union, error-code catalog, typed `Hub`, split of `context.ts`/`util.ts`), still
 without any route, event or data change.
+
+### Phase B merged (2026-10-22)
+
+The owner asked to merge B before the next server batch: `internal-beta` fast-forwarded to `5470943` (local, not
+pushed). Checked in the main folder: typecheck clean, 721 passed / 10 skipped.
+
+### Step C1 (2026-10-22, branch `architecture-1.0`)
+
+| Commit | What |
+|---|---|
+| `d7fe59a` | `app/context.ts` keeps only `AppContext`; authentication → `modules/auth/index.ts` (the auth module's public API); `parse` and the zod primitives → `shared/validation/`; `ApiError` and helpers → `shared/errors.ts`. 46 importers rewritten by symbol |
+| `1dc1750` | Error-code catalog `ERROR_CODES` in `shared/errors.ts`: 168 codes (35 federation) with statuses and meaning; `ApiError`, `FederationError` and the permission refusals only take catalog codes; `test/error_catalog.test.ts` checks statuses and dead codes. A federated call host's error code is passed on only if catalogued |
+| (C1c) | Realtime contract `shared/contracts/realtime.ts`: `ServerEvent` (21 frame names) and `ClientEvent` (4); `Hub.send*` and every frame written take `ServerEvent`; `callView` returns `CallWire`; queue items `QueueItemWire` |
+
+Security fix found by typing the frames: a call event relayed by a peer server was built as
+`{ t: "call", event, call, ...extra }` with the peer's `extra` spread last, so a malicious peer could replace `t` and
+`call` and push any frame (for example `org.deleted`) to this server's clients. Federation is off in production, so it
+was never exposed. Extras from peers are now limited to the contract's typed fields (`test/realtime_contract.test.ts`).
+
+Still to do in C (C2): zod schemas for HTTP bodies and responses, OpenAPI generation, contract tests and golden
+fixtures (the realtime types become zod schemas there too, so fixtures and JSON Schema come from one source).

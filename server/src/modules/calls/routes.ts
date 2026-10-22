@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import type { CallAttendanceWire, CallEventExtras, CallEventName, CallWire, ServerEvent } from "../../shared/contracts/realtime.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { type AppContext } from "../../app/context.js";
@@ -32,7 +33,7 @@ export interface CallRow {
  * own connection records, so it never includes anyone who only rang. Reconnecting on the same device keeps a single
  * record, so a person's time is a close lower bound rather than an exact sum.
  */
-export function callAttendance(ctx: AppContext, c: CallRow) {
+export function callAttendance(ctx: AppContext, c: CallRow): CallAttendanceWire[] {
   const rows = ctx.db.prepare("SELECT user_id, joined_at, left_at FROM call_participants WHERE call_id = ? ORDER BY joined_at").all(c.id) as {
     user_id: string;
     joined_at: number;
@@ -62,7 +63,7 @@ export function callAttendance(ctx: AppContext, c: CallRow) {
   });
 }
 
-export function callView(ctx: AppContext, c: CallRow) {
+export function callView(ctx: AppContext, c: CallRow): CallWire {
   const participants = ctx.db
     .prepare("SELECT user_id, device_id, joined_at FROM call_participants WHERE call_id = ? AND left_at IS NULL")
     .all(c.id) as { user_id: string; device_id: string; joined_at: number }[];
@@ -107,7 +108,7 @@ export function loadCall(ctx: AppContext, id: string): CallRow | undefined {
   return ctx.db.prepare("SELECT * FROM calls WHERE id = ?").get(id) as CallRow | undefined;
 }
 
-export function broadcastCall(ctx: AppContext, c: CallRow, event: string, extra: object = {}): void {
+export function broadcastCall(ctx: AppContext, c: CallRow, event: CallEventName, extra: CallEventExtras = {}): void {
   ctx.hub.sendToUsers(conversationMemberIds(ctx, c.conversation_id), { t: "call", event, call: callView(ctx, c), ...extra });
   // Hosted here with people on other servers: their home servers get the same event (signed, best effort).
   if (!c.host_server_id) ctx.federation?.relayCall(c, event, extra);
@@ -230,7 +231,7 @@ export async function evictFromCall(ctx: AppContext, c: CallRow): Promise<number
   }
   if (devices === 0) return 0;
   const cur = loadCall(ctx, c.id)!;
-  const removed = { t: "call", event: "ended", call: { ...callView(ctx, cur), endReason: "removed" } };
+  const removed: ServerEvent = { t: "call", event: "ended", call: { ...callView(ctx, cur), endReason: "removed" } };
   for (const [u, deviceIds] of evicted) {
     // A former member stops ringing on every device; a revoked device alone must not end the call
     // on the same person's other, still-admitted device.
@@ -281,7 +282,7 @@ export async function evictUserDevicesFromCalls(ctx: AppContext, userId: string)
 export function callActions(ctx: AppContext) {
   const { db, authz } = ctx;
   const load = (id: string) => loadCall(ctx, id);
-  const broadcast = (c: CallRow, event: string, extra: object = {}) => broadcastCall(ctx, c, event, extra);
+  const broadcast = (c: CallRow, event: CallEventName, extra: CallEventExtras = {}) => broadcastCall(ctx, c, event, extra);
   const endCall = (c: CallRow, reason: string) => endCallRow(ctx, c, reason);
 
   /**
@@ -372,7 +373,7 @@ export function callActions(ctx: AppContext) {
 }
 
 /** Sends a call event to one person: over their sockets here, or to their home server if they're on another one. */
-export function notifyCallUser(ctx: AppContext, c: CallRow, userId: string, event: string, extra: object = {}) {
+export function notifyCallUser(ctx: AppContext, c: CallRow, userId: string, event: CallEventName, extra: CallEventExtras = {}) {
   const home = (ctx.db.prepare("SELECT home_server_id h FROM users WHERE id = ?").get(userId) as { h: string | null } | undefined)?.h;
   if (home) {
     if (!c.host_server_id) ctx.federation?.relayCall(c, event, extra, userId);
@@ -391,7 +392,7 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
   const { db, authz } = ctx;
   const actions = callActions(ctx);
   const load = (id: string) => loadCall(ctx, id);
-  const broadcast = (c: CallRow, event: string, extra: object = {}) => broadcastCall(ctx, c, event, extra);
+  const broadcast = (c: CallRow, event: CallEventName, extra: CallEventExtras = {}) => broadcastCall(ctx, c, event, extra);
   const endCall = (c: CallRow, reason: string) => endCallRow(ctx, c, reason);
   const memberIds = (convId: string) => conversationMemberIds(ctx, convId);
 
