@@ -515,3 +515,27 @@ Behaviour notes (no route, status or code changed):
 
 Next: phase D (persistence interfaces) and, in parallel on the client side, phase F's first step: the Android and web
 unit tests decode `shared/contracts/fixtures`.
+
+### C2 merged (2026-10-22)
+
+`internal-beta` fast-forwarded to `a1ed0d7` (local, not pushed). Main folder: 741 passed / 10 skipped.
+
+### Step D1: the relay behind a persistence interface (2026-10-22, branch `architecture-1.0`)
+
+| Commit | What |
+|---|---|
+| `aedf4aa` | `RelayStore` (async) and `SqliteRelayStore` with the existing SQL; sending, acknowledging, the REST queue, the WebSocket backlog, retention, push wake-ups, health, reports, federation delivery and five deletion cascades use it. The relay tables now belong to messaging alone (13 table exceptions gone). The backlog flush holds live items instead of relying on a synchronous query |
+| (D1b) | `MongoRelayStore` and the `relay` MongoDB domain (calls split into their own `calls` domain); per-device work queue in the hub; outbox room checked before a message is accepted; tests on both stores; CI's MongoDB pass includes `relay`; `deploy/scripts/validate-env.sh` accepts the current domains |
+
+How the MongoDB relay keeps today's guarantees:
+
+| Guarantee | SQLite (before) | MongoDB |
+|---|---|---|
+| A message id is accepted once | `submitted_messages` primary key in one transaction | the same key; record and items in one transaction; a concurrent duplicate answers as a retry |
+| Items per device in id order, ids numeric | AUTOINCREMENT | a counter in `orbit_meta`, started above both MongoDB's and SQLite's highest id (never reused after a migration) |
+| Live items don't overtake the backlog, nor arrive twice (P6) | query and send in one synchronous step | items arriving during a flush are held and sent after the last batch, minus those a batch carried (`test/hub_backlog.test.ts`) |
+| Acknowledgements before a reconnect's backlog | synchronous acks | a per-device work queue: a device's frames, REST acks and a new connection's first flush run in order |
+| Accepting a message also updates conversations, @everyone records, the federation outbox | same transaction | a SQLite transaction right after the commit (logged if it fails; the message is delivered either way); a full outbox is refused before accepting |
+| Deletion cascades | inside the caller's transaction | right after it; anything left behind expires within the queue lifetime |
+
+Production: unchanged (SQLite). The relay's cutover waits for Atlas and a load test of send/ack throughput.

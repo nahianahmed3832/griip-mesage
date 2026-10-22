@@ -1,5 +1,6 @@
 import rateLimit from "@fastify/rate-limit";
-import { type RelayStore, SqliteRelayStore } from "../modules/messaging/relay/store.js";
+import { MongoRelayStore } from "../modules/messaging/relay/mongoStore.js";
+import { SqliteRelayStore } from "../modules/messaging/relay/store.js";
 import { type ContractObserver, observeContracts } from "./contractObserver.js";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -116,14 +117,11 @@ export async function buildApp(
   if (opts.contracts) observeContracts(app, opts.contracts);
 
   const db = opts.db ?? openDatabase(config.databasePath);
-  const relay: RelayStore = new SqliteRelayStore(db);
   // `accounts` needs the finished context; it is set right below, before any route can run.
   const ctx = {
     db,
     config,
     authz: new Authz(db),
-    relay,
-    hub: new Hub(relay, config.abuse.wsMaxSocketsPerDevice),
     livekit: config.livekit ? new LiveKitService(config.livekit) : null,
     blobs: createBlobStore(config),
     log: app.log,
@@ -145,6 +143,8 @@ export async function buildApp(
     ctx.mongo = mongo;
     if (!opts.mongo) app.addHook("onClose", async () => mongo.close());
   }
+  ctx.relay = ctx.mongo?.owns("relay") ? new MongoRelayStore(ctx.mongo, db, app.log) : new SqliteRelayStore(db);
+  ctx.hub = new Hub(ctx.relay, config.abuse.wsMaxSocketsPerDevice);
   if (opts.contracts) {
     const observer = opts.contracts;
     ctx.hub.observe = (e) => observer.frame(e);

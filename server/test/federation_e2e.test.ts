@@ -14,6 +14,7 @@ import { fedDmId } from "../src/modules/federation/service.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { type Harness, startServer } from "./support/harness.js";
 import { startCores, stopCores, type TestCore, tempIdentity } from "./support/federation.js";
+import { queuedCount } from "./support/relay.js";
 
 let cores: TestCore[];
 let A: Harness;
@@ -144,7 +145,7 @@ describe("cross-server messaging", () => {
     await bob.disconnect();
     await alice.send(conv, { type: "text", text: "while-you-were-away" });
     await flushAll();
-    const queued = B.ctx.db.prepare("SELECT COUNT(*) n FROM delivery_queue WHERE recipient_device_id = ?").get(bob.deviceId) as { n: number };
+    const queued = { n: await queuedCount(B, (r) => r.recipient_device_id === bob.deviceId) };
     expect(queued.n).toBeGreaterThan(0);
     await bob.connect();
     await bob.waitFor(() => bob.received.find((m) => m.payload.text === "while-you-were-away"));

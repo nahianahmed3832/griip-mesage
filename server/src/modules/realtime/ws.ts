@@ -77,8 +77,8 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
     socket.once("close", () => clearTimeout(authTimer));
     // Frames are handled one at a time, in order, each after the session is checked again (which may wait on the
     // account store); frames arriving before authentication finishes wait for it.
-    let frames: Promise<void> = Promise.resolve();
     let onFrame: ((raw: Buffer) => Promise<void>) | null = null;
+    let deviceId = "";
     const early: Buffer[] = [];
     socket.on("message", (raw: Buffer) => {
       if (awaitingAuthFrame) {
@@ -94,7 +94,8 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
         return;
       }
       const handle = onFrame;
-      frames = frames.then(() => handle(raw)).catch((e) => ctx.log.warn({ err: e }, "websocket frame failed"));
+      // In the device's work queue: in order, and after acknowledgements its other sockets sent earlier.
+      void hub.onDevice(deviceId, () => handle(raw)).catch((e) => ctx.log.warn({ err: e }, "websocket frame failed"));
     });
     socket.on("error", () => {
       /* close handler cleans up */
@@ -107,9 +108,10 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
             return;
           }
           if (socket.readyState !== socket.OPEN) return;
+          deviceId = auth.deviceId;
           onFrame = open(socket, auth, token);
           const handle = onFrame;
-          for (const raw of early.splice(0)) frames = frames.then(() => handle(raw)).catch((e) => ctx.log.warn({ err: e }, "websocket frame failed"));
+          for (const raw of early.splice(0)) void hub.onDevice(deviceId, () => handle(raw)).catch((e) => ctx.log.warn({ err: e }, "websocket frame failed"));
         })
         .catch((e) => {
           ctx.log.error({ err: e }, "websocket authentication failed");
@@ -124,7 +126,7 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
     const conn = hub.add(socket, auth.userId, auth.deviceId);
     db.prepare("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(now(), auth.deviceId);
     socket.send(hub.encode({ t: "hello", userId: auth.userId, deviceId: auth.deviceId, serverTime: now() }));
-    void hub.flushBacklog(conn).catch((err) => ctx.log.error({ err }, "backlog flush failed"));
+    void hub.onDevice(auth.deviceId, () => hub.flushBacklog(conn)).catch((err) => ctx.log.error({ err }, "backlog flush failed"));
 
     let alive = true;
     const heartbeat = setInterval(() => {

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "../src/app/config.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
+import { deviceIdsOf, queuedCount } from "./support/relay.js";
 
 /**
  * Batch B6 (docs/product/MELDIQ_FRIENDS_AND_DMS_SPEC.md): connections, message requests and who may message you.
@@ -11,8 +12,10 @@ let h: Harness;
 let ann: GriipClient, ben: GriipClient, cat: GriipClient, dan: GriipClient, eve: GriipClient, gil: GriipClient;
 let orgId: string;
 const text = (t: string) => ({ type: "text", text: t });
-const queued = (convId: string, userId: string) =>
-  (h.ctx.db.prepare("SELECT COUNT(*) n FROM delivery_queue q JOIN devices d ON d.id = q.recipient_device_id WHERE q.conversation_id = ? AND d.user_id = ?").get(convId, userId) as { n: number }).n;
+const queued = (convId: string, userId: string) => {
+  const devices = deviceIdsOf(h, userId);
+  return queuedCount(h, (r) => r.conversation_id === convId && devices.has(r.recipient_device_id));
+};
 
 beforeAll(async () => {
   // The default for people who never chose: strangers' DMs become requests (the server's default is "everyone" for now).
@@ -81,7 +84,7 @@ describe("message requests", () => {
       h.ctx.hub.onQueuedOffline = before;
     }
     expect(woken).toEqual([]);
-    expect(queued(dm, ann.userId)).toBe(3);
+    expect(await queued(dm, ann.userId)).toBe(3);
     expect((await expectStatus(ann.send(dm, text("reply")), 403)).error.code).toBe("request_pending");
     // Neither side can ring through it.
     expect((await expectStatus(cat.req("POST", "/v1/calls", { conversationId: dm, video: false }), 403)).error.code).toBe("request_pending");
@@ -91,7 +94,8 @@ describe("message requests", () => {
   it("only the recipient answers, and decline hides it from them and drops what was waiting", async () => {
     await expectStatus(cat.req("POST", `/v1/conversations/${dm}/request`, { action: "accept" }), 404);
     await ann.req("POST", `/v1/conversations/${dm}/request`, { action: "decline" });
-    expect(queued(dm, ann.userId)).toBe(0);
+    // MongoDB runs the cascade right after the answer (src/modules/messaging/relay/store.ts).
+    await expect.poll(() => queued(dm, ann.userId)).toBe(0);
     expect((await ann.req("GET", "/v1/conversations")).conversations.map((c: { id: string }) => c.id)).not.toContain(dm);
     await expectStatus(ann.req("GET", `/v1/conversations/${dm}`), 404);
     // The sender sees nothing change.

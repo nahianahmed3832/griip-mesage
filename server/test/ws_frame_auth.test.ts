@@ -58,8 +58,9 @@ describe("WebSocket authentication with the first frame (browsers)", () => {
     expect(batch.items[0]).toMatchObject({ kind: "envelope", conversationId: dm, senderUserId: alice.userId });
     s.ws.send(JSON.stringify({ t: "ack", ids: batch.items.map((i: any) => i.id), backlog: true }));
     await s.next((f) => f.t === "queue.drained");
-    // Acknowledged on the server: nothing is left in this device's queue.
-    expect((await bob.req("GET", "/v1/queue")).items).toHaveLength(0);
+    // Acknowledged on the server: nothing is left in this device's queue (an ack over the socket has no answer, so
+    // with an asynchronous store the REST read can come first).
+    await expect.poll(async () => (await bob.req("GET", "/v1/queue")).items).toHaveLength(0);
     s.ws.close();
   });
 

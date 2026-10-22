@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runCleanup } from "../src/modules/administration/jobs.js";
 import { type GriipClient, sign } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
+import { queuedCount, queuedRows } from "./support/relay.js";
 
 let h: Harness;
 let alice: GriipClient, bob: GriipClient, carol: GriipClient;
@@ -28,7 +29,7 @@ describe("end-to-end encrypted messaging", () => {
     const got = await bob.waitFor(() => bob.received.find((m) => m.payload.text === secret));
     expect(got.senderUserId).toBe(alice.userId);
 
-    const rows = h.ctx.db.prepare("SELECT payload FROM delivery_queue").all() as { payload: string }[];
+    const rows = await queuedRows(h);
     expect(rows.length).toBeGreaterThan(0);
     for (const r of rows) expect(r.payload).not.toContain(secret.slice(0, 20));
     const dbFile = fs.readFileSync(h.ctx.config.databasePath + "-wal").toString("latin1") + fs.readFileSync(h.ctx.config.databasePath).toString("latin1");
@@ -48,7 +49,7 @@ describe("end-to-end encrypted messaging", () => {
     expect(receipt.payload.status).toBe("delivered");
     expect(receipt.senderUserId).toBe(bob.userId);
     await new Promise((res) => setTimeout(res, 100));
-    const left = h.ctx.db.prepare("SELECT COUNT(*) n FROM delivery_queue WHERE message_id = ? AND kind = 'envelope'").get(r.messageId) as { n: number };
+    const left = { n: await queuedCount(h, (q) => q.message_id === r.messageId && q.kind === "envelope") };
     expect(left.n).toBe(0);
   });
 
@@ -56,7 +57,7 @@ describe("end-to-end encrypted messaging", () => {
     await bob.disconnect();
     const sent: string[] = [];
     for (let i = 0; i < 3; i++) sent.push((await alice.send(dmId, { type: "text", text: `offline #${i}` })).messageId);
-    const queued = h.ctx.db.prepare("SELECT COUNT(*) n FROM delivery_queue WHERE recipient_device_id = ? AND kind='envelope'").get(bob.deviceId) as { n: number };
+    const queued = { n: await queuedCount(h, (q) => q.recipient_device_id === bob.deviceId && q.kind === "envelope") };
     expect(queued.n).toBe(3);
     bob.received = [];
     await bob.connect();
@@ -188,11 +189,11 @@ describe("retention", () => {
       await b.connect();
       await new Promise((r) => setTimeout(r, 200));
       expect(b.received).toHaveLength(0);
-      const raw = h2.ctx.db.prepare("SELECT COUNT(*) n FROM delivery_queue").get() as { n: number };
+      const raw = { n: await queuedCount(h2) };
       expect(raw.n).toBe(1);
       const res = await runCleanup(h2.ctx);
       expect(res.queue).toBe(1);
-      expect((h2.ctx.db.prepare("SELECT COUNT(*) n FROM delivery_queue").get() as { n: number }).n).toBe(0);
+      expect(await queuedCount(h2)).toBe(0);
     } finally {
       await h2.close();
     }

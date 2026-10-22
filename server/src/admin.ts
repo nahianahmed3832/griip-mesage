@@ -56,13 +56,15 @@ import { MONGO_COMMANDS, runMongoCommand } from "./infrastructure/database/mongo
 import { RETIRED_COMMANDS, runRetiredCommand } from "./modules/administration/retiredData.js";
 import { migrateBranchesAndTeams, verifyCommunityMigration } from "./modules/organizations/communityMigration.js";
 import { openMongo } from "./infrastructure/database/mongo/index.js";
+import { MongoRelayStore } from "./modules/messaging/relay/mongoStore.js";
 import { type RelayStore, SqliteRelayStore } from "./modules/messaging/relay/store.js";
 import { MongoReportStore } from "./modules/organizations/reports/mongoStore.js";
 import { ReportSealer } from "./modules/organizations/reports/seal.js";
 import { type ReportStore, SqliteReportStore } from "./modules/organizations/reports/store.js";
 
 /** Reports live where MONGODB_DOMAINS says. */
-const relayStore = (ctx: AppContext): RelayStore => new SqliteRelayStore(ctx.db);
+const relayStore = (ctx: AppContext): RelayStore =>
+  ctx.mongo?.owns("relay") ? new MongoRelayStore(ctx.mongo, ctx.db, console) : new SqliteRelayStore(ctx.db);
 const reportStore = (ctx: AppContext): ReportStore => (ctx.mongo?.owns("reports") ? new MongoReportStore(ctx.mongo) : new SqliteReportStore(ctx.db));
 const relationshipStore = (ctx: AppContext): RelationshipStore =>
   ctx.mongo?.owns("relationships") ? new MongoRelationshipStore(ctx.mongo) : new SqliteRelationshipStore(ctx.db);
@@ -109,9 +111,11 @@ switch (cmd) {
       activeDevices: one("SELECT COUNT(*) n FROM devices WHERE revoked_at IS NULL"),
       orgs: one("SELECT COUNT(*) n FROM orgs"),
       conversations: one("SELECT COUNT(*) n FROM conversations"),
-      queuedEnvelopes: one("SELECT COUNT(*) n FROM delivery_queue WHERE kind = 'envelope'"),
-      queuedReceipts: one("SELECT COUNT(*) n FROM delivery_queue WHERE kind = 'receipt'"),
-      oldestQueuedHours: Math.round((now() - (one("SELECT COALESCE(MIN(created_at), 0) n FROM delivery_queue") || now())) / 3600_000),
+      queuedEnvelopes: cfg.mongo?.domains.has("relay") ? "in MongoDB" : one("SELECT COUNT(*) n FROM delivery_queue WHERE kind = 'envelope'"),
+      queuedReceipts: cfg.mongo?.domains.has("relay") ? "in MongoDB" : one("SELECT COUNT(*) n FROM delivery_queue WHERE kind = 'receipt'"),
+      oldestQueuedHours: cfg.mongo?.domains.has("relay")
+        ? "in MongoDB"
+        : Math.round((now() - (one("SELECT COALESCE(MIN(created_at), 0) n FROM delivery_queue") || now())) / 3600_000),
       attachments: one("SELECT COUNT(*) n FROM attachments"),
       liveCalls: one("SELECT COUNT(*) n FROM calls WHERE state != 'ENDED'"),
       pushEndpoints: one("SELECT COUNT(*) n FROM push_endpoints"),

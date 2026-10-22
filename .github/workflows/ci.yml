@@ -47,7 +47,7 @@ jobs:
       - name: The same tests with the MongoDB-capable domains in MongoDB (docs/MONGODB.md, docs/product/MELDIQ_MONGODB_MIGRATION.md)
         run: npm test
         env:
-          MELDIQ_TEST_MONGO_DOMAINS: accounts,preferences,history,reports,relationships
+          MELDIQ_TEST_MONGO_DOMAINS: accounts,preferences,history,reports,relationships,relay
       - name: Build
         run: npm run build
 

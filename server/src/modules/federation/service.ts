@@ -352,10 +352,16 @@ export class Federation {
 
   // ───────────────────────── outbox ─────────────────────────
 
+  /** Throws 503 when the outbox to this peer is full (checked before a message is accepted, and again when queueing). */
+  assertRoom(peerServerId: string): void {
+    if (this.pendingFor(peerServerId) >= this.cfg.outboxMaxPerPeer) {
+      throw new ApiError(503, "federation_backlog", "The other person's server isn't keeping up. Try again later.");
+    }
+  }
+
   /** Queues an item for a peer. Bounded per peer: when full, the sender gets 503 instead of unbounded growth. */
   enqueue(peerServerId: string, kind: "envelope" | "receipt" | "attachment", key: string, body: object, size: number, expiresAt: number) {
-    const n = (this.ctx.db.prepare("SELECT COUNT(*) n FROM federation_outbox WHERE peer_server_id = ?").get(peerServerId) as { n: number }).n;
-    if (n >= this.cfg.outboxMaxPerPeer) throw new ApiError(503, "federation_backlog", "The other person's server isn't keeping up. Try again later.");
+    this.assertRoom(peerServerId);
     const t = now();
     this.ctx.db
       .prepare("INSERT OR IGNORE INTO federation_outbox (peer_server_id, kind, item_key, body, size, created_at, expires_at, next_attempt_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")

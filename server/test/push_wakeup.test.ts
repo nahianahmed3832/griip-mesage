@@ -6,6 +6,7 @@ import { checkEndpoint, isPublicAddress } from "../src/modules/notifications/add
 import type { GriipClient } from "./support/griipClient.js";
 import { FakePushNetwork } from "./support/fakePush.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
+import { queuedCount } from "./support/relay.js";
 
 /**
  * Push wake-ups (docs/BACKGROUND_DELIVERY.md, option B). The push network is faked here (DNS and requests recorded,
@@ -164,7 +165,7 @@ describe("waking a device", () => {
     for (const secret of [dm, sent.messageId, alice.userId, alice.deviceId, bob.userId, "secret plan"]) expect(text).not.toContain(secret);
     expect(stored(bob.deviceId)?.last_wake_at).toBeGreaterThan(0);
     // The message is still queued: the wake-up only tells the app to fetch it.
-    expect(h.ctx.db.prepare("SELECT COUNT(*) n FROM delivery_queue WHERE recipient_device_id = ?").get(bob.deviceId)).toEqual({ n: 1 });
+    expect(await queuedCount(h, (r) => r.recipient_device_id === bob.deviceId)).toBe(1);
   });
 
   it("doesn't wake a connected device, and delivery receipts never wake anyone", async () => {
@@ -174,7 +175,7 @@ describe("waking a device", () => {
     await bob.connect();
     await alice.send(dm, { type: "text", text: "hi" });
     await bob.waitFor(() => bob.received.length === 1);
-    await expect.poll(() => h.ctx.db.prepare("SELECT COUNT(*) n FROM delivery_queue WHERE recipient_device_id = ? AND kind = 'receipt'").get(alice.deviceId)).toEqual({ n: 1 });
+    await expect.poll(() => queuedCount(h, (r) => r.recipient_device_id === alice.deviceId && r.kind === "receipt")).toBe(1);
     await sleep(300);
     expect(net.sent).toEqual([]);
     await bob.disconnect();
@@ -202,7 +203,7 @@ describe("waking a device", () => {
     await alice.send(dm, { type: "text", text: "second" }); // inside the window: deferred
     await bob.connect();
     await bob.waitFor(() => bob.received.length === 2);
-    await expect.poll(() => h.ctx.db.prepare("SELECT COUNT(*) n FROM delivery_queue WHERE recipient_device_id = ?").get(bob.deviceId)).toEqual({ n: 0 });
+    await expect.poll(() => queuedCount(h, (r) => r.recipient_device_id === bob.deviceId)).toBe(0);
     await bob.disconnect();
     await sleep(900);
     expect(net.sent.length).toBe(1);

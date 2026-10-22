@@ -152,6 +152,9 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
         });
       }
     }
+    // A full outbox to another server refuses the message before anything is accepted (the relay may not be SQLite,
+    // so the outbox can't be relied on to roll the acceptance back).
+    for (const home of new Set(remote.map((r) => r.home))) ctx.federation!.assertRoom(home);
     const submission = {
       message_id: e.messageId,
       sender_device_id: deviceId,
@@ -211,7 +214,11 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
   app.post("/v1/queue/ack", auth, async (req) => {
     const { userId, deviceId } = me(req);
     const { ids } = parse(AckBody, req.body);
-    const removed = await acknowledge(ctx, userId, deviceId, ids);
+    let removed = 0;
+    // In the device's work queue, like acknowledgements over its sockets (src/modules/realtime/hub.ts › onDevice).
+    await ctx.hub.onDevice(deviceId, async () => {
+      removed = await acknowledge(ctx, userId, deviceId, ids);
+    });
     return { removed };
   });
 }

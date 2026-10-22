@@ -18,6 +18,7 @@ export type TableDomain =
   | "workspace"
   | "conversations"
   | "relay"
+  | "calls"
   | "files"
   | "history"
   | "reports"
@@ -121,9 +122,10 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   mention_all_events: "conversations",
   delivery_queue: "relay",
   submitted_messages: "relay",
-  calls: "relay",
-  call_participants: "relay",
-  call_hands: "relay",
+  // Calls belong to the calls module (Architecture 1.0): they move separately from the message relay.
+  calls: "calls",
+  call_participants: "calls",
+  call_hands: "calls",
   attachments: "files",
   attachment_uploads: "files",
   abandoned_uploads: "files",

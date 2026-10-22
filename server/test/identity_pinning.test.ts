@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canonical, type GriipClient, IdentityChangedError, newEd25519, newX25519, sign } from "./support/griipClient.js";
 import { type Harness, startServer } from "./support/harness.js";
+import { queuedCount } from "./support/relay.js";
 
 /**
  * T1.2 against a malicious relay: the server swaps Bob's identity key and device keys for keys it
@@ -23,7 +24,7 @@ beforeAll(async () => {
 });
 afterAll(async () => h.close());
 
-const queued = () => (h.ctx.db.prepare("SELECT COUNT(*) n FROM delivery_queue").get() as { n: number }).n;
+const queued = () => queuedCount(h);
 
 describe("pinned identities against a key-substituting relay (T1.2)", () => {
   const mallory = { identity: newEd25519(), device: newEd25519(), enc: newX25519() };
@@ -37,11 +38,11 @@ describe("pinned identities against a key-substituting relay (T1.2)", () => {
       .run(b64(mallory.device.pub), b64(mallory.enc.pub), cert, bob.deviceId);
     alice.clearKeyCache();
 
-    const before = queued();
+    const before = await queued();
     const err = await alice.send(dm, { type: "text", text: "salary figures" }).catch((e) => e);
     expect(err).toBeInstanceOf(IdentityChangedError);
     expect((err as IdentityChangedError).userIds).toEqual([bob.userId]);
-    expect(queued()).toBe(before);
+    expect(await queued()).toBe(before);
   });
 
   it("a message signed by the swapped device is held, not shown as Bob's", async () => {

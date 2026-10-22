@@ -148,6 +148,25 @@ export class Hub {
     for (const u of userIds) this.sendToUser(u, msg, exceptDeviceId);
   }
 
+  /** The tail of each device's work queue (see [onDevice]). */
+  private readonly deviceWork = new Map<string, Promise<void>>();
+
+  /**
+   * Runs [fn] after everything queued earlier for [deviceId]: its sockets' frames, its acknowledgements (also over
+   * REST) and a new connection's first backlog. So acknowledgements a phone sent just before reconnecting are applied
+   * before its next backlog is read, whether the store answers at once (SQLite) or not (MongoDB).
+   */
+  onDevice(deviceId: string, fn: () => Promise<void>): Promise<void> {
+    const prev = this.deviceWork.get(deviceId) ?? Promise.resolve();
+    const run = prev.then(fn);
+    const tail = run.catch(() => undefined);
+    this.deviceWork.set(deviceId, tail);
+    void tail.then(() => {
+      if (this.deviceWork.get(deviceId) === tail) this.deviceWork.delete(deviceId);
+    });
+    return run;
+  }
+
   /** Users with at least one open socket. */
   connectedUserIds(): string[] {
     return [...this.byUser.keys()];

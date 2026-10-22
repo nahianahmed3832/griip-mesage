@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { GriipClient } from "./support/griipClient.js";
 import { type Harness, startServer } from "./support/harness.js";
+import { deviceIdsOf, queuedCount } from "./support/relay.js";
 
 /**
  * Batch B15 (final quality gate): the community routes added in B4–B14 never reach outside their community, someone
@@ -97,11 +98,8 @@ describe("removing someone", () => {
       text: "after they left",
     });
     const id = (sent as { messageId?: string }).messageId;
-    const queued = h.ctx.db
-      .prepare(
-        "SELECT COUNT(*) n FROM delivery_queue q JOIN devices d ON d.id = q.recipient_device_id WHERE d.user_id = ? AND q.conversation_id = ?",
-      )
-      .get(leaver.userId, chanA) as { n: number };
+    const leaverDevices = deviceIdsOf(h, leaver.userId);
+    const queued = { n: await queuedCount(h, (r) => leaverDevices.has(r.recipient_device_id) && r.conversation_id === chanA) };
     expect(id ?? "sent").toBeTruthy();
     expect(queued.n).toBe(0);
   });

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canonical, GriipClient, sign } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
+import { queuedRows, setQueuedPayload } from "./support/relay.js";
 
 /**
  * T1.5 (audit probe P7): revoking a phone must not destroy the messages it sent that are still queued. The directory
@@ -70,11 +71,9 @@ describe("messages from a device revoked after sending (T1.5)", () => {
     // The server can't accept anything from a revoked device, so a later envelope is simulated in the queue. The
     // signature doesn't cover serverTs: only the recipient's revocation check refuses this copy. (Alice's other phone
     // has its own copy of each message; only Bob's is changed.)
-    const row = h.ctx.db
-      .prepare("SELECT id, payload FROM delivery_queue WHERE message_id = ? AND recipient_device_id = ?")
-      .get(tampered.messageId, bob.deviceId) as { id: number; payload: string };
+    const row = (await queuedRows(h)).find((r) => r.message_id === tampered.messageId && r.recipient_device_id === bob.deviceId)!;
     const payload = { ...JSON.parse(row.payload), serverTs: revokedAt + 1 };
-    h.ctx.db.prepare("UPDATE delivery_queue SET payload = ? WHERE id = ?").run(JSON.stringify(payload), row.id);
+    await setQueuedPayload(h, row.id, JSON.stringify(payload));
 
     await bob.connect();
     const m = await bob.waitFor(() => bob.received.find((x) => x.messageId === before.messageId));

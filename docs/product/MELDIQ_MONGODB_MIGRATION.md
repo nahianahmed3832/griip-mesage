@@ -17,7 +17,8 @@ domain lives in exactly one store at a time, and the server refuses to start oth
 | history | history_items, history_accounts | 11 → 0 in routes (2026-10-21) | **Yes, new 2026-10-21** (`MongoHistoryStore`) | SQLite |
 | files | attachments, uploads, abandoned uploads, blob deletes | 37 (7 files) | Copy and verify only | SQLite |
 | federation | peers, domains, inbox, outbox, blocks | 26 (4 files) | Copy and verify only | SQLite |
-| relay | delivery_queue, submitted_messages, calls, call participants | 73 (10 files) | Copy and verify only | SQLite |
+| relay | delivery_queue, submitted_messages | 0 outside the store (2026-10-22, Architecture 1.0 D1) | **Yes** (`MongoRelayStore`) | SQLite |
+| calls | calls, call participants, call hands (split from relay 2026-10-22) | ~45 | Copy and verify only | SQLite |
 | conversations | conversations, members, mention events | 106 (19 files) | Copy and verify only | SQLite |
 | identity | users, devices, blocks, push endpoints, FCM tokens, reminders, invites | 177 (32 files) | Copy and verify only | SQLite |
 | workspace | orgs, members, roles, categories, overwrites, bans, invitations, audit | 202 (25 files) | Copy and verify only | SQLite |

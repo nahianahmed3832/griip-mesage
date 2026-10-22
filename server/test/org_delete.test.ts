@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
+import { queuedCount } from "./support/relay.js";
 
 // Only isolated test data on a throwaway server: never a real organization.
 describe("deleting an organization", () => {
@@ -69,7 +70,7 @@ describe("deleting an organization", () => {
     for (const t of ["org_members", "invitations", "branches", "teams", "channel_categories", "channel_overwrites", "org_bans", "org_roles"]) {
       expect((h.ctx.db.prepare(`SELECT COUNT(*) n FROM ${t} WHERE org_id = ?`).get(orgId) as { n: number }).n).toBe(0);
     }
-    expect((h.ctx.db.prepare("SELECT COUNT(*) n FROM delivery_queue WHERE conversation_id = ?").get(channel) as { n: number }).n).toBe(0);
+    await expect.poll(() => queuedCount(h, (r) => r.conversation_id === channel)).toBe(0);
     // Untouched.
     expect((await member.req("GET", `/v1/conversations/${dm}`)).conversation.id).toBe(dm);
     expect((await admin.req("GET", `/v1/conversations/${group}`)).conversation.id).toBe(group);
