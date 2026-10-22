@@ -570,3 +570,21 @@ and files in MongoDB (CI's MongoDB pass now includes files); build passes. Two f
 - `push_wakeup.test.ts` › "coalesces wake-ups to one per window" failed in 2 of 4 full MongoDB-mode runs on this laptop
   under load and passed every time alone: its 150–900 ms windows are tight when MongoDB round trips slow down. Left as
   is and noted, not hidden; widen its windows if CI shows it.
+
+### D2 merged (2026-10-22)
+
+`internal-beta` fast-forwarded to `9201ff1` (local, not pushed). Main folder: 755 passed / 10 skipped, build passes.
+
+### Step F1: clients decode the shared fixtures (2026-10-22)
+
+| Where | Commit | What |
+|---|---|---|
+| Android | `f65735a` | `ContractFixturesTest`: the 154 answers the app decodes (table generated from its typed `api.get<T>(…)` calls plus the account client), every frame and every error, with `GriipJson` (must pass) and a strict decoder without coercion (shrink-only allowlist, empty today). Proven to fail on a corrupted fixture. Android 654 passed |
+| Web | (web session) | Asked of the "Meldiq web parity with Android" session, which owns `meldiq-web` releases: the same check with the web's zod schemas, plus detection of its silent `.catch()` defaults |
+
+Found while mapping: the app still calls three routes the server no longer has, from retired workspace screens:
+`GET /v1/orgs/:orgId/groups` (MeetingsScreen), `GET /v1/workspace-templates` and `POST /v1/orgs/:orgId/apply-template`
+(WorkspaceC5Controls). They fail with Fastify's 404 (the app's "unsupported"); removing them belongs with F2.
+
+Local note: Gradle doesn't know the fixtures (outside the module), so after they change run the test with `--rerun`;
+CI builds clean and always runs it. Declaring them as an input needs `build.gradle.kts`, left alone here.
