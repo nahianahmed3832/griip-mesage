@@ -449,7 +449,8 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
           "INSERT OR IGNORE INTO abandoned_uploads (id, multipart_id, attempts, next_at) SELECT id, multipart_id, 0, 0 FROM attachment_uploads WHERE conversation_id = ?",
         ).run(id);
         // Rows without a foreign key to the conversation (members, attachment rows and calls cascade), and its overwrites.
-        for (const table of ["delivery_queue", "submitted_messages", "mention_all_events"]) db.prepare(`DELETE FROM ${table} WHERE conversation_id = ?`).run(id);
+        ctx.relay.forgetConversation(id);
+        db.prepare("DELETE FROM mention_all_events WHERE conversation_id = ?").run(id);
         db.prepare("DELETE FROM channel_overwrites WHERE target_type = 'channel' AND target_id = ?").run(id);
         db.prepare("DELETE FROM conversations WHERE id = ?").run(id);
         return { members, files, rooms };

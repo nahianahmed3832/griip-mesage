@@ -117,7 +117,7 @@ export async function federationPeerRoutes(app: FastifyInstance, ctx: AppContext
 
   app.post("/fed/v1/deliver", signed, async (req) => {
     const peer = req.fedPeer!;
-    const results = fed.acceptBatch(peer, req.body as never, (convId) => notifyConversation(ctx, convId));
+    const results = await fed.acceptBatch(peer, req.body as never, (convId) => notifyConversation(ctx, convId));
     return { results, at: now() };
   });
 

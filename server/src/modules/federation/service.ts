@@ -475,7 +475,11 @@ export class Federation {
   // ───────────────────────── inbound ─────────────────────────
 
   /** Applies a delivery batch from a verified peer. Returns a result per item; never throws for one bad item. */
-  acceptBatch(peer: ResolvedServer, body: { items?: FedItem[]; senders?: FedUser[] }, notify: (conversationId: string) => void): { key: string; status: string; code?: string }[] {
+  async acceptBatch(
+    peer: ResolvedServer,
+    body: { items?: FedItem[]; senders?: FedUser[] },
+    notify: (conversationId: string) => void,
+  ): Promise<{ key: string; status: string; code?: string }[]> {
     const { db } = this.ctx;
     const items = Array.isArray(body?.items) ? body.items.slice(0, 200) : [];
     const badSenders = new Set<string>();
@@ -556,19 +560,28 @@ export class Federation {
       }
       const blocked = db.prepare("SELECT 1 FROM user_blocks WHERE user_id = ? AND blocked_user_id = ?").get(rcpt.user_id, it.senderUserId);
       const expiresAt = Math.min(Number(it.expiresAt) || 0, t + this.ctx.config.queueTtlSeconds * 1000);
+      const deliver = !blocked && expiresAt > t;
+      // Queued first, then recorded: a peer's retry after a failure in between is skipped by the queue's unique key.
+      if (deliver) {
+        const rows = await this.ctx.relay.enqueue([
+          {
+            recipient_device_id: it.recipientDeviceId,
+            kind: it.kind,
+            conversation_id: convId,
+            message_id: it.messageId,
+            sender_user_id: it.senderUserId,
+            sender_device_id: it.senderDeviceId,
+            // A peer can't attest @everyone for this server's members: the mark is removed (docs/MENTIONS.md).
+            payload: withoutMentionAll(it.payload),
+            created_at: t,
+            expires_at: expiresAt,
+          },
+        ]);
+        queued.push(...rows);
+      }
       db.transaction(() => {
         const created = this.ensureDm(convId, dmKey, it.senderUserId, rcpt.user_id, t);
-        if (!blocked && expiresAt > t) {
-          const row = db
-            .prepare(
-              `INSERT OR IGNORE INTO delivery_queue (recipient_device_id, kind, conversation_id, message_id, sender_user_id, sender_device_id, payload, created_at, expires_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
-            )
-            // A peer can't attest @everyone for this server's members: the mark is removed (docs/MENTIONS.md).
-            .get(it.recipientDeviceId, it.kind, convId, it.messageId, it.senderUserId, it.senderDeviceId, withoutMentionAll(it.payload), t, expiresAt) as QueueItemRow | undefined;
-          if (row) queued.push(row);
-          if (it.kind === "envelope" && payload.cls === "message") db.prepare("UPDATE conversations SET updated_at = ? WHERE id = ?").run(t, convId);
-        }
+        if (deliver && it.kind === "envelope" && payload.cls === "message") db.prepare("UPDATE conversations SET updated_at = ? WHERE id = ?").run(t, convId);
         db.prepare("INSERT OR IGNORE INTO federation_inbox (item_key, peer_server_id, expires_at) VALUES (?, ?, ?)").run(`${peer.serverId}|${it.key}`, peer.serverId, t + 8 * 86_400_000);
         if (created) notify(convId);
       })();

@@ -141,6 +141,8 @@ async function eraseIdentity(ctx: AppContext, userId: string, actorId: string | 
   db.transaction(() => {
     for (const d of devices) revokeDeviceRows(ctx, d, t);
     deletePersonalRecords(db, userId);
+    // Messages and receipts the account sent that haven't been delivered: nobody can verify them once it's gone.
+    ctx.relay.forgetSender(userId);
     leaveConversations(db, userId, memberships);
     anonymize(ctx, userId, photoRev, t);
     removed = memberships.filter((m) => m.type !== "CHANNEL" && !hasLiveMember(db, m.id)).map((m) => m.id);
@@ -170,9 +172,6 @@ async function eraseIdentity(ctx: AppContext, userId: string, actorId: string | 
 function deletePersonalRecords(db: DB, userId: string): void {
   for (const sql of [
     "DELETE FROM sessions WHERE user_id = ?",
-    // Messages and receipts the account sent that haven't been delivered: nobody can verify them once it's gone.
-    "DELETE FROM delivery_queue WHERE sender_user_id = ?",
-    "DELETE FROM submitted_messages WHERE sender_user_id = ?",
     "DELETE FROM mention_all_events WHERE user_id = ?",
     // Batch B8b: what they answered to communities' onboarding questions.
     "DELETE FROM onboarding_answers WHERE user_id = ?",
@@ -238,9 +237,8 @@ function removeConversation(ctx: AppContext, convId: string): string[] {
     "INSERT OR IGNORE INTO abandoned_uploads (id, multipart_id, attempts, next_at) SELECT id, multipart_id, 0, 0 FROM attachment_uploads WHERE conversation_id = ?",
   ).run(convId);
   // Rows without a foreign key to the conversation; the rest (members, attachment rows, calls) cascade.
-  for (const table of ["delivery_queue", "submitted_messages", "mention_all_events"]) {
-    db.prepare(`DELETE FROM ${table} WHERE conversation_id = ?`).run(convId);
-  }
+  ctx.relay.forgetConversation(convId);
+  db.prepare("DELETE FROM mention_all_events WHERE conversation_id = ?").run(convId);
   db.prepare("DELETE FROM conversations WHERE id = ?").run(convId);
   return rooms;
 }

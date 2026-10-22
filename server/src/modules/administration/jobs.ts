@@ -66,9 +66,10 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
       disabledDisconnected++;
     }
   }
+  const relay = await ctx.relay.purgeExpired(t);
   const r: CleanupResult = {
-    queue: db.prepare("DELETE FROM delivery_queue WHERE expires_at <= ?").run(t).changes,
-    submitted: db.prepare("DELETE FROM submitted_messages WHERE expires_at <= ?").run(t).changes,
+    queue: relay.queue,
+    submitted: relay.submitted,
     challenges: db.prepare("DELETE FROM auth_challenges WHERE expires_at <= ?").run(t).changes,
     sessions: db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(t).changes,
     pairing: db.prepare("DELETE FROM pairing_requests WHERE expires_at <= ?").run(t).changes,

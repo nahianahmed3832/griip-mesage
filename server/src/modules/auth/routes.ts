@@ -417,7 +417,7 @@ export function revokeDeviceRows(ctx: AppContext, deviceId: string, t: number): 
     // anyway, because every check reads the device's revocation from SQLite.
     void ctx.accounts.store.revokeDeviceSessions(deviceId, "device_revoked", t).catch((e) => ctx.log.error({ err: e }, "device sessions not marked revoked"));
   }
-  ctx.db.prepare("DELETE FROM delivery_queue WHERE recipient_device_id = ?").run(deviceId);
+  ctx.relay.forgetDevice(deviceId);
   removePushEndpoint(ctx.db, deviceId);
 }
 

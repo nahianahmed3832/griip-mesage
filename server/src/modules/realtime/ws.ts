@@ -124,7 +124,7 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
     const conn = hub.add(socket, auth.userId, auth.deviceId);
     db.prepare("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(now(), auth.deviceId);
     socket.send(hub.encode({ t: "hello", userId: auth.userId, deviceId: auth.deviceId, serverTime: now() }));
-    hub.flushBacklog(conn);
+    void hub.flushBacklog(conn).catch((err) => ctx.log.error({ err }, "backlog flush failed"));
 
     let alive = true;
     const heartbeat = setInterval(() => {
@@ -176,11 +176,11 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
           break;
         case "ack": {
           const ids = Array.isArray(msg.ids) ? msg.ids.filter((x: unknown) => Number.isInteger(x)).slice(0, 500) : [];
-          if (ids.length) acknowledge(ctx, auth.userId, auth.deviceId, ids);
+          if (ids.length) await acknowledge(ctx, auth.userId, auth.deviceId, ids);
           // Only while this socket's backlog is still being sent: clients also acknowledge the final (empty)
           // batch with backlog:true, and answering that with another flush looped forever and re-sent
           // unacknowledged live items (P6 duplicates).
-          if (msg.backlog && conn.flushing) hub.flushBacklog(conn);
+          if (msg.backlog && conn.flushing) await hub.flushBacklog(conn);
           break;
         }
         case "typing": {

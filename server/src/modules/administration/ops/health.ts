@@ -80,7 +80,8 @@ export async function healthReport(ctx: AppContext, version: string): Promise<He
   const { db } = ctx;
   const pageCount = (db.prepare("PRAGMA page_count").get() as { page_count: number }).page_count;
   const pageSize = (db.prepare("PRAGMA page_size").get() as { page_size: number }).page_size;
-  const oldest = (db.prepare("SELECT MIN(created_at) AS t FROM delivery_queue").get() as { t: number | null }).t;
+  const relay = await ctx.relay.stats();
+  const oldest = relay.oldestCreatedAt;
   const mem = process.memoryUsage();
   const p99 = loop.count > 0 ? Math.round(loop.percentile(99) / 1e6) : null;
   const report: HealthReport = {
@@ -96,7 +97,7 @@ export async function healthReport(ctx: AppContext, version: string): Promise<He
     process: { rssBytes: mem.rss, heapUsedBytes: mem.heapUsed, eventLoopDelayP99Ms: p99 },
     realtime: { onlineDevices: ctx.hub.onlineDeviceCount() },
     queues: {
-      delivery: { items: count(ctx, "SELECT COUNT(*) AS n FROM delivery_queue"), oldestAgeSeconds: oldest === null ? null : Math.round((t - oldest) / 1000) },
+      delivery: { items: relay.envelopes + relay.receipts, oldestAgeSeconds: oldest === null ? null : Math.round((t - oldest) / 1000) },
       reminders: {
         overdueUndelivered: count(ctx, "SELECT COUNT(*) AS n FROM reminders WHERE state IN ('scheduled','fired') AND due_at < ? AND delivered_at IS NULL", t - THRESHOLDS.reminderLateMs),
         retrying: count(ctx, "SELECT COUNT(*) AS n FROM reminders WHERE attempts > 0 AND state IN ('scheduled','fired')"),

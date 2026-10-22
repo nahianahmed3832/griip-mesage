@@ -1,4 +1,5 @@
 import type { FastifyBaseLogger, FastifyRequest } from "fastify";
+import type { RelayStore } from "../modules/messaging/relay/store.js";
 import type { Accounts } from "../modules/accounts/index.js";
 import type { Authz } from "../modules/organizations/authz.js";
 import type { Config } from "./config.js";
@@ -39,6 +40,8 @@ export interface AppContext {
   accounts: Accounts;
   /** Personal navigation preferences (src/preferences): SQLite, or MongoDB when MONGODB_DOMAINS includes "preferences". */
   prefs: PreferenceStore;
+  /** Queued ciphertext and accepted-message records (src/modules/messaging/relay): SQLite, or MongoDB with the "relay" domain. */
+  relay: RelayStore;
   /** Encrypted message history (docs/MESSAGE_HISTORY.md): SQLite, or MongoDB when MONGODB_DOMAINS includes "history". */
   history: HistoryStore;
   /** Reports (batch B4): SQLite, or MongoDB when MONGODB_DOMAINS includes "reports"; their content sealed by [reportSealer]. */

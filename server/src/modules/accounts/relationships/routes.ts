@@ -119,7 +119,8 @@ export default async function connectionRoutes(app: FastifyInstance, ctx: AppCon
       changed(userId, r.sender);
     } else {
       await rel.declineRequest(id, t);
-      db.prepare("DELETE FROM delivery_queue WHERE conversation_id = ? AND recipient_device_id IN (SELECT id FROM devices WHERE user_id = ?)").run(id, userId);
+      const devices = (db.prepare("SELECT id FROM devices WHERE user_id = ?").all(userId) as { id: string }[]).map((d) => d.id);
+      ctx.relay.forgetConversationFor(id, devices);
       if (action === "block") db.prepare("INSERT OR IGNORE INTO user_blocks (user_id, blocked_user_id, created_at) VALUES (?, ?, ?)").run(userId, r.sender, t);
     }
     // Only the recipient's apps hear of it: a declined sender sees nothing change.

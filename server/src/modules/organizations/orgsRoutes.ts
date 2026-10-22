@@ -356,8 +356,7 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
           files.push(...(db.prepare("SELECT id FROM attachments WHERE conversation_id = ?").all(c) as { id: string }[]).map((r) => r.id));
           rooms.push(...(db.prepare("SELECT room_name FROM calls WHERE conversation_id = ? AND state != 'ENDED'").all(c) as { room_name: string }[]).map((r) => r.room_name));
           // Rows without a foreign key to the conversation.
-          db.prepare("DELETE FROM delivery_queue WHERE conversation_id = ?").run(c);
-          db.prepare("DELETE FROM submitted_messages WHERE conversation_id = ?").run(c);
+          ctx.relay.forgetConversation(c);
           db.prepare("DELETE FROM mention_all_events WHERE conversation_id = ?").run(c);
         }
         for (const f of files) queueBlobDelete(ctx, "attachments", f);

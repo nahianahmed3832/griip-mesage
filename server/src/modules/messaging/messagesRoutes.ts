@@ -5,7 +5,8 @@ import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
 import { parse, zB64, zKey, zSig } from "../../shared/validation/index.js";
 import { canonical, verifyEd25519 } from "../../shared/utilities/crypto.js";
-import { type QueueItemRow, queueItemToWire } from "../realtime/hub.js";
+import { queueItemToWire } from "../realtime/hub.js";
+import { DuplicateSubmission, type QueueInsert, type QueueItemRow } from "./relay/store.js";
 import { ApiError, conflict, forbidden } from "../../shared/errors.js";
 import { now } from "../../shared/utilities/util.js";
 import { MENTION_ALL_MESSAGES, mentionAllPermission, mentionAllRateLimited } from "./mentions.js";
@@ -35,13 +36,14 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
     // Clock sanity: sentAt is signed by the client; reject wildly wrong clocks (±1 day).
     if (Math.abs(e.sentAt - now()) > 24 * 3600_000) throw new ApiError(400, "bad_clock", "Device clock is too far off");
 
-    const prior = db.prepare("SELECT * FROM submitted_messages WHERE message_id = ?").get(e.messageId) as
-      | { sender_device_id: string; server_ts: number; recipient_count: number }
-      | undefined;
-    if (prior) {
+    const retry = async () => {
+      const prior = await ctx.relay.submission(e.messageId);
+      if (!prior) return null;
       if (prior.sender_device_id !== deviceId) throw conflict("Message id collision");
       return { messageId: e.messageId, serverTs: prior.server_ts, recipientCount: prior.recipient_count, duplicate: true };
-    }
+    };
+    const earlier = await retry();
+    if (earlier) return earlier;
 
     const sender = db.prepare("SELECT signing_key FROM devices WHERE id = ?").get(deviceId) as { signing_key: string };
     const signed = canonical.envelope({
@@ -108,7 +110,6 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
 
     const t = now();
     const expiresAt = t + ctx.config.queueTtlSeconds * 1000;
-    const inserted: QueueItemRow[] = [];
     // Devices of people on other servers go to the federation outbox (same ciphertext, same per-device key wrap).
     const homeOf = new Map(expected.map((d) => [d.id, d.home_server_id]));
     const ownerOf = new Map(expected.map((d) => [d.id, d.user_id]));
@@ -117,36 +118,58 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
     const blockedBy = new Set(
       (db.prepare("SELECT user_id FROM user_blocks WHERE blocked_user_id = ?").all(userId) as { user_id: string }[]).map((r) => r.user_id),
     );
-    db.transaction(() => {
-      db.prepare(
-        "INSERT INTO submitted_messages (message_id, sender_device_id, sender_user_id, conversation_id, recipient_count, server_ts, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ).run(e.messageId, deviceId, userId, conv.id, e.recipients.length, t, expiresAt);
-      if (mentionAll) {
-        db.prepare("INSERT INTO mention_all_events (conversation_id, user_id, message_id, at) VALUES (?, ?, ?, ?)").run(conv.id, userId, e.messageId, t);
-      }
-      const ins = db.prepare(
-        `INSERT INTO delivery_queue (recipient_device_id, kind, conversation_id, message_id, sender_user_id, sender_device_id, payload, created_at, expires_at)
-         VALUES (?, 'envelope', ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
-      );
-      for (const r of e.recipients) {
-        if (blockedBy.has(ownerOf.get(r.deviceId) ?? "")) continue;
-        if (dropFor.has(ownerOf.get(r.deviceId) ?? "")) continue;
-        const payload = JSON.stringify({
-          v: 1,
-          cls: e.cls,
-          sentAt: e.sentAt,
-          serverTs: t,
-          nonce: e.nonce,
-          ciphertext: e.ciphertext,
-          signature: e.signature,
-          enc: r.enc,
-          wrappedKey: r.wrappedKey,
-          // Server-attested @everyone: omitted otherwise, so ordinary messages keep their exact queue payload.
-          ...(mentionAll ? { mentionAll: true } : {}),
+    const items: QueueInsert[] = [];
+    const remote: { home: string; deviceId: string; payload: string }[] = [];
+    for (const r of e.recipients) {
+      if (blockedBy.has(ownerOf.get(r.deviceId) ?? "")) continue;
+      if (dropFor.has(ownerOf.get(r.deviceId) ?? "")) continue;
+      const payload = JSON.stringify({
+        v: 1,
+        cls: e.cls,
+        sentAt: e.sentAt,
+        serverTs: t,
+        nonce: e.nonce,
+        ciphertext: e.ciphertext,
+        signature: e.signature,
+        enc: r.enc,
+        wrappedKey: r.wrappedKey,
+        // Server-attested @everyone: omitted otherwise, so ordinary messages keep their exact queue payload.
+        ...(mentionAll ? { mentionAll: true } : {}),
+      });
+      const home = homeOf.get(r.deviceId);
+      if (home) remote.push({ home, deviceId: r.deviceId, payload });
+      else {
+        items.push({
+          recipient_device_id: r.deviceId,
+          kind: "envelope",
+          conversation_id: conv.id,
+          message_id: e.messageId,
+          sender_user_id: userId,
+          sender_device_id: deviceId,
+          payload,
+          created_at: t,
+          expires_at: expiresAt,
         });
-        const home = homeOf.get(r.deviceId);
-        if (home) {
-          ctx.federation!.routeRemote(home, {
+      }
+    }
+    const submission = {
+      message_id: e.messageId,
+      sender_device_id: deviceId,
+      sender_user_id: userId,
+      conversation_id: conv.id,
+      recipient_count: e.recipients.length,
+      server_ts: t,
+      expires_at: expiresAt,
+    };
+    let inserted: QueueItemRow[];
+    try {
+      inserted = await ctx.relay.accept(submission, items, () => {
+        if (mentionAll) {
+          db.prepare("INSERT INTO mention_all_events (conversation_id, user_id, message_id, at) VALUES (?, ?, ?, ?)").run(conv.id, userId, e.messageId, t);
+        }
+        // Devices of people on other servers go to the federation outbox (same ciphertext, same per-device key wrap).
+        for (const r of remote) {
+          ctx.federation!.routeRemote(r.home, {
             key: `env:${e.messageId}:${deviceId}:${r.deviceId}`,
             kind: "envelope",
             conversationId: conv.id,
@@ -154,19 +177,24 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
             senderUserId: userId,
             senderDeviceId: deviceId,
             recipientDeviceId: r.deviceId,
-            payload,
+            payload: r.payload,
             createdAt: t,
             expiresAt,
           });
-          continue;
         }
-        inserted.push(ins.get(r.deviceId, conv.id, e.messageId, userId, deviceId, payload, t, expiresAt) as QueueItemRow);
+        if (e.cls === "message") {
+          db.prepare("UPDATE conversations SET updated_at = ? WHERE id = ?").run(t, conv.id);
+          db.prepare("UPDATE conversation_members SET last_post_at = ? WHERE conversation_id = ? AND user_id = ?").run(t, conv.id, userId);
+        }
+      });
+    } catch (err) {
+      // The same id accepted by a concurrent request: answer as the retry it is.
+      if (err instanceof DuplicateSubmission) {
+        const dup = await retry();
+        if (dup) return dup;
       }
-      if (e.cls === "message") {
-        db.prepare("UPDATE conversations SET updated_at = ? WHERE id = ?").run(t, conv.id);
-        db.prepare("UPDATE conversation_members SET last_post_at = ? WHERE conversation_id = ? AND user_id = ?").run(t, conv.id, userId);
-      }
-    })();
+      throw err;
+    }
     for (const row of inserted) ctx.hub.pushQueued(row.recipient_device_id, [row], { wake: !quietFor.has(ownerOf.get(row.recipient_device_id) ?? "") });
     if (request?.state === "pending" && e.cls === "message") await ctx.relationships.countSent(conv.id);
     return { messageId: e.messageId, serverTs: t, recipientCount: e.recipients.length, duplicate: false };
@@ -176,16 +204,14 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
   app.get("/v1/queue", auth, async (req) => {
     const { deviceId } = me(req);
     const { limit } = parse(QueueQuery, req.query);
-    const rows = db
-      .prepare("SELECT * FROM delivery_queue WHERE recipient_device_id = ? AND expires_at > ? ORDER BY id LIMIT ?")
-      .all(deviceId, now(), limit + 1) as QueueItemRow[];
+    const rows = await ctx.relay.backlog(deviceId, now(), limit + 1);
     return { items: rows.slice(0, limit).map(queueItemToWire), more: rows.length > limit };
   });
 
   app.post("/v1/queue/ack", auth, async (req) => {
     const { userId, deviceId } = me(req);
     const { ids } = parse(AckBody, req.body);
-    const removed = acknowledge(ctx, userId, deviceId, ids);
+    const removed = await acknowledge(ctx, userId, deviceId, ids);
     return { removed };
   });
 }
@@ -194,35 +220,27 @@ export default async function messageRoutes(app: FastifyInstance, ctx: AppContex
  * Delete acknowledged queue items (only the caller's own) and emit "delivered" receipts to the
  * sender's devices for DM/group messages. Receipts are routing metadata, not content.
  */
-export function acknowledge(ctx: AppContext, userId: string, deviceId: string, ids: number[]): number {
+export async function acknowledge(ctx: AppContext, userId: string, deviceId: string, ids: number[]): Promise<number> {
   const { db } = ctx;
   const t = now();
-  const receipts: QueueItemRow[] = [];
-  let removed = 0;
-  db.transaction(() => {
-    const del = db.prepare("DELETE FROM delivery_queue WHERE id = ? AND recipient_device_id = ? RETURNING *");
-    const convType = db.prepare("SELECT type FROM conversations WHERE id = ?");
-    const senderDevices = db.prepare("SELECT d.id, u.home_server_id FROM devices d JOIN users u ON u.id = d.user_id WHERE d.user_id = ? AND d.revoked_at IS NULL");
-    const insReceipt = db.prepare(
-      `INSERT OR IGNORE INTO delivery_queue (recipient_device_id, kind, conversation_id, message_id, sender_user_id, sender_device_id, payload, created_at, expires_at)
-       VALUES (?, 'receipt', ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
-    );
-    for (const id of ids) {
-      const row = del.get(id, deviceId) as QueueItemRow | undefined;
-      if (!row) continue;
-      removed++;
-      if (row.kind !== "envelope" || row.sender_user_id === userId) continue;
-      const cls = (JSON.parse(row.payload) as { cls?: string }).cls;
-      if (cls !== "message") continue;
-      const type = (convType.get(row.conversation_id) as { type: string } | undefined)?.type;
-      if (type !== "DM" && type !== "GROUP") continue;
-      const payload = JSON.stringify({ status: "delivered", at: t });
-      for (const d of senderDevices.all(row.sender_user_id) as { id: string; home_server_id: string | null }[]) {
-        if (d.home_server_id) {
-          // The sender is on another server: the receipt travels back through federation (best effort: a full
-          // outbox drops the receipt rather than failing this acknowledgement).
-          try {
-            ctx.federation?.routeRemote(d.home_server_id, {
+  const taken = await ctx.relay.take(deviceId, ids);
+  const receipts: QueueInsert[] = [];
+  const convType = db.prepare("SELECT type FROM conversations WHERE id = ?");
+  const senderDevices = db.prepare("SELECT d.id, u.home_server_id FROM devices d JOIN users u ON u.id = d.user_id WHERE d.user_id = ? AND d.revoked_at IS NULL");
+  for (const row of taken) {
+    if (row.kind !== "envelope" || row.sender_user_id === userId) continue;
+    const cls = (JSON.parse(row.payload) as { cls?: string }).cls;
+    if (cls !== "message") continue;
+    const type = (convType.get(row.conversation_id) as { type: string } | undefined)?.type;
+    if (type !== "DM" && type !== "GROUP") continue;
+    const payload = JSON.stringify({ status: "delivered", at: t });
+    const expiresAt = t + ctx.config.queueTtlSeconds * 1000;
+    for (const d of senderDevices.all(row.sender_user_id) as { id: string; home_server_id: string | null }[]) {
+      if (d.home_server_id) {
+        // The sender is on another server: the receipt travels back through federation (best effort: a full
+        // outbox drops the receipt rather than failing this acknowledgement).
+        try {
+          ctx.federation?.routeRemote(d.home_server_id, {
             key: `rcpt:${row.message_id}:${deviceId}:${d.id}`,
             kind: "receipt",
             conversationId: row.conversation_id,
@@ -232,20 +250,26 @@ export function acknowledge(ctx: AppContext, userId: string, deviceId: string, i
             recipientDeviceId: d.id,
             payload,
             createdAt: t,
-            expiresAt: t + ctx.config.queueTtlSeconds * 1000,
-            });
-          } catch {
-            /* receipt dropped */
-          }
-          continue;
+            expiresAt,
+          });
+        } catch {
+          /* receipt dropped */
         }
-        const r = insReceipt.get(d.id, row.conversation_id, row.message_id, userId, deviceId, payload, t, t + ctx.config.queueTtlSeconds * 1000) as
-          | QueueItemRow
-          | undefined;
-        if (r) receipts.push(r);
+        continue;
       }
+      receipts.push({
+        recipient_device_id: d.id,
+        kind: "receipt",
+        conversation_id: row.conversation_id,
+        message_id: row.message_id,
+        sender_user_id: userId,
+        sender_device_id: deviceId,
+        payload,
+        created_at: t,
+        expires_at: expiresAt,
+      });
     }
-  })();
-  for (const r of receipts) ctx.hub.pushQueued(r.recipient_device_id, [r]);
-  return removed;
+  }
+  for (const r of await ctx.relay.enqueue(receipts)) ctx.hub.pushQueued(r.recipient_device_id, [r]);
+  return taken.length;
 }

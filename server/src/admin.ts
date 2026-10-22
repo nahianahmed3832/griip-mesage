@@ -56,11 +56,13 @@ import { MONGO_COMMANDS, runMongoCommand } from "./infrastructure/database/mongo
 import { RETIRED_COMMANDS, runRetiredCommand } from "./modules/administration/retiredData.js";
 import { migrateBranchesAndTeams, verifyCommunityMigration } from "./modules/organizations/communityMigration.js";
 import { openMongo } from "./infrastructure/database/mongo/index.js";
+import { type RelayStore, SqliteRelayStore } from "./modules/messaging/relay/store.js";
 import { MongoReportStore } from "./modules/organizations/reports/mongoStore.js";
 import { ReportSealer } from "./modules/organizations/reports/seal.js";
 import { type ReportStore, SqliteReportStore } from "./modules/organizations/reports/store.js";
 
 /** Reports live where MONGODB_DOMAINS says. */
+const relayStore = (ctx: AppContext): RelayStore => new SqliteRelayStore(ctx.db);
 const reportStore = (ctx: AppContext): ReportStore => (ctx.mongo?.owns("reports") ? new MongoReportStore(ctx.mongo) : new SqliteReportStore(ctx.db));
 const relationshipStore = (ctx: AppContext): RelationshipStore =>
   ctx.mongo?.owns("relationships") ? new MongoRelationshipStore(ctx.mongo) : new SqliteRelationshipStore(ctx.db);
@@ -213,9 +215,11 @@ switch (cmd) {
     break;
   }
   case "cleanup": {
-    const ctx = { db, config: cfg, authz: new Authz(db), hub: new Hub(db), livekit: null, blobs: createBlobStore(cfg), log: console as any, audit: () => {} } as unknown as AppContext;
+    const ctx = { db, config: cfg, authz: new Authz(db), livekit: null, blobs: createBlobStore(cfg), log: console as any, audit: () => {} } as unknown as AppContext;
     // Domains kept in MongoDB are cleaned there (docs/MONGODB.md).
     if (cfg.mongo) ctx.mongo = await openMongo(cfg.mongo, db);
+    ctx.relay = relayStore(ctx);
+    ctx.hub = new Hub(ctx.relay);
     ctx.accounts = new Accounts(ctx);
     ctx.reports = reportStore(ctx);
     ctx.relationships = relationshipStore(ctx);

@@ -1,20 +1,9 @@
 import type { WebSocket } from "ws";
-import type { DB } from "../../infrastructure/database/db.js";
+import type { QueueItemRow, RelayStore } from "../messaging/index.js";
 import type { QueueItemWire, ServerEvent } from "../../shared/contracts/realtime.js";
 import { now } from "../../shared/utilities/util.js";
 
-export interface QueueItemRow {
-  id: number;
-  recipient_device_id: string;
-  kind: "envelope" | "receipt";
-  conversation_id: string;
-  message_id: string;
-  sender_user_id: string;
-  sender_device_id: string;
-  payload: string;
-  created_at: number;
-  expires_at: number;
-}
+export type { QueueItemRow };
 
 export function queueItemToWire(r: QueueItemRow): QueueItemWire {
   return {
@@ -35,11 +24,20 @@ export interface Conn {
   userId: string;
   deviceId: string;
   /**
-   * True until this socket's backlog has been sent completely. While flushing, live items aren't
-   * pushed: they're already queued and go out in the next backlog batch, in queue order, so a new
-   * message can't overtake (or duplicate) the backlog (P6).
+   * True until this socket's backlog has been sent completely. While flushing, live items aren't sent: they wait in
+   * [held] and go out after the last backlog batch, minus any a batch already carried, so a new message can't overtake
+   * (or duplicate) the backlog (P6), whether the store answers synchronously (SQLite) or not (MongoDB).
    */
   flushing: boolean;
+  /** Live items queued while flushing, in arrival order (bounded: see HELD_LIMIT). */
+  held: QueueItemRow[];
+  /** More than HELD_LIMIT arrived while flushing: the last batch is followed by one more instead. */
+  heldOverflow: boolean;
+  /** Ids sent in backlog batches since this socket opened (to drop held items a batch already carried). */
+  sentIds: Set<number>;
+  /** A backlog query is running; a second request waits for it (an ack can arrive while a batch is in flight). */
+  flushRunning: boolean;
+  flushAgain: boolean;
   /** When this socket opened: when it closes, items queued since then may still be unacknowledged (push wake-ups). */
   openedAt: number;
 }
@@ -70,12 +68,13 @@ export class Hub {
 
   /** [maxSocketsPerDevice]: a device opening more connections than this closes its oldest (docs/ABUSE_CONTROLS.md). */
   constructor(
-    private db: DB,
+    private relay: RelayStore,
     private maxSocketsPerDevice = 4,
   ) {}
 
   add(ws: WebSocket, userId: string, deviceId: string): Conn {
-    const conn: Conn = { ws, userId, deviceId, flushing: true, openedAt: now() }; // its backlog flush starts right after "hello"
+    // Its backlog flush starts right after "hello".
+    const conn: Conn = { ws, userId, deviceId, flushing: true, openedAt: now(), held: [], heldOverflow: false, sentIds: new Set(), flushRunning: false, flushAgain: false };
     let set = this.byDevice.get(deviceId);
     if (!set) this.byDevice.set(deviceId, (set = new Set()));
     // A reconnecting phone often still has a half-open old connection: the newest one wins, nothing is refused.
@@ -182,24 +181,57 @@ export class Hub {
       return;
     }
     const data = this.encode({ t: "queue", items: rows.map(queueItemToWire), more: false });
-    for (const c of this.byDevice.get(deviceId) ?? []) if (!c.flushing && c.ws.readyState === 1) c.ws.send(data);
+    for (const c of this.byDevice.get(deviceId) ?? []) {
+      if (c.ws.readyState !== 1) continue;
+      if (!c.flushing) c.ws.send(data);
+      else if (c.held.length + rows.length <= HELD_LIMIT) c.held.push(...rows);
+      else c.heldOverflow = true;
+    }
   }
 
-  /** Send the next backlog batch for a device. Called on connect and after each ack. */
-  flushBacklog(conn: Conn, batchSize = 100): void {
-    const t = now();
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM delivery_queue WHERE recipient_device_id = ? AND expires_at > ? ORDER BY id LIMIT ?`,
-      )
-      .all(conn.deviceId, t, batchSize + 1) as QueueItemRow[];
-    const more = rows.length > batchSize;
-    const batch = rows.slice(0, batchSize);
+  /**
+   * Send the next backlog batch for a device. Called on connect and after each acknowledgement of a batch. After the
+   * last batch, the items held back while flushing go out (those a batch didn't already carry), then queue.drained.
+   */
+  async flushBacklog(conn: Conn, batchSize = 100): Promise<void> {
+    if (conn.flushRunning) {
+      conn.flushAgain = true;
+      return;
+    }
+    conn.flushRunning = true;
+    try {
+      do {
+        conn.flushAgain = false;
+        await this.sendBatch(conn, batchSize);
+      } while (conn.flushAgain && conn.flushing);
+    } finally {
+      conn.flushRunning = false;
+    }
+  }
+
+  private async sendBatch(conn: Conn, batchSize: number): Promise<void> {
+    const rows = await this.relay.backlog(conn.deviceId, now(), batchSize + 1);
     if (conn.ws.readyState !== 1) return;
+    const more = rows.length > batchSize || conn.heldOverflow;
+    const batch = rows.slice(0, batchSize);
+    for (const r of batch) conn.sentIds.add(r.id);
+    if (conn.heldOverflow && rows.length <= batchSize) {
+      // Too much arrived while flushing to hold: it's all in the queue, so one more batch picks it up.
+      conn.heldOverflow = false;
+      conn.held = [];
+    }
     conn.ws.send(this.encode({ t: "queue", items: batch.map(queueItemToWire), more, backlog: true }));
-    // Query, send and this switch happen in one synchronous step, so an item queued afterwards is
-    // pushed live and one queued before is in this batch: nothing is skipped or sent twice.
-    conn.flushing = more;
-    if (!more) conn.ws.send(this.encode({ t: "queue.drained" }));
+    if (more) return;
+    // Everything from here to the switch below is synchronous, so a live item can't slip between the held ones and
+    // the next live push.
+    const late = conn.held.filter((r) => !conn.sentIds.has(r.id)).sort((a, b) => a.id - b.id);
+    conn.held = [];
+    conn.sentIds.clear();
+    if (late.length) conn.ws.send(this.encode({ t: "queue", items: late.map(queueItemToWire), more: false }));
+    conn.flushing = false;
+    conn.ws.send(this.encode({ t: "queue.drained" }));
   }
 }
+
+/** Live items held per socket while its backlog is sent; beyond this, they're fetched as one more batch instead. */
+const HELD_LIMIT = 1000;

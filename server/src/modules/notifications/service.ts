@@ -116,8 +116,8 @@ export class PushService {
    * Items it received in its backlog and didn't acknowledge don't count, so one it can't process never loops.
    */
   disconnected(deviceId: string, openedAt: number): void {
-    this.guard({ deviceId }, () => {
-      if (this.usable() && this.hasQueued(deviceId, openedAt)) this.request(deviceId, false);
+    this.guard({ deviceId }, async () => {
+      if (this.usable() && (await this.hasQueued(deviceId, openedAt))) this.request(deviceId, false);
     });
   }
 
@@ -152,9 +152,10 @@ export class PushService {
   }
 
   /** A wake-up must never break what triggered it: sending a message, closing a socket, starting a call, a timer. */
-  private guard(ids: Record<string, string>, fn: () => void): void {
+  private guard(ids: Record<string, string>, fn: () => void | Promise<void>): void {
     try {
-      fn();
+      const done = fn();
+      if (done) void done.catch((err: unknown) => this.logInternal(ids, err));
     } catch (err) {
       this.logInternal(ids, err);
     }
@@ -190,9 +191,9 @@ export class PushService {
     const d = this.deferred.get(deviceId);
     this.deferred.delete(deviceId);
     if (!d) return;
-    this.guard({ deviceId }, () => {
+    this.guard({ deviceId }, async () => {
       if (!this.usable() || this.ctx.hub.isDeviceOnline(deviceId)) return;
-      if (d.call || this.hasQueued(deviceId, 0)) void this.send(deviceId);
+      if (d.call || (await this.hasQueued(deviceId, 0))) void this.send(deviceId);
     });
   }
 
@@ -301,10 +302,8 @@ export class PushService {
     return row?.endpoint ?? null;
   }
 
-  private hasQueued(deviceId: string, since: number): boolean {
-    return !!this.ctx.db
-      .prepare("SELECT 1 FROM delivery_queue WHERE recipient_device_id = ? AND kind = 'envelope' AND created_at >= ? AND expires_at > ? LIMIT 1")
-      .get(deviceId, since, now());
+  private hasQueued(deviceId: string, since: number): Promise<boolean> {
+    return this.ctx.relay.hasEnvelopeSince(deviceId, since, now());
   }
 
   /** A sending slot (at most MAX_CONCURRENT at once), or null when too many are already waiting. */

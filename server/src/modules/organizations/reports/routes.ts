@@ -85,7 +85,7 @@ export default async function reportRoutes(app: FastifyInstance, ctx: AppContext
     // A message report needs the reporter to be in the conversation; the server checks the sender while it still knows.
     const conv = body.conversationId ? authz.requireMember(body.conversationId, userId) : undefined;
     if (body.messageId) {
-      const sent = db.prepare("SELECT sender_user_id FROM submitted_messages WHERE message_id = ?").get(body.messageId) as { sender_user_id: string } | undefined;
+      const sent = await ctx.relay.submission(body.messageId);
       if (sent && sent.sender_user_id !== body.targetUserId) throw badRequest("That message wasn't sent by this person");
       const earlier = await ctx.reports.byReporterMessage(userId, body.messageId);
       if (earlier) return { report: { id: earlier.id, status: earlier.status, to: earlier.org_id ? "community" : "meldiq", repeated: true } };
