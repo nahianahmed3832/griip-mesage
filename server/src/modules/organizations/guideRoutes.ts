@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
+import { GUIDE_LIMITS, OrgParamsNonEmpty } from "../../shared/contracts/http/community.js";
+import { GuideBody, type GuideItemBody } from "../../shared/contracts/http/onboarding.js";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
 import { parse } from "../../shared/validation/index.js";
@@ -12,7 +13,7 @@ import { notifyOrg } from "./orgsRoutes.js";
  * tasks that each open a channel, and up to five resources. Plaintext configuration like the community's rules; set
  * by people who can edit the community. Which tasks someone did is kept on their phone.
  */
-export const GUIDE_LIMITS = { welcome: 500, items: 5, title: 80 } as const;
+export { GUIDE_LIMITS };
 
 export interface GuideItem {
   id: string;
@@ -48,25 +49,14 @@ export function guideOf(ctx: AppContext, org: { id: string; guide?: string | nul
 export default async function guideRoutes(app: FastifyInstance, ctx: AppContext) {
   const { db, authz } = ctx;
   const auth = { preHandler: requireAuth(ctx) };
-  const zItem = z.object({ id: z.string().max(32).optional(), title: z.string().trim().min(1).max(GUIDE_LIMITS.title), channelId: z.string().min(1).max(64) });
 
   app.put("/v1/orgs/:orgId/guide", auth, async (req) => {
-    const { orgId } = parse(z.object({ orgId: z.string().min(1).max(64) }), req.params);
+    const { orgId } = parse(OrgParamsNonEmpty, req.params);
     const userId = me(req).userId;
-    const body = parse(
-      z
-        .object({
-          welcome: z.string().trim().max(GUIDE_LIMITS.welcome).nullable(),
-          tasks: z.array(zItem).max(GUIDE_LIMITS.items),
-          resources: z.array(zItem).max(GUIDE_LIMITS.items),
-        })
-        .strict()
-        .nullable(),
-      req.body,
-    );
+    const body = parse(GuideBody, req.body);
     authz.requireOrgMember(orgId, userId);
     if (!authz.can(orgId, userId, "workspace.edit")) throw forbidden("Your role doesn't include changing the community guide");
-    const items = (list: z.infer<typeof zItem>[]) =>
+    const items = (list: GuideItemBody[]) =>
       list.map((i) => {
         const c = authz.conversation(i.channelId);
         if (!c || c.type !== "CHANNEL" || c.org_id !== orgId) throw new ApiError(400, "channel_not_found", "Pick a channel of this community", { channelId: i.channelId });

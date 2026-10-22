@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import type { Readable } from "node:stream";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { z } from "zod";
+import { IdParamsNonEmpty, OrgParamsNonEmpty } from "../../shared/contracts/http/community.js";
+import { ExpressionRenameBody, ExpressionUploadQuery } from "../../shared/contracts/http/expressions.js";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
 import { parse } from "../../shared/validation/index.js";
@@ -71,8 +72,6 @@ async function readImage(req: FastifyRequest): Promise<Buffer> {
 export default async function expressionRoutes(app: FastifyInstance, ctx: AppContext) {
   const { db, authz } = ctx;
   const auth = { preHandler: requireAuth(ctx) };
-  const zOrg = z.object({ orgId: z.string().min(1).max(64) });
-  const zId = z.object({ id: z.string().min(1).max(64) });
 
   const view = (r: ExpressionRow) => ({
     id: r.id, orgId: r.org_id, kind: r.kind, name: r.name, animated: !!r.animated, sha256: r.sha256, size: r.size,
@@ -86,7 +85,7 @@ export default async function expressionRoutes(app: FastifyInstance, ctx: AppCon
   };
 
   app.get("/v1/orgs/:orgId/expressions", auth, async (req) => {
-    const { orgId } = parse(zOrg, req.params);
+    const { orgId } = parse(OrgParamsNonEmpty, req.params);
     authz.requireOrgMember(orgId, me(req).userId);
     const rows = db.prepare("SELECT * FROM community_expressions WHERE org_id = ? ORDER BY kind, name").all(orgId) as ExpressionRow[];
     return { expressions: rows.map(view), limits: { emoji: EXPRESSION_LIMITS.emoji, sticker: EXPRESSION_LIMITS.sticker } };
@@ -94,9 +93,9 @@ export default async function expressionRoutes(app: FastifyInstance, ctx: AppCon
 
   /** Uploads one: `?kind=emoji|sticker&name=party_parrot`, the image as the body. */
   app.post("/v1/orgs/:orgId/expressions", { preHandler: requireAuth(ctx), config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req) => {
-    const { orgId } = parse(zOrg, req.params);
+    const { orgId } = parse(OrgParamsNonEmpty, req.params);
     const userId = me(req).userId;
-    const q = parse(z.object({ kind: z.enum(["emoji", "sticker"]).default("emoji"), name: z.string().trim().toLowerCase() }), req.query);
+    const q = parse(ExpressionUploadQuery, req.query);
     requireManager(orgId, userId);
     if (!EXPRESSION_NAME.test(q.name)) throw badRequest("Names are 2–32 letters, digits or _ (lowercase)");
     // Checked before the upload (a quick answer) and again just before the row is written (B13: two uploads at once
@@ -130,9 +129,9 @@ export default async function expressionRoutes(app: FastifyInstance, ctx: AppCon
   });
 
   app.patch("/v1/expressions/:id", auth, async (req) => {
-    const { id } = parse(zId, req.params);
+    const { id } = parse(IdParamsNonEmpty, req.params);
     const userId = me(req).userId;
-    const { name } = parse(z.object({ name: z.string().trim().toLowerCase() }).strict(), req.body);
+    const { name } = parse(ExpressionRenameBody, req.body);
     const r = load(id);
     if (!r) throw notFound("Not found");
     requireManager(r.org_id, userId);
@@ -145,7 +144,7 @@ export default async function expressionRoutes(app: FastifyInstance, ctx: AppCon
   });
 
   app.delete("/v1/expressions/:id", auth, async (req) => {
-    const { id } = parse(zId, req.params);
+    const { id } = parse(IdParamsNonEmpty, req.params);
     const userId = me(req).userId;
     const r = load(id);
     if (!r) return { ok: true };
@@ -159,7 +158,7 @@ export default async function expressionRoutes(app: FastifyInstance, ctx: AppCon
 
   /** The image, for the community's members (people outside it see the message's `:name:` text instead). */
   app.get("/v1/expressions/:id/image", auth, async (req, reply) => {
-    const { id } = parse(zId, req.params);
+    const { id } = parse(IdParamsNonEmpty, req.params);
     const r = load(id);
     if (!r || !authz.orgRole(r.org_id, me(req).userId)) throw notFound("Not found");
     const stream = await ctx.blobs.get("profile-photos", id);

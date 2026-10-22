@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
+import { IdParamsNonEmpty, OrgParamsNonEmpty } from "../../../shared/contracts/http/community.js";
+import { REPORT_REASON_KEYS, ReportBody, ReportStatusBody, ReportsQuery } from "../../../shared/contracts/http/reports.js";
 import { type AppContext } from "../../../app/context.js";
 import { me, requireAuth } from "../../auth/index.js";
 import { parse } from "../../../shared/validation/index.js";
@@ -20,18 +21,10 @@ export const REPORTS_PER_HOUR = 10;
 export const REPORT_PAGE = 50;
 export const REPORT_RETENTION_MS = 90 * 86_400_000;
 
-const zId = z.string().min(1).max(64);
-const zContent = z
-  .object({
-    text: z.string().max(4000).nullish(),
-    sentAt: z.number().int().nullish(),
-    attachments: z
-      .array(z.object({ name: z.string().max(200), size: z.number().int().min(0).nullish(), sha256: z.string().max(128).nullish() }).strict())
-      .max(10)
-      .nullish(),
-    context: z.array(z.object({ senderUserId: zId, text: z.string().max(2000), sentAt: z.number().int() }).strict()).max(5).nullish(),
-  })
-  .strict();
+// The contract's copy of the reasons (shared/ can't import modules) stays equal to REPORT_REASONS.
+type SameKeys<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const _sameReasons: SameKeys<(typeof REPORT_REASON_KEYS)[number], (typeof REPORT_REASONS)[number]> = true;
+void _sameReasons;
 
 /** Who reports go to: a community's moderators, or Meldiq's operators (null). */
 function scopeOf(ctx: AppContext, reason: string, conv: { type: string; org_id: string | null } | undefined, orgId: string | undefined, reporter: string, target: string): string | null {
@@ -85,20 +78,7 @@ export default async function reportRoutes(app: FastifyInstance, ctx: AppContext
 
   app.post("/v1/reports", auth, async (req) => {
     const { userId } = me(req);
-    const body = parse(
-      z
-        .object({
-          targetUserId: zId,
-          conversationId: zId.optional(),
-          messageId: zId.optional(),
-          orgId: zId.optional(),
-          reason: z.enum(REPORT_REASONS),
-          note: z.string().trim().max(500).optional(),
-          content: zContent.optional(),
-        })
-        .strict(),
-      req.body,
-    );
+    const body = parse(ReportBody, req.body);
     if (body.targetUserId === userId) throw badRequest("You can't report yourself");
     if (body.messageId && !body.conversationId) throw badRequest("Say which conversation the message is in");
     if (!db.prepare("SELECT 1 FROM users WHERE id = ?").get(body.targetUserId)) throw notFound("No such person");
@@ -139,8 +119,8 @@ export default async function reportRoutes(app: FastifyInstance, ctx: AppContext
 
   app.get("/v1/orgs/:orgId/reports", auth, async (req) => {
     const { userId } = me(req);
-    const { orgId } = parse(z.object({ orgId: zId }), req.params);
-    const q = parse(z.object({ status: z.enum(["open", "closed"]).default("open"), before: z.coerce.number().int().min(1).optional() }), req.query);
+    const { orgId } = parse(OrgParamsNonEmpty, req.params);
+    const q = parse(ReportsQuery, req.query);
     authz.requireOrgMember(orgId, userId);
     authz.requirePermission(orgId, userId, "reports.view", "Your role doesn't include reports");
     const rows = await ctx.reports.list(orgId, q.status === "closed", REPORT_PAGE + 1, q.before);
@@ -154,8 +134,8 @@ export default async function reportRoutes(app: FastifyInstance, ctx: AppContext
 
   app.patch("/v1/reports/:id", auth, async (req) => {
     const { userId } = me(req);
-    const { id } = parse(z.object({ id: zId }), req.params);
-    const body = parse(z.object({ status: z.enum(["open", "actioned", "dismissed"]), note: z.string().trim().max(500).optional() }).strict(), req.body);
+    const { id } = parse(IdParamsNonEmpty, req.params);
+    const body = parse(ReportStatusBody, req.body);
     const r = await ctx.reports.get(id);
     // Operators' reports are handled with the admin tools; everyone else sees the same 404 for reports they can't see.
     if (!r?.org_id || !authz.can(r.org_id, userId, "reports.view")) throw notFound("Report not found");

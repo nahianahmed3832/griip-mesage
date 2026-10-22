@@ -1,4 +1,17 @@
+import { applicationRoutes } from "../applications.js";
+import { communityDiscoveryRoutes, communityModerationRoutes, communityStructureRoutes } from "../community.js";
+import { expressionRoutes } from "../expressions.js";
+import { onboardingRoutes } from "../onboarding.js";
+import { reportRoutes } from "../reports.js";
 import type { RouteContract } from "../route.js";
 
 /** Route contracts of the community area (docs/architecture/ARCHITECTURE_1_0_PLAN.md §11, step C2). */
-export const communityRoutes: readonly RouteContract[] = [];
+export const communityRoutes: readonly RouteContract[] = [
+  ...communityStructureRoutes,
+  ...communityDiscoveryRoutes,
+  ...communityModerationRoutes,
+  ...applicationRoutes,
+  ...expressionRoutes,
+  ...onboardingRoutes,
+  ...reportRoutes,
+];

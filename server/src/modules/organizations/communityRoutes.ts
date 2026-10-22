@@ -1,5 +1,21 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
+import {
+  BanBody,
+  CATEGORY_LIMIT,
+  CategoryNameBody,
+  CHANNEL_CAPABILITY_KEYS,
+  CHANNELS_PER_COMMUNITY,
+  DiscoverQuery,
+  ExpiryBody,
+  GuestPolicyBody,
+  IdParams,
+  LayoutBody,
+  OrgMemberParams,
+  OrgParams,
+  OverwriteBody,
+  SecurityBody,
+  TimeoutBody,
+} from "../../shared/contracts/http/community.js";
 import type { ConversationRow } from "./authz.js";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
@@ -32,8 +48,8 @@ import { CHANNEL_LIMITS, notifyConversation, notifyOrg, orgSummary, removeFromWo
 export const SECURITY_PAUSE_MAX_MS = 7 * 86_400_000;
 /** The longest timeout, as on other community platforms. */
 export const TIMEOUT_MAX_MS = 28 * 86_400_000;
-/** At most this many categories in one community. */
-export const CATEGORY_LIMIT = 50;
+/** At most this many categories in one community (src/shared/contracts/http/community.ts). */
+export { CATEGORY_LIMIT };
 /** Discovery pages. */
 const DISCOVER_PAGE = 30;
 
@@ -73,7 +89,12 @@ function visibleToEveryone(ctx: AppContext, conv: ConversationRow): boolean {
   return perms.has("channels.view");
 }
 
-const zCaps = z.array(z.enum(CHANNEL_CAPABILITIES)).max(CHANNEL_CAPABILITIES.length);
+// The contract's copies of the capability list and the channel limit (shared/ can't import modules) stay equal to these.
+type SameKeys<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const _sameCapabilities: SameKeys<(typeof CHANNEL_CAPABILITY_KEYS)[number], ChannelCapability> = true;
+const _sameChannelLimit: typeof CHANNEL_LIMITS.perCommunity = CHANNELS_PER_COMMUNITY;
+void _sameCapabilities;
+void _sameChannelLimit;
 
 /**
  * After an access change (a role's members or definition, an overwrite, a channel moving): the people concerned
@@ -105,8 +126,6 @@ export async function reconcileAccess(ctx: AppContext, orgId: string, userIds?: 
 export default async function communityRoutes(app: FastifyInstance, ctx: AppContext) {
   const auth = { preHandler: requireAuth(ctx) };
   const { db, authz } = ctx;
-  const zOrg = z.object({ orgId: z.string().max(64) });
-  const zId = z.object({ id: z.string().max(64) });
 
   const reconcile = (orgId: string) => reconcileAccess(ctx, orgId);
 
@@ -121,16 +140,16 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
 
   // ───────────── Categories ─────────────
   app.get("/v1/orgs/:orgId/categories", auth, async (req) => {
-    const { orgId } = parse(zOrg, req.params);
+    const { orgId } = parse(OrgParams, req.params);
     authz.requireOrgMember(orgId, me(req).userId);
     return { categories: categoryViews(ctx, orgId, me(req).userId) };
   });
 
   app.post("/v1/orgs/:orgId/categories", auth, async (req) => {
     const actor = me(req).userId;
-    const { orgId } = parse(zOrg, req.params);
+    const { orgId } = parse(OrgParams, req.params);
     authz.requirePermission(orgId, actor, "channels.create", "Your role doesn't include creating categories");
-    const { name } = parse(z.object({ name: z.string().trim().min(1).max(60) }), req.body);
+    const { name } = parse(CategoryNameBody, req.body);
     const n = (db.prepare("SELECT COUNT(*) n FROM channel_categories WHERE org_id = ?").get(orgId) as { n: number }).n;
     if (n >= CATEGORY_LIMIT) throw conflict(`A community has at most ${CATEGORY_LIMIT} categories`);
     const id = newId("cat");
@@ -144,9 +163,9 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
 
   app.patch("/v1/categories/:id", auth, async (req) => {
     const actor = me(req).userId;
-    const c = loadCategory(parse(zId, req.params).id, actor);
+    const c = loadCategory(parse(IdParams, req.params).id, actor);
     if (!canManageCategory(c, actor)) throw forbidden("You can't manage this category");
-    const { name } = parse(z.object({ name: z.string().trim().min(1).max(60) }), req.body);
+    const { name } = parse(CategoryNameBody, req.body);
     db.prepare("UPDATE channel_categories SET name = ?, updated_at = ? WHERE id = ?").run(name, now(), c.id);
     ctx.audit({ actorId: actor, orgId: c.org_id, action: "category.update", target: c.id });
     notifyOrg(ctx, c.org_id);
@@ -159,7 +178,7 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
    */
   app.delete("/v1/categories/:id", auth, async (req) => {
     const actor = me(req).userId;
-    const c = loadCategory(parse(zId, req.params).id, actor);
+    const c = loadCategory(parse(IdParams, req.params).id, actor);
     authz.requirePermission(c.org_id, actor, "channels.manage", "Your role doesn't include managing channels");
     const channels = (db.prepare("SELECT COUNT(*) n FROM conversations WHERE category_id = ?").get(c.id) as { n: number }).n;
     if (channels > 0 && authz.overwrites("category", c.id).length > 0) {
@@ -181,15 +200,9 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
    */
   app.put("/v1/orgs/:orgId/layout", auth, async (req) => {
     const actor = me(req).userId;
-    const { orgId } = parse(zOrg, req.params);
+    const { orgId } = parse(OrgParams, req.params);
     authz.requirePermission(orgId, actor, "channels.manage", "Your role doesn't include arranging channels");
-    const body = parse(
-      z.object({
-        categories: z.array(z.string().max(64)).max(CATEGORY_LIMIT).default([]),
-        channels: z.array(z.object({ id: z.string().max(64), categoryId: z.string().max(64).nullable(), position: z.number().int().min(0).max(10_000) })).max(CHANNEL_LIMITS.perCommunity).default([]),
-      }),
-      req.body,
-    );
+    const body = parse(LayoutBody, req.body);
     const known = new Set((db.prepare("SELECT id FROM channel_categories WHERE org_id = ?").all(orgId) as { id: string }[]).map((r) => r.id));
     for (const id of body.categories) if (!known.has(id)) throw badRequest("Unknown category", { categoryId: id });
     let moved = false;
@@ -252,9 +265,7 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
     canManage: t.canManage,
   });
 
-  const zOverwrite = z.object({ subject: z.string().min(1).max(80), allow: zCaps.default([]), deny: zCaps.default([]) });
-
-  const writeOverwrite = async (type: "category" | "channel", id: string, actor: string, body: z.infer<typeof zOverwrite>) => {
+  const writeOverwrite = async (type: "category" | "channel", id: string, actor: string, body: OverwriteBody) => {
     const t = targetFor(type, id, actor);
     if (!t.canManage) throw forbidden(type === "category" ? "You can't manage this category" : "You can't manage this channel");
     const subject = body.subject;
@@ -295,14 +306,14 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
 
   app.get("/v1/categories/:id/overwrites", auth, async (req) => {
     const actor = me(req).userId;
-    const t = targetFor("category", parse(zId, req.params).id, actor);
+    const t = targetFor("category", parse(IdParams, req.params).id, actor);
     // A category's rules name roles and people: shown to those who manage it or can see a channel in it.
     if (!t.canManage && !categoryViews(ctx, t.orgId, actor).some((c) => c.id === t.id)) throw notFound("Category not found");
     return listOverwrites(t);
   });
-  app.put("/v1/categories/:id/overwrites", auth, async (req) => writeOverwrite("category", parse(zId, req.params).id, me(req).userId, parse(zOverwrite, req.body)));
-  app.get("/v1/conversations/:id/overwrites", auth, async (req) => listOverwrites(targetFor("channel", parse(zId, req.params).id, me(req).userId)));
-  app.put("/v1/conversations/:id/overwrites", auth, async (req) => writeOverwrite("channel", parse(zId, req.params).id, me(req).userId, parse(zOverwrite, req.body)));
+  app.put("/v1/categories/:id/overwrites", auth, async (req) => writeOverwrite("category", parse(IdParams, req.params).id, me(req).userId, parse(OverwriteBody, req.body)));
+  app.get("/v1/conversations/:id/overwrites", auth, async (req) => listOverwrites(targetFor("channel", parse(IdParams, req.params).id, me(req).userId)));
+  app.put("/v1/conversations/:id/overwrites", auth, async (req) => writeOverwrite("channel", parse(IdParams, req.params).id, me(req).userId, parse(OverwriteBody, req.body)));
 
   // ───────────── Discovery and joining ─────────────
   const discoverRate = { preHandler: requireAuth(ctx), config: { rateLimit: { max: 60, timeWindow: "1 minute" } } };
@@ -310,7 +321,7 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
   /** Public communities, most members first; [q] matches name or description. Cursor: the next offset. */
   app.get("/v1/communities/discover", discoverRate, async (req) => {
     const userId = me(req).userId;
-    const q = parse(z.object({ q: z.string().trim().max(60).optional(), cursor: z.coerce.number().int().min(0).max(10_000).default(0) }), req.query);
+    const q = parse(DiscoverQuery, req.query);
     const like = q.q ? `%${q.q.toLowerCase().replace(/[%_\\]/g, (c) => "\\" + c)}%` : "%";
     const rows = db
       .prepare(
@@ -339,7 +350,7 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
   /** A public community before joining (or one you're in): its profile, rules and the channels everyone can see. */
   app.get("/v1/communities/:id/preview", discoverRate, async (req) => {
     const userId = me(req).userId;
-    const { id } = parse(zId, req.params);
+    const { id } = parse(IdParams, req.params);
     const o = db.prepare("SELECT * FROM orgs WHERE id = ?").get(id) as any;
     const member = o ? authz.orgRole(o.id, userId) !== null : false;
     if (!o || (o.visibility !== "public" && !member)) throw notFound("Community not found");
@@ -362,7 +373,7 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
 
   app.post("/v1/communities/:id/join", { preHandler: requireAuth(ctx), config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req) => {
     const userId = me(req).userId;
-    const { id } = parse(zId, req.params);
+    const { id } = parse(IdParams, req.params);
     const o = db.prepare("SELECT * FROM orgs WHERE id = ?").get(id) as any;
     if (!o || o.visibility !== "public") throw notFound("Community not found");
     if (authz.orgRole(id, userId)) return { org: orgSummary(ctx, o, userId), alreadyMember: true };
@@ -385,7 +396,7 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
 
   // ───────────── Bans ─────────────
   app.get("/v1/orgs/:orgId/bans", auth, async (req) => {
-    const { orgId } = parse(zOrg, req.params);
+    const { orgId } = parse(OrgParams, req.params);
     authz.requirePermission(orgId, me(req).userId, "members.ban", "Your role doesn't include bans");
     const rows = db
       .prepare(
@@ -400,8 +411,8 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
 
   app.post("/v1/orgs/:orgId/bans", auth, async (req) => {
     const actor = me(req).userId;
-    const { orgId } = parse(zOrg, req.params);
-    const body = parse(z.object({ userId: z.string().max(64), reason: z.string().trim().max(300).nullish() }), req.body);
+    const { orgId } = parse(OrgParams, req.params);
+    const body = parse(BanBody, req.body);
     authz.requireOrgMember(orgId, actor);
     if (body.userId === actor) throw badRequest("You can't ban yourself");
     if (!db.prepare("SELECT 1 FROM users WHERE id = ?").get(body.userId)) throw notFound("User not found");
@@ -423,7 +434,7 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
 
   app.delete("/v1/orgs/:orgId/bans/:userId", auth, async (req) => {
     const actor = me(req).userId;
-    const p = parse(z.object({ orgId: z.string().max(64), userId: z.string().max(64) }), req.params);
+    const p = parse(OrgMemberParams, req.params);
     authz.requirePermission(p.orgId, actor, "members.ban", "Your role doesn't include bans");
     const removed = db.prepare("DELETE FROM org_bans WHERE org_id = ? AND user_id = ?").run(p.orgId, p.userId).changes;
     if (!removed) throw notFound("Not banned");
@@ -433,10 +444,10 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
 
   // ───────────── Guests (round 7, docs/WORKSPACE_C5.md) ─────────────
   app.put("/v1/orgs/:orgId/guest-policy", auth, async (req) => {
-    const { orgId } = parse(zOrg, req.params);
+    const { orgId } = parse(OrgParams, req.params);
     const actor = me(req).userId;
     authz.requirePermission(orgId, actor, "workspace.edit", "Only people who can edit the community can change the guest policy");
-    const body = parse(z.object({ guestsAllowed: z.boolean(), guestMaxDays: z.number().int().min(1).max(365).nullable() }), req.body);
+    const body = parse(GuestPolicyBody, req.body);
     db.prepare("UPDATE orgs SET guests_allowed = ?, guest_max_days = ?, updated_at = ? WHERE id = ?").run(body.guestsAllowed ? 1 : 0, body.guestMaxDays, now(), orgId);
     // A shorter maximum brings current guests' end dates forward; turning guests off doesn't remove anyone by itself.
     if (body.guestMaxDays) {
@@ -449,13 +460,13 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
 
   /** A guest's end date (null: none, within the policy's maximum). Members and admins have no end date. */
   app.put("/v1/orgs/:orgId/members/:userId/expiry", auth, async (req) => {
-    const p = parse(z.object({ orgId: z.string().max(64), userId: z.string().max(64) }), req.params);
+    const p = parse(OrgMemberParams, req.params);
     const actor = me(req).userId;
     if (!authz.can(p.orgId, actor, "members.roles")) throw forbidden("Only people who can change member access can set a guest's end date");
     const role = authz.orgRole(p.orgId, p.userId);
     if (!role) throw notFound("Member not found");
     if (role !== "GUEST") throw badRequest("Only guests have an end date");
-    const { expiresAt } = parse(z.object({ expiresAt: z.number().int().nullable() }), req.body);
+    const { expiresAt } = parse(ExpiryBody, req.body);
     const policy = db.prepare("SELECT guest_max_days FROM orgs WHERE id = ?").get(p.orgId) as { guest_max_days: number | null };
     if (expiresAt !== null && expiresAt <= now()) throw badRequest("Pick a date in the future, or remove the guest instead");
     if (policy.guest_max_days && (expiresAt === null || expiresAt > now() + policy.guest_max_days * 86_400_000)) {
@@ -472,14 +483,9 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
    * ahead; null resumes. For people who edit the community or ban members.
    */
   app.put("/v1/orgs/:orgId/security", auth, async (req) => {
-    const { orgId } = parse(z.object({ orgId: z.string().max(64) }), req.params);
+    const { orgId } = parse(OrgParams, req.params);
     const actor = me(req).userId;
-    const body = parse(
-      z
-        .object({ invitesPausedUntil: z.number().int().nullable().optional(), dmsPausedUntil: z.number().int().nullable().optional(), activityAlerts: z.boolean().optional() })
-        .strict(),
-      req.body,
-    );
+    const body = parse(SecurityBody, req.body);
     authz.requireOrgMember(orgId, actor);
     if (!authz.can(orgId, actor, "workspace.edit") && !authz.can(orgId, actor, "members.ban")) throw forbidden("Your role doesn't include security actions");
     const t = now();
@@ -511,9 +517,9 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
    * but not post, share files, or join and talk in voice channels; they are removed from the community's live calls.
    */
   app.put("/v1/orgs/:orgId/members/:userId/timeout", auth, async (req) => {
-    const p = parse(z.object({ orgId: z.string().max(64), userId: z.string().max(64) }), req.params);
+    const p = parse(OrgMemberParams, req.params);
     const actor = me(req).userId;
-    const body = parse(z.object({ until: z.number().int().nullable(), reason: z.string().trim().max(300).nullish() }), req.body);
+    const body = parse(TimeoutBody, req.body);
     authz.requireOrgMember(p.orgId, actor);
     if (p.userId === actor) throw badRequest("You can't time yourself out");
     const targetRole = authz.orgRole(p.orgId, p.userId);

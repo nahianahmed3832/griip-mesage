@@ -1,5 +1,12 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
+import {
+  ApplicationAnswerBody,
+  ApplicationQuestionsBody,
+  ApplicationsQuery,
+  ApplyBody,
+  MAX_QUESTIONS,
+} from "../../shared/contracts/http/applications.js";
+import { IdParamsNonEmpty, OrgParamsNonEmpty } from "../../shared/contracts/http/community.js";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
 import { parse } from "../../shared/validation/index.js";
@@ -13,8 +20,7 @@ import { notifyOrg } from "./orgsRoutes.js";
  * questions; people answer and wait; holders of `members.approve` approve (they join, with the same checks as joining
  * openly: bans, paused joining, the member limit) or deny. Answers are plaintext the applicant writes for moderators.
  */
-export const MAX_QUESTIONS = 5;
-const zId = z.string().min(1).max(64);
+export { MAX_QUESTIONS };
 
 interface ApplicationRow {
   id: string;
@@ -68,9 +74,9 @@ export default async function applicationRoutes(app: FastifyInstance, ctx: AppCo
 
   /** Turns applications on with these questions, changes them, or turns them off (null). */
   app.put("/v1/orgs/:orgId/application", auth, async (req) => {
-    const { orgId } = parse(z.object({ orgId: zId }), req.params);
+    const { orgId } = parse(OrgParamsNonEmpty, req.params);
     const actor = me(req).userId;
-    const body = parse(z.object({ questions: z.array(z.string().trim().min(1).max(200)).min(1).max(MAX_QUESTIONS).nullable() }).strict(), req.body);
+    const body = parse(ApplicationQuestionsBody, req.body);
     authz.requireOrgMember(orgId, actor);
     if (!authz.can(orgId, actor, "workspace.edit")) throw forbidden("Your role doesn't include changing how people join");
     db.prepare("UPDATE orgs SET join_questions = ? WHERE id = ?").run(body.questions ? JSON.stringify(body.questions) : null, orgId);
@@ -81,8 +87,8 @@ export default async function applicationRoutes(app: FastifyInstance, ctx: AppCo
 
   app.post("/v1/communities/:id/apply", { preHandler: requireAuth(ctx), config: { rateLimit: { max: 5, timeWindow: "1 minute" } } }, async (req) => {
     const userId = me(req).userId;
-    const { id } = parse(z.object({ id: zId }), req.params);
-    const body = parse(z.object({ answers: z.array(z.string().trim().max(1000)).max(MAX_QUESTIONS) }).strict(), req.body);
+    const { id } = parse(IdParamsNonEmpty, req.params);
+    const body = parse(ApplyBody, req.body);
     const o = db.prepare("SELECT * FROM orgs WHERE id = ?").get(id) as any;
     const questions = o ? joinQuestions(o) : null;
     if (!o || o.visibility !== "public" || !questions) throw notFound("This community doesn't take applications");
@@ -99,9 +105,9 @@ export default async function applicationRoutes(app: FastifyInstance, ctx: AppCo
   });
 
   app.get("/v1/orgs/:orgId/applications", auth, async (req) => {
-    const { orgId } = parse(z.object({ orgId: zId }), req.params);
+    const { orgId } = parse(OrgParamsNonEmpty, req.params);
     const actor = me(req).userId;
-    const q = parse(z.object({ status: z.enum(["pending", "closed"]).default("pending") }), req.query);
+    const q = parse(ApplicationsQuery, req.query);
     authz.requireOrgMember(orgId, actor);
     authz.requirePermission(orgId, actor, "members.approve", "Your role doesn't include applications");
     const rows = db
@@ -113,8 +119,8 @@ export default async function applicationRoutes(app: FastifyInstance, ctx: AppCo
 
   app.patch("/v1/applications/:id", auth, async (req) => {
     const actor = me(req).userId;
-    const { id } = parse(z.object({ id: zId }), req.params);
-    const body = parse(z.object({ status: z.enum(["approved", "denied"]), note: z.string().trim().max(300).optional() }).strict(), req.body);
+    const { id } = parse(IdParamsNonEmpty, req.params);
+    const body = parse(ApplicationAnswerBody, req.body);
     const r = db.prepare("SELECT * FROM join_applications WHERE id = ?").get(id) as ApplicationRow | undefined;
     if (!r || !authz.can(r.org_id, actor, "members.approve")) throw notFound("Application not found");
     if (r.status !== "pending") throw conflict("This application was already answered");
@@ -157,7 +163,7 @@ export default async function applicationRoutes(app: FastifyInstance, ctx: AppCo
 
   app.delete("/v1/applications/:id", auth, async (req) => {
     const userId = me(req).userId;
-    const { id } = parse(z.object({ id: zId }), req.params);
+    const { id } = parse(IdParamsNonEmpty, req.params);
     const r = db.prepare("SELECT * FROM join_applications WHERE id = ?").get(id) as ApplicationRow | undefined;
     if (!r || r.user_id !== userId) throw notFound("Application not found");
     if (r.status === "pending") db.prepare("UPDATE join_applications SET status = 'withdrawn', handled_at = ? WHERE id = ?").run(now(), id);

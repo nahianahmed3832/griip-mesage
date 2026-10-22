@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
+import { OrgParamsNonEmpty } from "../../shared/contracts/http/community.js";
+import { ONBOARDING_LIMITS, OnboardingAnswersBody, OnboardingBody } from "../../shared/contracts/http/onboarding.js";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
 import { parse } from "../../shared/validation/index.js";
@@ -14,7 +15,7 @@ import { MAX_ROLES_PER_MEMBER } from "./rolesRoutes.js";
  * each answer can give roles and open public channels. Roles that carry administrative permissions are never given
  * this way (anyone who can join could pick them), and only public channels can be opened.
  */
-export const ONBOARDING_LIMITS = { prompts: 5, options: 10, title: 100, rolesPerOption: 5, channelsPerOption: 10 } as const;
+export { ONBOARDING_LIMITS };
 
 export interface OnboardingOption {
   id: string;
@@ -30,22 +31,6 @@ export interface OnboardingPrompt {
   required: boolean;
   options: OnboardingOption[];
 }
-
-const zId = z.string().min(1).max(64);
-const zOption = z.object({
-  id: z.string().max(32).optional(),
-  title: z.string().trim().min(1).max(ONBOARDING_LIMITS.title),
-  emoji: z.string().trim().max(16).nullish(),
-  roleIds: z.array(zId).max(ONBOARDING_LIMITS.rolesPerOption).default([]),
-  channelIds: z.array(zId).max(ONBOARDING_LIMITS.channelsPerOption).default([]),
-});
-const zPrompt = z.object({
-  id: z.string().max(32).optional(),
-  title: z.string().trim().min(1).max(ONBOARDING_LIMITS.title),
-  single: z.boolean().default(false),
-  required: z.boolean().default(false),
-  options: z.array(zOption).min(1).max(ONBOARDING_LIMITS.options),
-});
 
 function stored(ctx: AppContext, orgId: string): { enabled: boolean; prompts: OnboardingPrompt[] } {
   const r = ctx.db.prepare("SELECT enabled, prompts FROM community_onboarding WHERE org_id = ?").get(orgId) as { enabled: number; prompts: string } | undefined;
@@ -85,7 +70,7 @@ export default async function onboardingRoutes(app: FastifyInstance, ctx: AppCon
     (db.prepare("SELECT option_ids, answered_at FROM onboarding_answers WHERE org_id = ? AND user_id = ?").get(orgId, userId) as { option_ids: string; answered_at: number } | undefined) ?? null;
 
   app.get("/v1/orgs/:orgId/onboarding", auth, async (req) => {
-    const { orgId } = parse(z.object({ orgId: zId }), req.params);
+    const { orgId } = parse(OrgParamsNonEmpty, req.params);
     const userId = me(req).userId;
     authz.requireOrgMember(orgId, userId);
     const s = stored(ctx, orgId);
@@ -95,9 +80,9 @@ export default async function onboardingRoutes(app: FastifyInstance, ctx: AppCon
 
   /** Sets the questions (people who can edit the community); every role and channel is checked now and again on answering. */
   app.put("/v1/orgs/:orgId/onboarding", auth, async (req) => {
-    const { orgId } = parse(z.object({ orgId: zId }), req.params);
+    const { orgId } = parse(OrgParamsNonEmpty, req.params);
     const userId = me(req).userId;
-    const body = parse(z.object({ enabled: z.boolean(), prompts: z.array(zPrompt).max(ONBOARDING_LIMITS.prompts) }).strict(), req.body);
+    const body = parse(OnboardingBody, req.body);
     authz.requireOrgMember(orgId, userId);
     if (!authz.can(orgId, userId, "workspace.edit")) throw forbidden("Your role doesn't include changing onboarding");
     const prompts: OnboardingPrompt[] = body.prompts.map((p) => ({
@@ -133,9 +118,9 @@ export default async function onboardingRoutes(app: FastifyInstance, ctx: AppCon
    * back the roles onboarding gave before and the new answers no longer include.
    */
   app.post("/v1/orgs/:orgId/onboarding/answers", { preHandler: requireAuth(ctx), config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req) => {
-    const { orgId } = parse(z.object({ orgId: zId }), req.params);
+    const { orgId } = parse(OrgParamsNonEmpty, req.params);
     const userId = me(req).userId;
-    const { optionIds } = parse(z.object({ optionIds: z.array(z.string().max(32)).max(ONBOARDING_LIMITS.prompts * ONBOARDING_LIMITS.options) }).strict(), req.body);
+    const { optionIds } = parse(OnboardingAnswersBody, req.body);
     const role = authz.requireOrgMember(orgId, userId);
     if (role === "GUEST") throw forbidden("Guests don't answer onboarding questions");
     const s = stored(ctx, orgId);
