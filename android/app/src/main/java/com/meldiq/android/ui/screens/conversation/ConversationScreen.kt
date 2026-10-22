@@ -433,7 +433,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         val stored = MentionRules.fromStored(vm.c.messages.mentions(m))
         return MentionRules.spans(m.text, stored.ids, stored.all) { id -> users[id]?.username ?: mentionMembers.firstOrNull { it.id == id }?.username }
     }
-    fun previewOf(m: MessageEntity) = m.text.ifEmpty { VoiceNote.label(vm.c.messages.attachments(m)) ?: "📎 Attachment" }
+    fun previewOf(m: MessageEntity) = com.meldiq.android.data.model.MessagePreview.of(m)
     /** Scrolls to a message (a search hit or a pin), loading older pages first when it isn't loaded yet. */
     fun jumpTo(id: String) {
         val idx = messages.indexOfFirst { it.id == id }

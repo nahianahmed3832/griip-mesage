@@ -1,5 +1,7 @@
 package com.meldiq.android.data.repo
 
+import com.meldiq.android.data.db.MessageColumns
+import com.meldiq.android.data.model.MessagePreview
 import android.content.Context
 import android.util.Log
 import com.meldiq.android.crypto.AttachmentCrypto
@@ -32,7 +34,6 @@ import com.meldiq.android.data.db.OutboxEntity
 import com.meldiq.android.data.db.QuarantineEntity
 import com.meldiq.android.data.model.RequestRules
 import com.meldiq.android.data.model.AttachmentRef
-import com.meldiq.android.voice.VoiceNote
 import com.meldiq.android.data.model.CallInfo
 import com.meldiq.android.data.model.AttachmentPolicy
 import com.meldiq.android.data.model.EmojiRules
@@ -121,7 +122,6 @@ class MessageRepository(
     }
     private val listOfStrings = ListSerializer(String.serializer())
     private val reactionsSer = MapSerializer(String.serializer(), ListSerializer(String.serializer()))
-    private val attachmentsSer = ListSerializer(AttachmentRef.serializer())
     private val kickCh = Channel<Unit>(Channel.CONFLATED)
     private val processLock = Mutex()
     private val lastReadSent = HashMap<String, Long>()
@@ -210,12 +210,12 @@ class MessageRepository(
         db.messages().searchPinned(q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_"))
 
     fun reactions(m: MessageEntity): Map<String, List<String>> = runCatching { json.decodeFromString(reactionsSer, m.reactionsJson) }.getOrDefault(emptyMap())
-    fun attachments(m: MessageEntity): List<AttachmentRef> = runCatching { json.decodeFromString(attachmentsSer, m.attachmentsJson) }.getOrDefault(emptyList())
+    fun attachments(m: MessageEntity): List<AttachmentRef> = MessageColumns.attachments(m)
     fun readBy(m: MessageEntity): List<String> = runCatching { json.decodeFromString(listOfStrings, m.readByJson) }.getOrDefault(emptyList())
     fun deliveredTo(m: MessageEntity): List<String> = runCatching { json.decodeFromString(listOfStrings, m.deliveredToJson) }.getOrDefault(emptyList())
     fun mentions(m: MessageEntity): List<String> = runCatching { json.decodeFromString(listOfStrings, m.mentionsJson) }.getOrDefault(emptyList())
-    fun callInfo(m: MessageEntity): CallInfo? = m.callJson?.let { runCatching { json.decodeFromString(CallInfo.serializer(), it) }.getOrNull() }
-    fun rich(m: MessageEntity): RichContent? = m.richJson?.let { runCatching { json.decodeFromString(RichContent.serializer(), it) }.getOrNull() }
+    fun callInfo(m: MessageEntity): CallInfo? = MessageColumns.call(m)
+    fun rich(m: MessageEntity): RichContent? = MessageColumns.rich(m)
 
     // ─────────────────────────── Sending ───────────────────────────
 
@@ -244,12 +244,12 @@ class MessageRepository(
         val msg = MessageEntity(
             id = id, conversationId = cid, senderUserId = s.userId, senderDeviceId = s.deviceId, outgoing = true, kind = "text", text = body,
             replyToId = replyTo, threadRootId = threadRoot, mentionsJson = json.encodeToString(listOfStrings, MentionRules.stored(m)),
-            attachmentsJson = json.encodeToString(attachmentsSer, attachments), sentAt = existing?.sentAt ?: now, sortTs = existing?.sortTs ?: now, status = MessageStatus.SENDING,
-            richJson = rich?.let { json.encodeToString(RichContent.serializer(), it) }, forwarded = forwarded,
+            attachmentsJson = MessageColumns.encodeAttachments(attachments), sentAt = existing?.sentAt ?: now, sortTs = existing?.sortTs ?: now, status = MessageStatus.SENDING,
+            richJson = MessageColumns.encodeRich(rich), forwarded = forwarded,
         )
         db.messages().upsert(msg)
         db.outbox().put(OutboxEntity(id, cid, "message", json.encodeToString(Payload.serializer(), payload), now))
-        if (threadRoot == null) db.conversations().bumpPreview(cid, id, preview(payload), now, "You", 0, 0)
+        if (threadRoot == null) db.conversations().bumpPreview(cid, id, MessagePreview.of(payload), now, "You", 0, 0)
         kick()
         return id
     }
@@ -318,7 +318,7 @@ class MessageRepository(
         val fresh = db.messages().get(m.id) ?: return
         val rich = rich(fresh)?.takeIf { it.poll != null && it.pollClosed != true } ?: return
         val updated = PollRules.vote(rich, me, choices)
-        db.messages().upsert(fresh.copy(richJson = json.encodeToString(RichContent.serializer(), updated)))
+        db.messages().upsert(fresh.copy(richJson = MessageColumns.encodeRich(updated)))
         sendControl(m.conversationId, Payload(type = "vote", target = m.id, choices = updated.votes.orEmpty()[me].orEmpty()))
     }
 
@@ -328,7 +328,7 @@ class MessageRepository(
         if (!m.outgoing || !canSendIn(m.conversationId)) return
         val fresh = db.messages().get(m.id) ?: return
         val rich = rich(fresh)?.takeIf { it.poll != null } ?: return
-        db.messages().upsert(fresh.copy(richJson = json.encodeToString(RichContent.serializer(), PollRules.close(rich, fresh.senderUserId, me))))
+        db.messages().upsert(fresh.copy(richJson = MessageColumns.encodeRich(PollRules.close(rich, fresh.senderUserId, me))))
         sendControl(m.conversationId, Payload(type = "poll_close", target = m.id))
     }
 
@@ -432,9 +432,9 @@ class MessageRepository(
         val voice = voiceDurationMs?.let { true }
         val placeholder = AttachmentRef(AttachmentFiles.PENDING, name, mime, local.length(), "", "", local.name, voice, voiceDurationMs)
         db.messages().upsert(
-            MessageEntity(id, cid, s.userId, s.deviceId, true, "text", caption, replyToId = replyTo, attachmentsJson = json.encodeToString(attachmentsSer, listOf(placeholder)), sentAt = now, sortTs = now, status = MessageStatus.SENDING),
+            MessageEntity(id, cid, s.userId, s.deviceId, true, "text", caption, replyToId = replyTo, attachmentsJson = MessageColumns.encodeAttachments(listOf(placeholder)), sentAt = now, sortTs = now, status = MessageStatus.SENDING),
         )
-        db.conversations().bumpPreview(cid, id, VoiceNote.label(listOf(placeholder)) ?: "📎 $name", now, "You", 0, 0)
+        db.conversations().bumpPreview(cid, id, MessagePreview.of(caption, listOf(placeholder), null), now, "You", 0, 0)
         uploadAttachment(id, cid, placeholder, local, caption)
     }
 
@@ -523,11 +523,11 @@ class MessageRepository(
         val now = System.currentTimeMillis()
         db.messages().upsert(
             MessageEntity(
-                id, cid, s.userId, s.deviceId, true, "text", caption, replyToId = replyTo, attachmentsJson = json.encodeToString(attachmentsSer, placeholders),
+                id, cid, s.userId, s.deviceId, true, "text", caption, replyToId = replyTo, attachmentsJson = MessageColumns.encodeAttachments(placeholders),
                 sentAt = now, sortTs = now, status = MessageStatus.SENDING, forwarded = forwarded,
             ),
         )
-        db.conversations().bumpPreview(cid, id, caption.ifBlank { AttachmentPolicy.preview(items.map { it.kind }) }, now, "You", 0, 0)
+        db.conversations().bumpPreview(cid, id, MessagePreview.of(caption, placeholders, null), now, "You", 0, 0)
         startBatch(id)
         return id
     }
@@ -595,7 +595,7 @@ class MessageRepository(
         val refs = attachments(m0).toMutableList()
         val total = refs.size
         suspend fun save() {
-            db.messages().get(id)?.let { db.messages().upsert(it.copy(attachmentsJson = json.encodeToString(attachmentsSer, refs))) }
+            db.messages().get(id)?.let { db.messages().upsert(it.copy(attachmentsJson = MessageColumns.encodeAttachments(refs))) }
         }
         fun progress(i: Int, stage: String, fraction: Float) {
             _batches.update { it + (id to BatchProgress(refs.count { r -> r.id != AttachmentFiles.PENDING }, total, stage)) }
@@ -971,10 +971,10 @@ class MessageRepository(
                 val m = MessageEntity(
                     id = item.messageId, conversationId = item.conversationId, senderUserId = item.senderUserId, senderDeviceId = item.senderDeviceId,
                     outgoing = mine, kind = "text", text = pl.text.orEmpty(), replyToId = pl.replyTo, threadRootId = pl.threadRoot,
-                    mentionsJson = json.encodeToString(listOfStrings, MentionRules.stored(received)), attachmentsJson = json.encodeToString(attachmentsSer, atts),
+                    mentionsJson = json.encodeToString(listOfStrings, MentionRules.stored(received)), attachmentsJson = MessageColumns.encodeAttachments(atts),
                     sentAt = item.payload.sentAt ?: serverTs, serverTs = serverTs, sortTs = serverTs,
                     status = if (mine) MessageStatus.SENT else MessageStatus.RECEIVED,
-                    richJson = RichRules.fromPayload(pl)?.let { json.encodeToString(RichContent.serializer(), it) },
+                    richJson = MessageColumns.encodeRich(RichRules.fromPayload(pl)),
                     forwarded = pl.forwarded == true,
                 )
                 if (db.messages().insertIgnore(m) == -1L) return
@@ -986,7 +986,7 @@ class MessageRepository(
                 val unread = if (!mine && !viewing) 1 else 0
                 val senderName = if (mine) "You" else db.users().get(item.senderUserId)?.displayName ?: "Someone"
                 if (pl.threadRoot == null) {
-                    db.conversations().bumpPreview(item.conversationId, item.messageId, preview(pl), serverTs, senderName, unread, if (mention && !viewing) 1 else 0)
+                    db.conversations().bumpPreview(item.conversationId, item.messageId, MessagePreview.of(pl), serverTs, senderName, unread, if (mention && !viewing) 1 else 0)
                 } else if (unread > 0) db.conversations().bumpUnread(item.conversationId, 0, if (mention) 1 else 0)
                 if (viewing && !mine) scope.launch { markConversationRead(item.conversationId) }
                 val muted = conv?.muted == true
@@ -995,7 +995,7 @@ class MessageRepository(
                 val request = conv?.request == RequestRules.INCOMING
                 if (!mine && !viewing && !request && MentionNotify.shouldNotify(settings.current.notifications, level, muted, mention, personalMention)) {
                     val title = conv?.let { ConversationRepository.title(it, me) } ?: senderName
-                    notify(Notice(item.conversationId, if (conv?.type == "CHANNEL") "#$title" else title, senderName, preview(pl), mention, conv?.type != "DM", canReply = conv?.canPost != false))
+                    notify(Notice(item.conversationId, if (conv?.type == "CHANNEL") "#$title" else title, senderName, MessagePreview.of(pl), mention, conv?.type != "DM", canReply = conv?.canPost != false))
                 }
             }
             "edit" -> {
@@ -1031,13 +1031,13 @@ class MessageRepository(
                 val t = target(pl, item, serverTs) ?: return
                 val rich = rich(t)?.takeIf { it.poll != null } ?: return
                 val updated = PollRules.vote(rich, item.senderUserId, pl.choices.orEmpty().take(PollRules.MAX_OPTIONS), serverTs)
-                if (updated != rich) db.messages().upsert(t.copy(richJson = json.encodeToString(RichContent.serializer(), updated)))
+                if (updated != rich) db.messages().upsert(t.copy(richJson = MessageColumns.encodeRich(updated)))
             }
             "poll_close" -> {
                 val t = target(pl, item, serverTs) ?: return
                 val rich = rich(t)?.takeIf { it.poll != null } ?: return
                 val updated = PollRules.close(rich, t.senderUserId, item.senderUserId)
-                if (updated != rich) db.messages().upsert(t.copy(richJson = json.encodeToString(RichContent.serializer(), updated)))
+                if (updated != rich) db.messages().upsert(t.copy(richJson = MessageColumns.encodeRich(updated)))
             }
             "read" -> {
                 val upTo = pl.upTo ?: return
@@ -1085,7 +1085,7 @@ class MessageRepository(
                     MessageEntity(
                         id = "call-$callId", conversationId = item.conversationId, senderUserId = item.senderUserId, senderDeviceId = item.senderDeviceId,
                         outgoing = mine, kind = "call", text = if (pl.video == true) "Video call" else "Voice call", sentAt = serverTs, serverTs = serverTs,
-                        sortTs = serverTs, status = if (mine) MessageStatus.SENT else MessageStatus.RECEIVED, callJson = json.encodeToString(CallInfo.serializer(), info),
+                        sortTs = serverTs, status = if (mine) MessageStatus.SENT else MessageStatus.RECEIVED, callJson = MessageColumns.encodeCall(info),
                     ),
                 )
                 if (!mine) _callInvites.tryEmit(IncomingCallKey(callId, item.conversationId, item.senderUserId, pl.video == true))
@@ -1143,7 +1143,7 @@ class MessageRepository(
         val declinedHere = db.calls().getLog(call.id)?.endReason == "declined"
         val info = CallHistory.summarize(call, me, declinedHere)
         val id = "call-${call.id}"
-        val encoded = json.encodeToString(CallInfo.serializer(), info)
+        val encoded = MessageColumns.encodeCall(info)
         val existing = db.messages().get(id)
         if (existing == null) {
             val mine = call.createdBy == me
@@ -1177,7 +1177,7 @@ class MessageRepository(
             MessageEntity(
                 id = "call-$id", conversationId = cid, senderUserId = me, senderDeviceId = "", outgoing = true, kind = "call",
                 text = if (video) "Video call" else "Voice call", sentAt = now, sortTs = now, status = MessageStatus.SENT,
-                callJson = json.encodeToString(CallInfo.serializer(), info),
+                callJson = MessageColumns.encodeCall(info),
             ),
         )
         refreshPreview(cid)
@@ -1189,7 +1189,7 @@ class MessageRepository(
         db.conversations().upsert(
             conv.copy(
                 lastMessageId = last?.id,
-                lastMessagePreview = last?.let { if (it.kind == "call") CallHistory.preview(callInfo(it), it.outgoing, it.text) else it.text.ifEmpty { attachments(it).let { a -> if (a.size > 1) AttachmentPolicy.preview(a.map { r -> AttachmentPolicy.kindOfMime(r.mime) }) else VoiceNote.label(a) ?: "📎 Attachment" } } } ?: "Message deleted",
+                lastMessagePreview = last?.let(MessagePreview::of) ?: MessagePreview.DELETED,
                 lastMessageAt = last?.sortTs ?: conv.lastMessageAt,
             ),
         )
@@ -1260,15 +1260,6 @@ class MessageRepository(
                 sentAt = item.createdAt, serverTs = item.createdAt, sortTs = item.createdAt, status = MessageStatus.RECEIVED, errorText = reason,
             ),
         )
-    }
-
-    private fun preview(p: Payload): String = when {
-        p.contact != null -> "👤 ${p.contact.name}"
-        p.location != null -> "📍 " + (p.location.label ?: "Location")
-        !p.attachments.isNullOrEmpty() && p.text.isNullOrBlank() && p.attachments.size > 1 -> AttachmentPolicy.preview(p.attachments.map { AttachmentPolicy.kindOfMime(it.mime) })
-        !p.attachments.isNullOrEmpty() && p.text.isNullOrBlank() -> VoiceNote.label(p.attachments) ?: "📎 ${p.attachments.first().name}"
-        !p.attachments.isNullOrEmpty() -> "📎 ${p.text}"
-        else -> p.text.orEmpty()
     }
 
     companion object {

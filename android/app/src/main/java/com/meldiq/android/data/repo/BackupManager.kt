@@ -1,5 +1,6 @@
 package com.meldiq.android.data.repo
 
+import com.meldiq.android.data.db.MessageColumns
 import android.content.Context
 import android.net.Uri
 import com.meldiq.android.crypto.BackupCrypto
@@ -162,7 +163,7 @@ class BackupManager(
                 for (m in page) {
                     zip.write(json.encodeToString(MessageEntity.serializer(), m).toByteArray())
                     zip.write('\n'.code)
-                    if (media) refs += runCatching { json.decodeFromString(ListSerializer(AttachmentRef.serializer()), m.attachmentsJson) }.getOrDefault(emptyList())
+                    if (media) refs += MessageColumns.attachments(m)
                 }
                 offset += page.size
                 onProgress(Progress(offset, total))

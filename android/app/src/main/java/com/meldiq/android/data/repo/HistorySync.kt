@@ -1,5 +1,7 @@
 package com.meldiq.android.data.repo
 
+import com.meldiq.android.data.db.MessageColumns
+import com.meldiq.android.data.model.MessagePreview
 import androidx.room.withTransaction
 import com.meldiq.android.crypto.HistoryKeys
 import com.meldiq.android.crypto.b64
@@ -20,7 +22,6 @@ import com.meldiq.android.data.db.KvEntity
 import com.meldiq.android.data.db.MessageEntity
 import com.meldiq.android.data.model.AttachmentRef
 import com.meldiq.android.data.model.MessageStatus
-import com.meldiq.android.data.model.RichContent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -34,7 +35,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
 
 /** One item of the encrypted history: a message or a chat, as this phone stores it. */
 @Serializable
@@ -61,21 +61,6 @@ object HistoryCodec {
         remote.deleted && !local.deleted -> local.copy(deleted = true, text = "", attachmentsJson = "[]", richJson = null)
         (remote.editedAt ?: 0) > (local.editedAt ?: 0) && !local.deleted -> local.copy(text = remote.text, editedAt = remote.editedAt, richJson = remote.richJson)
         else -> null
-    }
-
-    /** The chat list's line for a restored message. */
-    fun preview(m: MessageEntity, refs: List<AttachmentRef>, rich: RichContent?): String = when {
-        m.deleted -> "Message deleted"
-        m.kind == "call" -> "📞 Call"
-        rich?.contact != null -> "👤 ${rich.contact.name}"
-        rich?.location != null -> "📍 Location"
-        rich?.animoji != null -> rich.animoji
-        m.text.isNotBlank() -> m.text.take(140)
-        refs.any { it.voice == true } -> "🎤 Voice message"
-        refs.any { it.mime.startsWith("image/") } -> "📷 Photo"
-        refs.any { it.mime.startsWith("video/") } -> "🎬 Video"
-        refs.isNotEmpty() -> "📎 ${refs.first().name}"
-        else -> ""
     }
 }
 
@@ -113,7 +98,6 @@ class HistorySync(
     private val lock = Mutex()
     private val wake = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
     private val kept = java.util.Collections.synchronizedSet(HashSet<String>())
-    private val refsSer = ListSerializer(AttachmentRef.serializer())
 
     private fun keys(): HistoryKeys? {
         val seed = session.keys?.identitySeed?.takeIf { it.isNotEmpty() } ?: return null
@@ -207,7 +191,7 @@ class HistorySync(
                 val id = e.key.substringAfter(':')
                 val record: HistoryRecord? = when (kind) {
                     "m" -> db.messages().get(id)?.let { m ->
-                        val refs = runCatching { GriipJson.decodeFromString(refsSer, m.attachmentsJson) }.getOrDefault(emptyList())
+                        val refs = MessageColumns.attachments(m)
                         if (!HistoryCodec.uploadable(m, refs)) null
                         else {
                             if (keep && m.sortTs > System.currentTimeMillis() - 7 * 86_400_000L) keepIds[e.key] = refs.map { it.id }.filter { it != "pending" }
@@ -323,10 +307,8 @@ class HistorySync(
             }
         }
         for ((cid, m) in newest) {
-            val refs = runCatching { GriipJson.decodeFromString(refsSer, m.attachmentsJson) }.getOrDefault(emptyList())
-            val rich = m.richJson?.let { runCatching { GriipJson.decodeFromString(RichContent.serializer(), it) }.getOrNull() }
             val sender = if (m.outgoing) null else db.users().get(m.senderUserId)?.displayName
-            db.conversations().bumpPreview(cid, m.id, HistoryCodec.preview(m, refs, rich), m.sortTs, sender, 0, 0)
+            db.conversations().bumpPreview(cid, m.id, MessagePreview.of(m), m.sortTs, sender, 0, 0)
         }
         // What was just downloaded is already on the server: the triggers queued it, so it's taken off again (unless
         // this phone had its own change waiting).

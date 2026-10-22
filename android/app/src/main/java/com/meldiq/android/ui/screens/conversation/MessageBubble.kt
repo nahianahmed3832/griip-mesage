@@ -621,9 +621,7 @@ fun humanSize(b: Long): String = when {
 @Composable
 private fun CallChip(m: MessageEntity, out: Boolean, starter: String?) {
     val c = Griip.colors
-    val info = remember(m.callJson) {
-        m.callJson?.let { runCatching { com.meldiq.android.data.api.GriipJson.decodeFromString(CallInfo.serializer(), it) }.getOrNull() }
-    }
+    val info = remember(m.callJson) { com.meldiq.android.data.db.MessageColumns.call(m) }
     val video = info?.video ?: m.text.startsWith("Video")
     val line = info?.let { CallHistory.line(it, out, starter) } ?: CallHistory.Line("${if (out) "Outgoing" else "Incoming"} ${m.text.lowercase()}", null, false)
     val tint = if (line.missed) c.danger else c.primary

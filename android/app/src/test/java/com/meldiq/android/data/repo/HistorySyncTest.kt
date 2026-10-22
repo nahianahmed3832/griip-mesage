@@ -69,13 +69,4 @@ class HistorySyncTest {
         assertEquals(m, back.message)
         assertNull(back.conversation)
     }
-
-    @Test
-    fun previewsForRestoredChats() {
-        assertEquals("hi", HistoryCodec.preview(msg(), emptyList(), null))
-        assertEquals("🎤 Voice message", HistoryCodec.preview(msg(text = ""), listOf(photo.copy(voice = true)), null))
-        assertEquals("📷 Photo", HistoryCodec.preview(msg(text = ""), listOf(photo), null))
-        assertEquals("👤 Sam", HistoryCodec.preview(msg(text = ""), emptyList(), RichContent(contact = ContactCard("Sam"))))
-        assertEquals("Message deleted", HistoryCodec.preview(msg().copy(deleted = true), emptyList(), null))
-    }
 }
