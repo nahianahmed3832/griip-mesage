@@ -1,13 +1,13 @@
 /**
  * Production smoke test: real TLS, real nginx WebSocket proxying, real relay.
- *   GRIIP_INVITE=<registration invite, 2 uses> npx tsx test/e2e/prod-smoke.ts https://msg.griipbuddy.cloud
+ *   GRIIP_INVITE=<registration invite, 2 uses> npx tsx test/e2e/prod-smoke.ts https://msg.meldiq.app
  * Creates two throwaway "e2e.*" accounts (disable afterwards with the admin CLI). Servers in invite-only
  * mode need GRIIP_INVITE: `docker compose ... exec api node dist/admin.js reg-invite 2 1 smoke-test`.
  */
 import crypto from "node:crypto";
 import { GriipClient } from "../support/griipClient.js";
 
-const base = process.argv[2] ?? "https://msg.griipbuddy.cloud";
+const base = process.argv[2] ?? "https://msg.meldiq.app";
 const tag = crypto.randomBytes(3).toString("hex");
 const results: [string, boolean, string?][] = [];
 const check = (name: string, ok: boolean, detail?: string) => {
@@ -45,7 +45,7 @@ await b.waitFor(() => b.received.find((m) => m.messageId === offline.messageId),
 check("offline queue delivered after reconnect", true);
 
 const call = await a.req("POST", "/v1/calls", { conversationId: dm, video: false });
-check("call created + LiveKit token issued", !!call.media?.token && call.media.url === "wss://rtc.griipbuddy.cloud", call.media?.url);
+check("call created + LiveKit token issued", !!call.media?.token && call.media.url === "wss://rtc.meldiq.app", call.media?.url);
 const ring = await b.waitFor(() => b.events.find((e) => e.t === "call" && e.event === "ring" && e.call.id === call.call.id), 10000);
 check("callee receives ring event", !!ring);
 await a.req("POST", `/v1/calls/${call.call.id}/end`);

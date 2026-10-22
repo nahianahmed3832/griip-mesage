@@ -11,7 +11,7 @@
  *   npm run bot -- orgs                                      list the bot's workspaces and voice rooms
  * <peerUsername> may be a full address (name:server) for someone on another federated server.
  *
- * Env: GRIIP_SERVER (default https://msg.griipbuddy.cloud). The bot's identity is stored in
+ * Env: GRIIP_SERVER (default https://msg.meldiq.app). The bot's identity is stored in
  * bot-identity.json next to this file (private keys — never commit).
  * Media: publishes a synthetic moving test pattern + 440 Hz tone, and logs every second how many
  * decoded frames it receives per remote track (camera / microphone / screen share).
@@ -49,7 +49,7 @@ import { fileURLToPath } from "node:url";
 import { canonical, ed25519FromSeed, GriipClient, sign } from "../../server/test/support/griipClient.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const SERVER = process.env.GRIIP_SERVER ?? "https://msg.griipbuddy.cloud";
+const SERVER = process.env.GRIIP_SERVER ?? "https://msg.meldiq.app";
 const STORE = path.join(here, process.env.GRIIP_BOT_ID ?? "bot-identity.json");
 const log = (...a: unknown[]) => console.log(new Date().toISOString().slice(11, 19), ...a);
 /** Never print key material (call media keys, attachment keys) into logs. */
