@@ -51,6 +51,7 @@ src/index.ts`, `adb reverse tcp:8080 tcp:8080`).
 | B12 | `bf455cf` | Dates in your language, custom emoji reactions, pronouns, role groups | §6l |
 | B13 | `1c92e93` | Server fixes only: nothing new to try on the phone | §6m |
 | B14 | `22d5303` | Minimal DM screen and details, voice channels as rooms | §6n |
+| B16 | `5733864` | Transitions and interaction polish | §6o |
 
 **Waiting on you:**
 - the phone tests above, as pass or fail per batch;
