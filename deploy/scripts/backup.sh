@@ -16,8 +16,9 @@ mkdir -p "$OUT"
 # The snapshot is written inside the data volume first, verified, archived with the attachments, then removed.
 dc exec -T api node dist/admin.js backup "/data/backups/$name.sqlite"
 dc exec -T api node dist/admin.js verify-backup "/data/backups/$name.sqlite" > "$OUT/$name.verify.json"
-# federation/ holds the server's identity key: without it, a restored server would have a different identity.
-dc exec -T api sh -c "cd /data && tar -czf - backups/$name.sqlite attachments \$(test -d federation && echo federation)" > "$OUT/$name.tar.gz"
+# federation/ holds the server's identity key: without it, a restored server would have a different identity. reports.key
+# (single server, batch B4) opens reported content: without it, restored reports can't be read.
+dc exec -T api sh -c "cd /data && tar -czf - backups/$name.sqlite attachments \$(test -d federation && echo federation) \$(test -f reports.key && echo reports.key)" > "$OUT/$name.tar.gz"
 dc exec -T api rm -f "/data/backups/$name.sqlite"
 [ -s "$OUT/$name.tar.gz" ] || { echo "backup archive is empty" >&2; exit 1; }
 echo "backup: $OUT/$name.tar.gz ($(du -h "$OUT/$name.tar.gz" | cut -f1))"
