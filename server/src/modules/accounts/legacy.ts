@@ -1,12 +1,11 @@
 import crypto from "node:crypto";
-import type { z } from "zod";
 import { HOUR_MS, networkKey, SlidingWindow } from "../../app/middleware/abuse.js";
 import type { AppContext } from "../../app/context.js";
 import { canonical, verifyEd25519 } from "../../shared/utilities/crypto.js";
 import { ApiError } from "../../shared/errors.js";
 import { newId, now, sha256Hex } from "../../shared/utilities/util.js";
 import { hashPassword } from "./passwords.js";
-import type { legacyCompleteBody, legacyVerifyBody } from "./schemas.js";
+import type { LegacyCompleteBody, LegacyVerifyBody } from "../../shared/contracts/http/accounts.js";
 import { type AccountService, consumeChallenge, maskEmail, weakPassword } from "./service.js";
 import type { AccountRow } from "./store.js";
 
@@ -50,7 +49,7 @@ export class LegacyMigrationService {
     if (!this.ctx.config.accounts.legacy.migration) throw closed();
   }
 
-  async verify(body: z.infer<typeof legacyVerifyBody>, ip: string, reply: { header: (k: string, v: string) => unknown }): Promise<LegacyVerified> {
+  async verify(body: LegacyVerifyBody, ip: string, reply: { header: (k: string, v: string) => unknown }): Promise<LegacyVerified> {
     this.requireOpen();
     const network = networkKey(ip);
     const wait = Math.max(this.failedByUsername.retryAfterMs(body.username), this.failedByNetwork.retryAfterMs(network));
@@ -83,7 +82,7 @@ export class LegacyMigrationService {
     return { ticket, expiresAt: t + TICKET_TTL_MS, legacyUser: { username: user.username, displayName: user.display_name } };
   }
 
-  async complete(body: z.infer<typeof legacyCompleteBody>): Promise<{ email: string }> {
+  async complete(body: LegacyCompleteBody): Promise<{ email: string }> {
     this.requireOpen();
     const store = this.accounts.store;
     if (!this.accounts.mailer.available) throw new ApiError(503, "email_unavailable", "This server can't send email yet, so new accounts can't be verified. Try again later.");
@@ -109,7 +108,7 @@ export class LegacyMigrationService {
   }
 
   /** Creates or redoes the link inside one transaction; refuses an address or a legacy account someone already verified. */
-  private async link(userId: string, ticketHash: string, body: z.infer<typeof legacyCompleteBody>, passwordHash: string, t: number): Promise<AccountRow> {
+  private async link(userId: string, ticketHash: string, body: LegacyCompleteBody, passwordHash: string, t: number): Promise<AccountRow> {
     const store = this.accounts.store;
     const linked = await store.accountByUserId(userId);
     if (linked?.email_verified_at) {

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { promisify } from "node:util";
+import { PASSWORD_MAX_LENGTH } from "../../shared/contracts/http/accounts.js";
 
 const scrypt = promisify(crypto.scrypt) as (password: string, salt: Buffer, keylen: number, options: crypto.ScryptOptions) => Promise<Buffer>;
 
@@ -11,7 +12,6 @@ const HASH_BYTES = 32;
 const PREFIX = "scrypt";
 
 export const PASSWORD_MIN_LENGTH = 10;
-export const PASSWORD_MAX_LENGTH = 128;
 
 interface Params {
   logN: number;

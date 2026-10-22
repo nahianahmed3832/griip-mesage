@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import type { z } from "zod";
 import { DAY_MS, HOUR_MS, networkKey, openRegistrationsToday, SlidingWindow } from "../../app/middleware/abuse.js";
 import type { AppContext } from "../../app/context.js";
 import { canonical, verifyEd25519 } from "../../shared/utilities/crypto.js";
@@ -9,7 +8,7 @@ import { humanCode, newId, normalizeCode, now, sha256Hex } from "../../shared/ut
 import type { Mailer } from "../../infrastructure/mail/mailer.js";
 import { mailTexts } from "../../infrastructure/mail/mailer.js";
 import { burnPasswordCheck, hashPassword, needsRehash, PASSWORD_PROBLEMS, passwordProblem, verifyPassword } from "./passwords.js";
-import type { loginBody, registerBody } from "./schemas.js";
+import type { LoginBody, RegisterBody } from "../../shared/contracts/http/accounts.js";
 import { type IssuedSession, sessionEnded, SessionService } from "./sessions.js";
 import type { AccountRow, AccountStore, ActiveSession, CodePurpose } from "./store.js";
 
@@ -182,7 +181,7 @@ export class AccountService {
     return network;
   }
 
-  async register(body: z.infer<typeof registerBody>, ip: string, reply: { header: (k: string, v: string) => unknown }): Promise<void> {
+  async register(body: RegisterBody, ip: string, reply: { header: (k: string, v: string) => unknown }): Promise<void> {
     if (!this.mailer.available) throw emailUnavailable();
     const weak = weakPassword(body.password, body.email);
     if (weak) throw weak;
@@ -358,7 +357,7 @@ export class AccountService {
     }
   }
 
-  async login(body: z.infer<typeof loginBody>, ip: string, reply: { header: (k: string, v: string) => unknown }): Promise<SessionResponse> {
+  async login(body: LoginBody, ip: string, reply: { header: (k: string, v: string) => unknown }): Promise<SessionResponse> {
     const a = await this.store.accountByEmail(body.email);
     if (!a) {
       this.requireNotThrottled(body.email, ip, reply);

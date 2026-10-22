@@ -1,5 +1,4 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { z } from "zod";
 import { type AppContext } from "../../app/context.js";
 import { bearer } from "../auth/index.js";
 import { parse } from "../../shared/validation/index.js";
@@ -9,26 +8,27 @@ import { now } from "../../shared/utilities/util.js";
 import { DELETE_ACCOUNT_RATE_LIMIT, deleteOwnAccount } from "./deletion.js";
 import type { Accounts } from "./index.js";
 import {
-  changePasswordBody,
-  deleteAccountBody,
-  emailBody,
-  enrollDeviceBody,
-  keyUnlockBody,
-  legacyCompleteBody,
-  legacyVerifyBody,
-  loginBody,
-  preferencesBody,
-  putKeyBackupBody,
-  recoveryCompleteBody,
-  recoveryPasswordBody,
-  recoveryStartBody,
-  refreshBody,
-  registerBody,
-  resetIdentityBody,
-  resetPasswordBody,
-  updateAccountBody,
-  verifyEmailBody,
-} from "./schemas.js";
+  ChangePasswordBody,
+  DeleteAccountBody,
+  EmailBody,
+  EnrollDeviceBody,
+  KeyUnlockBody,
+  LegacyCompleteBody,
+  LegacyVerifyBody,
+  LoginBody,
+  PreferencesBody,
+  PutKeyBackupBody,
+  RecoveryCompleteBody,
+  RecoveryPasswordBody,
+  RecoveryStartBody,
+  RefreshBody,
+  RegisterBody,
+  ResetIdentityBody,
+  ResetPasswordBody,
+  SessionIdParams,
+  UpdateAccountBody,
+  VerifyEmailBody,
+} from "../../shared/contracts/http/accounts.js";
 import type { ActiveSession } from "./store.js";
 
 declare module "fastify" {
@@ -58,27 +58,27 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
 
   // ───────────── Sign-up, email codes, sign-in ─────────────
   app.post("/v2/auth/register", strict, async (req, reply) => {
-    const body = parse(registerBody, req.body);
+    const body = parse(RegisterBody, req.body);
     await service.register(body, req.ip, reply);
     return reply.code(202).send({ status: "verification_sent", email: body.email });
   });
 
   app.post("/v2/auth/email/verify", strict, async (req) => {
-    const body = parse(verifyEmailBody, req.body);
+    const body = parse(VerifyEmailBody, req.body);
     await service.verifyEmail(body.email, body.code, body.password);
     return { verified: true };
   });
 
   app.post("/v2/auth/email/resend", strict, async (req, reply) => {
-    await service.resendVerification(parse(emailBody, req.body).email, req.ip);
+    await service.resendVerification(parse(EmailBody, req.body).email, req.ip);
     return reply.code(202).send({ status: "sent_if_pending" });
   });
 
-  app.post("/v2/auth/login", strict, async (req, reply) => service.login(parse(loginBody, req.body), req.ip, reply));
+  app.post("/v2/auth/login", strict, async (req, reply) => service.login(parse(LoginBody, req.body), req.ip, reply));
 
   // Renewal happens every few minutes from every signed-in app; phones behind one carrier NAT share an address.
   const renewal = { config: { rateLimit: { max: ctx.config.accounts.authRateLimitPerMinute * 10, timeWindow: "1 minute" } } };
-  app.post("/v2/auth/refresh", renewal, async (req) => service.refresh(parse(refreshBody, req.body).refreshToken));
+  app.post("/v2/auth/refresh", renewal, async (req) => service.refresh(parse(RefreshBody, req.body).refreshToken));
 
   app.post("/v2/auth/logout", authed, async (req) => {
     const s = session(req);
@@ -89,36 +89,36 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
   });
 
   app.post("/v2/auth/password/forgot", strict, async (req, reply) => {
-    await service.forgotPassword(parse(emailBody, req.body).email, req.ip);
+    await service.forgotPassword(parse(EmailBody, req.body).email, req.ip);
     return reply.code(202).send({ status: "sent_if_account" });
   });
 
   app.post("/v2/auth/password/reset", strict, async (req) => {
-    const body = parse(resetPasswordBody, req.body);
+    const body = parse(ResetPasswordBody, req.body);
     await service.resetPassword(body.email, body.code, body.newPassword);
     return { ok: true };
   });
 
   // ───────────── Recovery after losing the account's email (docs/ACCOUNT_RECOVERY.md) ─────────────
   app.post("/v2/auth/recover/start", strict, async (req, reply) => {
-    const body = parse(recoveryStartBody, req.body);
+    const body = parse(RecoveryStartBody, req.body);
     return recovery.start(body.email, body.code, body.newEmail, req.ip, reply);
   });
 
   app.post("/v2/auth/recover/complete", strict, async (req) => {
-    const body = parse(recoveryCompleteBody, req.body);
+    const body = parse(RecoveryCompleteBody, req.body);
     return recovery.complete(body.ticket, body.code, body.newPassword);
   });
 
   app.get("/v2/account/recovery-codes", authed, async (req) => recovery.status(session(req).account_id));
 
   app.post("/v2/account/recovery-codes", authedStrict, async (req, reply) => {
-    const { password } = parse(recoveryPasswordBody, req.body);
+    const { password } = parse(RecoveryPasswordBody, req.body);
     return recovery.generate(session(req), password, req.ip, reply);
   });
 
   app.post("/v2/account/recovery-codes/revoke", authedStrict, async (req, reply) => {
-    const { password } = parse(recoveryPasswordBody, req.body);
+    const { password } = parse(RecoveryPasswordBody, req.body);
     await recovery.revoke(session(req), password, req.ip, reply);
     return { ok: true };
   });
@@ -130,7 +130,7 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
   });
 
   app.patch("/v2/account", authed, async (req) => {
-    const { name } = parse(updateAccountBody, req.body);
+    const { name } = parse(UpdateAccountBody, req.body);
     const a = await accountOf(req);
     const t = now();
     await store.updateAccount(a.id, { name }, t);
@@ -142,13 +142,13 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
   // Deleting the account for good (docs/ACCOUNT_DELETION.md): the password again and the account's email typed out.
   // Refused with 409 owns_workspaces, changing nothing, while the person is a workspace's only owner.
   app.delete("/v2/account", { preHandler: requireAccount, config: { rateLimit: DELETE_ACCOUNT_RATE_LIMIT } }, async (req, reply) => {
-    const body = parse(deleteAccountBody, req.body ?? {});
+    const body = parse(DeleteAccountBody, req.body ?? {});
     const result = await deleteOwnAccount(ctx, accounts, await accountOf(req), body, req.ip, reply);
     return { deleted: true, deletedAt: result.deletedAt };
   });
 
   app.post("/v2/account/password", authedStrict, async (req, reply) => {
-    const body = parse(changePasswordBody, req.body);
+    const body = parse(ChangePasswordBody, req.body);
     if (body.keyBackup) keyBackups.requireCurrentIdentity(await accountOf(req), body.keyBackup);
     await service.changePassword(session(req), body.currentPassword, body.newPassword, req.ip, reply);
     // The old backup no longer matches the password; the keys sealed under the new one replace it.
@@ -159,7 +159,7 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
   // ───────────── Keys backed up under the password (docs/KEY_BACKUP.md) ─────────────
   app.get("/v2/account/key-backup", authed, async (req) => keyBackups.status(session(req)));
   app.put("/v2/account/key-backup", authedStrict, async (req, reply) => {
-    const body = parse(putKeyBackupBody, req.body);
+    const body = parse(PutKeyBackupBody, req.body);
     return keyBackups.put(session(req), body.password, body.backup, req.ip, reply);
   });
   app.delete("/v2/account/key-backup", authed, async (req) => {
@@ -167,7 +167,7 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
     return { ok: true };
   });
   app.post("/v2/account/key-backup/unlock/start", authedStrict, async (req) => keyBackups.startUnlock(session(req)));
-  app.post("/v2/account/key-backup/unlock", authedStrict, async (req) => keyBackups.unlock(session(req), parse(keyUnlockBody, req.body).code));
+  app.post("/v2/account/key-backup/unlock", authedStrict, async (req) => keyBackups.unlock(session(req), parse(KeyUnlockBody, req.body).code));
 
   app.get("/v2/account/sessions", authed, async (req) => {
     const s = session(req);
@@ -185,7 +185,7 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
 
   app.delete("/v2/account/sessions/:id", authed, async (req) => {
     const s = session(req);
-    const { id } = parse(z.object({ id: z.string().min(3).max(64) }), req.params);
+    const { id } = parse(SessionIdParams, req.params);
     const target = await store.sessionById(id);
     // Someone else's session answers like one that doesn't exist.
     if (!target || target.account_id !== s.account_id || target.revoked_at) throw notFound("Session not found");
@@ -195,23 +195,23 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
   });
 
   app.put("/v2/account/preferences", authed, async (req) => {
-    const { selectedWorkspaceId } = parse(preferencesBody, req.body);
+    const { selectedWorkspaceId } = parse(PreferencesBody, req.body);
     return { selectedWorkspaceId: await workspaces.select(await accountOf(req), selectedWorkspaceId) };
   });
 
   // ───────────── Encryption setup on this device ─────────────
-  app.post("/v2/account/devices", authedStrict, async (req) => identity.enroll(session(req), parse(enrollDeviceBody, req.body)));
+  app.post("/v2/account/devices", authedStrict, async (req) => identity.enroll(session(req), parse(EnrollDeviceBody, req.body)));
 
-  app.post("/v2/account/identity/reset", authedStrict, async (req, reply) => identity.resetIdentity(session(req), parse(resetIdentityBody, req.body), req.ip, reply));
+  app.post("/v2/account/identity/reset", authedStrict, async (req, reply) => identity.resetIdentity(session(req), parse(ResetIdentityBody, req.body), req.ip, reply));
 
   // ───────────── Workspaces ─────────────
   app.get("/v2/workspaces", authed, async (req) => workspaces.list(await accountOf(req)));
 
   // ───────────── Legacy migration ─────────────
-  app.post("/v2/migration/legacy/verify", strict, async (req, reply) => legacy.verify(parse(legacyVerifyBody, req.body), req.ip, reply));
+  app.post("/v2/migration/legacy/verify", strict, async (req, reply) => legacy.verify(parse(LegacyVerifyBody, req.body), req.ip, reply));
 
   app.post("/v2/migration/legacy/complete", strict, async (req, reply) => {
-    const { email } = await legacy.complete(parse(legacyCompleteBody, req.body));
+    const { email } = await legacy.complete(parse(LegacyCompleteBody, req.body));
     return reply.code(202).send({ status: "verification_sent", email });
   });
 }

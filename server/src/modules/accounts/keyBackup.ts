@@ -1,12 +1,11 @@
 import crypto from "node:crypto";
-import type { z } from "zod";
 import { HOUR_MS, SlidingWindow } from "../../app/middleware/abuse.js";
 import type { AppContext } from "../../app/context.js";
 import { ApiError } from "../../shared/errors.js";
 import { now, sha256Hex } from "../../shared/utilities/util.js";
 import type { KeyBackupRow, KeyBackupStore } from "./keyBackupStore.js";
 import { mailTexts } from "../../infrastructure/mail/mailer.js";
-import type { zKeyBackup } from "./schemas.js";
+import type { KeyBackupBody } from "../../shared/contracts/http/accounts.js";
 import { type AccountService, maskEmail } from "./service.js";
 import type { AccountRow, ActiveSession } from "./store.js";
 
@@ -15,7 +14,6 @@ const CODE_DIGITS = 6;
 const UNLOCK_CODES_PER_HOUR = 5;
 
 type Reply = { header: (k: string, v: string) => unknown };
-export type KeyBackupBody = z.infer<typeof zKeyBackup>;
 
 /** The sealed keys as the clients read and write them. */
 export interface KeyBackupView {

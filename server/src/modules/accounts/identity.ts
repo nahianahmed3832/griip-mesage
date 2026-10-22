@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import type { z } from "zod";
 import { DAY_MS } from "../../app/middleware/abuse.js";
 import type { AppContext } from "../../app/context.js";
 import { canonical, isValidPublicKey, verifyEd25519 } from "../../shared/utilities/crypto.js";
@@ -9,7 +8,7 @@ import { evictUserDevicesFromCalls } from "../calls/routes.js";
 import { deleteHistoryAfterCommit } from "../messaging/history/routes.js";
 import { ApiError, badRequest } from "../../shared/errors.js";
 import { newId, now } from "../../shared/utilities/util.js";
-import type { enrollDeviceBody, resetIdentityBody } from "./schemas.js";
+import type { DeviceKeys, EnrollDeviceBody, ResetIdentityBody } from "../../shared/contracts/http/accounts.js";
 import { consumeChallenge, type AccountService } from "./service.js";
 import type { AccountRow, ActiveSession } from "./store.js";
 
@@ -25,8 +24,6 @@ export interface EnrollResponse {
 
 const AVATAR_COLORS = 16;
 const USERNAME_ATTEMPTS = 8;
-
-type DeviceKeys = z.infer<typeof enrollDeviceBody>["device"];
 
 function requireKeys(d: DeviceKeys, identityKey: string): void {
   if (!isValidPublicKey(identityKey) || !isValidPublicKey(d.signingKey) || !isValidPublicKey(d.encryptionKey)) throw badRequest("Malformed public key");
@@ -92,7 +89,7 @@ export class IdentityService {
     private readonly accounts: AccountService,
   ) {}
 
-  async enroll(s: ActiveSession, body: z.infer<typeof enrollDeviceBody>): Promise<EnrollResponse> {
+  async enroll(s: ActiveSession, body: EnrollDeviceBody): Promise<EnrollResponse> {
     let a = (await this.accounts.store.accountById(s.account_id))!;
     // A link interrupted half-way (MongoDB accounts: the account was claimed, the identity's rows never written) is
     // undone, so the person can set up encryption again instead of being stuck.
@@ -103,7 +100,7 @@ export class IdentityService {
     return a.user_id ? this.addDevice(s, a, a.user_id, body) : this.createIdentity(s, a, body);
   }
 
-  private async createIdentity(s: ActiveSession, a: AccountRow, body: z.infer<typeof enrollDeviceBody>): Promise<EnrollResponse> {
+  private async createIdentity(s: ActiveSession, a: AccountRow, body: EnrollDeviceBody): Promise<EnrollResponse> {
     if (!body.identityKey) throw new ApiError(400, "identity_required", "This account has no encryption keys yet: send the new identity key");
     requireKeys(body.device, body.identityKey);
     const username = freeUsername(this.ctx, body.username, a.name);
@@ -151,7 +148,7 @@ export class IdentityService {
     this.ctx.audit({ actorId: userId, orgId: joined.orgId, action: "invite.accept", target: joined.inviteId, detail: joined.role });
   }
 
-  private async addDevice(s: ActiveSession, a: AccountRow, userId: string, body: z.infer<typeof enrollDeviceBody>): Promise<EnrollResponse> {
+  private async addDevice(s: ActiveSession, a: AccountRow, userId: string, body: EnrollDeviceBody): Promise<EnrollResponse> {
     const user = this.ctx.db.prepare("SELECT username, identity_key FROM users WHERE id = ?").get(userId) as { username: string; identity_key: string };
     if (body.identityKey && body.identityKey !== user.identity_key) {
       throw new ApiError(409, "identity_mismatch", "This account already has encryption keys. Restore them with your recovery key or from another device, or start fresh.");
@@ -185,7 +182,7 @@ export class IdentityService {
    * one, every other device is removed, and the server history encrypted under the old key (which nobody can read any
    * more) is deleted. Contacts see a new security code. Needs the password again.
    */
-  async resetIdentity(s: ActiveSession, body: z.infer<typeof resetIdentityBody>, ip: string, reply: { header: (k: string, v: string) => unknown }): Promise<EnrollResponse> {
+  async resetIdentity(s: ActiveSession, body: ResetIdentityBody, ip: string, reply: { header: (k: string, v: string) => unknown }): Promise<EnrollResponse> {
     const a = (await this.accounts.store.accountById(s.account_id))!;
     await this.accounts.checkPassword(a, body.password, ip, reply);
     if (!a.user_id) return this.createIdentity(s, a, { ...body, username: undefined });
