@@ -7,13 +7,13 @@
 | VPS | Hostinger VM 1245833, `srv1245833.hstgr.cloud`, **72.60.107.88** (Ubuntu 24.04, 2 vCPU, 8 GB) |
 | Compose project | **`griip-internal-messaging`** |
 | Directory | **`/opt/griip-internal-messaging`** (root, 0750; `.env` 0600) |
-| Services | `api` (`griip-internal-messaging-api:0.13.0` since 2026-10-21 07:17 UTC, built on the VPS; `0.12.0-rollback`, `0.11.0-rollback`, `0.10.0-rollback`, `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
+| Services | `api` (`griip-internal-messaging-api:0.24.0` since 2026-10-22 01:14 UTC, built on the VPS; `0.13.0-rollback`, `0.12.0-rollback`, `0.11.0-rollback`, `0.10.0-rollback`, `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
 | Volume / network | `griip-internal-messaging_api-data`, `griip-internal-messaging_default` |
-| Public URLs | `https://msg.griipbuddy.cloud` (API + WebSocket), `wss://rtc.griipbuddy.cloud` (LiveKit signalling) |
-| TLS | host nginx (`/etc/nginx/sites-available/griip-message.conf`) with certbot certificate `griip-message`, which renews automatically |
+| Public URLs | **`https://msg.meldiq.app`** (API + WebSocket) and **`wss://rtc.meldiq.app`** (LiveKit signalling) since 2026-10-22; the former `msg.griipbuddy.cloud` and `rtc.griipbuddy.cloud` still serve the same backends for apps installed earlier |
+| TLS | host nginx: `meldiq-msg.conf` (certificate `meldiq-msg`, msg and rtc.meldiq.app) and `griip-message.conf` (certificate `griip-message`, the former names); both renew automatically (certbot, webroot `/var/www/griip-message-acme`) |
 | Ports | 127.0.0.1:18080 → api, 127.0.0.1:17880 → LiveKit HTTP. Public: **7881/tcp** (ICE TCP), **7882/udp** (media) |
 | Firewall | Hostinger group "web-only" (id 376928): 22, 80, 443 plus 7881/tcp and 7882/udp, which were added for this project |
-| DNS | Hostinger DNS for `griipbuddy.cloud`: A records `msg` and `rtc` → 72.60.107.88 |
+| DNS | Hostinger DNS for `meldiq.app`: A records `msg`, `rtc` and `web` → 72.60.107.88. Hostinger DNS for `griipbuddy.cloud`: A records `msg` and `rtc` → 72.60.107.88 (former names) |
 
 Nothing else on the server was modified. No other Compose project, volume, nginx site or certificate was touched.
 
@@ -114,6 +114,27 @@ Branch `api-0.8.1-web-return`. No migrations (schema stays 28).
 Not verifiable on production yet: no one can connect an app there (`integrations-status`: no `INTEGRATIONS_TOKEN_KEY`, no
 provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
 `up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
+
+### API 0.24.0, msg.meldiq.app and Meldiq Web 6ecfc81 (2026-10-22, 01:14 UTC, owner's go-ahead)
+
+Batches B4–B13 (`internal-beta`, docs/product/MELDIQ_SESSION_HANDOFF.md §0) and the move to the Meldiq names.
+
+| Step | Result |
+|---|---|
+| Checks before | server 710 passed / 10 skipped on SQLite and with the MongoDB-capable domains; Android 641 passed, lint 0 errors; web 262 passed |
+| DNS | `msg.meldiq.app` and `rtc.meldiq.app` A → 72.60.107.88 (added, nothing else in the zone changed) |
+| Backup | `backups/pre-0.24.0-20261022T010925Z`: integrity ok, schema 33, 33 users; `.env`, `compose.yaml` and `livekit/livekit.yaml` copies; image tagged `0.13.0-rollback`; sources kept as `server.pre-0.24.0` |
+| Sources | rsync with checksums: migrations 034–044 added, changed sources only |
+| Rehearsal | 0.24.0 on a copy of the snapshot, `--network none`, env without FCM lines: `stats` (33 users, 6 orgs), `community-migration --verify` no differences, a full start healthy with no warnings, `verify-backup` ok (schema 44). Copy deleted |
+| nginx and TLS | new site `meldiq-msg.conf` (in `deploy/nginx/`), certificate `meldiq-msg` for msg and rtc.meldiq.app (Let's Encrypt, until 2027-01-20, renews automatically) |
+| Config | `.env`: `PUBLIC_API_URL=https://msg.meldiq.app`, `LIVEKIT_PUBLIC_URL=wss://rtc.meldiq.app`; `validate-env.sh` 0 errors (the 2 usual warnings) |
+| Switch | `compose.yaml` image 0.24.0, `config -q`, `up -d --no-deps --no-build api`; healthy; LiveKit and ntfy not restarted |
+| Checks after | `/healthz` 0.24.0 on msg.meldiq.app and msg.griipbuddy.cloud; restarts 0; no warnings or errors in the log; every feature flag the Android app checks is listed (except `push-unifiedpush`, off before too: `PUSH_UNIFIEDPUSH_HOSTS` isn't set); new routes refuse requests without a session; `reports.key` created; `backups/post-0.24.0-*` verified (schema 44) and includes `reports.key` |
+| Web | release `0.2.4-beta-6ecfc81` installed for web.meldiq.app (CSP `connect-src` adds rtc.meldiq.app); `verify.sh` all checks passed, API through the web origin 0.24.0 |
+
+Rollback: `image: griip-internal-messaging-api:0.13.0-rollback`, then `up -d --no-deps --no-build api`. Migrations 034–044 only
+add tables and columns, which 0.13.0 ignores. The `.env` addresses can stay (both names reach the same server). The web
+rolls back with `bash /root/meldiq-web-0.2.4-beta-6ecfc81/rollback.sh`.
 
 ### API 0.13.0 (2026-10-21, 07:17 UTC, owner's go-ahead)
 

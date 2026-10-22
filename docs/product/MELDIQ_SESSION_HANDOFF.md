@@ -12,35 +12,43 @@ batch plan and its approval gate are in `MELDIQ_IMPLEMENTATION_PLAN.md`; the sta
 ## 0. Start here (morning of 2026-10-22)
 
 Overnight, B4b to B13 were built one after another, as asked. Every batch is committed separately on `internal-beta`.
-**None of it has been tested on a real phone.** Emulator checks are listed per batch (§6b–6m). Nothing was pushed or
-deployed, and no AWS or production setting was touched.
+**None of it has been tested on a real phone yet.** Emulator checks are listed per batch (§6b–6m). On the owner's
+go-ahead (2026-10-22) it was pushed to GitHub and deployed (below).
 
-**What to install:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-b12-debug.apk`.
-It contains every batch from B4 to B13 (B13 changed only the server). It's a side-by-side debug build ("Meldiq Test")
-for the local server.
+**In production since 2026-10-22 01:14 UTC** (owner's go-ahead; `docs/DEPLOYMENT.md`):
+- **API 0.24.0** on **`https://msg.meldiq.app`**, calls on `wss://rtc.meldiq.app`. The former `msg.griipbuddy.cloud`
+  answers too, so apps installed earlier keep working.
+- **Meldiq Web** `0.2.4-beta-6ecfc81` on `https://web.meldiq.app`.
+- A backup was taken before and after. To roll back, see `docs/DEPLOYMENT.md`.
 
-**What to run:** the local test server over USB, as for B2 and B3 (`http://localhost:8080`, `adb reverse tcp:8080
-tcp:8080`), now at **API 0.24.0** from this repository (`cd server && npx tsx src/index.ts`). For calls (B10, B11),
-also LiveKit (`adb reverse` 7880 and 7881) and two phones. Production still runs 0.13.0; deploying is your decision
-(§7.3 lists every migration).
+**For employees:** `/Volumes/code_files/meldiq_android/android/app/build/outputs/apk/debug/meldiq-test-production-debug.apk`.
+It's "Meldiq Test" (debug-signed, installs next to the regular app) and talks only to `https://msg.meldiq.app`.
+**SHA-256:** `d7b4ae98f279c7339a279900a20fc9171d6aff03ebc0b44c6c111037b65b5b0d`.
+- Registration is by invitation: a community owner's invite code, or `admin.js reg-invite` on the server
+  (`docs/DEPLOYMENT.md`).
+- For the regular Meldiq app, sign a release in Android Studio from the main folder. Release builds now default to
+  `msg.meldiq.app`. Check your versionCode and versionName first.
+
+**For local testing** (as for B2 and B3): `meldiq-test-b12-debug.apk` with the local server (`cd server && npx tsx
+src/index.ts`, `adb reverse tcp:8080 tcp:8080`).
 
 **Test order** (each batch's checklist is in its own section):
 
 | Batch | Commit | What to try | Section |
 |---|---|---|---|
-| B4 | `a4d251e` | Reports, security actions, audit filters, invite choices | §6 |
-| B4b | `7f1a190` | Join applications, activity alerts, https invite links, invite from a profile | §6b |
-| B5 | `e21d639` | Thread list, message links, Unreads, translated menus | §6c |
-| B6 | `71d488a` | Connections, message requests, who may message you | §6d |
-| B6b | `5e460fb` | Group photo, presence (idle, do not disturb, invisible) | §6e |
-| B7 | `064c5c2` | 1 GiB file over Wi-Fi and mobile data (no code change) | §6f |
-| B8 | `29d9fca` | Forum guidelines, tag matching, follow posts, poll duration and answer emoji | §6g |
-| B8b | `8090514` | Repeating events, community guide, onboarding questions | §6h |
-| B9 | `2bf5e91` | Community emoji and stickers | §6i |
-| B10 | `a093056` | Deafen, noise reduction, pre-call check, camera switch, reconnect | §6j |
-| B11 | `12e7c54` | Screen share modes, game sound | §6k |
-| B12 | `787042f` | Dates in your language, custom emoji reactions, pronouns, role groups | §6l |
-| B13 | `1c0bf9c` | Server fixes only: nothing new to try on the phone | §6m |
+| B4 | `7d2d3f0` | Reports, security actions, audit filters, invite choices | §6 |
+| B4b | `82c46b5` | Join applications, activity alerts, https invite links, invite from a profile | §6b |
+| B5 | `d46c65f` | Thread list, message links, Unreads, translated menus | §6c |
+| B6 | `ae2dd08` | Connections, message requests, who may message you | §6d |
+| B6b | `136fd94` | Group photo, presence (idle, do not disturb, invisible) | §6e |
+| B7 | `c735fb2` | 1 GiB file over Wi-Fi and mobile data (no code change) | §6f |
+| B8 | `64c1be7` | Forum guidelines, tag matching, follow posts, poll duration and answer emoji | §6g |
+| B8b | `e3b668f` | Repeating events, community guide, onboarding questions | §6h |
+| B9 | `e15bbd1` | Community emoji and stickers | §6i |
+| B10 | `fea695a` | Deafen, noise reduction, pre-call check, camera switch, reconnect | §6j |
+| B11 | `c486859` | Screen share modes, game sound | §6k |
+| B12 | `bf455cf` | Dates in your language, custom emoji reactions, pronouns, role groups | §6l |
+| B13 | `1c92e93` | Server fixes only: nothing new to try on the phone | §6m |
 
 **Waiting on you:**
 - the phone tests above, as pass or fail per batch;
@@ -946,7 +954,7 @@ Checked and found right:
 1. **A test sign-up reached production on 2026-10-21:** `ada@meldiq.test`, unverified, no keys. Not deleted (owner's
    call).
 2. **The AWS tools use the root user's access key:** move them off it (`MELDIQ_AWS_ARCHITECTURE.md` §5).
-3. **Server 0.24.0 isn't deployed** (production runs 0.13.0): 0.24.0 adds migration 044 (pronouns, role groups); 0.23.0 adds migration 043 (community emoji);
+3. **Server 0.24.0 is deployed** (2026-10-22, `docs/DEPLOYMENT.md`). What each version added: 0.24.0 adds migration 044 (pronouns, role groups); 0.23.0 adds migration 043 (community emoji);
    0.22.0 adds migrations 041 and 042 (event repeats, onboarding, the guide); 0.21.0 adds migration 040 (forum guidelines); 0.20.0
    adds migration 039 (group photo, presence);
    0.19.0 adds migration 038 (connections, requests) and `DEFAULT_DM_POLICY`; 0.18.0 adds migration 037 (applications, alerts); 0.14.0 migration 034 (timeouts); 0.15.0 B2's preference fields and templates; 0.16.0 migration 035 (slowmode) and B3's fields; 0.17.0 migration 036 (reports, pauses). For deployment, set `REPORTS_KEY` (or back up `reports.key` with the database).
