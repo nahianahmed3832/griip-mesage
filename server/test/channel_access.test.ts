@@ -93,7 +93,7 @@ describe("workspace members and channels (round 7, bug 6)", () => {
       h.ctx.db.prepare("INSERT INTO conversation_members (conversation_id, user_id, role, joined_at) VALUES (?, ?, 'ADMIN', ?)").run(id, owner.userId, t);
     }
     h.ctx.db.prepare("INSERT INTO audit_log (at, actor_id, org_id, action, target) VALUES (?, ?, ?, 'channel.leave', ?)").run(t, member.userId, orgId, `c_legacy2:${member.userId}`);
-    const { planChannelAccessRepair, applyChannelAccessRepair } = await import("../src/channelRepair.js");
+    const { planChannelAccessRepair, applyChannelAccessRepair } = await import("../src/modules/messaging/channelRepair.js");
     const plan = planChannelAccessRepair(h.ctx.db).filter((r) => r.channelId.startsWith("c_legacy"));
     expect(plan.find((r) => r.channelId === "c_legacy1")?.add).toEqual([member.userId]);
     expect(plan.find((r) => r.channelId === "c_legacy2")).toMatchObject({ add: [], skippedLeft: 1 });

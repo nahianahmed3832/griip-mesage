@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { isValidTimeZone, localParts, nextOccurrence, retryDelayMs, zonedToUtc } from "../src/reminders/schedule.js";
+import { isValidTimeZone, localParts, nextOccurrence, retryDelayMs, zonedToUtc } from "../src/modules/accounts/reminders/schedule.js";
 import { canonical, GriipClient, sign } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

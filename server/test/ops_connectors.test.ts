@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type ConnectorStatus, stateFor } from "../src/ops/connectors.js";
+import { type ConnectorStatus, stateFor } from "../src/modules/administration/ops/connectors.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

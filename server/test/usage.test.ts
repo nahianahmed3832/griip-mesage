@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { Entitlements, entitlementConfig } from "../src/entitlements.js";
-import { UsageMeter, utcDay } from "../src/usage/meter.js";
+import { Entitlements, entitlementConfig } from "../src/modules/administration/entitlements.js";
+import { UsageMeter, utcDay } from "../src/modules/administration/usage/meter.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

@@ -35,30 +35,30 @@
  *   community-migration [--verify] convert branches and teams into roles and categories (also runs at start-up);
  *                                  --verify compares everyone's visible channels with the old structure
  */
-import { MongoRelationshipStore } from "./mongo/relationships.js";
-import { type RelationshipStore, SqliteRelationshipStore } from "./relationships/store.js";
-import { Accounts } from "./accounts/index.js";
-import { Authz } from "./authz.js";
-import { backupDatabase, verifyBackup } from "./backup.js";
-import { loadConfig } from "./config.js";
-import { openDatabase } from "./db.js";
-import { ServerIdentity } from "./federation/identity.js";
-import { Hub } from "./hub.js";
-import { endNewAccountLimits } from "./abuse.js";
-import { createRegistrationInvite } from "./invites.js";
-import type { AppContext } from "./context.js";
-import { runCleanup } from "./jobs.js";
-import { applyChannelAccessRepair, planChannelAccessRepair } from "./channelRepair.js";
-import { deleteEmptyOrg, findDuplicateOrgs, keepReason, orgFootprint } from "./orgRepair.js";
-import { humanCode, newId, now, sha256Hex } from "./util.js";
-import { createBlobStore } from "./storage/index.js";
-import { MONGO_COMMANDS, runMongoCommand } from "./mongo/admin.js";
-import { RETIRED_COMMANDS, runRetiredCommand } from "./retiredData.js";
-import { migrateBranchesAndTeams, verifyCommunityMigration } from "./communityMigration.js";
-import { openMongo } from "./mongo/index.js";
-import { MongoReportStore } from "./mongo/reports.js";
-import { ReportSealer } from "./reports/seal.js";
-import { type ReportStore, SqliteReportStore } from "./reports/store.js";
+import { MongoRelationshipStore } from "./modules/accounts/relationships/mongoStore.js";
+import { type RelationshipStore, SqliteRelationshipStore } from "./modules/accounts/relationships/store.js";
+import { Accounts } from "./modules/accounts/index.js";
+import { Authz } from "./modules/organizations/authz.js";
+import { backupDatabase, verifyBackup } from "./modules/administration/backup.js";
+import { loadConfig } from "./app/config.js";
+import { openDatabase } from "./infrastructure/database/db.js";
+import { ServerIdentity } from "./modules/federation/identity.js";
+import { Hub } from "./modules/realtime/hub.js";
+import { endNewAccountLimits } from "./app/middleware/abuse.js";
+import { createRegistrationInvite } from "./modules/organizations/invites.js";
+import type { AppContext } from "./app/context.js";
+import { runCleanup } from "./modules/administration/jobs.js";
+import { applyChannelAccessRepair, planChannelAccessRepair } from "./modules/messaging/channelRepair.js";
+import { deleteEmptyOrg, findDuplicateOrgs, keepReason, orgFootprint } from "./modules/organizations/orgRepair.js";
+import { humanCode, newId, now, sha256Hex } from "./shared/utilities/util.js";
+import { createBlobStore } from "./infrastructure/storage/index.js";
+import { MONGO_COMMANDS, runMongoCommand } from "./infrastructure/database/mongo/admin.js";
+import { RETIRED_COMMANDS, runRetiredCommand } from "./modules/administration/retiredData.js";
+import { migrateBranchesAndTeams, verifyCommunityMigration } from "./modules/organizations/communityMigration.js";
+import { openMongo } from "./infrastructure/database/mongo/index.js";
+import { MongoReportStore } from "./modules/organizations/reports/mongoStore.js";
+import { ReportSealer } from "./modules/organizations/reports/seal.js";
+import { type ReportStore, SqliteReportStore } from "./modules/organizations/reports/store.js";
 
 /** Reports live where MONGODB_DOMAINS says. */
 const reportStore = (ctx: AppContext): ReportStore => (ctx.mongo?.owns("reports") ? new MongoReportStore(ctx.mongo) : new SqliteReportStore(ctx.db));

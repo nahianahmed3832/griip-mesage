@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type Assignment, assignments, experimentsConfig } from "../src/experiments/assign.js";
-import { definitionProblems, EXPERIMENTS, type ExperimentDef } from "../src/experiments/definitions.js";
-import { cleanEvents } from "../src/experiments/events.js";
+import { type Assignment, assignments, experimentsConfig } from "../src/modules/administration/experiments/assign.js";
+import { definitionProblems, EXPERIMENTS, type ExperimentDef } from "../src/modules/administration/experiments/definitions.js";
+import { cleanEvents } from "../src/modules/administration/experiments/events.js";
 import { AccountClient, MemoryMailer } from "./support/accounts.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

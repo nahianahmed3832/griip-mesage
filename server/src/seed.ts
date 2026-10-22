@@ -7,10 +7,10 @@
  * Refuses to run when NODE_ENV=production unless --force is passed. Seeded rows are tagged in
  * the audit log ("seed.dev") so they can be identified; no sample users or messages are created.
  */
-import { Authz } from "./authz.js";
-import { loadConfig } from "./config.js";
-import { openDatabase } from "./db.js";
-import { humanCode, newId, now, sha256Hex } from "./util.js";
+import { Authz } from "./modules/organizations/authz.js";
+import { loadConfig } from "./app/config.js";
+import { openDatabase } from "./infrastructure/database/db.js";
+import { humanCode, newId, now, sha256Hex } from "./shared/utilities/util.js";
 
 const args = process.argv.slice(2);
 const arg = (n: string) => {

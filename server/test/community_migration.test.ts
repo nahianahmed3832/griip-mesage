@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { migrateBranchesAndTeams, verifyCommunityMigration } from "../src/communityMigration.js";
-import { newId } from "../src/util.js";
+import { migrateBranchesAndTeams, verifyCommunityMigration } from "../src/modules/organizations/communityMigration.js";
+import { newId } from "../src/shared/utilities/util.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

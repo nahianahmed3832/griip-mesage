@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { localParts } from "../src/reminders/schedule.js";
-import { currentOccurrence, nextEventStart } from "../src/workspace/eventRepeat.js";
+import { localParts } from "../src/modules/accounts/reminders/schedule.js";
+import { currentOccurrence, nextEventStart } from "../src/modules/organizations/eventRepeat.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

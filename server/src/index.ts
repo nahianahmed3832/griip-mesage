@@ -1,6 +1,6 @@
-import { buildApp } from "./app.js";
-import { loadConfig } from "./config.js";
-import { startJobs } from "./jobs.js";
+import { buildApp } from "./app/server.js";
+import { loadConfig } from "./app/config.js";
+import { startJobs } from "./modules/administration/jobs.js";
 
 const config = loadConfig();
 const { app, ctx } = await buildApp(config);

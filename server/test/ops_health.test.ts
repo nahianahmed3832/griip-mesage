@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type HealthReport, warningsFor } from "../src/ops/health.js";
+import { type HealthReport, warningsFor } from "../src/modules/administration/ops/health.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

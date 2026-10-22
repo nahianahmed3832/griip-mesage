@@ -65,6 +65,12 @@ account per server as separate on-device profiles (`ANDROID_SERVER_SETUP.md`).
 
 ## 4. Server
 
+Since Architecture 1.0 step B (2026-10-22) the source is grouped as `src/app/` (bootstrap, config, context,
+middleware), `src/modules/<module>/` (auth, accounts, organizations, messaging, realtime, files, calls, notifications,
+administration, federation), `src/infrastructure/` (database, storage, mail) and `src/shared/`. Paths below are the
+older ones; [`architecture/SERVER_MODULE_MAP.md`](architecture/SERVER_MODULE_MAP.md) maps each to its new place, and
+[`architecture/ARCHITECTURE_1_0_PLAN.md`](architecture/ARCHITECTURE_1_0_PLAN.md) §3 gives the dependency rules.
+
 - `src/app.ts` builds Fastify (rate limit, websocket, content parsers, error handler) and registers the route modules in `src/routes/`.
 - `src/authz.ts` holds all authorisation logic (§5). `src/hub.ts` tracks online sockets and pushes queue items. `src/jobs.ts` runs retention cleanup and call reconciliation every 60 s.
 - SQLite in WAL mode with foreign keys on; migrations are in `server/migrations/` (§6), applied at start. A single process means writes are serialised. Multi-row operations use transactions.

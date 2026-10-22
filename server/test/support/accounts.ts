@@ -1,4 +1,4 @@
-import type { Mailer, MailMessage } from "../../src/accounts/mailer.js";
+import type { Mailer, MailMessage } from "../../src/infrastructure/mail/mailer.js";
 import { canonical, GriipClient, sign } from "./griipClient.js";
 
 /** Collects account emails instead of sending them. */

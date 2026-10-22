@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { entitlementConfig } from "../src/entitlements.js";
-import { mongoConfig } from "../src/mongo/config.js";
-import { purgeRetiredData, RETIRED_TABLES, retiredDataReport } from "../src/retiredData.js";
+import { entitlementConfig } from "../src/modules/administration/entitlements.js";
+import { mongoConfig } from "../src/infrastructure/database/mongo/config.js";
+import { purgeRetiredData, RETIRED_TABLES, retiredDataReport } from "../src/modules/administration/retiredData.js";
 import { type Harness, startServer } from "./support/harness.js";
 
 /**

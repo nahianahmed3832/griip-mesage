@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { OrgRole } from "../src/authz.js";
-import { BASE_ROLE_PERMISSIONS, type Permission, PERMISSION_KEYS, PERMISSIONS, ROLE_TEMPLATES, permissionDef } from "../src/permissions/catalog.js";
-import { type Actor, canActOn, effectivePermissions, type RoleGrant, roleAssignmentRefusal, roleDefinitionRefusal, roleRemovalRefusal } from "../src/permissions/rules.js";
-import { orgRoleChangeRefusal, removalAllowed, titleChangeAllowed } from "../src/roles.js";
+import type { OrgRole } from "../src/modules/organizations/authz.js";
+import { BASE_ROLE_PERMISSIONS, type Permission, PERMISSION_KEYS, PERMISSIONS, ROLE_TEMPLATES, permissionDef } from "../src/modules/organizations/permissions/catalog.js";
+import { type Actor, canActOn, effectivePermissions, type RoleGrant, roleAssignmentRefusal, roleDefinitionRefusal, roleRemovalRefusal } from "../src/modules/organizations/permissions/rules.js";
+import { orgRoleChangeRefusal, removalAllowed, titleChangeAllowed } from "../src/modules/organizations/roleRules.js";
 
 /**
  * The permission catalog and the pure role rules (docs/WORKSPACE_ROLES.md). The app's `RoleRulesTest` mirrors these

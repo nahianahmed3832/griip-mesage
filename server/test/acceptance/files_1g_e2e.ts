@@ -17,8 +17,8 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { buildApp } from "../../src/app.js";
-import { loadConfig } from "../../src/config.js";
+import { buildApp } from "../../src/app/server.js";
+import { loadConfig } from "../../src/app/config.js";
 import { startFakeS3 } from "../support/fakeS3.js";
 import { GriipClient } from "../support/griipClient.js";
 

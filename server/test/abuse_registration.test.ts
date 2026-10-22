@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
-import { networkKey } from "../src/abuse.js";
-import { loadConfig } from "../src/config.js";
-import { createRegistrationInvite } from "../src/invites.js";
+import { networkKey } from "../src/app/middleware/abuse.js";
+import { loadConfig } from "../src/app/config.js";
+import { createRegistrationInvite } from "../src/modules/organizations/invites.js";
 import { ApiFailure, canonical, GriipClient, sign } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

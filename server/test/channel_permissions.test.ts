@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BASE_ROLE_PERMISSIONS, type Permission } from "../src/permissions/catalog.js";
-import { type ChannelActor, channelPermissions, type Overwrite, overwriteRefusal, parseCapabilities } from "../src/permissions/channel.js";
+import { BASE_ROLE_PERMISSIONS, type Permission } from "../src/modules/organizations/permissions/catalog.js";
+import { type ChannelActor, channelPermissions, type Overwrite, overwriteRefusal, parseCapabilities } from "../src/modules/organizations/permissions/channel.js";
 
 const actor = (base: ChannelActor["base"], roleIds: string[] = [], extra: Permission[] = [], restricted: Permission[] = []): ChannelActor => ({
   base,

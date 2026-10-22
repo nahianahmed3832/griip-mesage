@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { LiveKitService } from "../src/livekit.js";
-import { nextForumTags } from "../src/routes/conversations.js";
+import type { LiveKitService } from "../src/modules/calls/livekit.js";
+import { nextForumTags } from "../src/modules/messaging/conversationsRoutes.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

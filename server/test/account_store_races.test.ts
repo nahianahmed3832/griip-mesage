@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { createRegistrationInvite } from "../src/invites.js";
+import { createRegistrationInvite } from "../src/modules/organizations/invites.js";
 import { AccountClient, email, MemoryMailer, PASSWORD } from "./support/accounts.js";
 import { accountRows } from "./support/accountRows.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";

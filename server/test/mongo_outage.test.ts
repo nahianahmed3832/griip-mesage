@@ -43,7 +43,7 @@ describe("MongoDB unavailable", () => {
   });
 
   it("retention still runs for everything kept in SQLite", async () => {
-    const { runCleanup } = await import("../src/jobs.js");
+    const { runCleanup } = await import("../src/modules/administration/jobs.js");
     const r = await runCleanup(h.ctx);
     expect(r.accountRows).toBe(0);
     expect(r.queue).toBeGreaterThanOrEqual(0);

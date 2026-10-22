@@ -1,6 +1,6 @@
 import { MongoClient } from "mongodb";
 import { inject } from "vitest";
-import type { MongoConfig } from "../../src/mongo/config.js";
+import type { MongoConfig } from "../../src/infrastructure/database/mongo/config.js";
 
 let n = 0;
 

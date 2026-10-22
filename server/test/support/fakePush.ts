@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from "fastify";
-import type { PushDeps } from "../../src/push/service.js";
-import type { PostOptions, WakeResult, WakeTarget } from "../../src/push/transport.js";
+import type { PushDeps } from "../../src/modules/notifications/service.js";
+import type { PostOptions, WakeResult, WakeTarget } from "../../src/modules/notifications/transport.js";
 
 export interface SentWake {
   url: string;

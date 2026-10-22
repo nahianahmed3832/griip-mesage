@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { API_VERSION, MIN_CLIENT_API, VERSION } from "../src/app.js";
+import { API_VERSION, MIN_CLIENT_API, VERSION } from "../src/app/server.js";
 import { type Harness, startServer } from "./support/harness.js";
 
 let h: Harness;

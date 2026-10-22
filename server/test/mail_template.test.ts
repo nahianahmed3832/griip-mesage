@@ -1,7 +1,7 @@
 import type { SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { describe, expect, it } from "vitest";
-import { mailTexts, SesMailer } from "../src/accounts/mailer.js";
-import { escapeHtml, MAIL_LOGO_CID, renderMail } from "../src/accounts/mailTemplate.js";
+import { mailTexts, SesMailer } from "../src/infrastructure/mail/mailer.js";
+import { escapeHtml, MAIL_LOGO_CID, renderMail } from "../src/infrastructure/mail/mailTemplate.js";
 
 /** The designed account emails (mailTemplate.ts): layout, safety rules and the plain-text twin. */
 const all = [

@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { CoreError } from "../src/core/node.js";
-import { chainExtends, currentKeyOf, serverIdFor, verifyDescriptor } from "../src/federation/identity.js";
-import { signRevocation, verifyAnswer } from "../src/federation/records.js";
-import { signRecord } from "../src/federation/sign.js";
+import { CoreError } from "../src/modules/federation/core/node.js";
+import { chainExtends, currentKeyOf, serverIdFor, verifyDescriptor } from "../src/modules/federation/identity.js";
+import { signRevocation, verifyAnswer } from "../src/modules/federation/records.js";
+import { signRecord } from "../src/modules/federation/sign.js";
 import { fakeServer, startCores, stopCores, type TestCore, tempIdentity } from "./support/federation.js";
 
 let cores: TestCore[];

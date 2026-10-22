@@ -2,9 +2,9 @@ import Fastify from "fastify";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildCoreApp, type BuiltCore } from "../../src/core/app.js";
-import { type CoreConfig, CoreNode } from "../../src/core/node.js";
-import { type ServerDescriptor, ServerIdentity } from "../../src/federation/identity.js";
+import { buildCoreApp, type BuiltCore } from "../../src/modules/federation/core/app.js";
+import { type CoreConfig, CoreNode } from "../../src/modules/federation/core/node.js";
+import { type ServerDescriptor, ServerIdentity } from "../../src/modules/federation/identity.js";
 
 export interface TestCore extends BuiltCore {
   url: string;

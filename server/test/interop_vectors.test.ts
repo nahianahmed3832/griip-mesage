@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { keyFingerprint } from "../src/crypto.js";
+import { keyFingerprint } from "../src/shared/utilities/crypto.js";
 import { canonical, ed25519FromSeed, GriipClient, newX25519, sign, suite, verify } from "./support/griipClient.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));

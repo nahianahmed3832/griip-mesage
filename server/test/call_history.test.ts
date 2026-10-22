@@ -76,7 +76,7 @@ describe("call history", () => {
     // The tablet left last: the call ends once nobody is connected.
     h.ctx.db.prepare("UPDATE call_participants SET left_at = ? WHERE call_id = ? AND device_id = 'bob-tablet'").run(Date.now(), r.call.id);
     const row = h.ctx.db.prepare("SELECT * FROM calls WHERE id = ?").get(r.call.id) as any;
-    const { endCallRow } = await import("../src/routes/calls.js");
+    const { endCallRow } = await import("../src/modules/calls/routes.js");
     await endCallRow(h.ctx, row, "empty");
     const call = (await carol.req("GET", `/v1/calls/${r.call.id}`)).call;
     expect(call.state).toBe("ENDED");

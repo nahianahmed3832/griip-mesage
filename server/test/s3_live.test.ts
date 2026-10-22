@@ -5,9 +5,9 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { runCleanup } from "../src/jobs.js";
-import { readAll } from "../src/storage/blobstore.js";
-import type { S3BlobStore } from "../src/storage/s3.js";
+import { runCleanup } from "../src/modules/administration/jobs.js";
+import { readAll } from "../src/infrastructure/storage/blobstore.js";
+import type { S3BlobStore } from "../src/infrastructure/storage/s3.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

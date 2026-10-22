@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { LiveKitService } from "../src/livekit.js";
+import type { LiveKitService } from "../src/modules/calls/livekit.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { type Harness, startServer } from "./support/harness.js";
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { errorKind, Metrics, p95 } from "../src/ops/metrics.js";
+import { errorKind, Metrics, p95 } from "../src/modules/administration/ops/metrics.js";
 
 describe("operational metrics (round 7, C1)", () => {
   it("counts requests by route template, with error classes and latency", () => {

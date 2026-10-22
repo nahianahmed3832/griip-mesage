@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import type { TLSSocket } from "node:tls";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { postWake, type WakeTarget } from "../src/push/transport.js";
+import { postWake, type WakeTarget } from "../src/modules/notifications/transport.js";
 
 /**
  * The wake-up request on the wire, against a local HTTPS server with a throwaway certificate for "push.test" (made with

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type FcmConfig, fcmConfig, FcmService, type FetchFn, serviceAccountAssertion } from "../src/push/fcm.js";
+import { type FcmConfig, fcmConfig, FcmService, type FetchFn, serviceAccountAssertion } from "../src/modules/notifications/fcm.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

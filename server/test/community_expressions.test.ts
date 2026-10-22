@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { imageKind } from "../src/routes/expressions.js";
+import { imageKind } from "../src/modules/organizations/expressionsRoutes.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

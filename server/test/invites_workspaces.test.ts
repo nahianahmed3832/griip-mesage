@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { deleteEmptyOrg, findDuplicateOrgs, keepReason } from "../src/orgRepair.js";
+import { deleteEmptyOrg, findDuplicateOrgs, keepReason } from "../src/modules/organizations/orgRepair.js";
 import { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 
@@ -119,7 +119,7 @@ describe("invite preview and accept (phase 1)", () => {
     const gated = await startServer({ REGISTRATION_MODE: "invite" });
     try {
       const o = new GriipClient(gated.baseUrl, "gatedowner", "Owner");
-      const reg = (await import("../src/invites.js")).createRegistrationInvite(gated.ctx.db, { maxUses: 1, days: 1 });
+      const reg = (await import("../src/modules/organizations/invites.js")).createRegistrationInvite(gated.ctx.db, { maxUses: 1, days: 1 });
       await o.register(reg.code);
       const org = (await o.req("POST", "/v1/orgs", { name: "Gated" })).org.id;
       const inv = await invite(o, org);

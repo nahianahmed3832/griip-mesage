@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { DEFAULT_FILE_MAX_BYTES, effectiveFileMaxBytes, loadConfig } from "../src/config.js";
+import { DEFAULT_FILE_MAX_BYTES, effectiveFileMaxBytes, loadConfig } from "../src/app/config.js";
 import { type FakeS3, startFakeS3 } from "./support/fakeS3.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";

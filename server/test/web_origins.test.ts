@@ -4,7 +4,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { webOrigins } from "../src/config.js";
+import { webOrigins } from "../src/app/config.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { type Harness, startServer } from "./support/harness.js";
 

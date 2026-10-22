@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildApp, type BuiltApp } from "../../src/app.js";
-import { loadConfig } from "../../src/config.js";
-import type { Mailer } from "../../src/accounts/mailer.js";
-import type { PushDeps } from "../../src/push/service.js";
+import { buildApp, type BuiltApp } from "../../src/app/server.js";
+import { loadConfig } from "../../src/app/config.js";
+import type { Mailer } from "../../src/infrastructure/mail/mailer.js";
+import type { PushDeps } from "../../src/modules/notifications/service.js";
 import { GriipClient } from "./griipClient.js";
 import { dropTestDatabase, testMongoEnv } from "./mongo.js";
 

@@ -3,8 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { backupDatabase, verifyBackup } from "../src/backup.js";
-import { latestMigration, openDatabase } from "../src/db.js";
+import { backupDatabase, verifyBackup } from "../src/modules/administration/backup.js";
+import { latestMigration, openDatabase } from "../src/infrastructure/database/db.js";
 import { type Harness, startServer } from "./support/harness.js";
 
 let h: Harness;

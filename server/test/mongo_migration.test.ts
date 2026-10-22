@@ -1,11 +1,11 @@
 import crypto from "node:crypto";
 import { MongoClient } from "mongodb";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { describeTables, EXCLUDED_TABLES, indexesFor, TABLE_DOMAINS, validatorFor } from "../src/mongo/catalog.js";
-import { domainTables, MeldiqMongo } from "../src/mongo/client.js";
-import { mongoConfig, redactUri } from "../src/mongo/config.js";
-import { openMongo } from "../src/mongo/index.js";
-import { authorityOf, exportToSqlite, migrateToMongo, setAuthority, verify } from "../src/mongo/migrate.js";
+import { describeTables, EXCLUDED_TABLES, indexesFor, TABLE_DOMAINS, validatorFor } from "../src/infrastructure/database/mongo/catalog.js";
+import { domainTables, MeldiqMongo } from "../src/infrastructure/database/mongo/client.js";
+import { mongoConfig, redactUri } from "../src/infrastructure/database/mongo/config.js";
+import { openMongo } from "../src/infrastructure/database/mongo/index.js";
+import { authorityOf, exportToSqlite, migrateToMongo, setAuthority, verify } from "../src/infrastructure/database/mongo/migrate.js";
 import { AccountClient, MemoryMailer } from "./support/accounts.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { type Harness, startServer } from "./support/harness.js";

@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig } from "../src/config.js";
-import { runCleanup } from "../src/jobs.js";
-import { checkEndpoint, isPublicAddress } from "../src/push/address.js";
+import { loadConfig } from "../src/app/config.js";
+import { runCleanup } from "../src/modules/administration/jobs.js";
+import { checkEndpoint, isPublicAddress } from "../src/modules/notifications/address.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { FakePushNetwork } from "./support/fakePush.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";

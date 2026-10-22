@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { runCleanup } from "../src/jobs.js";
+import { runCleanup } from "../src/modules/administration/jobs.js";
 import { type GriipClient, sign } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { withoutMentionAll } from "../src/mentions.js";
+import { withoutMentionAll } from "../src/modules/messaging/mentions.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

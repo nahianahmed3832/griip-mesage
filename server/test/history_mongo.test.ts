@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { runCleanup } from "../src/jobs.js";
-import { describeTables } from "../src/mongo/catalog.js";
-import { migrateToMongo } from "../src/mongo/migrate.js";
+import { runCleanup } from "../src/modules/administration/jobs.js";
+import { describeTables } from "../src/infrastructure/database/mongo/catalog.js";
+import { migrateToMongo } from "../src/infrastructure/database/mongo/migrate.js";
 import { AccountClient, MemoryMailer, PASSWORD } from "./support/accounts.js";
 import { type Harness, startServer } from "./support/harness.js";
 

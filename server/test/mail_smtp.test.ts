@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createMailer, mailTexts, SmtpMailer, smtpTransport } from "../src/accounts/mailer.js";
-import { loadConfig } from "../src/config.js";
+import { createMailer, mailTexts, SmtpMailer, smtpTransport } from "../src/infrastructure/mail/mailer.js";
+import { loadConfig } from "../src/app/config.js";
 
 /** SMTP account email (Hostinger Mail for development and early testing, docs/EMAIL.md): configuration and sending. */
 const base = { DATA_DIR: "/tmp/meldiq-smtp-test", APP_ENV: "production", MAIL_TRANSPORT: "smtp" };

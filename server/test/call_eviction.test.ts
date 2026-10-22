@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { runCleanup } from "../src/jobs.js";
-import type { LiveKitService } from "../src/livekit.js";
+import { runCleanup } from "../src/modules/administration/jobs.js";
+import type { LiveKitService } from "../src/modules/calls/livekit.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

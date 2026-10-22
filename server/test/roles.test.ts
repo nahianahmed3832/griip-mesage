@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { OrgRole } from "../src/authz.js";
-import { orgRoleChangeRefusal, removalAllowed, titleChangeAllowed } from "../src/roles.js";
+import type { OrgRole } from "../src/modules/organizations/authz.js";
+import { orgRoleChangeRefusal, removalAllowed, titleChangeAllowed } from "../src/modules/organizations/roleRules.js";
 
 /**
  * The full role-change table (docs/WORKSPACE_ADMINISTRATION.md). The app's `WorkspaceRolesTest` checks the same table

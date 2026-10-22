@@ -3,8 +3,8 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRegistrationInvite } from "../src/invites.js";
-import { removeStalePartials } from "../src/routes/attachments.js";
+import { createRegistrationInvite } from "../src/modules/organizations/invites.js";
+import { removeStalePartials } from "../src/modules/files/routes.js";
 import { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
 

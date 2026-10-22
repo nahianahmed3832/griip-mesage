@@ -2,7 +2,7 @@
  * Entry point of a core node: `node dist/core/index.js` (configuration in docs/FEDERATION_PROTOCOL.md §3.5).
  * A core node is a separate process with its own key and database; it doesn't need the messaging server.
  */
-import { buildCoreApp, loadCoreConfig } from "./app.js";
+import { buildCoreApp, loadCoreConfig } from "../modules/federation/core/app.js";
 
 const cfg = loadCoreConfig();
 const core = await buildCoreApp(cfg, { logger: true });
