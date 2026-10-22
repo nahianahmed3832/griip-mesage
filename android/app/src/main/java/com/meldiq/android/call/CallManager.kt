@@ -13,6 +13,7 @@ import com.meldiq.android.crypto.randomBytes
 import com.meldiq.android.data.api.ApiClient
 import com.meldiq.android.data.api.ApiException
 import com.meldiq.android.data.api.CallDto
+import com.meldiq.android.data.api.CallEvents
 import com.meldiq.android.data.api.CallRes
 import com.meldiq.android.data.api.CallsRes
 import com.meldiq.android.data.api.DeclineCallReq
@@ -239,26 +240,26 @@ class CallManager(
     fun start() {
         scope.launch {
             messages.callFrames.collect { f ->
-                val call = f.call ?: return@collect
+                val call = f.call
                 // Call history: the conversation's entry for this call follows the server's record of it.
                 // A voice room's comings and goings aren't calls in the conversation's history.
-                if (!call.voiceRoom && (f.event == "ring" || f.event == "started" || f.event == "ended")) scope.launch { runCatching { messages.recordCall(call) } }
+                if (!call.voiceRoom && (f.event == CallEvents.RING || f.event == CallEvents.STARTED || f.event == CallEvents.ENDED)) scope.launch { runCatching { messages.recordCall(call) } }
                 if (call.id == _state.value.callId && call.voiceRoom) _state.update { it.copy(voiceRoom = true, hands = call.hands) }
                 // The conversation's "call in progress · Join" banner follows the call's own events. It used to change only
                 // when the conversation list was reloaded, so it stayed after the call had ended (seen on the phone, UI-003).
-                scope.launch { runCatching { syncActiveCall(call, f.event.orEmpty()) } }
+                scope.launch { runCatching { syncActiveCall(call, f.event) } }
                 when (f.event) {
-                    "ring" -> onRing(call)
-                    "ended" -> if (call.id == _state.value.callId) finish(remoteReason = call.endReason ?: "ended", notifyServer = false)
-                    "dismissed" -> if (call.id == _state.value.callId && _state.value.phase == CallPhase.Incoming) finish("answered elsewhere", false)
-                    "declined" -> if (call.id == _state.value.callId && !_state.value.isGroup) finish("declined", false)
-                    "updated" -> if (call.id == _state.value.callId && call.state == "ACTIVE" && _state.value.phase == CallPhase.Incoming && call.conversationType != "DM") {
+                    CallEvents.RING -> onRing(call)
+                    CallEvents.ENDED -> if (call.id == _state.value.callId) finish(remoteReason = call.endReason ?: "ended", notifyServer = false)
+                    CallEvents.DISMISSED -> if (call.id == _state.value.callId && _state.value.phase == CallPhase.Incoming) finish("answered elsewhere", false)
+                    CallEvents.DECLINED -> if (call.id == _state.value.callId && !_state.value.isGroup) finish("declined", false)
+                    CallEvents.UPDATED -> if (call.id == _state.value.callId && call.state == "ACTIVE" && _state.value.phase == CallPhase.Incoming && call.conversationType != "DM") {
                         // Group call already running: keep the banner but stop ringing UI.
                         IncomingCallNotifier.cancel(context)
                     }
-                    "alerted" -> if (call.id == _state.value.callId && _state.value.phase == CallPhase.Outgoing) _state.update { it.copy(alerted = true) }
+                    CallEvents.ALERTED -> if (call.id == _state.value.callId && _state.value.phase == CallPhase.Outgoing) _state.update { it.copy(alerted = true) }
                     // A voice room's manager muted this phone's microphone: show it off here too (only you can turn it on).
-                    "moderated" -> if (call.id == _state.value.callId && f.action == "mute") {
+                    CallEvents.MODERATED -> if (call.id == _state.value.callId && f.action == "mute") {
                         scope.launch { runCatching { room?.localParticipant?.setMicrophoneEnabled(false) }; refreshParticipants() }
                         _state.update { it.copy(notice = "A room manager muted your microphone") }
                     }

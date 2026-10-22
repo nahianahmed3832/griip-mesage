@@ -19,7 +19,8 @@ import com.meldiq.android.data.api.QueueItem
 import com.meldiq.android.data.api.QueuePayload
 import com.meldiq.android.data.api.QueueRes
 import com.meldiq.android.data.api.RealtimeClient
-import com.meldiq.android.data.api.RealtimeFrame
+import com.meldiq.android.data.api.ClientEvent
+import com.meldiq.android.data.api.ServerEvent
 import com.meldiq.android.data.api.SendMessageReq
 import com.meldiq.android.data.api.SendMessageRes
 import com.meldiq.android.data.api.WireKeyWrap
@@ -129,8 +130,8 @@ class MessageRepository(
     val typing: StateFlow<Map<String, Map<String, Long>>> = _typing
     private val _callInvites = MutableSharedFlow<IncomingCallKey>(extraBufferCapacity = 16)
     val callInvites: SharedFlow<IncomingCallKey> = _callInvites
-    private val _callFrames = MutableSharedFlow<RealtimeFrame>(extraBufferCapacity = 32)
-    val callFrames: SharedFlow<RealtimeFrame> = _callFrames
+    private val _callFrames = MutableSharedFlow<ServerEvent.Call>(extraBufferCapacity = 32)
+    val callFrames: SharedFlow<ServerEvent.Call> = _callFrames
     private val _orgEvents = MutableSharedFlow<String>(extraBufferCapacity = 16)
     /** Round 7: a meeting starting in ten minutes (its id), and a workspace whose meetings changed (its id). */
     private val _meetingSoon = MutableSharedFlow<String>(extraBufferCapacity = 16)
@@ -158,7 +159,7 @@ class MessageRepository(
     private val myDeviceId get() = session.session?.deviceId
 
     fun start() {
-        scope.launch { realtime.frames.collect { f -> runCatching { handleFrame(f) }.onFailure { Log.w(TAG, "frame ${f.t} failed: ${it.javaClass.simpleName}") } } }
+        scope.launch { realtime.events.collect { e -> runCatching { handleEvent(e) }.onFailure { Log.w(TAG, "event ${e.javaClass.simpleName} failed: ${it.javaClass.simpleName}") } } }
         scope.launch { outboxLoop() }
         scope.launch { runCatching { retrySetAside() } }
         scope.launch {
@@ -391,7 +392,7 @@ class MessageRepository(
         val now = System.currentTimeMillis()
         if (on && now - lastTypingSent < 2500) return
         lastTypingSent = if (on) now else 0
-        realtime.send("""{"t":"typing","c":"$cid","on":$on}""")
+        realtime.send(ClientEvent.Typing(cid, on))
     }
 
     // ─────────── Attachments (encrypted before upload) ───────────
@@ -846,39 +847,37 @@ class MessageRepository(
 
     // ─────────────────────────── Receiving ───────────────────────────
 
-    private suspend fun handleFrame(f: RealtimeFrame) {
-        when (f.t) {
-            "queue" -> processQueue(f.items.orEmpty(), f.backlog == true)
-            "queue.drained" -> backlogDrained.value = true
-            "typing" -> {
-                val c = f.c ?: return
-                val u = f.u ?: return
-                _typing.update { m ->
-                    val cur = m[c].orEmpty().toMutableMap()
-                    if (f.on == true) cur[u] = System.currentTimeMillis() + 6000 else cur.remove(u)
-                    m + (c to cur)
-                }
+    private suspend fun handleEvent(e: ServerEvent) {
+        when (e) {
+            is ServerEvent.Queue -> processQueue(e.items, e.backlog)
+            ServerEvent.QueueDrained -> backlogDrained.value = true
+            is ServerEvent.Typing -> _typing.update { m ->
+                val cur = m[e.c].orEmpty().toMutableMap()
+                if (e.on) cur[e.u] = System.currentTimeMillis() + 6000 else cur.remove(e.u)
+                m + (e.c to cur)
             }
-            "presence" -> f.userId?.let { db.users().setPresence(it, f.online == true, f.lastSeenAt, com.meldiq.android.data.model.PresenceRules.stored(f.presence)) }
-            "conv.updated" -> f.conversationId?.let { conversations.refreshOne(it) }
-            "org.updated" -> {
-                f.orgId?.let { _orgEvents.tryEmit(it) }
+            is ServerEvent.Presence -> db.users().setPresence(e.userId, e.online, e.lastSeenAt, com.meldiq.android.data.model.PresenceRules.stored(e.presence))
+            is ServerEvent.ConvUpdated -> conversations.refreshOne(e.conversationId)
+            is ServerEvent.OrgUpdated -> {
+                _orgEvents.tryEmit(e.orgId)
                 runCatching { conversations.refresh() }
             }
-            // 2026-10-17: an owner deleted the organization (servers before then only send org.updated).
-            "org.deleted" -> f.orgId?.let { id ->
-                _orgDeleted.tryEmit(id)
-                _orgEvents.tryEmit(id)
+            is ServerEvent.OrgDeleted -> {
+                _orgDeleted.tryEmit(e.orgId)
+                _orgEvents.tryEmit(e.orgId)
             }
-            "devices.changed" -> f.userId?.let { directory.invalidateUser(it) }
-            // Batch B6: a connection request, acceptance or removal involving you.
-            "connections.updated" -> _connectionsChanged.tryEmit(Unit)
-            "prefs.updated" -> f.workspaceId?.let { _prefsUpdated.tryEmit(it) }
-            "reminder.due", "reminders.changed" -> f.id?.let { _reminderEvents.tryEmit(it) }
-            // Round 7 meetings (docs/WORKSPACE_C5.md).
-            "meeting.soon" -> f.meetingId?.let { _meetingSoon.tryEmit(it) }
-            "meeting.updated" -> f.orgId?.let { _meetingUpdates.tryEmit(it) }
-            "call" -> _callFrames.tryEmit(f)
+            is ServerEvent.DevicesChanged -> directory.invalidateUser(e.userId)
+            ServerEvent.ConnectionsUpdated -> _connectionsChanged.tryEmit(Unit)
+            is ServerEvent.PrefsUpdated -> _prefsUpdated.tryEmit(e.workspaceId)
+            is ServerEvent.ReminderDue -> _reminderEvents.tryEmit(e.id)
+            is ServerEvent.RemindersChanged -> _reminderEvents.tryEmit(e.id)
+            is ServerEvent.MeetingSoon -> _meetingSoon.tryEmit(e.meetingId)
+            is ServerEvent.MeetingUpdated -> _meetingUpdates.tryEmit(e.orgId)
+            is ServerEvent.Call -> _callFrames.tryEmit(e)
+            // Moderator and applicant signals: the screens that show them reload when opened.
+            is ServerEvent.OrgReports, is ServerEvent.OrgApplications, is ServerEvent.OrgApplication, is ServerEvent.OrgAlert -> Unit
+            // The socket's own bookkeeping, and frames from a newer server.
+            is ServerEvent.Hello, is ServerEvent.Pong, is ServerEvent.Unknown -> Unit
         }
     }
 
@@ -894,7 +893,7 @@ class MessageRepository(
         val acks = processor.process(items)
         if (acks.size < items.size) Log.w(TAG, "deferring ${items.size - acks.size} queue item(s) for redelivery")
         if (acks.isNotEmpty() || backlog) {
-            val sent = realtime.send("""{"t":"ack","ids":[${acks.joinToString(",")}],"backlog":$backlog}""")
+            val sent = realtime.send(ClientEvent.Ack(acks, backlog))
             if (!sent && acks.isNotEmpty()) runCatching { api.post<AckReq, OkRes>("/v1/queue/ack", AckReq(acks)) }
         }
     }

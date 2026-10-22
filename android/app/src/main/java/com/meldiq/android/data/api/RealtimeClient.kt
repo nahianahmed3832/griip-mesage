@@ -36,8 +36,9 @@ class RealtimeClient(
 ) {
     private val _state = MutableStateFlow(ConnState.Disconnected)
     val state: StateFlow<ConnState> = _state
-    private val inbox = FrameInbox<RealtimeFrame>()
-    val frames: Flow<RealtimeFrame> = inbox.frames
+    private val inbox = FrameInbox<ServerEvent>()
+    /** Typed server events in arrival order ([RealtimeCodec]); collect from exactly one place. */
+    val events: Flow<ServerEvent> = inbox.frames
 
     private var ws: WebSocket? = null
     private var wanted = false
@@ -83,7 +84,8 @@ class RealtimeClient(
         if (wanted) open()
     }
 
-    fun send(text: String): Boolean = ws?.send(text) ?: false
+    /** Sends a frame built by [RealtimeCodec]; false when there's no socket (callers fall back to REST). */
+    fun send(event: ClientEvent): Boolean = ws?.send(RealtimeCodec.encode(event)) ?: false
 
     @Synchronized
     private fun open() {
@@ -97,8 +99,15 @@ class RealtimeClient(
         val req = Request.Builder().url(url).header("Authorization", "Bearer $t").build()
         ws = http.newWebSocket(req, object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) {
-                val frame = runCatching { GriipJson.decodeFromString(RealtimeFrame.serializer(), text) }.getOrNull() ?: return
-                if (frame.t == "hello") {
+                val frame = try {
+                    RealtimeCodec.decode(text)
+                } catch (e: MalformedFrame) {
+                    // Skipped like before (an unacked queue item comes back after reconnecting), but no longer silently.
+                    Log.w("Realtime", e.message ?: "malformed frame")
+                    return
+                }
+                if (frame is ServerEvent.Unknown) return
+                if (frame is ServerEvent.Hello) {
                     attempt = 0
                     _state.value = ConnState.Connected
                 }

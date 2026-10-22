@@ -78,7 +78,8 @@ import com.meldiq.android.data.api.PlatformMeRes
 import com.meldiq.android.data.api.PresenceModeRes
 import com.meldiq.android.data.api.PresenceRes
 import com.meldiq.android.data.api.QueueRes
-import com.meldiq.android.data.api.RealtimeFrame
+import com.meldiq.android.data.api.RealtimeCodec
+import com.meldiq.android.data.api.ServerEvent
 import com.meldiq.android.data.api.ReportRes
 import com.meldiq.android.data.api.ReportSentRes
 import com.meldiq.android.data.api.RoleMembersRes
@@ -95,6 +96,8 @@ import com.meldiq.android.data.repo.RemindersRes
 import com.meldiq.android.data.api.GriipJson
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.serializer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -285,13 +288,25 @@ class ContractFixturesTest {
 
     private fun firstLine(t: Throwable): String = t.message?.lineSequence()?.first() ?: t.toString()
 
+    /** The app's own path ([RealtimeCodec]) for GriipJson, the same models with [json] otherwise; must be known. */
+    private fun decodeFrame(json: Json, text: String): ServerEvent {
+        val event = if (json === GriipJson) {
+            RealtimeCodec.decode(text)
+        } else {
+            val t = json.parseToJsonElement(text).jsonObject.getValue("t").jsonPrimitive.content
+            RealtimeCodec.serializerFor(t)?.let { json.decodeFromString(it, text) } ?: RealtimeCodec.decode(text)
+        }
+        check(event !is ServerEvent.Unknown) { "a frame the app doesn't know: ${(event as ServerEvent.Unknown).t}" }
+        return event
+    }
+
     private fun decodeAll(json: Json): Map<String, String> {
         val failures = sortedMapOf<String, String>()
         for ((name, ser) in http) {
             runCatching { json.decodeFromString(ser, read("http/$name.json")) }.onFailure { failures["http/$name"] = firstLine(it) }
         }
         for (f in File(fixtures, "realtime").listFiles().orEmpty().filter { it.extension == "json" }) {
-            runCatching { json.decodeFromString(serializer<RealtimeFrame>(), f.readText()) }
+            runCatching { decodeFrame(json, f.readText()) }
                 .onFailure { failures["realtime/${f.nameWithoutExtension}"] = firstLine(it) }
         }
         for (f in File(fixtures, "http/errors").listFiles().orEmpty().filter { it.extension == "json" }) {

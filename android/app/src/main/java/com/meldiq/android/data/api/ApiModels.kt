@@ -588,35 +588,3 @@ object CommunityAccess {
 @Serializable data class ApiErrorBody(val error: ApiErrorDetail? = null)
 @Serializable data class ApiErrorDetail(val code: String = "", val message: String = "", val details: JsonElement? = null)
 @Serializable data class OkRes(val ok: Boolean = true)
-
-/** Raw realtime frame; fields depend on `t`. */
-@Serializable data class RealtimeFrame(
-    val t: String,
-    /** "meeting.soon" / "meeting.updated" (round 7, docs/WORKSPACE_C5.md). */
-    val meetingId: String? = null,
-    val startsAt: Long? = null,
-    /** "prefs.updated": which workspace's personal preferences changed on another device of this person. */
-    val workspaceId: String? = null,
-    val items: List<QueueItem>? = null,
-    val more: Boolean? = null,
-    val backlog: Boolean? = null,
-    val c: String? = null,
-    val u: String? = null,
-    val on: Boolean? = null,
-    val userId: String? = null,
-    val online: Boolean? = null,
-    val lastSeenAt: Long? = null,
-    /** Batch B6b: "online", "idle", "dnd" or "offline" (servers with `presence-modes`). */
-    val presence: String? = null,
-    val event: String? = null,
-    val call: CallDto? = null,
-    val from: JsonObject? = null,
-    val conversationId: String? = null,
-    val orgId: String? = null,
-    val deviceId: String? = null,
-    /** Voice rooms: what a moderator did to you ("mute", "lower_hand", "remove"). */
-    val action: String? = null,
-    /** "reminder.due" / "reminders.changed": which reminder (docs/REMINDERS.md). */
-    val id: String? = null,
-    val firedAt: Long? = null,
-)
