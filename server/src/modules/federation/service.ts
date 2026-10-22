@@ -14,7 +14,7 @@ import { canonical, isValidPublicKey, verifyEd25519 } from "../../shared/utiliti
 import type { QueueItemRow } from "../realtime/hub.js";
 import { type CallRow, callView } from "../calls/routes.js";
 import { readAll } from "../../infrastructure/storage/blobstore.js";
-import { ApiError } from "../../shared/errors.js";
+import { ApiError, type ErrorCode, isErrorCode } from "../../shared/errors.js";
 import { now } from "../../shared/utilities/util.js";
 import { type ServerDescriptor, ServerIdentity, verifyServerText } from "./identity.js";
 import { FederationError, type ResolvedServer, Resolver } from "./resolver.js";
@@ -799,7 +799,7 @@ export class Federation {
   async forwardCall(c: CallRow, action: string, userId: string, deviceId: string, body: object = {}) {
     const peer = await this.resolver.server(c.host_server_id!);
     const r = await this.request(peer, "POST", `/fed/v1/calls/${c.id}/${action}`, { userId, deviceId, ...body });
-    if (r.status !== 200) throw new ApiError(r.status === 404 ? 404 : r.status, r.json?.error?.code ?? "call_failed", r.json?.error?.message ?? "The call's server refused that");
+    if (r.status !== 200) throw new ApiError(r.status === 404 ? 404 : r.status, remoteCode(r.json?.error?.code), r.json?.error?.message ?? "The call's server refused that");
     const mirror = this.applyCallState(peer, r.json.call);
     return { call: callView(this.ctx, mirror), ...(r.json.media ? { media: r.json.media } : {}) };
   }
@@ -812,4 +812,9 @@ export class Federation {
       outbox: db.prepare("DELETE FROM federation_outbox WHERE expires_at <= ?").run(t).changes,
     };
   }
+}
+
+/** A host server's error code passed on to our client: only codes this server's catalog knows (shared/errors.ts). */
+function remoteCode(code: unknown): ErrorCode {
+  return typeof code === "string" && isErrorCode(code) ? code : "call_failed";
 }

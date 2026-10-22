@@ -1,3 +1,4 @@
+import type { ErrorCode } from "../../../shared/errors.js";
 import type { OrgRole } from "../authz.js";
 import { BASE_ROLE_PERMISSIONS, BASE_ROLE_RANK, type Permission, permissionDef } from "./catalog.js";
 
@@ -40,11 +41,11 @@ export function effectivePermissions(base: OrgRole, roles: readonly RoleGrant[])
 
 export interface Refusal {
   status: 400 | 403 | 409;
-  code: string;
+  code: ErrorCode;
   message: string;
 }
 
-const refuse = (status: Refusal["status"], code: string, message: string): Refusal => ({ status, code, message });
+const refuse = (status: Refusal["status"], code: ErrorCode, message: string): Refusal => ({ status, code, message });
 
 /** The actor: their base role and effective permissions in the workspace. */
 export interface Actor {

@@ -1,3 +1,4 @@
+import type { ErrorCode } from "../../../shared/errors.js";
 import type { OrgRole } from "../authz.js";
 import { type Permission, permissionDef } from "./catalog.js";
 
@@ -97,7 +98,7 @@ export function channelPermissions(actor: ChannelActor, levels: readonly (readon
 
 export interface OverwriteRefusal {
   status: 400 | 403;
-  code: string;
+  code: ErrorCode;
   message: string;
 }
 

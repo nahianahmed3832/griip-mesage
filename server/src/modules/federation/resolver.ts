@@ -9,13 +9,13 @@
  *   (until its descriptor expires); an unknown domain needs a live quorum.
  */
 import type { DB } from "../../infrastructure/database/db.js";
-import { ApiError } from "../../shared/errors.js";
+import { ApiError, type ErrorCode } from "../../shared/errors.js";
 import { chainExtends, isDomain, isServerId, type ServerDescriptor, verifyDescriptor } from "./identity.js";
 import { type CoreAnswer, type FinalRecord, type LifecycleState, verifyAnswer, verifyDecommission, verifyRevocation } from "./records.js";
 
 /** Federation failures are ordinary API errors (status, code, message), so clients get them as JSON like any other. */
 export class FederationError extends ApiError {
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: ErrorCode, message: string) {
     super(status, code, message);
   }
   get status() {
