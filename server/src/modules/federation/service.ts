@@ -620,12 +620,11 @@ export class Federation {
     const uploader = db.prepare("SELECT home_server_id FROM users WHERE id = ?").get(meta.uploaderUserId) as { home_server_id: string | null } | undefined;
     const member = db.prepare("SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?").get(meta.conversationId, meta.uploaderUserId);
     if (!conv || !member || uploader?.home_server_id !== peer.serverId) return { status: 403, code: "not_shared" };
-    const existing = db.prepare("SELECT size FROM attachments WHERE id = ?").get(meta.id) as { size: number } | undefined;
+    const existing = await this.ctx.files.attachment(meta.id);
     if (existing) return existing.size === meta.size ? { status: 200 } : { status: 409, code: "id_conflict" };
     // Storage quota for everything a peer pushes (same cap a local user has).
-    const fromPeer = (db
-      .prepare("SELECT SUM(a.size) n FROM attachments a JOIN users u ON u.id = a.uploader_user_id WHERE u.home_server_id = ? AND a.expires_at > ?")
-      .get(peer.serverId, now()) as { n: number | null }).n ?? 0;
+    const peerUsers = (db.prepare("SELECT id FROM users WHERE home_server_id = ?").all(peer.serverId) as { id: string }[]).map((r) => r.id);
+    const fromPeer = (await this.ctx.files.storedUsage({ uploaders: peerUsers, liveAt: now() })).bytes;
     if (config.attachmentUserStoredBytes > 0 && fromPeer + meta.size > config.attachmentUserStoredBytes) return { status: 429, code: "quota_exceeded" };
     const tmp = path.join(this.ctx.blobs.spoolDir, `${meta.id}.fed.part`);
     const hash = crypto.createHash("sha256");
@@ -656,7 +655,7 @@ export class Federation {
       return { status: 400, code: "bad_body" };
     }
     const expiresAt = Math.min(meta.expiresAt, now() + config.attachmentTtlSeconds * 1000);
-    db.prepare("INSERT INTO attachments (id, conversation_id, uploader_user_id, size, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)").run(meta.id, meta.conversationId, meta.uploaderUserId, size, now(), expiresAt);
+    await this.ctx.files.recordAttachment({ id: meta.id, conversation_id: meta.conversationId, uploader_user_id: meta.uploaderUserId, size, created_at: now(), expires_at: expiresAt });
     return { status: 200 };
   }
 

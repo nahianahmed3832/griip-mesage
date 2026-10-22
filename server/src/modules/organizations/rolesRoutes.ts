@@ -77,13 +77,12 @@ function throwRefusal(r: Refusal): never {
 }
 
 /** What a workspace uses of each limited capability (round 7 adds members, storage, workflows and more). */
-export function planUsage(ctx: AppContext, orgId: string, customRoles: number) {
+export async function planUsage(ctx: AppContext, orgId: string, customRoles: number) {
   const n = (sql: string, ...p: unknown[]) => (ctx.db.prepare(sql).get(...p) as { n: number | null }).n ?? 0;
-  const t = now();
   return {
     "roles.custom": customRoles,
     members: n("SELECT COUNT(*) n FROM org_members WHERE org_id = ?", orgId),
-    "storage.bytes": n("SELECT SUM(a.size) n FROM attachments a JOIN conversations c ON c.id = a.conversation_id WHERE c.org_id = ? AND a.expires_at > ?", orgId, t),
+    "storage.bytes": (await ctx.files.storedUsage({ conversations: ctx.authz.conversationIdsOf(orgId), liveAt: now() })).bytes,
   };
 }
 
@@ -453,12 +452,8 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
       (db.prepare("SELECT role, COUNT(*) n FROM org_members WHERE org_id = ? GROUP BY role").all(orgId) as { role: OrgRole; n: number }[]).map((r) => [r.role, r.n]),
     );
     const t = now();
-    const files = db
-      .prepare(
-        `SELECT COUNT(*) n, COALESCE(SUM(a.size), 0) bytes FROM attachments a JOIN conversations c ON c.id = a.conversation_id
-         WHERE c.org_id = ? AND a.expires_at > ?`,
-      )
-      .get(orgId, t) as { n: number; bytes: number };
+    const stored = await ctx.files.storedUsage({ conversations: authz.conversationIdsOf(orgId), liveAt: t });
+    const files = { n: stored.count, bytes: stored.bytes };
     return {
       members: {
         total: [...byRole.values()].reduce((a, b) => a + b, 0),
@@ -482,8 +477,8 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
       roles: { custom: count("SELECT COUNT(*) n FROM org_roles WHERE org_id = ? AND archived_at IS NULL", orgId) },
       limits: { fileMaxBytes: ctx.config.fileMaxBytes, orgStoredBytes: ctx.config.abuse.orgStoredBytes || null },
       // Round 7: measured usage over the last 30 days, per day (docs/USAGE_AND_PLANS.md). Counts and sizes only.
-      metered: (() => {
-        ctx.usage.snapshot();
+      metered: await (async () => {
+        await ctx.usage.snapshot();
         return { days: 30, metrics: ctx.usage.series(orgId, 30) };
       })(),
     };
@@ -496,7 +491,7 @@ export default async function roleRoutes(app: FastifyInstance, ctx: AppContext) 
     const { orgId } = parse(OrgParams, req.params);
     authz.requireOrgMember(orgId, userId);
     const customRoles = (db.prepare("SELECT COUNT(*) n FROM org_roles WHERE org_id = ? AND archived_at IS NULL").get(orgId) as { n: number }).n;
-    return ctx.entitlements.plan(planUsage(ctx, orgId, customRoles), orgId);
+    return ctx.entitlements.plan(await planUsage(ctx, orgId, customRoles), orgId);
   });
 
   // ───────────── The full audit log ─────────────

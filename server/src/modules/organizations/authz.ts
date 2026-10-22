@@ -154,6 +154,11 @@ export class Authz {
     if (!this.isOrgAdmin(orgId, userId)) throw forbidden("Only organization owners and admins can do that");
   }
 
+  /** Every conversation of a community (its channels), for adding up what they hold. */
+  conversationIdsOf(orgId: string): string[] {
+    return (this.db.prepare("SELECT id FROM conversations WHERE org_id = ?").all(orgId) as { id: string }[]).map((r) => r.id);
+  }
+
   conversation(id: string): ConversationRow | undefined {
     return this.db.prepare("SELECT * FROM conversations WHERE id = ?").get(id) as ConversationRow | undefined;
   }

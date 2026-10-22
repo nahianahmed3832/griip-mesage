@@ -88,6 +88,11 @@ export function hasNewAccountLimits(db: DB, userId: string, t = now()): boolean 
   return !!r?.limited_until && r.limited_until > t;
 }
 
+/** The accounts still under new-account limits (their files share one allowance). */
+export function limitedUserIds(db: DB, t = now()): string[] {
+  return (db.prepare("SELECT id FROM users WHERE limited_until > ?").all(t) as { id: string }[]).map((r) => r.id);
+}
+
 /** Ends an account's new-account limits. Returns whether it had any. */
 export function endNewAccountLimits(db: DB, userId: string): boolean {
   return db.prepare("UPDATE users SET limited_until = NULL WHERE id = ? AND limited_until IS NOT NULL").run(userId).changes > 0;

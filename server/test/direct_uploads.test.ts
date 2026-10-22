@@ -5,6 +5,7 @@ import { runCleanup } from "../src/modules/administration/jobs.js";
 import { type FakeS3, startFakeS3 } from "./support/fakeS3.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
+import { expireUploadSessions } from "./support/files.js";
 
 // Direct uploads from the app to S3 (presigned), against an in-process fake S3: no AWS account is used.
 const creds = { accessKeyId: "AKIDDIRECTTEST", secretAccessKey: "direct-upload-test-secret" };
@@ -185,7 +186,7 @@ describe("direct uploads to S3", () => {
     await put(single.upload, body); // sent, never completed
     const multi = await alice.req("POST", "/v1/attachments/uploads", { conversationId: dm, size: 6 * MiB, sha256: sha(Buffer.from("m")) });
     const kept = (await uploadSingle(alice, dm, crypto.randomBytes(1000))).done;
-    h.ctx.db.prepare("UPDATE attachment_uploads SET expires_at = 0 WHERE id IN (?, ?)").run(single.uploadId, multi.uploadId);
+    await expireUploadSessions(h, [single.uploadId, multi.uploadId]);
     await expectStatus(alice.req("POST", `/v1/attachments/uploads/${single.uploadId}/complete`, {}), 410);
     const r = await runCleanup(h.ctx);
     expect(r.uploadsExpired).toBe(2);

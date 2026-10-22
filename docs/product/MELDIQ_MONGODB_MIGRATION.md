@@ -15,7 +15,7 @@ domain lives in exactly one store at a time, and the server refuses to start oth
 | accounts | accounts, sessions, codes, legacy tickets, recovery codes and tickets, key backups and unlocks | 55 (4 files) | **Yes** (`MongoAccountStore`, `MongoKeyBackupStore`) | SQLite |
 | preferences | nav_preferences | 6 (1 file) | **Yes** (`MongoPreferenceStore`) | SQLite |
 | history | history_items, history_accounts | 11 → 0 in routes (2026-10-21) | **Yes, new 2026-10-21** (`MongoHistoryStore`) | SQLite |
-| files | attachments, uploads, abandoned uploads, blob deletes | 37 (7 files) | Copy and verify only | SQLite |
+| files | attachments, uploads, abandoned uploads, blob deletes | 0 outside the store, except the operator's org repair report (2026-10-22, Architecture 1.0 D2) | **Yes** (`MongoFileStore`) | SQLite |
 | federation | peers, domains, inbox, outbox, blocks | 26 (4 files) | Copy and verify only | SQLite |
 | relay | delivery_queue, submitted_messages | 0 outside the store (2026-10-22, Architecture 1.0 D1) | **Yes** (`MongoRelayStore`) | SQLite |
 | calls | calls, call participants, call hands (split from relay 2026-10-22) | ~45 | Copy and verify only | SQLite |

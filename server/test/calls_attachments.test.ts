@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runCleanup } from "../src/modules/administration/jobs.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
+import { setAttachmentExpiry } from "./support/files.js";
 
 let h: Harness;
 let alice: GriipClient, bob: GriipClient, eve: GriipClient;
@@ -87,7 +88,7 @@ describe("encrypted attachments", () => {
     await expectStatus(eve.req("POST", `/v1/attachments?conversationId=${dmId}`, undefined, blob), 404);
     await expectStatus(bob.req("GET", `/v1/attachments/a_${crypto.randomBytes(16).toString("base64url")}`), 404);
     // Expire it
-    h.ctx.db.prepare("UPDATE attachments SET expires_at = ? WHERE id = ?").run(Date.now() - 1, up.id);
+    await setAttachmentExpiry(h, [up.id], Date.now() - 1);
     await expectStatus(bob.req("GET", `/v1/attachments/${up.id}`), 404);
     const res = await runCleanup(h.ctx);
     expect(res.attachments).toBe(1);

@@ -108,7 +108,7 @@ if [ -n "${MONGODB_URI:-}" ]; then
     *) err "MONGODB_URI must start with mongodb:// or mongodb+srv://" ;;
   esac
   for d in $(echo "${MONGODB_DOMAINS:-}" | tr ',' ' '); do
-    case "$d" in accounts|preferences|history|reports|relationships|relay) ok "MongoDB holds: $d (migrated first with admin mongo-migrate)" ;;
+    case "$d" in accounts|preferences|history|reports|relationships|relay|files) ok "MongoDB holds: $d (migrated first with admin mongo-migrate)" ;;
       integrations) ok "MONGODB_DOMAINS: integrations is retired and ignored" ;; *) err "MONGODB_DOMAINS: unknown domain $d" ;; esac
   done
 elif [ -n "${MONGODB_DOMAINS:-}" ]; then

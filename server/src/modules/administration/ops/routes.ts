@@ -49,7 +49,7 @@ export default async function opsRoutes(app: FastifyInstance, ctx: AppContext, v
   app.get("/v1/admin/usage", auth, async (req) => {
     requirePlatformAdmin(me(req).userId);
     const { days } = parse(UsageQuery, req.query);
-    ctx.usage.snapshot();
+    await ctx.usage.snapshot();
     const totals = new Map(ctx.usage.totals(days).map((r) => [r.orgId, r.metrics]));
     const orgs = ctx.db.prepare("SELECT id, name, created_at FROM orgs ORDER BY created_at").all() as { id: string; name: string; created_at: number }[];
     return {

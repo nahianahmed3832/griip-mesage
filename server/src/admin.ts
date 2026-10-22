@@ -57,12 +57,15 @@ import { RETIRED_COMMANDS, runRetiredCommand } from "./modules/administration/re
 import { migrateBranchesAndTeams, verifyCommunityMigration } from "./modules/organizations/communityMigration.js";
 import { openMongo } from "./infrastructure/database/mongo/index.js";
 import { MongoRelayStore } from "./modules/messaging/relay/mongoStore.js";
+import { MongoFileStore } from "./modules/files/mongoStore.js";
+import { type FileStore, SqliteFileStore } from "./modules/files/store.js";
 import { type RelayStore, SqliteRelayStore } from "./modules/messaging/relay/store.js";
 import { MongoReportStore } from "./modules/organizations/reports/mongoStore.js";
 import { ReportSealer } from "./modules/organizations/reports/seal.js";
 import { type ReportStore, SqliteReportStore } from "./modules/organizations/reports/store.js";
 
 /** Reports live where MONGODB_DOMAINS says. */
+const fileStore = (ctx: AppContext): FileStore => (ctx.mongo?.owns("files") ? new MongoFileStore(ctx.mongo, console) : new SqliteFileStore(ctx.db));
 const relayStore = (ctx: AppContext): RelayStore =>
   ctx.mongo?.owns("relay") ? new MongoRelayStore(ctx.mongo, ctx.db, console) : new SqliteRelayStore(ctx.db);
 const reportStore = (ctx: AppContext): ReportStore => (ctx.mongo?.owns("reports") ? new MongoReportStore(ctx.mongo) : new SqliteReportStore(ctx.db));
@@ -116,7 +119,7 @@ switch (cmd) {
       oldestQueuedHours: cfg.mongo?.domains.has("relay")
         ? "in MongoDB"
         : Math.round((now() - (one("SELECT COALESCE(MIN(created_at), 0) n FROM delivery_queue") || now())) / 3600_000),
-      attachments: one("SELECT COUNT(*) n FROM attachments"),
+      attachments: cfg.mongo?.domains.has("files") ? "in MongoDB" : one("SELECT COUNT(*) n FROM attachments"),
       liveCalls: one("SELECT COUNT(*) n FROM calls WHERE state != 'ENDED'"),
       pushEndpoints: one("SELECT COUNT(*) n FROM push_endpoints"),
       pushEndpointsFailing: one("SELECT COUNT(*) n FROM push_endpoints WHERE failing_since IS NOT NULL"),
@@ -202,8 +205,10 @@ switch (cmd) {
           newAccountLimits: limited ? { until: new Date(u.limited_until!).toISOString() } : null,
           activeDevices: one("SELECT COUNT(*) n FROM devices WHERE user_id = ? AND revoked_at IS NULL", u.id),
           maxDevices: cfg.abuse.maxDevicesPerUser || null,
-          filesUploadedLast24h: one("SELECT COALESCE(SUM(size), 0) n FROM attachments WHERE uploader_user_id = ? AND created_at > ?", u.id, t - 86_400_000),
-          filesStored: one("SELECT COALESCE(SUM(size), 0) n FROM attachments WHERE uploader_user_id = ? AND expires_at > ?", u.id, t),
+          filesUploadedLast24h: cfg.mongo?.domains.has("files")
+            ? "in MongoDB"
+            : one("SELECT COALESCE(SUM(size), 0) n FROM attachments WHERE uploader_user_id = ? AND created_at > ?", u.id, t - 86_400_000),
+          filesStored: cfg.mongo?.domains.has("files") ? "in MongoDB" : one("SELECT COALESCE(SUM(size), 0) n FROM attachments WHERE uploader_user_id = ? AND expires_at > ?", u.id, t),
           // With MONGODB_DOMAINS history, SQLite only keeps the copy from before the migration.
           historyBytes: cfg.mongo?.domains.has("history") ? "in MongoDB" : one("SELECT COALESCE(SUM(bytes), 0) n FROM history_accounts WHERE user_id = ?", u.id),
         },
@@ -223,6 +228,7 @@ switch (cmd) {
     // Domains kept in MongoDB are cleaned there (docs/MONGODB.md).
     if (cfg.mongo) ctx.mongo = await openMongo(cfg.mongo, db);
     ctx.relay = relayStore(ctx);
+    ctx.files = fileStore(ctx);
     ctx.hub = new Hub(ctx.relay);
     ctx.accounts = new Accounts(ctx);
     ctx.reports = reportStore(ctx);
@@ -231,6 +237,7 @@ switch (cmd) {
       const r = await runCleanup(ctx);
       console.table(r);
     } finally {
+      await ctx.files.settled();
       await ctx.mongo?.close();
     }
     break;
@@ -376,11 +383,13 @@ switch (cmd) {
   }
   case "storage-orphans": {
     const blobs = createBlobStore(cfg);
+    const fctx = { db, config: cfg } as unknown as AppContext;
+    if (cfg.mongo) fctx.mongo = await openMongo(cfg.mongo, db);
+    const files = fileStore(fctx);
     const cutoff = now() - 86_400_000;
     const orphans: { kind: "attachments" | "profile-photos"; id: string; size: number }[] = [];
-    const attachment = db.prepare("SELECT 1 FROM attachments WHERE id = ? UNION SELECT 1 FROM attachment_uploads WHERE id = ?");
     for await (const o of blobs.listIds("attachments")) {
-      if (o.modifiedAt < cutoff && !attachment.get(o.id, o.id)) orphans.push({ kind: "attachments", id: o.id, size: o.size });
+      if (o.modifiedAt < cutoff && !(await files.knows(o.id))) orphans.push({ kind: "attachments", id: o.id, size: o.size });
     }
     // People's photos ("<userId>-<rev>", or "<userId>" before 2026-10-17) and organisations' ("<orgId>-<rev>", 2026-10-19).
     const photo = db.prepare(
@@ -394,10 +403,11 @@ switch (cmd) {
     const bytes = orphans.reduce((a, o) => a + o.size, 0);
     console.log(`${orphans.length} orphaned file(s), ${bytes} bytes, older than a day (${blobs.backend})`);
     if (rest.includes("--delete")) {
-      const q = db.prepare("INSERT OR IGNORE INTO pending_blob_deletes (kind, blob_id, attempts, next_at) VALUES (?, ?, 0, 0)");
-      for (const o of orphans) q.run(o.kind, o.id);
+      for (const o of orphans) files.queueBlobDelete(o.kind, o.id);
+      await files.settled();
       console.log("queued for deletion; they're removed by the next retention run (or run: cleanup)");
     } else if (orphans.length) console.log("dry run: nothing deleted. Re-run with --delete to remove them.");
+    await fctx.mongo?.close();
     break;
   }
   // Batch B4b: Meldiq's operators review reports sent to Meldiq (DMs, groups, illegal content).

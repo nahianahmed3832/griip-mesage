@@ -74,9 +74,9 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     sessions: db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(t).changes,
     pairing: db.prepare("DELETE FROM pairing_requests WHERE expires_at <= ?").run(t).changes,
     mentionAll: db.prepare("DELETE FROM mention_all_events WHERE at <= ?").run(t - 86_400_000).changes,
-    attachments: purgeExpiredAttachments(ctx),
+    attachments: await purgeExpiredAttachments(ctx),
     blobsDeleted: 0,
-    uploadsExpired: expireDirectUploads(ctx),
+    uploadsExpired: await expireDirectUploads(ctx),
     uploadsCleaned: 0,
     // History may live in MongoDB: an unreachable store mustn't stop the rest of retention.
     historyTombstones: await purgeHistory(ctx, t).catch((e) => {
@@ -109,7 +109,7 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
   };
   // Usage gauges (seats, stored bytes, call minutes), at most every ten minutes (docs/USAGE_AND_PLANS.md).
   try {
-    ctx.usage?.snapshot();
+    await ctx.usage?.snapshot();
   } catch (e) {
     ctx.log.error({ errorType: (e as Error).name }, "usage snapshot failed");
   }

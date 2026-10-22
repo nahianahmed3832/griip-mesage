@@ -7,6 +7,7 @@ import { runCleanup } from "../src/modules/administration/jobs.js";
 import { type FakeS3, startFakeS3 } from "./support/fakeS3.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
+import { expireUploadSessions, uploadSessionCount } from "./support/files.js";
 
 // Storage abuse controls (docs/ABUSE_CONTROLS.md): new-account allowances, workspace quotas, history caps, parallel
 // and retried uploads. Synthetic accounts and random bytes only; S3 is an in-process fake, so no AWS traffic.
@@ -227,7 +228,7 @@ describe("uploads to S3: size, parallel requests, retries, cleanup and access", 
     await s3.close();
   });
   const start = (c: GriipClient, size: number) => c.req("POST", "/v1/attachments/uploads", { conversationId: dm, size, sha256: sha(Buffer.from(`${size}`)) });
-  const openUploads = () => (h.ctx.db.prepare("SELECT COUNT(*) n FROM attachment_uploads WHERE user_id = ?").get(alice.userId) as { n: number }).n;
+  const openUploads = () => uploadSessionCount(h, alice.userId);
 
   it("refuses files over the size limit on the server, whatever the app announces or sends", async () => {
     expect((await expectStatus(start(alice, 20 * MiB + 1), 413)).error.code).toBe("too_large");
@@ -241,11 +242,11 @@ describe("uploads to S3: size, parallel requests, retries, cleanup and access", 
     const refused = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
     expect(ok.length).toBe(2);
     expect(refused.every((r) => r.reason.status === 429 && r.reason.body.error.code === "quota_exceeded")).toBe(true);
-    expect(openUploads()).toBe(2);
+    expect(await openUploads()).toBe(2);
     expect(ok.every((r) => r.value.mode === "multipart")).toBe(true);
     // Cancelled: their share is free again, and what reached S3 is removed.
     for (const r of ok) await alice.req("DELETE", `/v1/attachments/uploads/${r.value.uploadId}`);
-    expect(openUploads()).toBe(0);
+    expect(await openUploads()).toBe(0);
     expect([...s3.uploads.values()].some((u) => ok.some((r) => u.key.endsWith(r.value.uploadId)))).toBe(false);
   });
 
@@ -253,7 +254,7 @@ describe("uploads to S3: size, parallel requests, retries, cleanup and access", 
     s3.failNext(4); // the SDK's own retries included
     const failed = await expectStatus(start(alice, 6 * MiB), 503);
     expect(failed.error.code).toBe("storage_unavailable");
-    expect(openUploads()).toBe(0);
+    expect(await openUploads()).toBe(0);
     const retried = await start(alice, 6 * MiB);
     expect(retried.mode).toBe("multipart");
     await alice.req("DELETE", `/v1/attachments/uploads/${retried.uploadId}`);
@@ -269,11 +270,11 @@ describe("uploads to S3: size, parallel requests, retries, cleanup and access", 
       req.end(part);
     });
     expect([...s3.uploads.values()].some((u) => u.key.endsWith(s.uploadId))).toBe(true);
-    h.ctx.db.prepare("UPDATE attachment_uploads SET expires_at = 0 WHERE id = ?").run(s.uploadId);
+    await expireUploadSessions(h, [s.uploadId]);
     const r = await runCleanup(h.ctx);
     expect(r.uploadsExpired).toBe(1);
     expect([...s3.uploads.values()].some((u) => u.key.endsWith(s.uploadId))).toBe(false);
-    expect(openUploads()).toBe(0);
+    expect(await openUploads()).toBe(0);
   });
 
   it("nobody outside the conversation can upload to it, download from it, or touch someone's upload", async () => {

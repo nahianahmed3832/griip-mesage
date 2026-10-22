@@ -9,7 +9,24 @@ import type { TestProject } from "vitest/node";
 let rs: MongoMemoryReplSet | undefined;
 
 export async function setup(project: TestProject): Promise<void> {
-  rs = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" }, instanceOpts: [{ ip: "127.0.0.1" }] });
+  rs = await MongoMemoryReplSet.create({
+    replSet: { count: 1, storageEngine: "wiredTiger" },
+    // Every test server makes its own database: a file per collection and index. WiredTiger keeps those handles open
+    // long after a test drops its database, and a full parallel run reached macOS's open-file limit per process
+    // (kern.maxfilesperproc, 10240): mongod aborted with EMFILE mid-run. Idle handles are closed after seconds instead,
+    // and the cache stays small.
+    instanceOpts: [
+      {
+        ip: "127.0.0.1",
+        args: [
+          "--wiredTigerCacheSizeGB",
+          "0.25",
+          "--wiredTigerEngineConfigString",
+          "file_manager=(close_idle_time=5,close_scan_interval=5,close_handle_minimum=250)",
+        ],
+      },
+    ],
+  });
   project.provide("mongoUri", rs.getUri());
 }
 

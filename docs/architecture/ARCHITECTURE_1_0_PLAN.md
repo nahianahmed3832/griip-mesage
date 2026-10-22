@@ -539,3 +539,34 @@ How the MongoDB relay keeps today's guarantees:
 | Deletion cascades | inside the caller's transaction | right after it; anything left behind expires within the queue lifetime |
 
 Production: unchanged (SQLite). The relay's cutover waits for Atlas and a load test of send/ack throughput.
+
+### D1 merged (2026-10-22)
+
+`internal-beta` fast-forwarded to `d884e16` (local, not pushed). Main folder: 749 passed / 10 skipped.
+
+### Step D2: the files store (2026-10-22, branch `architecture-1.0`)
+
+| Commit | What |
+|---|---|
+| (D2) | `FileStore` (async) with `SqliteFileStore` (the existing SQL) and `MongoFileStore` (`files` domain); attachments, direct uploads, retention, kept files, quotas, usage figures, plan limits, federation's pushed attachments and three deletion cascades use it; the files tables now belong to the files module alone (14 table exceptions gone; the operator-only org repair report still counts them in SQLite) |
+
+What changed to keep today's guarantees on an asynchronous store:
+
+| Guarantee | Before (SQLite) | Now |
+|---|---|---|
+| Parallel uploads see each other's quota reservations | check and reserve with no `await` between | check and reserve inside a per-process lock (`shared/utilities/lock.ts`) |
+| Exactly one of "complete an upload" and "expire it" wins | one SQLite transaction | the same in SQLite; one MongoDB transaction |
+| Quotas per community, for new accounts together, per peer server | SQL joins with conversations and users | the store sums over ids the owning module supplies (`authz.conversationIdsOf`, `limitedUserIds`, the peer's users) |
+| A deleted conversation's files and uploads go with it | foreign-key cascade | `files.forgetConversation` in the same transaction (SQLite) or right after it (MongoDB); stored bytes are deleted once those cascades have run |
+| Usage gauges written in one transaction | sums inside it | stored bytes read first, then every gauge written in one transaction |
+
+Production: unchanged (SQLite; files in S3). The `files` cutover can follow the five ready domains once Atlas exists.
+
+Tests for D2: 755 passed / 10 skipped on SQLite and with accounts, preferences, history, reports, relationships, relay
+and files in MongoDB (CI's MongoDB pass now includes files); build passes. Two findings on the way:
+- The shared test MongoDB aborted mid-run with EMFILE: every test server makes its own database, and WiredTiger kept
+  file handles past macOS's 10,240 per process. `test/support/mongoGlobal.ts` now closes idle handles after seconds and
+  caps the cache (test-only; production has one database).
+- `push_wakeup.test.ts` › "coalesces wake-ups to one per window" failed in 2 of 4 full MongoDB-mode runs on this laptop
+  under load and passed every time alone: its 150–900 ms windows are tight when MongoDB round trips slow down. Left as
+  is and noted, not hidden; widen its windows if CI shows it.

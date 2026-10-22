@@ -143,6 +143,8 @@ async function eraseIdentity(ctx: AppContext, userId: string, actorId: string | 
     deletePersonalRecords(db, userId);
     // Messages and receipts the account sent that haven't been delivered: nobody can verify them once it's gone.
     ctx.relay.forgetSender(userId);
+    // Unfinished direct uploads: their objects or parts are removed by the retention job.
+    ctx.files.forgetUploader(userId);
     leaveConversations(db, userId, memberships);
     anonymize(ctx, userId, photoRev, t);
     removed = memberships.filter((m) => m.type !== "CHANNEL" && !hasLiveMember(db, m.id)).map((m) => m.id);
@@ -179,9 +181,6 @@ function deletePersonalRecords(db: DB, userId: string): void {
     "DELETE FROM pairing_requests WHERE approved_user_id = ?",
     "DELETE FROM history_items WHERE user_id = ?",
     "DELETE FROM history_accounts WHERE user_id = ?",
-    // Unfinished direct uploads: their objects or parts are removed by the retention job.
-    "INSERT OR IGNORE INTO abandoned_uploads (id, multipart_id, attempts, next_at) SELECT id, multipart_id, 0, 0 FROM attachment_uploads WHERE user_id = ?",
-    "DELETE FROM attachment_uploads WHERE user_id = ?",
     "DELETE FROM reminders WHERE user_id = ?",
     "DELETE FROM call_hands WHERE user_id = ?",
   ]) {
@@ -232,11 +231,8 @@ function hasLiveMember(db: DB, convId: string): boolean {
 function removeConversation(ctx: AppContext, convId: string): string[] {
   const { db } = ctx;
   const rooms = ids(db, "SELECT room_name AS id FROM calls WHERE conversation_id = ? AND state != 'ENDED'", convId);
-  for (const f of ids(db, "SELECT id FROM attachments WHERE conversation_id = ?", convId)) queueBlobDelete(ctx, "attachments", f);
-  db.prepare(
-    "INSERT OR IGNORE INTO abandoned_uploads (id, multipart_id, attempts, next_at) SELECT id, multipart_id, 0, 0 FROM attachment_uploads WHERE conversation_id = ?",
-  ).run(convId);
-  // Rows without a foreign key to the conversation; the rest (members, attachment rows, calls) cascade.
+  // Its files and uploads, queued items, and rows without a foreign key to the conversation (members and calls cascade).
+  ctx.files.forgetConversation(convId);
   ctx.relay.forgetConversation(convId);
   db.prepare("DELETE FROM mention_all_events WHERE conversation_id = ?").run(convId);
   db.prepare("DELETE FROM conversations WHERE id = ?").run(convId);

@@ -9,6 +9,16 @@ import { S3BlobStore } from "../src/infrastructure/storage/s3.js";
 import { EMPTY_SHA256, presignUrl, sha256Hex, signHeaders } from "./support/sigv4.js";
 import { type FakeS3, startFakeS3 } from "./support/fakeS3.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
+import { attachmentCount, setAttachmentExpiry } from "./support/files.js";
+
+/**
+ * The restart test keeps its data across server restarts in DATA_DIR; the test MongoDB database is dropped when a server
+ * closes, so file records stay in SQLite there whatever MELDIQ_TEST_MONGO_DOMAINS says (this suite is about the blob
+ * store, not the database).
+ */
+const filesInSqlite: Record<string, string> = process.env.MELDIQ_TEST_MONGO_DOMAINS
+  ? { MONGODB_DOMAINS: process.env.MELDIQ_TEST_MONGO_DOMAINS.split(",").filter((d) => d && d !== "files").join(",") }
+  : {};
 
 // AWS's published example credentials (not a real account).
 const AWS_EXAMPLE = { accessKeyId: "AKIAIOSFODNN7EXAMPLE", secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" };
@@ -203,7 +213,7 @@ describe("the server on S3 storage", () => {
     expect(Buffer.from(await part.arrayBuffer())).toEqual(blob.subarray(100, 200));
     await expectStatus(eve.req("GET", `/v1/attachments/${up.id}`), 404);
     expect(fs.readdirSync(path.join(h.dir, "upload-spool"))).toEqual([]); // nothing left on the server's disk
-    h.ctx.db.prepare("UPDATE attachments SET expires_at = ? WHERE id = ?").run(Date.now() - 1, up.id);
+    await setAttachmentExpiry(h, [up.id], Date.now() - 1);
     const r = await runCleanup(h.ctx);
     expect(r.attachments).toBe(1);
     expect(r.blobsDeleted).toBe(1);
@@ -254,7 +264,7 @@ describe("the server on S3 storage", () => {
     s3.failNext(10);
     await expectStatus(alice.req("POST", `/v1/attachments?conversationId=${dm}`, undefined, crypto.randomBytes(1000)), 503);
     s3.failNext(0);
-    expect((h.ctx.db.prepare("SELECT COUNT(*) n FROM attachments WHERE uploader_user_id = ?").get(alice.userId) as { n: number }).n).toBe(0);
+    expect(await attachmentCount(h, alice.userId)).toBe(0);
     expect(fs.readdirSync(path.join(h.dir, "upload-spool"))).toEqual([]);
   });
 
@@ -288,7 +298,7 @@ describe("switching between the disk and S3 without moving files (STORAGE_READ_F
   it("disk files stay readable after moving to S3, and S3 files after a rollback to the disk", async () => {
     const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), crypto.randomBytes(3000), Buffer.from([0xff, 0xd9])]);
     // 1. On the disk, as production runs today.
-    let h = await startServer({ DATA_DIR: dataDir });
+    let h = await startServer({ DATA_DIR: dataDir, ...filesInSqlite });
     const alice = await h.client("alice");
     const bob = await h.client("bob");
     const dm = (await alice.req("POST", "/v1/conversations/dm", { userId: bob.userId })).conversation.id;
@@ -297,7 +307,7 @@ describe("switching between the disk and S3 without moving files (STORAGE_READ_F
     await alice.req("PUT", "/v1/users/me/photo", undefined, jpeg);
     await h.close();
     const restart = async (env: Record<string, string>) => {
-      h = await startServer({ DATA_DIR: dataDir, ...env });
+      h = await startServer({ DATA_DIR: dataDir, ...filesInSqlite, ...env });
       for (const c of [alice, bob]) c.baseUrl = h.baseUrl;
     };
 
@@ -317,7 +327,7 @@ describe("switching between the disk and S3 without moving files (STORAGE_READ_F
     const linked = await fetch(`${h.baseUrl}/v1/attachments/${s3Id}`, { headers: { authorization: `Bearer ${bob.token}` }, redirect: "manual" });
     expect(linked.status).toBe(302);
     // Expiry removes a disk file too.
-    h.ctx.db.prepare("UPDATE attachments SET expires_at = ? WHERE id = ?").run(Date.now() - 1, diskId);
+    await setAttachmentExpiry(h, [diskId], Date.now() - 1);
     await runCleanup(h.ctx);
     expect(fs.existsSync(path.join(dataDir, "attachments", diskId))).toBe(false);
     await h.close();
@@ -331,7 +341,7 @@ describe("switching between the disk and S3 without moving files (STORAGE_READ_F
     expect(s3.objects.has(`orbit/attachments/${localId}`)).toBe(false);
     expect(Buffer.from(await bob.req("GET", `/v1/attachments/${localId}`))).toEqual(back);
     await expectStatus((await h.client("eve")).req("GET", `/v1/attachments/${s3Id}`), 404);
-    h.ctx.db.prepare("UPDATE attachments SET expires_at = ? WHERE id = ?").run(Date.now() - 1, s3Id);
+    await setAttachmentExpiry(h, [s3Id], Date.now() - 1);
     await runCleanup(h.ctx);
     expect(s3.objects.has(`orbit/attachments/${s3Id}`)).toBe(false);
     await h.close();

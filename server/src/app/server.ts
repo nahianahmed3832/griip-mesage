@@ -1,6 +1,8 @@
 import rateLimit from "@fastify/rate-limit";
 import { MongoRelayStore } from "../modules/messaging/relay/mongoStore.js";
 import { SqliteRelayStore } from "../modules/messaging/relay/store.js";
+import { MongoFileStore } from "../modules/files/mongoStore.js";
+import { SqliteFileStore } from "../modules/files/store.js";
 import { type ContractObserver, observeContracts } from "./contractObserver.js";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -145,6 +147,7 @@ export async function buildApp(
   }
   ctx.relay = ctx.mongo?.owns("relay") ? new MongoRelayStore(ctx.mongo, db, app.log) : new SqliteRelayStore(db);
   ctx.hub = new Hub(ctx.relay, config.abuse.wsMaxSocketsPerDevice);
+  ctx.files = ctx.mongo?.owns("files") ? new MongoFileStore(ctx.mongo, app.log) : new SqliteFileStore(db);
   if (opts.contracts) {
     const observer = opts.contracts;
     ctx.hub.observe = (e) => observer.frame(e);
@@ -156,7 +159,7 @@ export async function buildApp(
   ctx.relationships = ctx.mongo?.owns("relationships") ? new MongoRelationshipStore(ctx.mongo) : new SqliteRelationshipStore(db);
   ctx.reportSealer = ReportSealer.load(process.env, config.dataDir);
   ctx.entitlements = new Entitlements(config.entitlements, db);
-  ctx.usage = new UsageMeter(db);
+  ctx.usage = new UsageMeter(db, ctx.files);
   ctx.reminders = new ReminderService(ctx);
   ctx.reminders.start(config.reminderTickMs);
   app.addHook("onClose", async () => ctx.reminders.stop());

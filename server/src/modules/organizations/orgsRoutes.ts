@@ -340,6 +340,9 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
     if (role !== "OWNER") throw forbidden("Only an owner can delete the organization");
     const org = db.prepare("SELECT name FROM orgs WHERE id = ?").get(orgId) as { name: string };
     if (body.confirmName.trim() !== org.name.trim()) throw new ApiError(400, "confirm_mismatch", "Type the organization's name exactly as it appears to delete it");
+    // The files store may not be SQLite: what the channels hold is read before the transaction (and their records go
+    // inside it, through ctx.files.forgetConversation).
+    const files = await ctx.files.attachmentIdsIn(authz.conversationIdsOf(orgId));
 
     const result = db
       .transaction(() => {
@@ -349,27 +352,20 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
         const members = (db.prepare("SELECT user_id FROM org_members WHERE org_id = ?").all(orgId) as { user_id: string }[]).map((r) => r.user_id);
         const channels = (db.prepare("SELECT id FROM conversations WHERE org_id = ?").all(orgId) as { id: string }[]).map((r) => r.id);
         const channelMembers = new Map<string, string[]>();
-        const files: string[] = [];
         const rooms: string[] = [];
         for (const c of channels) {
           channelMembers.set(c, (db.prepare("SELECT user_id FROM conversation_members WHERE conversation_id = ?").all(c) as { user_id: string }[]).map((r) => r.user_id));
-          files.push(...(db.prepare("SELECT id FROM attachments WHERE conversation_id = ?").all(c) as { id: string }[]).map((r) => r.id));
           rooms.push(...(db.prepare("SELECT room_name FROM calls WHERE conversation_id = ? AND state != 'ENDED'").all(c) as { room_name: string }[]).map((r) => r.room_name));
-          // Rows without a foreign key to the conversation.
+          // Rows without a foreign key to the conversation; its files' bytes are scheduled for deletion and its open
+          // uploads abandoned (their objects or parts are removed by the retention job).
           ctx.relay.forgetConversation(c);
+          ctx.files.forgetConversation(c);
           db.prepare("DELETE FROM mention_all_events WHERE conversation_id = ?").run(c);
         }
-        for (const f of files) queueBlobDelete(ctx, "attachments", f);
         const photoRev = (db.prepare("SELECT photo_rev FROM orgs WHERE id = ?").get(orgId) as { photo_rev: number | null }).photo_rev;
         if (photoRev) queueBlobDelete(ctx, "profile-photos", photoBlobId(orgId, photoRev));
         // Batch B9: the community's own emoji and stickers.
         for (const e of db.prepare("SELECT id FROM community_expressions WHERE org_id = ?").all(orgId) as { id: string }[]) queueBlobDelete(ctx, "profile-photos", e.id);
-        // Direct uploads still open in its channels: their objects or parts are removed by the retention job.
-        for (const c of channels) {
-          db.prepare(
-            "INSERT OR IGNORE INTO abandoned_uploads (id, multipart_id, attempts, next_at) SELECT id, multipart_id, 0, 0 FROM attachment_uploads WHERE conversation_id = ?",
-          ).run(c);
-        }
         // Cascades to org_members, roles, categories, overwrites, bans, invitations, the old branch and team rows, and
         // the community's conversations (members, attachment rows, calls and call participants).
         db.prepare("DELETE FROM orgs WHERE id = ?").run(orgId);

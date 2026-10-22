@@ -438,17 +438,16 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
       throw new ApiError(400, "confirm_mismatch", "Type the channel's name exactly as it appears to delete it");
     }
     const orgId = c.org_id;
+    // Read before the transaction: the files store may not be SQLite.
+    const files = await ctx.files.attachmentIdsIn([id]);
     const result = db
       .transaction(() => {
         if (!db.prepare("SELECT 1 FROM conversations WHERE id = ?").get(id)) return null;
         const members = (db.prepare("SELECT user_id FROM conversation_members WHERE conversation_id = ?").all(id) as { user_id: string }[]).map((r) => r.user_id);
-        const files = (db.prepare("SELECT id FROM attachments WHERE conversation_id = ?").all(id) as { id: string }[]).map((r) => r.id);
         const rooms = (db.prepare("SELECT room_name FROM calls WHERE conversation_id = ? AND state != 'ENDED'").all(id) as { room_name: string }[]).map((r) => r.room_name);
-        for (const f of files) queueBlobDelete(ctx, "attachments", f);
-        db.prepare(
-          "INSERT OR IGNORE INTO abandoned_uploads (id, multipart_id, attempts, next_at) SELECT id, multipart_id, 0, 0 FROM attachment_uploads WHERE conversation_id = ?",
-        ).run(id);
-        // Rows without a foreign key to the conversation (members, attachment rows and calls cascade), and its overwrites.
+        // Its files and uploads, queued items, and rows without a foreign key to the conversation (members and calls
+        // cascade), and its overwrites.
+        ctx.files.forgetConversation(id);
         ctx.relay.forgetConversation(id);
         db.prepare("DELETE FROM mention_all_events WHERE conversation_id = ?").run(id);
         db.prepare("DELETE FROM channel_overwrites WHERE target_type = 'channel' AND target_id = ?").run(id);

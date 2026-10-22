@@ -10,6 +10,7 @@ import { readAll } from "../src/infrastructure/storage/blobstore.js";
 import type { S3BlobStore } from "../src/infrastructure/storage/s3.js";
 import type { GriipClient } from "./support/griipClient.js";
 import { expectStatus, type Harness, startServer } from "./support/harness.js";
+import { expireUploadSessions } from "./support/files.js";
 
 /**
  * Live checks against a real, isolated S3 test bucket (docs/AWS_STORAGE_PLAN.md › 8). Skipped unless
@@ -180,7 +181,7 @@ describe.skipIf(!BUCKET)("real S3 test bucket", () => {
     const single = await alice.req("POST", "/v1/attachments/uploads", { conversationId: dm, size: body.length, sha256: sha(body) });
     expect((await put(single.upload, body)).status).toBe(200);
     const multi = await alice.req("POST", "/v1/attachments/uploads", { conversationId: dm, size: 6 * MiB, sha256: sha(Buffer.from("m")) });
-    h.ctx.db.prepare("UPDATE attachment_uploads SET expires_at = 0 WHERE id IN (?, ?)").run(single.uploadId, multi.uploadId);
+    await expireUploadSessions(h, [single.uploadId, multi.uploadId]);
     const r = await runCleanup(h.ctx);
     expect(r.uploadsExpired).toBe(2);
     expect(r.uploadsCleaned).toBe(2);
