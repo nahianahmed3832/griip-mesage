@@ -115,6 +115,31 @@ Not verifiable on production yet: no one can connect an app there (`integrations
 provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
 `up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
 
+### API 0.26.0 (2026-10-22, 07:22 UTC, owner's go-ahead, batch B14b)
+
+Only change: a member can't leave one channel of a community (`leave_community`, 403); managers can still remove
+someone from a channel, and groups can still be left. No migration (schema 44).
+
+| Step | Result |
+|---|---|
+| Backup | `backups/pre-0.26.0-20261022T071851Z` (archive, `.env`, `compose.yaml`, the 0.25.0 server sources); verified, schema 44, 36 users. Image `0.25.0-rollback` tagged |
+| Build | rsync of `server/`, `deploy/scripts/`, `.env.example`; `docker build -t griip-internal-messaging-api:0.26.0 server` |
+| Rehearsal | 0.26.0 on a copy of the snapshot in the project folder, `--network none`, env without FCM lines: `stats` (36 users, 7 orgs, 74 conversations), a full start healthy (`/healthz` 0.26.0) with no warnings, `verify-backup` ok. Copy deleted |
+| Switch | `compose.yaml` image 0.26.0, `validate-env.sh` 0 errors (the 2 usual warnings), `config -q`, `up -d --no-deps --no-build api`; healthy, 0 restarts, no warnings or errors in the log |
+| Checks after | `/healthz` 0.26.0 on msg.meldiq.app and msg.griipbuddy.cloud; `verify.sh` OK (LiveKit, ntfy, restarts 0, 48 GB free); server-info 0.26.0; the members route refuses requests without a session (401); `nosniff` and `no-referrer` still sent; `backups/post-0.26.0-20261022T072521Z` verified |
+
+Rollback: `image: griip-internal-messaging-api:0.25.0-rollback`, then `up -d --no-deps --no-build api`.
+
+**Web, same day:**
+- I installed meldiq-web `main` (`0.5.0-beta-cd449f5`) at 07:24 UTC. The site was then serving `0.5.0-beta-ea703df`,
+  another session's release from its branch: screen sharing shown whole, and browser notifications. That release
+  isn't in `main`, so `cd449f5` would have taken both away.
+- I rolled back at 07:26 UTC (`rollback.sh`). The site serves `0.5.0-beta-ea703df` again, and `verify.sh` passes
+  (API 0.26.0 through the site).
+- The web side of B14b (no leaving one channel, the online subtitle) is in `main` and goes out with that session's
+  next release.
+- Until then, the web's "Leave channel" button gets the server's `leave_community` refusal.
+
 ### nginx security headers (2026-10-22, 03:16 UTC, batch B15)
 
 `deploy/nginx/meldiq-msg.conf` adds `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` to
