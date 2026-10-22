@@ -592,3 +592,6 @@ Found while mapping: the app still calls three routes the server no longer has, 
 
 Local note: Gradle doesn't know the fixtures (outside the module), so after they change run the test with `--rerun`;
 CI builds clean and always runs it. Declaring them as an input needs `build.gradle.kts`, left alone here.
+
+`internal-beta` fast-forwarded to `ee1a8d8` (local, not pushed). Main folder: Android 654 passed (`--rerun`).
+The web branch `contract-fixtures` is the web session's to merge and release.
