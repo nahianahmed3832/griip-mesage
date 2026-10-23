@@ -18,6 +18,18 @@ class MediaGalleryTest {
         MessageEntity(id, "c_1", "u_peer", "d_1", false, kind, "", sentAt = ts, sortTs = ts, status = "RECEIVED", deleted = deleted) to refs.toList()
 
     @Test
+    fun `only photos up to 10 MB download by themselves once on screen`() {
+        val photo = ref("p", "image/jpeg")
+        val big = photo.copy(id = "b", size = MediaGallery.AUTO_DOWNLOAD_MAX_BYTES + 1)
+        val video = ref("v", "video/mp4")
+        val voice = ref("a", "audio/mp4", voice = true)
+        val pdf = ref("f", "application/pdf")
+        val pending = ref("pending", "image/jpeg")
+        assertEquals(listOf(photo), MediaGallery.autoDownloadable(listOf(photo, big, video, voice, pdf, pending)))
+        assertEquals(emptyList<AttachmentRef>(), MediaGallery.autoDownloadable(emptyList()))
+    }
+
+    @Test
     fun photosAndVideosOpenTheViewerEverythingElseStaysAFile() {
         assertEquals(MediaKind.Image, MediaGallery.kindOf(ref("a", "image/jpeg")))
         assertEquals(MediaKind.Image, MediaGallery.kindOf(ref("a", "IMAGE/PNG")))

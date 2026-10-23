@@ -30,6 +30,13 @@ data class ProfileStorage(
     val attachmentsDir: String,
     val serverKey: String,
 ) {
+    /**
+     * Pictures downloaded for this profile (people's, communities' and groups' photos, community emoji and stickers),
+     * kept in the app's files rather than its cache: Android empties the cache when space runs low, and each
+     * emptying meant downloading them all again (the owner, 2026-10-23). Removed with the profile.
+     */
+    val picturesDir: String get() = if (id == DEFAULT) "pictures" else "pictures-$id"
+
     companion object {
         const val DEFAULT = "default"
         private val ID = Regex("[a-z0-9]{8,32}")

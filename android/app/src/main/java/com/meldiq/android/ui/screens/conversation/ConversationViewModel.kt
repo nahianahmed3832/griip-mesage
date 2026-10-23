@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -477,19 +478,30 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     }
 
 
+    private val mediaSlots = kotlinx.coroutines.sync.Semaphore(MEDIA_DOWNLOADS_AT_ONCE)
+    private val mediaInFlight = java.util.Collections.synchronizedSet(HashSet<String>())
+
     /**
-     * Downloads received photos (up to 10 MB each) among [recent] in the background, when Settings › Chats allows it
-     * (always, or only on an unmetered network). One at a time; already-downloaded ones are skipped.
+     * Received photos download when their message comes on screen, Discord-style, when Settings › Chats allows it
+     * (always, or only on an unmetered network): scrolling up loads older ones as they appear, and a message scrolled
+     * away before its turn costs nothing (the caller's effect is cancelled). Each file downloads once and is kept on the
+     * phone ([MessageRepository.localAttachment]); videos and other files wait for a tap.
      */
-    fun autoDownloadPhotos(recent: List<MessageEntity>, context: Context) = viewModelScope.launch {
-        val mode = c.settings.current.autoDownload
-        if (!com.meldiq.android.ui.media.MediaGallery.autoDownloadAllowed(mode, unmetered(context))) return@launch
-        for (m in recent) {
-            if (m.outgoing || m.deleted) continue
-            for (ref in c.messages.attachments(m)) {
-                if (com.meldiq.android.ui.media.MediaGallery.kindOf(ref) != com.meldiq.android.ui.media.MediaKind.Image || ref.size > 10L * 1024 * 1024) continue
-                if (c.messages.localAttachment(ref) != null) continue
-                runCatching { c.messages.downloadAttachment(ref) }
+    suspend fun loadShownMedia(m: MessageEntity, context: Context) {
+        if (m.outgoing || m.deleted) return
+        val refs = com.meldiq.android.ui.media.MediaGallery.autoDownloadable(c.messages.attachments(m)).filter { c.messages.localAttachment(it) == null }
+        if (refs.isEmpty()) return
+        if (!com.meldiq.android.ui.media.MediaGallery.autoDownloadAllowed(c.settings.current.autoDownload, unmetered(context))) return
+        for (ref in refs) {
+            if (!mediaInFlight.add(ref.id)) continue // the same message is on screen twice (chat and thread)
+            try {
+                mediaSlots.withPermit { if (c.messages.localAttachment(ref) == null) c.messages.downloadAttachment(ref) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e // scrolled away: a partial download resumes next time
+            } catch (_: Exception) {
+                // Expired or unreachable: the bubble still offers the download by tap.
+            } finally {
+                mediaInFlight.remove(ref.id)
             }
         }
     }
@@ -631,5 +643,7 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     private companion object {
         /** How far back a search result is fetched: 20 rounds of 200 messages. */
         const val MAX_LOAD_ROUNDS = 20
+        /** Photos downloading at once while scrolling; the rest wait their turn (or are dropped if scrolled away). */
+        const val MEDIA_DOWNLOADS_AT_ONCE = 2
     }
 }

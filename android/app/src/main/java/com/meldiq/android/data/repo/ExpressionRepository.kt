@@ -24,7 +24,7 @@ import java.io.File
  * this profile's folder under their id and hash, and kept only when their SHA-256 matches the one a message carries.
  */
 class ExpressionRepository(context: Context, private val api: ApiClient, profileId: String) {
-    private val dir = File(context.cacheDir, "expressions-$profileId").apply { mkdirs() }
+    private val dir = KeptPictures.folder(context, profileId, "expressions", legacyCache = "expressions-$profileId")
     private val _lists = MutableStateFlow<Map<String, List<ExpressionDto>>>(emptyMap())
     val lists: StateFlow<Map<String, List<ExpressionDto>>> = _lists.asStateFlow()
     private val locks = HashMap<String, Mutex>()

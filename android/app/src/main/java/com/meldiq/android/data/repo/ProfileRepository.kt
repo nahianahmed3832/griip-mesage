@@ -19,7 +19,7 @@ import java.io.File
 
 /**
  * The signed-in person's own profile and privacy settings, and everyone's profile photos (docs/PROFILE_AND_PRIVACY.md).
- * Photos are cached per account in its own cache folder, one file per person and revision.
+ * Photos are kept per account in its pictures folder ([ProfileStorage.picturesDir]), one file per person and revision.
  */
 class ProfileRepository(
     private val context: Context,
@@ -28,7 +28,7 @@ class ProfileRepository(
     private val session: SessionRepository,
     accountId: String,
 ) {
-    private val photoDir = File(context.cacheDir, "avatars-$accountId").apply { mkdirs() }
+    private val photoDir = KeptPictures.folder(context, accountId, "avatars", legacyCache = "avatars-$accountId")
     private val locks = HashMap<String, Mutex>()
 
     suspend fun me(): UserDto = api.get<MeRes>("/v1/users/me").user.also { users.remember(it) }
@@ -130,7 +130,7 @@ class ProfileRepository(
         val lock = synchronized(locks) { locks.getOrPut(safe) { Mutex() } }
         lock.withLock {
             if (file.length() > 0) return@withLock file
-            photoDir.mkdirs() // Android may have cleared the cache folder (batch B12, as for community emoji)
+            photoDir.mkdirs()
             val part = File(photoDir, "$safe-$rev.part")
             runCatching { api.downloadTo(path, part) {} }.getOrElse { part.delete(); return@withLock null }
             if (!part.renameTo(file)) return@withLock null

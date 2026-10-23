@@ -43,6 +43,13 @@ object MediaGallery {
         com.meldiq.android.data.repo.AutoDownload.NEVER -> false
     }
 
+    /** The largest received photo that downloads by itself; bigger ones, videos and files wait for a tap. */
+    const val AUTO_DOWNLOAD_MAX_BYTES = 10L * 1024 * 1024
+
+    /** Of a received message's files, the ones that download by themselves once the message is on screen. */
+    fun autoDownloadable(refs: List<AttachmentRef>): List<AttachmentRef> =
+        refs.filter { kindOf(it) == MediaKind.Image && it.size <= AUTO_DOWNLOAD_MAX_BYTES }
+
     fun kindOf(ref: AttachmentRef): MediaKind? = when {
         ref.id == "pending" || VoiceNote.isVoice(ref) -> null
         ref.mime.lowercase() in IMAGES -> MediaKind.Image

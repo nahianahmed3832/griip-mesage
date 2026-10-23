@@ -48,6 +48,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
@@ -182,8 +183,11 @@ fun MessageBubble(
     onVote: (List<String>) -> Unit = {},
     /** Extra details under a link, when the screen has any to show (none since apps were removed; kept as a slot). */
     linkDetails: (@Composable (String) -> Unit)? = null,
+    /** Runs while a received message with files is on screen (cancelled when it scrolls away): loads its photos. */
+    onShown: (suspend () -> Unit)? = null,
 ) {
     val m = b.m
+    if (onShown != null && !m.outgoing && b.attachments.isNotEmpty()) LaunchedEffect(m.id) { onShown() }
     if (m.kind == "call") {
         CallChip(m, m.outgoing, b.sender?.displayName)
         return

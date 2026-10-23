@@ -332,8 +332,6 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         else if (!com.meldiq.android.ui.LinkOpener.open(ctx, url, chatSettings.linkOpening == com.meldiq.android.data.repo.LinkOpening.IN_APP)) vm.error.value = ctx.getString(R.string.b5_no_app_link)
     }
     val composerPreview by vm.linkPreview.collectAsStateWithLifecycle()
-    // Received photos download by themselves when Settings › Chats › media allows (videos and files wait for a tap).
-    LaunchedEffect(messages.firstOrNull()?.id, chatSettings.autoDownload) { vm.autoDownloadPhotos(messages.take(40), ctx) }
     var forwardFor by remember { mutableStateOf<MessageEntity?>(null) }
     // Batch B4: reporting someone else's message (servers with `reports`).
     var reportFor by remember { mutableStateOf<MessageEntity?>(null) }
@@ -780,6 +778,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                                 voice = voicePlayer,
                                 onVoiceToggle = { ref -> vm.toggleVoice(m.id, ref) },
                                 onVoiceSeek = { ref, pos -> vm.seekVoice(m.id, ref, pos) },
+                                // Received photos load as their message comes on screen (Settings › Chats › media).
+                                onShown = { vm.loadShownMedia(m, ctx) },
                             )
                             }
                         }
@@ -799,6 +799,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                                         onVote = { vm.vote(r, it) },
                                         onVoiceToggle = { ref -> vm.toggleVoice(r.id, ref) },
                                         onVoiceSeek = { ref, pos -> vm.seekVoice(r.id, ref, pos) },
+                                        onShown = { vm.loadShownMedia(r, ctx) },
                                     )
                                 }
                                 Text("${messages.size} ${if (messages.size == 1) "reply" else "replies"}", style = Griip.type.label, color = c.textTertiary, modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp), textAlign = TextAlign.Center)

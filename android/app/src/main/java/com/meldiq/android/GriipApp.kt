@@ -140,6 +140,7 @@ class GriipApp : Application() {
     private fun deleteProfileFiles(storage: ProfileStorage) {
         deleteDatabase(storage.dbName)
         File(filesDir, storage.attachmentsDir).deleteRecursively()
+        File(filesDir, storage.picturesDir).deleteRecursively()
         getSharedPreferences("griip_settings", MODE_PRIVATE).edit().remove(storage.serverKey).apply()
     }
 }
