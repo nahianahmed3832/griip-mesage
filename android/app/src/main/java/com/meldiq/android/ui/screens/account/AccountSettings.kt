@@ -1,5 +1,8 @@
 package com.meldiq.android.ui.screens.account
 
+import com.meldiq.android.ui.components.ValueChevron
+import androidx.compose.material.icons.outlined.Badge
+import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -49,7 +52,12 @@ import java.util.Date
  * them. Shown only on profiles with an Orbit 2.0 account.
  */
 @Composable
-fun AccountSecurityCard(modifier: Modifier = Modifier) {
+private fun AccountSection(id: Int) {
+    Text(stringResource(id), style = Griip.type.label, color = Griip.colors.textSecondary, modifier = Modifier.padding(horizontal = Space.gutter + 4.dp, vertical = 8.dp))
+}
+
+@Composable
+fun AccountSecurityCard(modifier: Modifier = Modifier, onEditProfile: (() -> Unit)? = null) {
     val container = LocalContainer.current
     val c = Griip.colors
     val phase by container.accounts.phase.collectAsStateWithLifecycle()
@@ -63,11 +71,24 @@ fun AccountSecurityCard(modifier: Modifier = Modifier) {
     val load: () -> Unit = { scope.launch { runCatching { container.accounts.sessions() }.onSuccess { sessions = it }.onFailure { message = it.friendly() to BannerKind.Error } } }
     LaunchedEffect(account.id) { load() }
 
-    GlassCard(modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), contentPadding = PaddingValues(6.dp)) {
-        MenuRow(Icons.Outlined.Email, stringResource(R.string.acct_settings_email), subtitle = account.email, trailing = null)
+    // 2026-10-23 (the reference's Account page): who you are, how you sign in, then leaving or deleting, each a group.
+    val me by container.db.users().observe(container.session.session?.userId ?: "").collectAsStateWithLifecycle(null)
+    AccountSection(R.string.ux_account_info)
+    GlassCard(modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(6.dp)) {
+        me?.let { u ->
+            MenuRow(Icons.Outlined.AlternateEmail, stringResource(R.string.ux_username), onClick = onEditProfile, trailing = { ValueChevron("@" + u.username) })
+            MenuRow(Icons.Outlined.Badge, stringResource(R.string.ux_display_name), onClick = onEditProfile, trailing = { ValueChevron(u.displayName) })
+        }
+        MenuRow(Icons.Outlined.Email, stringResource(R.string.acct_settings_email), trailing = { Text(account.email, style = Griip.type.caption, color = c.textSecondary, maxLines = 1) })
+    }
+    AccountSection(R.string.ux_how_you_sign_in)
+    GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(6.dp)) {
         MenuRow(Icons.Outlined.Password, stringResource(R.string.acct_settings_password), subtitle = stringResource(R.string.acct_settings_password_sub), onClick = { changing = true })
         KeyBackupRow()
         RecoveryCodesRow()
+    }
+    AccountSection(R.string.ux_account_management)
+    GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(6.dp)) {
         MenuRow(Icons.AutoMirrored.Outlined.Logout, stringResource(R.string.acct_settings_logout), subtitle = stringResource(R.string.acct_settings_logout_sub), onClick = { confirmLogout = true })
         MenuRow(
             Icons.Outlined.DeleteForever, stringResource(R.string.acct_delete), subtitle = stringResource(R.string.acct_delete_sub),

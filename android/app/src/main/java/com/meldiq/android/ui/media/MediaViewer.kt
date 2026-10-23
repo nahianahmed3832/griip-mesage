@@ -13,6 +13,7 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -108,6 +109,10 @@ fun MediaViewer(
     onPlay: () -> Unit,
     onAction: (MediaAction, MediaItem) -> Unit,
     onDismiss: () -> Unit,
+    /** The text of the message a photo or video came with, shown under it (2026-10-23). */
+    captionOf: (MediaItem) -> String? = { null },
+    /** Reacts to that message with an emoji; null where you can't. */
+    onReact: ((MediaItem, String) -> Unit)? = null,
 ) {
     val start = items.indexOfFirst { it.ref.id == startAttachmentId }
     // The photo was deleted (or the list changed so it's gone): there is nothing to show.
@@ -135,13 +140,8 @@ fun MediaViewer(
                 ) {
                     IconButton(onDismiss) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Close", tint = Color.White) }
                     Column(Modifier.weight(1f)) {
-                        current?.let {
-                            Text(senderName(it), style = Griip.type.titleSmall, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                TimeFmt.dayHeader(it.sentAt) + " · " + TimeFmt.clock(it.sentAt) + if (items.size > 1) " · ${pager.currentPage + 1} of ${items.size}" else "",
-                                style = Griip.type.caption, color = Color.White.copy(alpha = 0.75f), maxLines = 1,
-                            )
-                        }
+                        // Who and when are under the picture now; the top keeps the position in the album.
+                        if (items.size > 1) Text("${pager.currentPage + 1} of ${items.size}", style = Griip.type.titleSmall, color = Color.White, maxLines = 1)
                     }
                     Box {
                         IconButton({ menu = true }) { Icon(Icons.Rounded.MoreVert, "More options", tint = Color.White) }
@@ -154,6 +154,42 @@ fun MediaViewer(
                         }
                     }
                 }
+            }
+            // 2026-10-23 (the reference's viewer): who sent it and when, the message's text, and React.
+            AnimatedVisibility(chrome, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
+                current?.let { item -> ViewerCaption(item, senderName(item), captionOf(item), onReact) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ViewerCaption(item: MediaItem, sender: String, caption: String?, onReact: ((MediaItem, String) -> Unit)?) {
+    var picking by remember(item.messageId) { mutableStateOf(false) }
+    var reacted by remember(item.messageId) { mutableStateOf<String?>(null) }
+    Column(
+        Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.55f)).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 10.dp),
+    ) {
+        Text(
+            sender + "  ·  " + TimeFmt.dayHeader(item.sentAt) + ", " + TimeFmt.clock(item.sentAt),
+            style = Griip.type.label, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        caption?.let { Text(it, style = Griip.type.bodySmall, color = Color.White.copy(alpha = 0.9f), maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp)) }
+        if (onReact != null) Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!picking) {
+                Row(
+                    Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.14f))
+                        .clickable(onClickLabel = "React") { picking = true }.padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(reacted ?: "☺", color = Color.White)
+                    Text("  " + androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ux_react), style = Griip.type.label, color = Color.White)
+                }
+            } else com.meldiq.android.data.repo.DOUBLE_TAP_EMOJI.forEach { e ->
+                Text(
+                    e, style = Griip.type.title,
+                    modifier = Modifier.clip(androidx.compose.foundation.shape.CircleShape).clickable(onClickLabel = "React $e") { onReact(item, e); reacted = e; picking = false }.padding(6.dp),
+                )
             }
         }
     }

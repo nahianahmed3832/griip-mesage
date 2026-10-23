@@ -248,6 +248,7 @@ class MessageRepository(
             contact = rich?.contact, location = rich?.location, animoji = rich?.animoji, forwarded = if (forwarded) true else null,
             link = rich?.link, poll = rich?.poll, sticker = rich?.sticker, title = rich?.title, tags = rich?.tags?.ifEmpty { null },
             customEmoji = rich?.customEmoji?.ifEmpty { null }, customSticker = rich?.customSticker,
+            origin = if (forwarded) rich?.origin else null,
         )
         val existing = db.messages().get(id)
         val msg = MessageEntity(
@@ -416,7 +417,7 @@ class MessageRepository(
      */
     suspend fun sendBatch(
         cid: String, items: List<BatchItem>, photoQuality: AttachmentPolicy.Quality, caption: String, replyTo: String? = null,
-        videoQuality: AttachmentPolicy.Quality = AttachmentPolicy.Quality.ORIGINAL, forwarded: Boolean = false,
+        videoQuality: AttachmentPolicy.Quality = AttachmentPolicy.Quality.ORIGINAL, forwarded: Boolean = false, rich: RichContent? = null,
     ): String {
         val s = session.session ?: throw IllegalStateException("Not signed in")
         require(items.size in 1..AttachmentPolicy.MAX_ITEMS) { "1 to ${AttachmentPolicy.MAX_ITEMS} files" }
@@ -434,7 +435,7 @@ class MessageRepository(
         db.messages().upsert(
             MessageEntity(
                 id, cid, s.userId, s.deviceId, true, "text", caption, replyToId = replyTo, attachmentsJson = MessageColumns.encodeAttachments(placeholders),
-                sentAt = now, sortTs = now, status = MessageStatus.SENDING, forwarded = forwarded,
+                sentAt = now, sortTs = now, status = MessageStatus.SENDING, forwarded = forwarded, richJson = MessageColumns.encodeRich(rich),
             ),
         )
         db.conversations().bumpPreview(cid, id, MessagePreview.of(caption, placeholders, null), now, "You", 0, 0)
@@ -482,9 +483,11 @@ class MessageRepository(
      * with new keys and uploaded for the destination, because each conversation's files can only be fetched by its
      * members. Mentions aren't carried over. Returns the new message's id.
      */
-    suspend fun forward(m: MessageEntity, destCid: String): String {
+    /** [origin]: where it came from, for a message forwarded out of a community channel (2026-10-23); else null. */
+    suspend fun forward(m: MessageEntity, destCid: String, origin: com.meldiq.android.data.model.ForwardOrigin? = null): String {
         val refs = attachments(m).filter { it.id != AttachmentFiles.PENDING }
-        if (refs.isEmpty()) return sendText(destCid, m.text, mentions = MentionSet.NONE, rich = rich(m), forwarded = true)
+        val rich = rich(m)?.copy(origin = origin) ?: origin?.let { RichContent(origin = it) }
+        if (refs.isEmpty()) return sendText(destCid, m.text, mentions = MentionSet.NONE, rich = rich, forwarded = true)
         val items = refs.map { ref ->
             val f = downloadAttachment(ref)
             val head = withContext(Dispatchers.IO) { f.inputStream().use { i -> ByteArray(64).let { b -> b.copyOf(i.read(b).coerceAtLeast(0)) } } }
@@ -495,7 +498,7 @@ class MessageRepository(
             )
         }
         val caption = if (m.text.isBlank()) "" else m.text
-        return sendBatch(destCid, items, AttachmentPolicy.Quality.ORIGINAL, caption, forwarded = true)
+        return sendBatch(destCid, items, AttachmentPolicy.Quality.ORIGINAL, caption, forwarded = true, rich = rich)
     }
 
     private suspend fun processBatch(id: String) {
@@ -552,7 +555,7 @@ class MessageRepository(
                 save()
             }
             val m = db.messages().get(id) ?: return
-            sendText(cid, m.text, replyTo = m.replyToId, attachments = refs, presetId = id, forwarded = m.forwarded, mentions = if (m.forwarded) MentionSet.NONE else null)
+            sendText(cid, m.text, replyTo = m.replyToId, attachments = refs, presetId = id, forwarded = m.forwarded, mentions = if (m.forwarded) MentionSet.NONE else null, rich = rich(m))
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e // left SENDING; marked interrupted at the next start (failInterruptedUploads)
         } catch (e: ApiException) {

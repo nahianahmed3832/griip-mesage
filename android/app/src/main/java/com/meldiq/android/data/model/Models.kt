@@ -29,6 +29,8 @@ data class Payload(
     val animoji: String? = null,
     /** Forwarded from another conversation (its sender isn't named). */
     val forwarded: Boolean? = null,
+    /** 2026-10-23: where a forwarded message came from (a community channel only), shown as "Community • time ›". */
+    val origin: ForwardOrigin? = null,
     /** A link preview made on the sender's phone (recipients never fetch the page). */
     val link: LinkPreview? = null,
     // Polls and stickers (2026-10-19, docs/RICH_MESSAGES.md). Sent with a readable [text] fallback like the rest.
@@ -109,10 +111,20 @@ data class RichContent(
     /** Batch B9: community emoji shown inside the text, and a community sticker. */
     val customEmoji: List<CustomEmojiRef>? = null,
     val customSticker: CustomEmojiRef? = null,
+    /** 2026-10-23: a forwarded message's source (see [ForwardOrigin]); not "structured": the text still shows. */
+    val origin: ForwardOrigin? = null,
 ) {
     /** Replaces the text (a card, a poll, a sticker or an animated emoji) rather than accompanying it (a link preview). */
     val structured: Boolean get() = contact != null || location != null || animoji != null || poll != null || sticker != null || customSticker != null
 }
+
+/**
+ * Where a forwarded message came from (2026-10-23, the reference's "Forwarded · Server • time ›"): the community's name,
+ * when the original was sent, and its ids, so members of that channel can open it (a message link). Only for messages
+ * forwarded out of a community channel; a DM's or group's origin is never sent. Inside the encrypted message.
+ */
+@Serializable
+data class ForwardOrigin(val place: String? = null, val at: Long? = null, val conversationId: String? = null, val messageId: String? = null)
 
 /**
  * Batch B9: a community's emoji or sticker as a message names it: which one ([id] in community [orgId]), its name, and

@@ -692,4 +692,16 @@
     <string name="ux_event_invited">%1$d জন আমন্ত্রিত</string>
     <string name="ux_back">ফিরে যান</string>
     <string name="ux_next">পরের ধাপ</string>
+    <string name="ux_forward_to">ফরোয়ার্ড করুন</string>
+    <string name="ux_search_chats">চ্যাট খুঁজুন</string>
+    <string name="ux_no_chats_to_forward">ফরোয়ার্ড করার মতো চ্যাট নেই</string>
+    <string name="ux_forward_note">চাইলে একটি মেসেজ যোগ করুন…</string>
+    <string name="ux_send">পাঠান</string>
+    <string name="ux_forwarded_n">%1$dটি চ্যাটে ফরোয়ার্ড হয়েছে</string>
+    <string name="ux_react">রিঅ্যাক্ট</string>
+    <string name="ux_account_info">অ্যাকাউন্টের তথ্য</string>
+    <string name="ux_username">ইউজারনেম</string>
+    <string name="ux_display_name">প্রদর্শিত নাম</string>
+    <string name="ux_how_you_sign_in">যেভাবে সাইন ইন করেন</string>
+    <string name="ux_account_management">অ্যাকাউন্ট ব্যবস্থাপনা</string>
 </resources>

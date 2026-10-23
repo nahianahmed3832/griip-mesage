@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Redo
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.PushPin
@@ -37,6 +38,7 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.CallEnd
 import androidx.compose.material.icons.rounded.Done
 import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.Download
@@ -192,7 +194,7 @@ fun MessageBubble(
     val m = b.m
     if (onShown != null && !m.outgoing && b.attachments.isNotEmpty()) LaunchedEffect(m.id) { onShown() }
     if (m.kind == "call") {
-        CallChip(m, m.outgoing, b.sender?.displayName)
+        CallChip(m, m.outgoing, b.sender)
         return
     }
     val cb = MessageCallbacks(
@@ -336,13 +338,42 @@ private fun MetaMarks(b: BubbleModel, tint: Color) {
  */
 @Composable
 private fun MessageBody(b: BubbleModel, me: String?, tinted: Boolean, transfer: Float?, localFile: (AttachmentRef) -> File?, voice: VoicePlayer.State, cb: MessageCallbacks) {
+    if (!b.m.forwarded || b.m.deleted) {
+        MessageContent(b, me, tinted, transfer, localFile, voice, cb)
+        return
+    }
+    // 2026-10-23 (the reference's forwards): "↪ Forwarded", the message inside a quote bar, then where it came from.
+    val c = Griip.colors
+    val sub = if (tinted) c.bubbleOutgoingMeta else c.textSecondary
+    val origin = b.rich?.origin
+    Row(Modifier.height(IntrinsicSize.Min)) {
+        Box(Modifier.width(3.dp).fillMaxHeight().clip(Shapes.pill).background(c.border))
+        Column(Modifier.padding(start = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 3.dp)) {
+                Icon(Icons.AutoMirrored.Rounded.Redo, null, tint = sub, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.conv_forwarded), style = Griip.type.caption.copy(fontStyle = FontStyle.Italic), color = sub)
+            }
+            MessageContent(b, me, tinted, transfer, localFile, voice, cb)
+            origin?.place?.let { place ->
+                val link = if (origin.conversationId != null && origin.messageId != null) com.meldiq.android.data.model.MessageLinks.link(origin.conversationId, origin.messageId) else null
+                val time = origin.at?.let { " • " + TimeFmt.listStamp(it).let { s -> if (TimeFmt.sameDay(it, System.currentTimeMillis())) s else s + " " + TimeFmt.clock(it) } }.orEmpty()
+                Text(
+                    place + time + if (link != null) "  ›" else "",
+                    style = Griip.type.caption, color = sub, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp).then(if (link != null) Modifier.pressable({ cb.onOpenLink(link) }, onClickLabel = "Open original message") else Modifier),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageContent(b: BubbleModel, me: String?, tinted: Boolean, transfer: Float?, localFile: (AttachmentRef) -> File?, voice: VoicePlayer.State, cb: MessageCallbacks) {
     val c = Griip.colors
     val m = b.m
     val fg = if (tinted) c.onBubbleOutgoing else c.textPrimary
     val sub = if (tinted) c.bubbleOutgoingMeta else c.textSecondary
-    if (m.forwarded && !m.deleted) {
-        Text(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.conv_forwarded), style = Griip.type.caption.copy(fontStyle = FontStyle.Italic), color = sub, modifier = Modifier.padding(bottom = 3.dp))
-    }
     if (b.reply != null) {
         Row(
             Modifier.padding(bottom = 6.dp).height(IntrinsicSize.Min).clip(Shapes.small)
@@ -626,20 +657,33 @@ fun humanSize(b: Long): String = when {
 
 /** A call history line (docs/CALL_HISTORY.md): outcome, duration when recorded, and for groups who started it. */
 @Composable
-private fun CallChip(m: MessageEntity, out: Boolean, starter: String?) {
+private fun CallChip(m: MessageEntity, out: Boolean, starterUser: com.meldiq.android.data.db.UserEntity?) {
     val c = Griip.colors
+    val starter = starterUser?.displayName
     val info = remember(m.callJson) { com.meldiq.android.data.db.MessageColumns.call(m) }
     val video = info?.video ?: m.text.startsWith("Video")
     val line = info?.let { CallHistory.line(it, out, starter) } ?: CallHistory.Line("${if (out) "Outgoing" else "Incoming"} ${m.text.lowercase()}", null, false)
     val tint = if (line.missed) c.danger else c.primary
-    val detail = listOfNotNull(line.detail, TimeFmt.clock(m.sortTs)).joinToString(" · ")
-    // Batch B14: a quiet line in the timeline (no pill or border); missed calls stay red.
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.Center) {
-        Row(Modifier.semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
-            Icon(if (video) Icons.Rounded.Videocam else Icons.Rounded.Call, null, tint = tint, modifier = Modifier.size(14.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(line.title, style = Griip.type.caption.copy(fontWeight = FontWeight.SemiBold), color = if (line.missed) c.danger else c.textSecondary)
-            Text(" · $detail", style = Griip.type.caption, color = c.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val detail = listOfNotNull(line.detail, TimeFmt.dayHeader(m.sortTs) + ", " + TimeFmt.clock(m.sortTs)).joinToString(" — ")
+    // 2026-10-23 (the reference's call cards): a card in the timeline with the call's outcome, how long and when, and who
+    // started it; missed calls in red.
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp).clip(Shapes.card).background(c.surfaceVariant)
+            .padding(horizontal = 14.dp, vertical = 12.dp).semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            when { line.missed -> Icons.Rounded.CallEnd; video -> Icons.Rounded.Videocam; else -> Icons.Rounded.Call },
+            null, tint = tint, modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(line.title, style = Griip.type.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(detail, style = Griip.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        starterUser?.let { u ->
+            Spacer(Modifier.width(10.dp))
+            com.meldiq.android.ui.components.UserAvatar(u.id, u.displayName, u.avatarColor, u.photoRev, size = 30.dp)
         }
     }
 }

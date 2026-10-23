@@ -692,4 +692,16 @@
     <string name="ux_event_invited">%1$d invited</string>
     <string name="ux_back">Back</string>
     <string name="ux_next">Next</string>
+    <string name="ux_forward_to">Forward to</string>
+    <string name="ux_search_chats">Search chats</string>
+    <string name="ux_no_chats_to_forward">No chats to forward to</string>
+    <string name="ux_forward_note">Add an optional message…</string>
+    <string name="ux_send">Send</string>
+    <string name="ux_forwarded_n">Forwarded to %1$d chats</string>
+    <string name="ux_react">React</string>
+    <string name="ux_account_info">Account information</string>
+    <string name="ux_username">Username</string>
+    <string name="ux_display_name">Display name</string>
+    <string name="ux_how_you_sign_in">How you sign in</string>
+    <string name="ux_account_management">Account management</string>
 </resources>

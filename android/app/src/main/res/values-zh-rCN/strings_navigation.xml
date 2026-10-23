@@ -692,4 +692,16 @@
     <string name="ux_event_invited">已邀请 %1$d 人</string>
     <string name="ux_back">返回</string>
     <string name="ux_next">下一步</string>
+    <string name="ux_forward_to">转发给</string>
+    <string name="ux_search_chats">搜索聊天</string>
+    <string name="ux_no_chats_to_forward">没有可转发的聊天</string>
+    <string name="ux_forward_note">添加附言（可选）…</string>
+    <string name="ux_send">发送</string>
+    <string name="ux_forwarded_n">已转发到 %1$d 个聊天</string>
+    <string name="ux_react">回应</string>
+    <string name="ux_account_info">账号信息</string>
+    <string name="ux_username">用户名</string>
+    <string name="ux_display_name">显示名称</string>
+    <string name="ux_how_you_sign_in">登录方式</string>
+    <string name="ux_account_management">账号管理</string>
 </resources>

@@ -337,7 +337,6 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     var reportFor by remember { mutableStateOf<MessageEntity?>(null) }
     var reportsAvailable by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { reportsAvailable = vm.c.features.has(com.meldiq.android.data.repo.ServerFeatures.REPORTS) == true }
-    var forwardTo by remember { mutableStateOf<com.meldiq.android.data.db.ConversationEntity?>(null) }
     // Photos and videos open in the in-app viewer; other files are opened explicitly with another app.
     var viewerFor by rememberSaveable { mutableStateOf<String?>(null) }
     var saveTarget by remember { mutableStateOf<AttachmentRef?>(null) }
@@ -1010,6 +1009,9 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
             onPlay = vm::pauseVoice,
             onAction = { action, item -> onMedia(action, item.ref) },
             onDismiss = { viewerFor = null },
+            // 2026-10-23: the message's text under the picture, and reacting without leaving the viewer.
+            captionOf = { item -> messages.firstOrNull { it.id == item.messageId }?.text?.trim()?.ifEmpty { null } },
+            onReact = if (conv?.canPost != false) ({ item, emoji -> messages.firstOrNull { it.id == item.messageId }?.let { vm.react(it, emoji) } }) else null,
         )
     }
     infoFor?.let { m ->
@@ -1145,23 +1147,24 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     }
     forwardFor?.let { m ->
         val all by vm.c.conversations.observeAll().collectAsStateWithLifecycle(emptyList())
-        ForwardSheet(all, me, onPick = { forwardTo = it }, onDismiss = { forwardFor = null })
-        forwardTo?.let { dest ->
-            val destTitle = com.meldiq.android.data.repo.ConversationRepository.title(dest, me)
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = { forwardTo = null },
-                title = { Text(stringResource(R.string.b5_forward_to_q, destTitle)) },
-                text = { Text(stringResource(if (vm.c.messages.attachments(m).isNotEmpty()) R.string.b5_forward_files else R.string.b5_forward_text)) },
-                confirmButton = {
-                    androidx.compose.material3.TextButton(onClick = {
-                        vm.forward(m, dest.id) { vm.notice.value = ctx.getString(R.string.b5_forwarded_to, destTitle) }
-                        forwardTo = null
-                        forwardFor = null
-                    }) { Text(stringResource(R.string.menu_forward)) }
-                },
-                dismissButton = { androidx.compose.material3.TextButton(onClick = { forwardTo = null }) { Text(stringResource(R.string.b5_cancel)) } },
-            )
-        }
+        val files = vm.c.messages.attachments(m)
+        val preview = m.text.trim().replace('\n', ' ').ifEmpty { "📎 " + files.joinToString(", ") { it.name } }
+        ForwardSheet(
+            all.filter { it.id != m.conversationId }, me, preview,
+            filesNote = if (files.isNotEmpty()) stringResource(R.string.b5_forward_files) else null,
+            onSend = { dests, note ->
+                forwardFor = null
+                vm.forwardMany(m, dests.map { it.id }, note) { n ->
+                    vm.notice.value = if (dests.size == 1 && n == 1) ctx.getString(R.string.b5_forwarded_to, com.meldiq.android.data.repo.ConversationRepository.title(dests.first(), me))
+                        else ctx.getString(R.string.ux_forwarded_n, n)
+                }
+            },
+            onCopyLink = if (com.meldiq.android.data.model.MessageLinks.canLink(m.deleted, m.status)) ({
+                scope.launch { clipboard.setClipEntry(ClipData.newPlainText("link", com.meldiq.android.data.model.MessageLinks.link(conversationId, m.id)).toClipEntry()) }
+                vm.notice.value = ctx.getString(R.string.nv_copied)
+            }) else null,
+            onDismiss = { forwardFor = null },
+        )
     }
     linkToOpen?.let { url ->
         com.meldiq.android.ui.LinkOpenSheet(

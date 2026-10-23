@@ -111,4 +111,18 @@ class RichRulesTest {
         assertEquals("Fallback & title", LinkPreviewParser.parse("https://x.example", "<title>Fallback &amp; title</title>")!!.title)
         assertNull(LinkPreviewParser.parse("https://x.example", "<html><body>no head</body></html>"))
     }
+
+    @Test
+    fun `a forward's origin is kept only on forwards, cleaned, and never sent when absent`() {
+        val o = ForwardOrigin("  Griip   Buddy ", 1_790_000_000_000L, "c_1", "m-2")
+        val r = RichRules.fromPayload(Payload(type = "text", text = "hi", forwarded = true, origin = o))
+        assertEquals(ForwardOrigin("Griip Buddy", 1_790_000_000_000L, "c_1", "m-2"), r?.origin)
+        // Not a forward: an origin is ignored.
+        assertNull(RichRules.fromPayload(Payload(type = "text", text = "hi", origin = o)))
+        // Bad ids are dropped (no link), a missing place drops the whole origin.
+        assertEquals(ForwardOrigin("X", null, null, null), RichRules.cleanOrigin(ForwardOrigin("X", -1, "bad id!", "m")))
+        assertNull(RichRules.cleanOrigin(ForwardOrigin(" ", 1, "c", "m")))
+        // Older messages keep their exact wire format: no "origin" key when there is none.
+        assertFalse(GriipJson.encodeToString(Payload.serializer(), Payload(type = "text", text = "hi", forwarded = true)).contains("origin"))
+    }
 }

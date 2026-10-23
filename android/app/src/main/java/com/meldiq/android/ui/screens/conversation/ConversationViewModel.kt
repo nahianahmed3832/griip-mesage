@@ -404,10 +404,28 @@ class ConversationViewModel(val c: AppContainer, val conversationId: String, val
     }
 
     /** Forwards [m] to [destCid] (chosen and confirmed by the person). */
-    fun forward(m: MessageEntity, destCid: String, onDone: (String) -> Unit) = viewModelScope.launch {
-        runCatching { c.messages.forward(m, destCid) }
-            .onSuccess { onDone(destCid) }
-            .onFailure { error.value = it.friendly() }
+    /**
+     * 2026-10-23 (the reference's Forward To): [m] to each of [dests], then [note], if any, as its own message in each.
+     * A message from a community channel carries its origin (the community's name and time) so it shows where it came
+     * from; [onDone] gets how many chats it reached.
+     */
+    fun forwardMany(m: MessageEntity, dests: List<String>, note: String, onDone: (Int) -> Unit) = viewModelScope.launch {
+        val origin = forwardOrigin(m)
+        var sent = 0
+        for (dest in dests) {
+            runCatching {
+                c.messages.forward(m, dest, origin)
+                if (note.isNotBlank()) c.messages.sendText(dest, note.trim())
+            }.onSuccess { sent++ }.onFailure { error.value = it.friendly() }
+        }
+        onDone(sent)
+    }
+
+    private suspend fun forwardOrigin(m: MessageEntity): com.meldiq.android.data.model.ForwardOrigin? {
+        val conv = c.db.conversations().get(m.conversationId) ?: return null
+        val orgId = conv.orgId?.takeIf { conv.type == "CHANNEL" } ?: return null
+        val name = runCatching { c.orgs.cachedOrgs() }.getOrNull()?.firstOrNull { it.id == orgId }?.name ?: return null
+        return com.meldiq.android.data.model.ForwardOrigin(name, m.sentAt, m.conversationId, m.id)
     }
 
     /** A contact card, a one-time location or an animated emoji, with the reply target chosen now. */

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -285,24 +286,72 @@ fun EmojiPickerSheet(
 
 // ───────────────────────────── Forwarding ─────────────────────────────
 
-/** Choose where to forward; the caller confirms before anything is sent. */
+/** Choose where to forward: several chats, a preview, an optional note (2026-10-23). */
 @Composable
-fun ForwardSheet(conversations: List<ConversationEntity>, me: String?, onPick: (ConversationEntity) -> Unit, onDismiss: () -> Unit) {
+fun ForwardSheet(
+    conversations: List<ConversationEntity>,
+    me: String?,
+    preview: String,
+    filesNote: String?,
+    onSend: (List<ConversationEntity>, String) -> Unit,
+    onCopyLink: (() -> Unit)?,
+    onDismiss: () -> Unit,
+) {
+    // 2026-10-23 (the reference's Forward To): tick up to MAX_FORWARD chats, see what's going, add a note, Send.
     val c = Griip.colors
     var q by rememberSaveable { mutableStateOf("") }
-    GlassSheet(onDismiss, title = "Forward to…") {
-        SearchPill(q, { q = it }, "Search chats")
-        Spacer(Modifier.height(6.dp))
-        val shown = conversations.filter { !it.removed && it.canPost && (q.isBlank() || ConversationRepository.title(it, me).contains(q, ignoreCase = true)) }
-        if (shown.isEmpty()) Text("No chats to forward to", style = Griip.type.bodySmall, color = c.textSecondary, modifier = Modifier.padding(12.dp))
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
-            items(shown, key = { it.id }) { conv ->
-                val title = ConversationRepository.title(conv, me).let { if (conv.type == "CHANNEL") "#$it" else it }
-                ListCard(title, Modifier.padding(vertical = 1.dp), leading = { ConversationAvatar(conv, me, size = 40.dp) }, onClick = { onPick(conv) })
+    var picked by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var note by rememberSaveable { mutableStateOf("") }
+    GlassSheet(onDismiss, title = androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ux_forward_to)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SearchPill(q, { q = it }, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ux_search_chats), Modifier.weight(1f))
+            onCopyLink?.let {
+                com.meldiq.android.ui.components.CircleIconButton(
+                    androidx.compose.material.icons.Icons.Outlined.ContentCopy, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.b5_copy_link), it, tint = c.textSecondary,
+                )
             }
         }
+        Spacer(Modifier.height(6.dp))
+        val shown = conversations.filter { !it.removed && it.canPost && (q.isBlank() || ConversationRepository.title(it, me).contains(q, ignoreCase = true)) }
+        if (shown.isEmpty()) Text(androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ux_no_chats_to_forward), style = Griip.type.bodySmall, color = c.textSecondary, modifier = Modifier.padding(12.dp))
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 340.dp)) {
+            items(shown, key = { it.id }) { conv ->
+                val title = ConversationRepository.title(conv, me).let { if (conv.type == "CHANNEL") "#$it" else it }
+                val on = conv.id in picked
+                val canAdd = on || picked.size < MAX_FORWARD
+                Row(
+                    Modifier.fillMaxWidth().clip(Shapes.small)
+                        .pressable(if (canAdd) ({ picked = if (on) picked - conv.id else picked + conv.id }) else null, role = androidx.compose.ui.semantics.Role.Checkbox)
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ConversationAvatar(conv, me, size = 40.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Text(title, style = Griip.type.bodyMedium, color = if (canAdd) c.textPrimary else c.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.Checkbox(on, onCheckedChange = null, enabled = canAdd)
+                }
+            }
+        }
+        // What is being forwarded, quoted, so the person knows before sending.
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp).clip(Shapes.small).background(c.surfaceVariant).height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+            Box(Modifier.width(3.dp).fillMaxHeight().background(c.warning))
+            Text(preview, style = Griip.type.bodySmall, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
+        }
+        filesNote?.let { Text(it, style = Griip.type.caption, color = c.textTertiary, modifier = Modifier.padding(top = 4.dp)) }
+        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            GriipTextField(note, { note = it.take(2000) }, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ux_forward_note), Modifier.weight(1f))
+            Spacer(Modifier.width(8.dp))
+            PillButton(
+                androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ux_send),
+                { onSend(conversations.filter { it.id in picked }, note) }, enabled = picked.isNotEmpty(), height = 48.dp, showKnob = false,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
     }
 }
+
+/** The most chats one forward goes to at once. */
+const val MAX_FORWARD = 5
 
 
 /** Batch B9: the community's own emoji (tap to insert) and stickers (tap to send), each with its `:name:`. */

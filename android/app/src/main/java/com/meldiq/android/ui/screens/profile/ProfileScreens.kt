@@ -225,7 +225,7 @@ fun SecurityScreen(nav: NavHostController) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
         item { GriipTopBar("Security & recovery", onBack = { nav.popBackStack() }) }
         // Orbit 2.0: the email-and-password account (shown only on profiles that have one).
-        item { com.meldiq.android.ui.screens.account.AccountSecurityCard() }
+        item { com.meldiq.android.ui.screens.account.AccountSecurityCard(onEditProfile = { nav.navigate(Routes.EDIT_PROFILE) }) }
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), shape = Shapes.hero) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

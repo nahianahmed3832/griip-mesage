@@ -59,11 +59,23 @@ object RichRules {
             tags = ForumRules.cleanTags(p.tags).takeIf { it.isNotEmpty() && p.title != null },
             customEmoji = ExpressionRules.cleanRefs(p.customEmoji, p.text.orEmpty()).takeIf { it.isNotEmpty() },
             customSticker = ExpressionRules.cleanRef(p.customSticker),
+            origin = if (p.forwarded == true) cleanOrigin(p.origin) else null,
         )
         return r.takeIf {
             it.contact != null || it.location != null || it.animoji != null || it.link != null || it.poll != null || it.sticker != null || it.title != null ||
-                it.customEmoji != null || it.customSticker != null
+                it.customEmoji != null || it.customSticker != null || it.origin != null
         }
+    }
+
+    private val ORIGIN_ID = Regex("^[A-Za-z0-9_-]{1,64}$")
+
+    /** A forward's origin with a short place name, a plausible time and well-formed ids; null when nothing usable. */
+    fun cleanOrigin(o: ForwardOrigin?): ForwardOrigin? {
+        if (o == null) return null
+        val place = o.place?.trim()?.replace(Regex("\\s+"), " ")?.take(60)?.ifEmpty { null } ?: return null
+        val at = o.at?.takeIf { it > 0 }
+        val ids = (o.conversationId to o.messageId).takeIf { (c, m) -> c != null && m != null && ORIGIN_ID.matches(c) && ORIGIN_ID.matches(m) }
+        return ForwardOrigin(place, at, ids?.first, ids?.second)
     }
 
     private val STICKER_KEY = Regex("^[a-z0-9-]{1,32}$")
