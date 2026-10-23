@@ -67,7 +67,7 @@ import { ApiError } from "../shared/errors.js";
 import { now } from "../shared/utilities/util.js";
 import wsRoutes from "../modules/realtime/ws.js";
 
-export const VERSION = "0.29.0";
+export const VERSION = "0.30.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
@@ -306,6 +306,8 @@ export async function buildApp(
     attachmentKeepDays: config.attachmentKeepDays,
     // Push wake-ups (docs/BACKGROUND_DELIVERY.md): the push servers a device's distributor app must use.
     push: config.push ? { unifiedPushHosts: config.push.unifiedPushHosts } : null,
+    // Passkeys (docs/PASSKEYS.md): a web app shows them only when its own origin is listed (it is its own relying party).
+    passkeys: ctx.accounts.passkeys.available ? { webOrigins: ctx.accounts.passkeys.webOrigins } : null,
   }));
 
   for (const r of [authRoutes, userRoutes, orgRoutes, roleRoutes, conversationRoutes, messageRoutes, callRoutes, attachmentRoutes, historyRoutes, pushRoutes, preferenceRoutes, reminderRoutes, reportRoutes, applicationRoutes, connectionRoutes, onboardingRoutes, guideRoutes, expressionRoutes, wsRoutes]) {

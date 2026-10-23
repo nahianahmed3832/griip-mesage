@@ -36,6 +36,8 @@ export const ServerInfo = z.strictObject({
   history: z.strictObject({ maxItemBytes: zCount }).nullable(),
   attachmentKeepDays: zCount,
   push: z.strictObject({ unifiedPushHosts: z.array(z.string()) }).nullable(),
+  /** Passkeys (docs/PASSKEYS.md), null when off; [webOrigins]: web apps on other hosts that may use them too. */
+  passkeys: z.strictObject({ webOrigins: z.array(z.string()) }).nullable(),
 });
 
 export const Health = z.strictObject({

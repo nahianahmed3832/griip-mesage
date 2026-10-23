@@ -104,6 +104,9 @@ export type LegacyCompleteBody = z.infer<typeof LegacyCompleteBody>;
 /** A WebAuthn ceremony's answer as the platform gives it (JSON with base64url fields); verified by the server. */
 const zWebAuthnResponse = z.object({ id: z.string().min(1).max(1024), rawId: z.string().min(1).max(1024), type: z.literal("public-key") }).passthrough();
 const zChallengeId = z.string().min(16).max(64);
+/** [rpId]: the relying party to make or use a passkey for; a web app on another host names its own (PASSKEY_WEB_ORIGINS). */
+export const PasskeyOptionsBody = z.object({ rpId: z.string().min(1).max(253).optional() });
+export type PasskeyOptionsBody = z.infer<typeof PasskeyOptionsBody>;
 export const PasskeyRegisterBody = z.object({ challengeId: zChallengeId, response: zWebAuthnResponse, name: zName.optional() });
 export type PasskeyRegisterBody = z.infer<typeof PasskeyRegisterBody>;
 export const PasskeyLoginBody = z.object({ challengeId: zChallengeId, response: zWebAuthnResponse, deviceName: zName.optional(), device: DeviceProof.optional() });

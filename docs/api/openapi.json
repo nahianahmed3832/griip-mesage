@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Meldiq API",
-    "version": "0.29.0",
+    "version": "0.30.0",
     "description": "The canonical contract of the Meldiq server (docs/architecture/ARCHITECTURE_1_0_PLAN.md §4), generated from src/shared/contracts. Fields are only ever added within a version; clients ignore unknown fields. Routes not listed here exist but aren't documented yet."
   },
   "servers": [
@@ -338,6 +338,28 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "passkeys": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "webOrigins": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": [
+                            "webOrigins"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -359,7 +381,8 @@
                     "features",
                     "history",
                     "attachmentKeepDays",
-                    "push"
+                    "push",
+                    "passkeys"
                   ],
                   "additionalProperties": false
                 }
@@ -5900,6 +5923,23 @@
               }
             }
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rpId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 253
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -6410,7 +6450,24 @@
           {
             "bearer": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rpId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 253
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v2/account/passkeys/{id}": {

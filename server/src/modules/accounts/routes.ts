@@ -18,6 +18,7 @@ import {
   LoginBody,
   PasskeyIdParams,
   PasskeyLoginBody,
+  PasskeyOptionsBody,
   PasskeyRegisterBody,
   PreferencesBody,
   PutKeyBackupBody,
@@ -85,10 +86,12 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
   app.post("/v2/auth/refresh", renewal, async (req) => service.refresh(parse(RefreshBody, req.body).refreshToken));
 
   // ───────────── Passkeys (2026-10-23, passkeys.ts) ─────────────
-  app.post("/v2/auth/passkey/options", strict, async () => passkeys.loginOptions());
+  app.post("/v2/auth/passkey/options", strict, async (req) => passkeys.loginOptions(parse(PasskeyOptionsBody, req.body ?? {}).rpId));
   app.post("/v2/auth/passkey/login", strict, async (req, reply) => passkeys.login(parse(PasskeyLoginBody, req.body), req.ip, reply));
   app.get("/v2/account/passkeys", authed, async (req) => passkeys.list(session(req).account_id));
-  app.post("/v2/account/passkeys/options", authedStrict, async (req) => passkeys.registrationOptions(session(req)));
+  app.post("/v2/account/passkeys/options", authedStrict, async (req) =>
+    passkeys.registrationOptions(session(req), parse(PasskeyOptionsBody, req.body ?? {}).rpId),
+  );
   app.post("/v2/account/passkeys", authedStrict, async (req, reply) => {
     const added = await passkeys.register(session(req), parse(PasskeyRegisterBody, req.body));
     reply.code(201);

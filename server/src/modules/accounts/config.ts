@@ -47,6 +47,11 @@ export interface PasskeyConfig {
   rpId: string | null;
   /** Android apps allowed to use the passkeys: package and SHA-256 signing-certificate fingerprint (PASSKEY_ANDROID_APPS). */
   androidApps: { packageName: string; certSha256: string }[];
+  /**
+   * Web apps on other hosts (PASSKEY_WEB_ORIGINS, e.g. https://web.meldiq.app): each origin's host is a relying party of
+   * its own that accepts only that origin, since a browser only uses a relying party that is the page's host or a parent.
+   */
+  webOrigins: string[];
 }
 
 const HOST = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
@@ -55,7 +60,8 @@ const FINGERPRINT = /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/;
 
 /**
  * PASSKEY_RP_ID: a host name (no scheme or port). PASSKEY_ANDROID_APPS: "package=FINGERPRINT" entries separated by
- * commas, the fingerprint as keytool prints it (32 hex pairs with colons). Malformed values stop the server starting.
+ * commas, the fingerprint as keytool prints it (32 hex pairs with colons). PASSKEY_WEB_ORIGINS: web origins separated by
+ * commas, https (http only for localhost, for development). Malformed values stop the server starting.
  */
 export function passkeyConfig(env: NodeJS.ProcessEnv): PasskeyConfig {
   const rp = (env.PASSKEY_RP_ID ?? "").trim().toLowerCase();
@@ -73,7 +79,28 @@ export function passkeyConfig(env: NodeJS.ProcessEnv): PasskeyConfig {
       return { packageName, certSha256 };
     });
   if (androidApps.length > 0 && !rp) throw new Error("PASSKEY_ANDROID_APPS needs PASSKEY_RP_ID");
-  return { rpId: rp || null, androidApps };
+  const webOrigins = (env.PASSKEY_WEB_ORIGINS ?? "")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean)
+    .map(webOrigin);
+  if (webOrigins.length > 0 && !rp) throw new Error("PASSKEY_WEB_ORIGINS needs PASSKEY_RP_ID");
+  return { rpId: rp || null, androidApps, webOrigins: [...new Set(webOrigins)] };
+}
+
+/** "https://web.example.com" as a browser reports it; http only for localhost. */
+function webOrigin(entry: string): string {
+  const bad = () => new Error("PASSKEY_WEB_ORIGINS entries must be origins such as https://web.example.com");
+  let url: URL;
+  try {
+    url = new URL(entry);
+  } catch {
+    throw bad();
+  }
+  const secure = url.protocol === "https:" && HOST.test(url.hostname);
+  const local = url.protocol === "http:" && url.hostname === "localhost";
+  if ((!secure && !local) || url.origin !== entry.replace(/\/$/, "").toLowerCase()) throw bad();
+  return url.origin;
 }
 
 const DAY_MS = 86_400_000;

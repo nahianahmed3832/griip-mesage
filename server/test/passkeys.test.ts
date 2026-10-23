@@ -9,12 +9,15 @@ import { expectStatus, type Harness, startServer } from "./support/harness.js";
 const RP = "msg.example.com";
 const CERT = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
 const APP = "com.meldiq.android.test";
+/** A web app on another host: its own relying party (PASSKEY_WEB_ORIGINS). */
+const WEB = "web.example.com";
+const WEB_ORIGIN = `https://${WEB}`;
 
 let h: Harness;
 let off: Harness;
 const mailer = new MemoryMailer();
 beforeAll(async () => {
-  h = await startServer({ PASSKEY_RP_ID: RP, PASSKEY_ANDROID_APPS: `${APP}=${CERT}` }, { mailer });
+  h = await startServer({ PASSKEY_RP_ID: RP, PASSKEY_ANDROID_APPS: `${APP}=${CERT}`, PASSKEY_WEB_ORIGINS: WEB_ORIGIN }, { mailer });
   off = await startServer({}, { mailer });
 });
 afterAll(async () => {
@@ -29,14 +32,14 @@ async function account(name: string, server = h): Promise<AccountClient> {
 }
 
 /** Adds [key] to [c]'s account: options, the platform's answer, then the server's verdict. */
-async function addPasskey(c: AccountClient, key: FakePasskey, name = "Pixel"): Promise<any> {
-  const { challengeId, options } = await c.req("POST", "/v2/account/passkeys/options", {});
+async function addPasskey(c: AccountClient, key: FakePasskey, name = "Pixel", rpId?: string): Promise<any> {
+  const { challengeId, options } = await c.req("POST", "/v2/account/passkeys/options", rpId ? { rpId } : {});
   return c.req("POST", "/v2/account/passkeys", { challengeId, response: key.create(options), name });
 }
 
-async function passkeyLogin(key: FakePasskey, mutate: (r: any) => any = (r) => r): Promise<any> {
+async function passkeyLogin(key: FakePasskey, mutate: (r: any) => any = (r) => r, rpId?: string): Promise<any> {
   const anon = new AccountClient(h.baseUrl, "nobody@example.com");
-  const { challengeId, options } = await anon.req("POST", "/v2/auth/passkey/options", {});
+  const { challengeId, options } = await anon.req("POST", "/v2/auth/passkey/options", rpId ? { rpId } : {});
   return anon.req("POST", "/v2/auth/passkey/login", { challengeId, response: mutate(key.get(options)), deviceName: "test phone" });
 }
 
@@ -46,6 +49,7 @@ describe("passkeys", () => {
     expect(await c.req("GET", "/v2/account/passkeys")).toEqual({ available: false, passkeys: [] });
     expect((await expectStatus(c.req("POST", "/v2/account/passkeys/options", {}), 503)).error.code).toBe("passkey_unavailable");
     expect(await c.req("GET", "/.well-known/assetlinks.json")).toEqual([]);
+    expect((await c.req("GET", "/v1/server-info")).passkeys).toBeNull();
   });
 
   it("can be added from the Android app and then sign in to the same account", async () => {
@@ -70,6 +74,45 @@ describe("passkeys", () => {
     const key = new FakePasskey(RP, `https://${RP}`);
     await addPasskey(c, key);
     expect((await passkeyLogin(key)).account.id).toBe(c.accountId);
+  });
+
+  it("work from a web app on another host, as its own relying party, next to the Android ones", async () => {
+    const anon = new AccountClient(h.baseUrl, "info@example.com");
+    expect((await anon.req("GET", "/v1/server-info")).passkeys).toEqual({ webOrigins: [WEB_ORIGIN] });
+    const c = await account("other-host");
+    const phone = new FakePasskey(RP, androidOrigin(CERT));
+    const browser = new FakePasskey(WEB, WEB_ORIGIN);
+    await addPasskey(c, phone, "Pixel");
+    const { challengeId, options } = await c.req("POST", "/v2/account/passkeys/options", { rpId: WEB });
+    expect(options.rp).toEqual({ name: "Meldiq", id: WEB });
+    // The phone's passkey is already listed; it is for the other relying party, so the browser's prompt ignores it.
+    expect(options.excludeCredentials.map((e: any) => e.id)).toEqual([phone.id]);
+    await c.req("POST", "/v2/account/passkeys", { challengeId, response: browser.create(options), name: "Chrome" });
+    expect((await c.req("GET", "/v2/account/passkeys")).passkeys.map((p: any) => p.name)).toEqual(["Pixel", "Chrome"]);
+
+    const login = await anon.req("POST", "/v2/auth/passkey/options", { rpId: WEB });
+    expect(login.options.rpId).toBe(WEB);
+    expect((await passkeyLogin(browser, undefined, WEB)).account.id).toBe(c.accountId);
+    // The Android passkey still signs in as before (no rpId: this server's own).
+    expect((await passkeyLogin(phone)).account.id).toBe(c.accountId);
+  });
+
+  it("refuse a relying party they don't serve, and a passkey answered from another relying party's origin", async () => {
+    const anon = new AccountClient(h.baseUrl, "rp@example.com");
+    for (const rpId of ["evil.example.org", "example.com"]) {
+      expect((await expectStatus(anon.req("POST", "/v2/auth/passkey/options", { rpId }), 503)).error.code).toBe("passkey_unavailable");
+    }
+    const c = await account("cross-rp");
+    // A web passkey reported from this server's own web address, and this server's passkey from the web app's.
+    const mixed = new FakePasskey(WEB, `https://${RP}`);
+    expect((await expectStatus(addPasskey(c, mixed, "Mixed", WEB), 401)).error.code).toBe("passkey_failed");
+    const other = new FakePasskey(RP, WEB_ORIGIN);
+    expect((await expectStatus(addPasskey(c, other, "Other"), 401)).error.code).toBe("passkey_failed");
+
+    const web = new FakePasskey(WEB, WEB_ORIGIN);
+    await addPasskey(c, web, "Chrome", WEB);
+    web.origin = `https://${RP}`;
+    expect((await expectStatus(passkeyLogin(web, undefined, WEB), 401)).error.code).toBe("passkey_failed");
   });
 
   it("refuse other origins, other sites, missing user verification and forged signatures", async () => {
@@ -150,6 +193,12 @@ describe("passkeys", () => {
     expect(passkeyConfig({ PASSKEY_RP_ID: "MSG.Example.com", PASSKEY_ANDROID_APPS: `${APP}=${CERT.toLowerCase()}` })).toEqual({
       rpId: RP,
       androidApps: [{ packageName: APP, certSha256: CERT }],
+      webOrigins: [],
     });
+    for (const bad of ["web.example.com", "http://web.example.com", "https://web.example.com/app", "https://localhost", "ftp://x.example.com"]) {
+      expect(() => passkeyConfig({ PASSKEY_RP_ID: RP, PASSKEY_WEB_ORIGINS: bad })).toThrow(/PASSKEY_WEB_ORIGINS/);
+    }
+    expect(() => passkeyConfig({ PASSKEY_WEB_ORIGINS: WEB_ORIGIN })).toThrow(/needs PASSKEY_RP_ID/);
+    expect(passkeyConfig({ PASSKEY_RP_ID: RP, PASSKEY_WEB_ORIGINS: `${WEB_ORIGIN}/, http://localhost:5173` }).webOrigins).toEqual([WEB_ORIGIN, "http://localhost:5173"]);
   });
 });

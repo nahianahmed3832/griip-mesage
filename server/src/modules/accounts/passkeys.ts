@@ -79,15 +79,43 @@ export class PasskeyService {
     return this.cfg.rpId !== null;
   }
 
-  private rpId(): string {
+  /** The web apps on other hosts that may use passkeys (each its own relying party), for server-info. */
+  get webOrigins(): string[] {
+    return this.available ? this.cfg.webOrigins : [];
+  }
+
+  /**
+   * Each relying party and the origins it accepts: this server's host with its own web origin and the Android apps, and
+   * one per web app on another host (web.meldiq.app) with that origin only. A passkey belongs to the one it was made for.
+   */
+  private relyingParties(): Map<string, string[]> {
     const id = this.cfg.rpId;
     if (!id) throw new ApiError(503, "passkey_unavailable", "Passkeys aren't set up on this server.");
+    const parties = new Map([[id, [`https://${id}`, ...this.cfg.androidApps.map((a) => androidOrigin(a.certSha256))]]]);
+    for (const origin of this.cfg.webOrigins) {
+      const host = new URL(origin).hostname;
+      parties.set(host, [...(parties.get(host) ?? []), origin]);
+    }
+    return parties;
+  }
+
+  /** The relying party a client asks for ([requested]: its own host, for a web app), else this server's. */
+  private rpId(requested?: string): string {
+    const parties = this.relyingParties();
+    const id = requested ?? this.cfg.rpId!;
+    if (!parties.has(id)) throw new ApiError(503, "passkey_unavailable", "Passkeys aren't set up for this address.");
     return id;
   }
 
-  /** The web origin of this server and each allowed Android app's origin. */
-  private origins(rpId: string): string[] {
-    return [`https://${rpId}`, ...this.cfg.androidApps.map((a) => androidOrigin(a.certSha256))];
+  /** What a verification accepts: any relying party with any of its origins (checked as a pair by [checkPair]). */
+  private expected(): { expectedRPID: string[]; expectedOrigin: string[] } {
+    const parties = this.relyingParties();
+    return { expectedRPID: [...parties.keys()], expectedOrigin: [...parties.values()].flat() };
+  }
+
+  /** A passkey made for one relying party, answered from another one's origin, is refused. */
+  private checkPair(rpId: string | undefined, origin: string): boolean {
+    return rpId !== undefined && (this.relyingParties().get(rpId) ?? []).includes(origin);
   }
 
   /** Digital Asset Links for /.well-known/assetlinks.json: the apps that may use this server's passkeys. */
@@ -133,8 +161,8 @@ export class PasskeyService {
 
   // ───────────── Adding a passkey ─────────────
 
-  async registrationOptions(s: ActiveSession) {
-    const rpID = this.rpId();
+  async registrationOptions(s: ActiveSession, rpId?: string) {
+    const rpID = this.rpId(rpId);
     const account = (await this.accounts.store.accountById(s.account_id))!;
     if (this.count(account.id) >= MAX_PASSKEYS) throw new ApiError(409, "passkey_limit", "This account already has as many passkeys as it can. Remove one first.");
     const existing = this.db.prepare("SELECT id, transports FROM account_passkeys WHERE account_id = ?").all(account.id) as { id: string; transports: string | null }[];
@@ -155,17 +183,18 @@ export class PasskeyService {
   }
 
   async register(s: ActiveSession, body: PasskeyRegisterBody): Promise<{ passkey: PasskeyView }> {
-    const rpID = this.rpId();
+    const expected = this.expected();
     const expectedChallenge = this.takeChallenge(body.challengeId, "register", s.account_id);
     if (this.count(s.account_id) >= MAX_PASSKEYS) throw new ApiError(409, "passkey_limit", "This account already has as many passkeys as it can. Remove one first.");
     const result = await verifyRegistrationResponse({
       response: body.response as unknown as RegistrationResponseJSON,
       expectedChallenge,
-      expectedOrigin: this.origins(rpID),
-      expectedRPID: rpID,
+      ...expected,
       requireUserVerification: true,
     }).catch(() => ({ verified: false as const }));
-    if (!result.verified) throw new ApiError(401, "passkey_failed", "That passkey couldn't be verified. Try again.");
+    if (!result.verified || !this.checkPair(result.registrationInfo.rpID, result.registrationInfo.origin)) {
+      throw new ApiError(401, "passkey_failed", "That passkey couldn't be verified. Try again.");
+    }
     const { credential, credentialBackedUp } = result.registrationInfo;
     if (this.db.prepare("SELECT 1 FROM account_passkeys WHERE id = ?").get(credential.id)) {
       throw new ApiError(401, "passkey_failed", "That passkey is already registered.");
@@ -206,23 +235,22 @@ export class PasskeyService {
 
   // ───────────── Signing in ─────────────
 
-  async loginOptions() {
-    const rpID = this.rpId();
+  async loginOptions(rpId?: string) {
+    const rpID = this.rpId(rpId);
     // Discoverable passkeys: the platform offers whichever of the person's passkeys it holds for this server.
     const options = await generateAuthenticationOptions({ rpID, userVerification: "required", allowCredentials: [], timeout: CEREMONY_MS });
     return { challengeId: this.saveChallenge("login", null, options.challenge), options: options as unknown as Record<string, unknown> };
   }
 
   async login(body: PasskeyLoginBody, ip: string, reply: { header: (k: string, v: string) => unknown }): Promise<SessionResponse> {
-    const rpID = this.rpId();
+    const expected = this.expected();
     const expectedChallenge = this.takeChallenge(body.challengeId, "login", null);
     const row = this.db.prepare("SELECT * FROM account_passkeys WHERE id = ?").get(body.response.id) as PasskeyRow | undefined;
     if (!row) throw new ApiError(401, "passkey_unknown", "This passkey isn't registered here. Sign in with your password and add it again.");
     const result = await verifyAuthenticationResponse({
       response: body.response as unknown as AuthenticationResponseJSON,
       expectedChallenge,
-      expectedOrigin: this.origins(rpID),
-      expectedRPID: rpID,
+      ...expected,
       credential: {
         id: row.id,
         publicKey: Buffer.from(row.public_key, "base64url"),
@@ -231,7 +259,9 @@ export class PasskeyService {
       },
       requireUserVerification: true,
     }).catch(() => ({ verified: false as const }));
-    if (!result.verified) throw new ApiError(401, "passkey_failed", "That passkey couldn't be verified. Try again, or sign in with your password.");
+    if (!result.verified || !this.checkPair(result.authenticationInfo.rpID, result.authenticationInfo.origin)) {
+      throw new ApiError(401, "passkey_failed", "That passkey couldn't be verified. Try again, or sign in with your password.");
+    }
     this.db
       .prepare("UPDATE account_passkeys SET counter = ?, backed_up = ?, last_used_at = ? WHERE id = ?")
       .run(result.authenticationInfo.newCounter, result.authenticationInfo.credentialBackedUp ? 1 : 0, now(), row.id);
