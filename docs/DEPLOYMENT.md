@@ -7,7 +7,7 @@
 | VPS | Hostinger VM 1245833, `srv1245833.hstgr.cloud`, **72.60.107.88** (Ubuntu 24.04, 2 vCPU, 8 GB) |
 | Compose project | **`griip-internal-messaging`** |
 | Directory | **`/opt/griip-internal-messaging`** (root, 0750; `.env` 0600) |
-| Services | `api` (`griip-internal-messaging-api:0.28.0` since 2026-10-23 05:07 UTC, built on the VPS; `0.27.0-rollback`, `0.26.0-rollback`, `0.25.0-rollback`, `0.24.0-rollback`, `0.13.0-rollback`, `0.12.0-rollback`, `0.11.0-rollback`, `0.10.0-rollback`, `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
+| Services | `api` (`griip-internal-messaging-api:0.30.0` since 2026-10-23 12:27 UTC, built on the VPS; `0.29.0-rollback`, `0.28.0-rollback`, `0.27.0-rollback`, `0.26.0-rollback`, `0.25.0-rollback`, `0.24.0-rollback`, `0.13.0-rollback`, `0.12.0-rollback`, `0.11.0-rollback`, `0.10.0-rollback`, `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
 | Volume / network | `griip-internal-messaging_api-data`, `griip-internal-messaging_default` |
 | Public URLs | **`https://msg.meldiq.app`** (API + WebSocket) and **`wss://rtc.meldiq.app`** (LiveKit signalling) since 2026-10-22; the former `msg.griipbuddy.cloud` and `rtc.griipbuddy.cloud` still serve the same backends for apps installed earlier |
 | TLS | host nginx: `meldiq-msg.conf` (certificate `meldiq-msg`, msg and rtc.meldiq.app) and `griip-message.conf` (certificate `griip-message`, the former names); both renew automatically (certbot, webroot `/var/www/griip-message-acme`) |
@@ -114,6 +114,26 @@ Branch `api-0.8.1-web-return`. No migrations (schema stays 28).
 Not verifiable on production yet: no one can connect an app there (`integrations-status`: no `INTEGRATIONS_TOKEN_KEY`, no
 provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
 `up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
+
+### API 0.30.0 (2026-10-23, 12:27 UTC, owner's go-ahead)
+
+Passkeys for Meldiq Web as a second relying party (`internal-beta` `624073f`, docs/PASSKEYS.md › Relying parties):
+`PASSKEY_WEB_ORIGINS`, `{ rpId? }` on both options routes, `server-info.passkeys`. No migration (schema stays 45).
+Clients: Meldiq Web 0.5.0-beta-22bd2e9 (meldiq-web PR #17); Android unchanged (sends no `rpId`).
+
+| Step | Result |
+|---|---|
+| Checks before | server tests 769 passed (+ contracts regenerated); web unit 434 passed, `e2e/passkeys` (CDP virtual authenticator) in dev and production builds |
+| Pre-flight | running 0.29.0, healthy; a dry-run upload changed only the 9 passkey/version files; 47 GB free |
+| Backup | `backups/pre-0.30.0-20261023T122352Z`: integrity ok, schema 45, 36 users, `.env` + `compose.yaml` copies; image tagged `0.29.0-rollback`; sources kept as `server.pre-0.30.0` |
+| Build | `docker build -t griip-internal-messaging-api:0.30.0 server` (nohup) |
+| Rehearsal | snapshot copy in `rehearsal-0.30.0`, `--network none`, uid 1000, FCM off: `stats` ok (36 users), passkey config parsed (`webOrigins` = `https://web.meldiq.app`) |
+| Config | `.env` += `PASSKEY_WEB_ORIGINS=https://web.meldiq.app` (otherwise identical to the backup copy) |
+| Switch | `compose.yaml` image 0.30.0, `validate-env.sh` 0 errors (the 2 warnings predate it), `config -q`, `up -d --no-deps --no-build api` |
+| Checks after | healthy, `verify.sh` 0 restarts, `/healthz` and server-info 0.30.0 with `passkeys.webOrigins` on msg.meldiq.app, msg.griipbuddy.cloud and web.meldiq.app; options give `msg.meldiq.app` without `rpId` and `web.meldiq.app` with it, other RPs `passkey_unavailable`; assetlinks.json unchanged; no errors in the log; a headless Chromium on web.meldiq.app got a valid passkey prompt and the server's `passkey_unknown` for an unregistered passkey; backup `post-0.30.0-20261023T122723Z` |
+
+Rollback: `image: griip-internal-messaging-api:0.29.0-rollback` and the same `up -d`; 0.29.0 ignores
+`PASSKEY_WEB_ORIGINS` (web passkeys then stop being offered; passkeys made on the web stay in the table).
 
 ### API 0.29.0 (2026-10-23, 09:44 UTC, owner's go-ahead)
 
