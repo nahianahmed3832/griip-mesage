@@ -1,0 +1,37 @@
+{
+  "challengeId": "MJ2iJ5dmK4tvWtEwTixy8BjX",
+  "options": {
+    "challenge": "sx9oqwCeRegVFYre7Z5l_CGNQNRS_GNKhbzI3L4dqG0",
+    "rp": {
+      "name": "Meldiq",
+      "id": "msg.example.com"
+    },
+    "user": {
+      "id": "F07K-SNC-MyaFUEg-umP9Ygutkh8rHdD3UNp-XgafQM",
+      "name": "ada.mvkrpcei2@example.test",
+      "displayName": "Test Person"
+    },
+    "pubKeyCredParams": [
+      {
+        "alg": -7,
+        "type": "public-key"
+      },
+      {
+        "alg": -257,
+        "type": "public-key"
+      }
+    ],
+    "timeout": 300000,
+    "attestation": "none",
+    "excludeCredentials": [],
+    "authenticatorSelection": {
+      "residentKey": "required",
+      "requireResidentKey": true,
+      "userVerification": "required"
+    },
+    "extensions": {
+      "credProps": true
+    },
+    "hints": []
+  }
+}

@@ -6,11 +6,11 @@
   "instanceName": null,
   "registration": "open",
   "federation": null,
-  "version": "0.28.0",
+  "version": "0.29.0",
   "calling": true,
   "queueTtlSeconds": 604800,
-  "attachmentMaxBytes": 20971520,
-  "fileMaxBytes": 20971200,
+  "attachmentMaxBytes": 1074790400,
+  "fileMaxBytes": 1073741824,
   "accounts": {
     "registration": false,
     "legacyLogin": true,
@@ -77,7 +77,6 @@
     "reminders",
     "voice-rooms",
     "legacy-migration",
-    "direct-upload",
     "history",
     "attachment-keep"
   ],

@@ -16,6 +16,9 @@ import {
   LegacyCompleteBody,
   LegacyVerifyBody,
   LoginBody,
+  PasskeyIdParams,
+  PasskeyLoginBody,
+  PasskeyRegisterBody,
   PreferencesBody,
   PutKeyBackupBody,
   RecoveryCompleteBody,
@@ -45,7 +48,7 @@ function session(req: FastifyRequest): ActiveSession {
 
 /** The v2 account API (docs/ORBIT_2_ARCHITECTURE §6). */
 export default async function accountRoutes(app: FastifyInstance, ctx: AppContext, accounts: Accounts) {
-  const { service, identity, legacy, workspaces, store, recovery, keyBackups } = accounts;
+  const { service, identity, legacy, workspaces, store, recovery, keyBackups, passkeys } = accounts;
   // Unauthenticated routes that hash passwords or send email: tighter than the global limit, per network.
   const strict = { config: { rateLimit: { max: ctx.config.accounts.authRateLimitPerMinute, timeWindow: "1 minute" } } };
   const requireAccount = async (req: FastifyRequest) => {
@@ -80,6 +83,20 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
   // Renewal happens every few minutes from every signed-in app; phones behind one carrier NAT share an address.
   const renewal = { config: { rateLimit: { max: ctx.config.accounts.authRateLimitPerMinute * 10, timeWindow: "1 minute" } } };
   app.post("/v2/auth/refresh", renewal, async (req) => service.refresh(parse(RefreshBody, req.body).refreshToken));
+
+  // ───────────── Passkeys (2026-10-23, passkeys.ts) ─────────────
+  app.post("/v2/auth/passkey/options", strict, async () => passkeys.loginOptions());
+  app.post("/v2/auth/passkey/login", strict, async (req, reply) => passkeys.login(parse(PasskeyLoginBody, req.body), req.ip, reply));
+  app.get("/v2/account/passkeys", authed, async (req) => passkeys.list(session(req).account_id));
+  app.post("/v2/account/passkeys/options", authedStrict, async (req) => passkeys.registrationOptions(session(req)));
+  app.post("/v2/account/passkeys", authedStrict, async (req, reply) => {
+    const added = await passkeys.register(session(req), parse(PasskeyRegisterBody, req.body));
+    reply.code(201);
+    return added;
+  });
+  app.delete("/v2/account/passkeys/:id", authedStrict, async (req) => passkeys.remove(session(req), parse(PasskeyIdParams, req.params).id));
+  // Digital Asset Links: Android only offers this server's passkeys to the apps listed here.
+  app.get("/.well-known/assetlinks.json", async () => passkeys.assetLinks());
 
   app.post("/v2/auth/logout", authed, async (req) => {
     const s = session(req);

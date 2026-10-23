@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "passkey_unavailable",
+    "message": "Passkeys aren't set up on this server."
+  }
+}

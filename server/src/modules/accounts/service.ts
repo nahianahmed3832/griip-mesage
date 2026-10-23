@@ -366,6 +366,29 @@ export class AccountService {
       throw invalidCredentials();
     }
     await this.checkPassword(a, body.password, ip, reply);
+    return this.finishLogin(a, body, "password");
+  }
+
+  /**
+   * Sign-in with a passkey (2026-10-23, passkeys.ts) once its signature checked out: the same session and the same
+   * checks as a password sign-in (disabled, email verified, device proof).
+   */
+  async loginWithPasskey(
+    accountId: string,
+    body: { deviceName?: string; device?: { deviceId: string; nonce: string; signature: string } },
+    _ip: string,
+    _reply: { header: (k: string, v: string) => unknown },
+  ): Promise<SessionResponse> {
+    const a = await this.store.accountById(accountId);
+    if (!a) throw new ApiError(401, "passkey_unknown", "This passkey isn't registered here. Sign in with your password and add it again.");
+    return this.finishLogin(a, body, "passkey");
+  }
+
+  private async finishLogin(
+    a: AccountRow,
+    body: { deviceName?: string; device?: { deviceId: string; nonce: string; signature: string } },
+    via: "password" | "passkey",
+  ): Promise<SessionResponse> {
     if (a.disabled_at) throw sessionEnded("account_disabled");
     if (!a.email_verified_at) throw new ApiError(403, "email_unverified", "Verify your email first: enter the code we sent you.", { email: a.email });
     if (a.user_id) {
@@ -374,7 +397,8 @@ export class AccountService {
     }
     const deviceId = body.device ? this.provenDevice(a, body.device) : null;
     const issued = await this.sessions.issue(a.id, body.deviceName ?? "Meldiq app", deviceId, now());
-    this.ctx.audit({ actorId: a.user_id, action: "account.login", target: issued.session.id, detail: deviceId ? "device" : null });
+    const detail = [via === "passkey" ? "passkey" : null, deviceId ? "device" : null].filter(Boolean).join(",") || null;
+    this.ctx.audit({ actorId: a.user_id, action: "account.login", target: issued.session.id, detail });
     return this.respond(issued, (await this.store.accountById(a.id))!);
   }
 

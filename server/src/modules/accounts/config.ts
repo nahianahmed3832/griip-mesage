@@ -38,6 +38,42 @@ export interface AccountsConfig {
     /** Apps with the move must do it before opening (no "Later"). Old apps keep signing in while [login] is on. */
     migrationRequired: boolean;
   };
+  /** Passkeys (2026-10-23, docs/PASSKEYS.md); off when [rpId] is null. */
+  passkeys: PasskeyConfig;
+}
+
+export interface PasskeyConfig {
+  /** The WebAuthn relying party: this server's host name as people reach it (PASSKEY_RP_ID, e.g. msg.meldiq.app). */
+  rpId: string | null;
+  /** Android apps allowed to use the passkeys: package and SHA-256 signing-certificate fingerprint (PASSKEY_ANDROID_APPS). */
+  androidApps: { packageName: string; certSha256: string }[];
+}
+
+const HOST = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const PACKAGE = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
+const FINGERPRINT = /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/;
+
+/**
+ * PASSKEY_RP_ID: a host name (no scheme or port). PASSKEY_ANDROID_APPS: "package=FINGERPRINT" entries separated by
+ * commas, the fingerprint as keytool prints it (32 hex pairs with colons). Malformed values stop the server starting.
+ */
+export function passkeyConfig(env: NodeJS.ProcessEnv): PasskeyConfig {
+  const rp = (env.PASSKEY_RP_ID ?? "").trim().toLowerCase();
+  if (rp && !HOST.test(rp)) throw new Error("PASSKEY_RP_ID must be a host name such as msg.example.com");
+  const androidApps = (env.PASSKEY_ANDROID_APPS ?? "")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean)
+    .map((e) => {
+      const [packageName, cert] = e.split("=").map((x) => x?.trim() ?? "");
+      const certSha256 = cert.toUpperCase();
+      if (!PACKAGE.test(packageName) || !FINGERPRINT.test(certSha256)) {
+        throw new Error("PASSKEY_ANDROID_APPS entries must be package=SHA-256 fingerprint (AA:BB:… as keytool prints it)");
+      }
+      return { packageName, certSha256 };
+    });
+  if (androidApps.length > 0 && !rp) throw new Error("PASSKEY_ANDROID_APPS needs PASSKEY_RP_ID");
+  return { rpId: rp || null, androidApps };
 }
 
 const DAY_MS = 86_400_000;
@@ -142,5 +178,6 @@ export function accountsConfig(env: NodeJS.ProcessEnv, dataDir: string, int: (na
     authRateLimitPerMinute: Math.max(int("AUTH_RATE_LIMIT_PER_MINUTE", 20), 1),
     emailsPerNetworkPerHour: Math.max(int("ACCOUNT_EMAILS_PER_NETWORK_PER_HOUR", 30), 1),
     legacy,
+    passkeys: passkeyConfig(env),
   };
 }

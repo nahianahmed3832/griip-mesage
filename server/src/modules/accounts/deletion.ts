@@ -104,6 +104,7 @@ export async function eraseAccount(ctx: AppContext, accounts: Accounts, account:
   if (userId) result = await eraseIdentity(ctx, userId, actorId, t);
   await accounts.recovery.store.deleteForAccount(account.id);
   await accounts.keyBackups.store.deleteForAccount(account.id);
+  accounts.passkeys.removeAll(account.id);
   await accounts.store.deleteAccount(account.id);
   // Counts only: the email, username and profile are gone, and the audit log mustn't keep them.
   ctx.audit({

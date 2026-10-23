@@ -1,0 +1,10 @@
+{
+  "challengeId": "tiHSL1QFbpel-g_wXdpyukl4",
+  "options": {
+    "rpId": "msg.example.com",
+    "challenge": "7btbqwAvSAHybjbLaGzI9cnmxxRSYck7A9auu-6kB1M",
+    "allowCredentials": [],
+    "timeout": 300000,
+    "userVerification": "required"
+  }
+}

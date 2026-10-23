@@ -99,6 +99,17 @@ export type LegacyVerifyBody = z.infer<typeof LegacyVerifyBody>;
 export const LegacyCompleteBody = z.object({ ticket: zTicket, name: zName, email: zEmail, password: zPassword });
 export type LegacyCompleteBody = z.infer<typeof LegacyCompleteBody>;
 
+// ───────────── Passkeys (2026-10-23, docs/PASSKEYS.md) ─────────────
+
+/** A WebAuthn ceremony's answer as the platform gives it (JSON with base64url fields); verified by the server. */
+const zWebAuthnResponse = z.object({ id: z.string().min(1).max(1024), rawId: z.string().min(1).max(1024), type: z.literal("public-key") }).passthrough();
+const zChallengeId = z.string().min(16).max(64);
+export const PasskeyRegisterBody = z.object({ challengeId: zChallengeId, response: zWebAuthnResponse, name: zName.optional() });
+export type PasskeyRegisterBody = z.infer<typeof PasskeyRegisterBody>;
+export const PasskeyLoginBody = z.object({ challengeId: zChallengeId, response: zWebAuthnResponse, deviceName: zName.optional(), device: DeviceProof.optional() });
+export type PasskeyLoginBody = z.infer<typeof PasskeyLoginBody>;
+export const PasskeyIdParams = z.object({ id: z.string().min(1).max(1024) });
+
 // ───────────── Answers ─────────────
 
 export const Ok = z.strictObject({ ok: z.literal(true) });
@@ -135,6 +146,19 @@ export const AccountWithSession = z.strictObject({ account: AccountView, session
 export const AccountOnly = z.strictObject({ account: AccountView });
 export const AccountDeleted = z.strictObject({ deleted: z.literal(true), deletedAt: zTime });
 export const PasswordChanged = z.strictObject({ ok: z.literal(true), keyBackup: z.boolean() });
+
+/** Options for the platform's passkey prompt (WebAuthn JSON), and the id of this ceremony to send back with the answer. */
+export const PasskeyOptions = z.strictObject({ challengeId: z.string(), options: z.record(z.string(), z.unknown()) });
+export const PasskeyView = z.strictObject({ id: z.string(), name: z.string(), createdAt: zTime, lastUsedAt: zTime.nullable(), synced: z.boolean() });
+export const PasskeyList = z.strictObject({ available: z.boolean(), passkeys: z.array(PasskeyView) });
+export const PasskeyAdded = z.strictObject({ passkey: PasskeyView });
+/** Digital Asset Links: which Android apps may use passkeys for this server. */
+export const AssetLinks = z.array(
+  z.strictObject({
+    relation: z.array(z.string()),
+    target: z.strictObject({ namespace: z.literal("android_app"), package_name: z.string(), sha256_cert_fingerprints: z.array(z.string()) }),
+  }),
+);
 
 export const SessionList = z.strictObject({
   sessions: z.array(

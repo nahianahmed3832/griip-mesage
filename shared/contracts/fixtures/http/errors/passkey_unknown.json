@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "passkey_unknown",
+    "message": "This passkey isn't registered here. Sign in with your password and add it again."
+  }
+}

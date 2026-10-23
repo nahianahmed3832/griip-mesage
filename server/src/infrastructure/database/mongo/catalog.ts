@@ -49,6 +49,9 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   // Keys backed up under the password (2026-10-21, docs/KEY_BACKUP.md).
   account_key_backups: "accounts",
   account_key_unlocks: "accounts",
+  // Passkeys (2026-10-23, docs/PASSKEYS.md); kept in SQLite in either mode.
+  account_passkeys: "accounts",
+  account_passkey_challenges: "accounts",
   nav_preferences: "preferences",
   // Apps and connected accounts (2026-10-19): removed with the community rebuild; the tables stay (src/retiredData.ts).
   integration_installs: "integrations",
