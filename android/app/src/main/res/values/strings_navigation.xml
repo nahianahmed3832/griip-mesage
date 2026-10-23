@@ -667,4 +667,9 @@
     <string name="ux_off">Off</string>
     <string name="ux_paused">Paused</string>
     <string name="ux_blocked">Blocked by Android</string>
+    <string name="ux_no_match_sub">Try other words, or fewer tags.</string>
+    <string name="ux_clear_filters">Clear search and tags</string>
+    <string name="ux_channel_notifications">Channel notifications</string>
+    <string name="ux_muted_until">Muted until %1$s</string>
+    <string name="ux_notification_settings">Notification settings</string>
 </resources>

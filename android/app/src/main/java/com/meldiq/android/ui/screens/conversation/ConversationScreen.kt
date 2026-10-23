@@ -602,6 +602,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                         { scope.launch { vm.c.followedThreads.set(threadRoot, !following) } },
                     )
                 }
+                // 2026-10-23: a text channel's bell mutes it for a while and sets its notification level.
+                if (textChannel && threadRoot == null && conv?.removed != true) conv?.let { com.meldiq.android.ui.screens.community.ChannelBellButton(it) }
                 CircleIconButton(Icons.Rounded.Search, androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.conv_search), { searching = true }, tint = c.textSecondary)
             }
             if (showSecurity) {

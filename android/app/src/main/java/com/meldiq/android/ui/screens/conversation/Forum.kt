@@ -106,7 +106,10 @@ fun ForumPostList(
             }
         }
         if (shown.isEmpty()) item(key = "no-match") {
-            Text(stringResource(R.string.nv_no_matching_posts), style = Griip.type.bodySmall, color = c.textSecondary, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 16.dp))
+            EmptyState(
+                Icons.Outlined.Search, stringResource(R.string.nv_no_matching_posts), stringResource(R.string.ux_no_match_sub),
+                action = stringResource(R.string.ux_clear_filters), onAction = { selected = emptySet(); query = "" },
+            )
         }
         items(shown, key = { it.root.id }) { post ->
             val m = post.root

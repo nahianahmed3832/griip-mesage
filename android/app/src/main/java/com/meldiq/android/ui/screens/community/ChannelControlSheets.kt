@@ -129,7 +129,7 @@ fun slowmodeLabel(seconds: Int): String {
 }
 
 @Composable
-private fun levelName(level: String): String = stringResource(
+internal fun levelName(level: String): String = stringResource(
     when (level) {
         NotifyLevel.MENTIONS -> R.string.r3_notify_mentions
         NotifyLevel.NONE -> R.string.r3_notify_none
@@ -138,14 +138,14 @@ private fun levelName(level: String): String = stringResource(
 )
 
 @Composable
-private fun levelHint(level: String): String? = when (level) {
+internal fun levelHint(level: String): String? = when (level) {
     NotifyLevel.MENTIONS -> stringResource(R.string.r3_notify_mentions_sub)
     NotifyLevel.NONE -> stringResource(R.string.r3_notify_none_sub)
     else -> null
 }
 
 @Composable
-private fun LevelChoice(label: String, hint: String?, selected: Boolean, onClick: () -> Unit) {
+internal fun LevelChoice(label: String, hint: String?, selected: Boolean, onClick: () -> Unit) {
     val c = Griip.colors
     Row(
         Modifier.fillMaxWidth().clip(Shapes.small).pressable(onClick, role = Role.RadioButton).heightIn(min = 48.dp).padding(horizontal = 4.dp, vertical = 2.dp),

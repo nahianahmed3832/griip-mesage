@@ -667,4 +667,9 @@
     <string name="ux_off">বন্ধ</string>
     <string name="ux_paused">বিরতিতে</string>
     <string name="ux_blocked">Android বন্ধ রেখেছে</string>
+    <string name="ux_no_match_sub">অন্য শব্দ বা কম ট্যাগ দিয়ে চেষ্টা করুন।</string>
+    <string name="ux_clear_filters">সার্চ ও ট্যাগ মুছুন</string>
+    <string name="ux_channel_notifications">চ্যানেলের নোটিফিকেশন</string>
+    <string name="ux_muted_until">%1$s পর্যন্ত মিউট</string>
+    <string name="ux_notification_settings">নোটিফিকেশন সেটিংস</string>
 </resources>

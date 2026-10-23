@@ -684,4 +684,9 @@ S = {
 "ux_off": ("Off", "关闭", "বন্ধ"),
 "ux_paused": ("Paused", "已暂停", "বিরতিতে"),
 "ux_blocked": ("Blocked by Android", "已被 Android 阻止", "Android বন্ধ রেখেছে"),
+"ux_no_match_sub": ("Try other words, or fewer tags.", "试试其他词语或更少的标签。", "অন্য শব্দ বা কম ট্যাগ দিয়ে চেষ্টা করুন।"),
+"ux_clear_filters": ("Clear search and tags", "清除搜索和标签", "সার্চ ও ট্যাগ মুছুন"),
+"ux_channel_notifications": ("Channel notifications", "频道通知", "চ্যানেলের নোটিফিকেশন"),
+"ux_muted_until": ("Muted until %1$s", "静音至 %1$s", "%1$s পর্যন্ত মিউট"),
+"ux_notification_settings": ("Notification settings", "通知设置", "নোটিফিকেশন সেটিংস"),
 }

@@ -667,4 +667,9 @@
     <string name="ux_off">关闭</string>
     <string name="ux_paused">已暂停</string>
     <string name="ux_blocked">已被 Android 阻止</string>
+    <string name="ux_no_match_sub">试试其他词语或更少的标签。</string>
+    <string name="ux_clear_filters">清除搜索和标签</string>
+    <string name="ux_channel_notifications">频道通知</string>
+    <string name="ux_muted_until">静音至 %1$s</string>
+    <string name="ux_notification_settings">通知设置</string>
 </resources>
