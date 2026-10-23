@@ -62,7 +62,10 @@
     <string name="notif_ringtone_sub">Meldiq\'s own ringtone. Off: calls vibrate only.</string>
     <string name="notif_delivery_section">Delivery</string>
     <string name="notif_background">Stay connected in background</string>
-    <string name="notif_background_sub">Receive messages and calls without a push service. Uses more battery and shows a quiet notification while on.</string>
+    <string name="notif_background_sub">Keeps Meldiq reachable on phones without Google push. Not used while push works. Its quiet notification can be hidden from the notification itself.</string>
+    <string name="bg_conn_title">Meldiq</string>
+    <string name="bg_conn_text">Ready for messages and calls</string>
+    <string name="bg_conn_hide">Hide</string>
     <string name="notif_system">Android notification settings</string>
     <string name="notif_system_sub">Sounds and importance per channel, as Android stores them</string>
     <string name="notif_per_chat_hint">To mute one chat, long-press it in Chats.</string>

@@ -60,7 +60,10 @@
     <string name="notif_ringtone_sub">Meldiq-এর নিজস্ব রিংটোন। বন্ধ: কল শুধু ভাইব্রেট করে।</string>
     <string name="notif_delivery_section">ডেলিভারি</string>
     <string name="notif_background">ব্যাকগ্রাউন্ডে সংযুক্ত থাকুন</string>
-    <string name="notif_background_sub">পুশ সার্ভিস ছাড়াই মেসেজ ও কল পান। বেশি ব্যাটারি খরচ হয় এবং চালু থাকলে একটি নীরব নোটিফিকেশন দেখায়।</string>
+    <string name="notif_background_sub">Google পুশ নেই এমন ফোনে Meldiq-কে বার্তা পেতে সক্ষম রাখে। পুশ কাজ করলে এটি ব্যবহার হয় না। এর নীরব বিজ্ঞপ্তিটি বিজ্ঞপ্তি থেকেই লুকানো যায়।</string>
+    <string name="bg_conn_title">Meldiq</string>
+    <string name="bg_conn_text">বার্তা ও কলের জন্য প্রস্তুত</string>
+    <string name="bg_conn_hide">লুকান</string>
     <string name="notif_system">Android নোটিফিকেশন সেটিংস</string>
     <string name="notif_system_sub">Android যেভাবে রাখে, প্রতিটি চ্যানেলের শব্দ ও গুরুত্ব</string>
     <string name="notif_per_chat_hint">একটি চ্যাট মিউট করতে চ্যাট তালিকায় সেটি চেপে ধরুন।</string>

@@ -60,7 +60,10 @@
     <string name="notif_ringtone_sub">Meldiq 专属铃声。关闭后来电仅振动。</string>
     <string name="notif_delivery_section">送达</string>
     <string name="notif_background">保持后台连接</string>
-    <string name="notif_background_sub">无需推送服务即可接收消息和来电。更耗电，开启时会显示一条安静的通知。</string>
+    <string name="notif_background_sub">在没有 Google 推送的手机上保持 Meldiq 可接收消息。推送可用时不会使用。它的静默通知可在通知中直接隐藏。</string>
+    <string name="bg_conn_title">Meldiq</string>
+    <string name="bg_conn_text">可接收消息和来电</string>
+    <string name="bg_conn_hide">隐藏</string>
     <string name="notif_system">Android 通知设置</string>
     <string name="notif_system_sub">按 Android 的方式设置每个渠道的声音和重要程度</string>
     <string name="notif_per_chat_hint">要静音某个聊天，请在“聊天”中长按它。</string>

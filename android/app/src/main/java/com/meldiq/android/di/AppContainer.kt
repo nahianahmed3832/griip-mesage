@@ -135,6 +135,10 @@ class AppContainer(
         scope.launch { runCatching { navPrefs.load(com.meldiq.android.data.repo.NavPreferences.PERSONAL) } }
         scope.launch { orgs.selectedOrg.collect { id -> if (id != null) runCatching { navPrefs.load(id) } } }
         scope.launch { messages.prefsUpdated.collect { ws -> runCatching { navPrefs.sync(ws) } } }
+        // Firebase wake-ups started or stopped working: the background connection (and its notification) follows.
+        scope.launch { fcm.state.collect { com.meldiq.android.service.BackgroundDelivery.sync(app) } }
+        // Your name, status, photo or pause changed on another device: this one shows it at once.
+        scope.launch { messages.ownAccountUpdates.collect { runCatching { profiles.refreshStatus() } } }
         // Reminders for saved messages follow the synced list (set, changed or cleared on any of the person's devices).
         // A server that keeps reminders fires them (docs/REMINDERS.md); otherwise this phone's own timers do.
         scope.launch {

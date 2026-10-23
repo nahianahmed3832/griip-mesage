@@ -47,6 +47,13 @@ object Channels {
         }
     }
 
+    /** The system's settings for one of this app's channels (where a person can switch it off). */
+    fun settingsIntent(context: Context, channelId: String): android.content.Intent =
+        android.content.Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, channelId)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+
     fun create(context: Context) {
         val p = context.getSharedPreferences("griip_settings", Context.MODE_PRIVATE)
         apply(context, p.getBoolean("messageSound", true), p.getBoolean("callRingtone", true), p.getBoolean("vibrate", true))

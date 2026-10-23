@@ -14,6 +14,14 @@ class BackgroundDeliveryTest {
     }
 
     @Test
+    fun `the always-on connection and its notification step aside while Firebase wake-ups work`() {
+        assertTrue("no Google push on this phone: the connection is the way in", PersistentConnection.needed(signedIn = true, enabled = true, fcmActive = false))
+        assertFalse(PersistentConnection.needed(signedIn = true, enabled = true, fcmActive = true))
+        assertFalse(PersistentConnection.needed(signedIn = true, enabled = false, fcmActive = false))
+        assertFalse(PersistentConnection.needed(signedIn = false, enabled = true, fcmActive = false))
+    }
+
+    @Test
     fun pushEventsGoToTheActiveSignedInProfileOnly() {
         assertEquals(PushEvents.Route.Handle, PushEvents.route("p1", activeProfile = "p1", signedIn = true))
         assertEquals("another profile's registration is ended", PushEvents.Route.EndStale, PushEvents.route("p2", activeProfile = "p1", signedIn = true))
