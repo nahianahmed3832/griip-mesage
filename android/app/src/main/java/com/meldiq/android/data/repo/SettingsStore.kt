@@ -59,6 +59,10 @@ data class Settings(
     val videoQuality: AttachmentPolicy.Quality = AttachmentPolicy.Quality.ORIGINAL,
     val previewMode: PreviewMode = PreviewMode.ALL,
     val hourFormat: HourFormat = HourFormat.AUTO,
+    /** Settings › Chats › Gestures (2026-10-23): swipe a message to reply; double-tap it to react with [doubleTapEmoji]. */
+    val swipeReply: Boolean = true,
+    val doubleTapReact: Boolean = true,
+    val doubleTapEmoji: String = "👍",
     // Notifications & sounds.
     val messageSound: Boolean = true,
     val groupNotifications: Boolean = true,
@@ -77,6 +81,8 @@ enum class MessageLayout { STREAM, BUBBLES }
 enum class AutoDownload { NEVER, WIFI, ALWAYS }
 /** Settings › Appearance (2026-10-23): message text in the chat list always, only while unread, or never. */
 enum class PreviewMode { ALL, UNREAD, NONE }
+/** The reactions a double-tap can add (Settings › Chats › Gestures). */
+val DOUBLE_TAP_EMOJI = listOf("👍", "❤️", "✅", "😂", "🔥", "🙏")
 /** Settings › Appearance (2026-10-23): times in the phone's format, or always 12-hour or 24-hour. */
 enum class HourFormat { AUTO, H12, H24 }
 
@@ -122,6 +128,9 @@ class SettingsStore(
         videoQuality = runCatching { AttachmentPolicy.Quality.valueOf(prefs.getString("videoQuality", null)!!) }.getOrDefault(AttachmentPolicy.Quality.ORIGINAL),
         previewMode = runCatching { PreviewMode.valueOf(prefs.getString("previewMode", null)!!) }.getOrDefault(PreviewMode.ALL),
         hourFormat = runCatching { HourFormat.valueOf(prefs.getString("hourFormat", null)!!) }.getOrDefault(HourFormat.AUTO),
+        swipeReply = prefs.getBoolean("swipeReply", true),
+        doubleTapReact = prefs.getBoolean("doubleTapReact", true),
+        doubleTapEmoji = prefs.getString("doubleTapEmoji", null)?.takeIf { it in DOUBLE_TAP_EMOJI } ?: "👍",
         messageSound = prefs.getBoolean("messageSound", true),
         groupNotifications = prefs.getBoolean("groupNotifications", true),
         callRingtone = prefs.getBoolean("callRingtone", true),
@@ -161,6 +170,9 @@ class SettingsStore(
             .putString("videoQuality", n.videoQuality.name)
             .putString("previewMode", n.previewMode.name)
             .putString("hourFormat", n.hourFormat.name)
+            .putBoolean("swipeReply", n.swipeReply)
+            .putBoolean("doubleTapReact", n.doubleTapReact)
+            .putString("doubleTapEmoji", n.doubleTapEmoji)
             .putBoolean("messageSound", n.messageSound)
             .putBoolean("groupNotifications", n.groupNotifications)
             .putBoolean("callRingtone", n.callRingtone)

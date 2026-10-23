@@ -154,6 +154,7 @@ private class MessageCallbacks(
     val onOpenLink: (String) -> Unit,
     val onVote: (List<String>) -> Unit,
     val linkDetails: (@Composable (String) -> Unit)?,
+    val onDoubleTap: (() -> Unit)?,
 )
 
 /**
@@ -185,6 +186,8 @@ fun MessageBubble(
     linkDetails: (@Composable (String) -> Unit)? = null,
     /** Runs while a received message with files is on screen (cancelled when it scrolls away): loads its photos. */
     onShown: (suspend () -> Unit)? = null,
+    /** Settings › Chats › Gestures: a double-tap adds the chosen reaction; null when off or not allowed here. */
+    onDoubleTap: (() -> Unit)? = null,
 ) {
     val m = b.m
     if (onShown != null && !m.outgoing && b.attachments.isNotEmpty()) LaunchedEffect(m.id) { onShown() }
@@ -194,7 +197,7 @@ fun MessageBubble(
     }
     val cb = MessageCallbacks(
         onLongPress, onReact, onOpenAttachment, onOpenThread, onRetry, onReplyClick, onVoiceToggle, onVoiceSeek, onMentionClick,
-        onCopyText, onFindPhone, onOpenLink, onVote, linkDetails,
+        onCopyText, onFindPhone, onOpenLink, onVote, linkDetails, onDoubleTap,
     )
     if (b.stream) StreamMessage(b, me, transfer, localFile, voice, cb) else BubbleMessage(b, me, transfer, localFile, voice, cb)
 }
@@ -237,7 +240,7 @@ private fun BubbleMessage(b: BubbleModel, me: String?, transfer: Float?, localFi
                     .widthIn(max = 310.dp)
                     .clip(shape)
                     .background(bg)
-                    .combinedClickable(onClick = { if (m.status == MessageStatus.FAILED) cb.onRetry() }, onLongClick = cb.onLongPress, onLongClickLabel = "Message actions")
+                    .combinedClickable(onClick = { if (m.status == MessageStatus.FAILED) cb.onRetry() }, onLongClick = cb.onLongPress, onLongClickLabel = "Message actions", onDoubleClick = cb.onDoubleTap)
                     .padding(horizontal = if (standalone) 0.dp else 12.dp, vertical = 7.dp),
             ) {
                 if (b.showSender && !out && b.isGroupConv) {
@@ -273,7 +276,7 @@ private fun StreamMessage(b: BubbleModel, me: String?, transfer: Float?, localFi
     Row(
         Modifier.fillMaxWidth()
             .mentionHighlight(b.mentionsYou)
-            .combinedClickable(onClick = { if (m.status == MessageStatus.FAILED) cb.onRetry() }, onLongClick = cb.onLongPress, onLongClickLabel = "Message actions")
+            .combinedClickable(onClick = { if (m.status == MessageStatus.FAILED) cb.onRetry() }, onLongClick = cb.onLongPress, onLongClickLabel = "Message actions", onDoubleClick = cb.onDoubleTap)
             .padding(start = 14.dp, end = 12.dp, top = if (b.firstInGroup) 10.dp else 1.dp, bottom = 1.dp),
         verticalAlignment = Alignment.Top,
     ) {

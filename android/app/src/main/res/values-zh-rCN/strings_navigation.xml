@@ -680,4 +680,9 @@
     <string name="ux_time_auto">自动</string>
     <string name="ux_time_12">12 小时制</string>
     <string name="ux_time_24">24 小时制</string>
+    <string name="ux_gestures">手势</string>
+    <string name="ux_swipe_reply">滑动消息以回复</string>
+    <string name="ux_swipe_reply_sub">在消息上向右滑动即可回复。</string>
+    <string name="ux_double_tap">双击以回应</string>
+    <string name="ux_double_tap_sub">双击消息添加此回应，再次双击可撤回。</string>
 </resources>

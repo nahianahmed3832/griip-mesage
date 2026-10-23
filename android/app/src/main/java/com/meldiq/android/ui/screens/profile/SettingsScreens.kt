@@ -335,6 +335,20 @@ fun ChatSettingsScreen(nav: NavHostController) {
                 Text(stringResource(R.string.ux_upload_quality_sub), style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp))
             }
         }
+        item { SectionHeader(stringResource(R.string.ux_gestures), Modifier.padding(top = 16.dp, bottom = 6.dp)) }
+        item {
+            GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(4.dp)) {
+                MenuRow(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.ux_swipe_reply), subtitle = stringResource(R.string.ux_swipe_reply_sub), trailing = {
+                    GriipSwitch(s.swipeReply, { v -> update { it.copy(swipeReply = v) } })
+                })
+                MenuRow(Icons.Outlined.AutoAwesome, stringResource(R.string.ux_double_tap), subtitle = stringResource(R.string.ux_double_tap_sub), trailing = {
+                    GriipSwitch(s.doubleTapReact, { v -> update { it.copy(doubleTapReact = v) } })
+                })
+                if (s.doubleTapReact) ChipRow {
+                    com.meldiq.android.data.repo.DOUBLE_TAP_EMOJI.forEach { e -> PillChip(e, s.doubleTapEmoji == e, { update { it.copy(doubleTapEmoji = e) } }) }
+                }
+            }
+        }
     }
 }
 

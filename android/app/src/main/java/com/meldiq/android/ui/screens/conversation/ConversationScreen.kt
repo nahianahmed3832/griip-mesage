@@ -744,7 +744,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                         ) {
                             if (older == null || !TimeFmt.sameDay(older.sortTs, m.sortTs)) DayDivider(m.sortTs)
                             if (m.id == unreadMarker) NewMessagesDivider()
-                            SwipeToReply(canSwipeReply && selected == null, onReply = { vm.replyTo.value = m; vm.editing.value = null; focusComposer() }) {
+                            SwipeToReply(chatSettings.swipeReply && canSwipeReply && selected == null, onReply = { vm.replyTo.value = m; vm.editing.value = null; focusComposer() }) {
                             MessageBubble(
                                 BubbleModel(
                                     m, users[m.senderUserId], showSender = first, showAvatar = lastInRun, firstInGroup = first, reply = reply,
@@ -782,6 +782,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                                 onVoiceSeek = { ref, pos -> vm.seekVoice(m.id, ref, pos) },
                                 // Received photos load as their message comes on screen (Settings › Chats › media).
                                 onShown = { vm.loadShownMedia(m, ctx) },
+                                onDoubleTap = if (chatSettings.doubleTapReact && !m.deleted && m.kind == "text" && selected == null) ({ vm.react(m, chatSettings.doubleTapEmoji) }) else null,
                             )
                             }
                         }

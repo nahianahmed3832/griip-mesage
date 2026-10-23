@@ -680,4 +680,9 @@
     <string name="ux_time_auto">Automatic</string>
     <string name="ux_time_12">12-hour</string>
     <string name="ux_time_24">24-hour</string>
+    <string name="ux_gestures">Gestures</string>
+    <string name="ux_swipe_reply">Swipe a message to reply</string>
+    <string name="ux_swipe_reply_sub">Swipe right on a message to start a reply to it.</string>
+    <string name="ux_double_tap">Double-tap to react</string>
+    <string name="ux_double_tap_sub">Double-tap a message to add this reaction; again to take it back.</string>
 </resources>

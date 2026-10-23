@@ -680,4 +680,9 @@
     <string name="ux_time_auto">স্বয়ংক্রিয়</string>
     <string name="ux_time_12">১২ ঘণ্টা</string>
     <string name="ux_time_24">২৪ ঘণ্টা</string>
+    <string name="ux_gestures">জেসচার</string>
+    <string name="ux_swipe_reply">উত্তর দিতে মেসেজ সোয়াইপ করুন</string>
+    <string name="ux_swipe_reply_sub">কোনো মেসেজে ডানে সোয়াইপ করলে উত্তর শুরু হয়।</string>
+    <string name="ux_double_tap">রিঅ্যাক্ট করতে দুবার ট্যাপ করুন</string>
+    <string name="ux_double_tap_sub">এই রিঅ্যাকশন দিতে মেসেজে দুবার ট্যাপ করুন; আবার করলে সরে যাবে।</string>
 </resources>

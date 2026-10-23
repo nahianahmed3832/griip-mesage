@@ -697,4 +697,9 @@ S = {
 "ux_time_auto": ("Automatic", "自动", "স্বয়ংক্রিয়"),
 "ux_time_12": ("12-hour", "12 小时制", "১২ ঘণ্টা"),
 "ux_time_24": ("24-hour", "24 小时制", "২৪ ঘণ্টা"),
+"ux_gestures": ("Gestures", "手势", "জেসচার"),
+"ux_swipe_reply": ("Swipe a message to reply", "滑动消息以回复", "উত্তর দিতে মেসেজ সোয়াইপ করুন"),
+"ux_swipe_reply_sub": ("Swipe right on a message to start a reply to it.", "在消息上向右滑动即可回复。", "কোনো মেসেজে ডানে সোয়াইপ করলে উত্তর শুরু হয়।"),
+"ux_double_tap": ("Double-tap to react", "双击以回应", "রিঅ্যাক্ট করতে দুবার ট্যাপ করুন"),
+"ux_double_tap_sub": ("Double-tap a message to add this reaction; again to take it back.", "双击消息添加此回应，再次双击可撤回。", "এই রিঅ্যাকশন দিতে মেসেজে দুবার ট্যাপ করুন; আবার করলে সরে যাবে।"),
 }
