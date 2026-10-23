@@ -88,6 +88,7 @@ internal fun WelcomeScreen(
         ) {
             MeldiqLockup(Modifier.clip(Shapes.small).pressable(onBrandTap))
             Spacer(Modifier.weight(1f))
+            LanguageButton()
             if (showServer) CircleIconButton(Icons.Outlined.Dns, stringResource(R.string.auth_server_settings), onServer)
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {

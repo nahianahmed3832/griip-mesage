@@ -46,8 +46,8 @@ import com.meldiq.android.ui.theme.Space
 private val MaxFormWidth = 520.dp
 
 /**
- * The frame of every sign-up and sign-in step: back button, a large heading with a short explanation, scrolling
- * content, and the main action pinned at the bottom, riding above the keyboard. Drawn in whatever palette encloses it
+ * The frame of every sign-up and sign-in step: back button, the language, a large heading with a short explanation,
+ * scrolling content, and the main action pinned at the bottom, riding above the keyboard. Drawn in whatever palette encloses it
  * (the onboarding flow follows the app's theme and colour preset).
  */
 @Composable
@@ -70,6 +70,7 @@ fun AuthScaffold(
         ) {
             CircleIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.common_back), onBack, enabled = backEnabled)
             Spacer(Modifier.weight(1f))
+            LanguageButton()
             actions()
         }
         Column(
