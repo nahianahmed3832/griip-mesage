@@ -685,4 +685,11 @@
     <string name="ux_swipe_reply_sub">কোনো মেসেজে ডানে সোয়াইপ করলে উত্তর শুরু হয়।</string>
     <string name="ux_double_tap">রিঅ্যাক্ট করতে দুবার ট্যাপ করুন</string>
     <string name="ux_double_tap_sub">এই রিঅ্যাকশন দিতে মেসেজে দুবার ট্যাপ করুন; আবার করলে সরে যাবে।</string>
+    <string name="ux_step_of">ধাপ %1$d / %2$d</string>
+    <string name="ux_event_where">আপনার ইভেন্ট কোথায়?</string>
+    <string name="ux_event_what">ইভেন্টটি কী নিয়ে, আর কখন?</string>
+    <string name="ux_event_preview">যেমন দেখাবে</string>
+    <string name="ux_event_invited">%1$d জন আমন্ত্রিত</string>
+    <string name="ux_back">ফিরে যান</string>
+    <string name="ux_next">পরের ধাপ</string>
 </resources>

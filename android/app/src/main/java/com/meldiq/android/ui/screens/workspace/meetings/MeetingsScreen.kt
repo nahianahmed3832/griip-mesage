@@ -206,53 +206,84 @@ private fun MeetingEditor(orgId: String, meeting: MeetingDto?, zone: String, onS
     LaunchedEffect(query) { found = if (query.trim().length < 2) emptyList() else runCatching { container.orgs.members(orgId, query.trim()) }.getOrDefault(emptyList()) }
     val problems = MeetingRules.problems(title, roomId, date, time, zone, System.currentTimeMillis())
 
+    // 2026-10-23 (the reference's event wizard): 1 where, 2 what and when, 3 a preview of the card before saving.
+    var step by remember { mutableIntStateOf(1) }
+    val stepOk = when (step) {
+        1 -> roomId != null
+        2 -> problems.isEmpty()
+        else -> true
+    }
     GlassSheet(onDismiss, title = stringResource(if (meeting == null) R.string.mtg_new else R.string.mtg_edit)) {
-        Column(Modifier.heightIn(max = 540.dp).verticalScroll(rememberScrollState())) {
-            GriipTextField(title, { title = it.take(120) }, stringResource(R.string.mtg_field_title))
-            Row {
-                GriipTextField(date, { date = it.take(10) }, stringResource(R.string.mtg_field_date), Modifier.weight(1f))
-                Spacer(Modifier.padding(4.dp))
-                GriipTextField(time, { time = it.take(5) }, stringResource(R.string.mtg_field_time), Modifier.weight(1f), helper = zone)
-            }
-            ChipRow(Modifier.padding(horizontal = 0.dp)) { MeetingRules.DURATIONS.forEach { d -> PillChip(stringResource(R.string.mtg_minutes, d), minutes == d, { minutes = d }) } }
-            if (repeatAvailable) {
-                Text(stringResource(R.string.b8b_repeat), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp))
-                val startForLabel = MeetingRules.startMs(date, time, zone)
-                ChipRow(Modifier.padding(horizontal = 0.dp)) {
-                    com.meldiq.android.data.model.EventRepeatRules.CHOICES.forEach { r -> PillChip(repeatLabel(r, startForLabel, zone), repeat == r, { repeat = r }) }
+        Text(stringResource(R.string.ux_step_of, step, 3), style = Griip.type.label, color = c.textSecondary)
+        Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+            when (step) {
+                1 -> {
+                    Text(stringResource(R.string.ux_event_where), style = Griip.type.title, color = c.textPrimary, modifier = Modifier.padding(vertical = 8.dp))
+                    Text(stringResource(R.string.mtg_room), style = Griip.type.label, color = c.textSecondary)
+                    if (rooms.isEmpty()) Text(stringResource(R.string.mtg_no_rooms), style = Griip.type.caption, color = c.textSecondary)
+                    ChipRow(Modifier.padding(horizontal = 0.dp)) { rooms.forEach { r -> PillChip("#${r.name.orEmpty()}", roomId == r.id, { roomId = r.id }) } }
+                }
+                2 -> {
+                    Text(stringResource(R.string.ux_event_what), style = Griip.type.title, color = c.textPrimary, modifier = Modifier.padding(vertical = 8.dp))
+                    GriipTextField(title, { title = it.take(120) }, stringResource(R.string.mtg_field_title))
+                    Row {
+                        GriipTextField(date, { date = it.take(10) }, stringResource(R.string.mtg_field_date), Modifier.weight(1f))
+                        Spacer(Modifier.padding(4.dp))
+                        GriipTextField(time, { time = it.take(5) }, stringResource(R.string.mtg_field_time), Modifier.weight(1f), helper = zone)
+                    }
+                    ChipRow(Modifier.padding(horizontal = 0.dp)) { MeetingRules.DURATIONS.forEach { d -> PillChip(stringResource(R.string.mtg_minutes, d), minutes == d, { minutes = d }) } }
+                    if (repeatAvailable) {
+                        Text(stringResource(R.string.b8b_repeat), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp))
+                        val startForLabel = MeetingRules.startMs(date, time, zone)
+                        ChipRow(Modifier.padding(horizontal = 0.dp)) {
+                            com.meldiq.android.data.model.EventRepeatRules.CHOICES.forEach { r -> PillChip(repeatLabel(r, startForLabel, zone), repeat == r, { repeat = r }) }
+                        }
+                    }
+                    Text(stringResource(R.string.mtg_invite_people), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp))
+                    people.forEach { (id, n) ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(n, style = Griip.type.body, color = c.textPrimary, modifier = Modifier.weight(1f))
+                            CircleIconButton(Icons.Rounded.Close, stringResource(R.string.grp_remove_member), { people = people - id }, size = 36.dp, tint = c.textSecondary)
+                        }
+                    }
+                    SearchPill(query, { query = it }, stringResource(R.string.grp_add_member))
+                    found.filter { it.id !in people }.take(6).forEach { u ->
+                        PillButton("${u.displayName} · @${u.username}", { people = people + (u.id to u.displayName); query = "" }, Modifier.fillMaxWidth().padding(vertical = 2.dp), tone = ButtonTone.Glass, height = 40.dp)
+                    }
+                    GriipTextField(description, { description = it.take(2000) }, stringResource(R.string.mtg_field_description), singleLine = false)
+                    problems.firstOrNull()?.let { Text(it, style = Griip.type.caption, color = c.warning) }
+                }
+                else -> {
+                    Text(stringResource(R.string.ux_event_preview), style = Griip.type.title, color = c.textPrimary, modifier = Modifier.padding(vertical = 8.dp))
+                    val startMs = MeetingRules.startMs(date, time, zone)
+                    com.meldiq.android.ui.components.GlassCard(Modifier.fillMaxWidth()) {
+                        startMs?.let { Text(com.meldiq.android.ui.TimeFmt.dayHeader(it) + " · " + com.meldiq.android.ui.TimeFmt.clock(it) + " · " + stringResource(R.string.mtg_minutes, minutes), style = Griip.type.label, color = c.primary) }
+                        Text(title.trim(), style = Griip.type.title, color = c.textPrimary, modifier = Modifier.padding(top = 4.dp))
+                        rooms.firstOrNull { it.id == roomId }?.let { Text("#" + it.name.orEmpty(), style = Griip.type.bodySmall, color = c.textSecondary) }
+                        if (people.isNotEmpty()) Text(stringResource(R.string.ux_event_invited, people.size), style = Griip.type.caption, color = c.textSecondary)
+                        if (description.isNotBlank()) Text(description.trim(), style = Griip.type.bodySmall, color = c.textSecondary, maxLines = 4, modifier = Modifier.padding(top = 6.dp))
+                    }
                 }
             }
-            Text(stringResource(R.string.mtg_room), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp))
-            if (rooms.isEmpty()) Text(stringResource(R.string.mtg_no_rooms), style = Griip.type.caption, color = c.textSecondary)
-            ChipRow(Modifier.padding(horizontal = 0.dp)) { rooms.forEach { r -> PillChip("#${r.name.orEmpty()}", roomId == r.id, { roomId = r.id }) } }
-            Text(stringResource(R.string.mtg_invite_people), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp))
-            people.forEach { (id, n) ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(n, style = Griip.type.body, color = c.textPrimary, modifier = Modifier.weight(1f))
-                    CircleIconButton(Icons.Rounded.Close, stringResource(R.string.grp_remove_member), { people = people - id }, size = 36.dp, tint = c.textSecondary)
-                }
-            }
-            SearchPill(query, { query = it }, stringResource(R.string.grp_add_member))
-            found.filter { it.id !in people }.take(6).forEach { u ->
-                PillButton("${u.displayName} · @${u.username}", { people = people + (u.id to u.displayName); query = "" }, Modifier.fillMaxWidth().padding(vertical = 2.dp), tone = ButtonTone.Glass, height = 40.dp)
-            }
-            GriipTextField(description, { description = it.take(2000) }, stringResource(R.string.mtg_field_description), singleLine = false)
         }
-        problems.firstOrNull()?.let { Text(it, style = Griip.type.caption, color = c.warning) }
         error?.let { Text(it, style = Griip.type.caption, color = c.danger) }
         Spacer(Modifier.height(8.dp))
-        PillButton(stringResource(R.string.mtg_save), {
-            val start = MeetingRules.startMs(date, time, zone) ?: return@PillButton
-            val req = MeetingReq(
-                roomId.orEmpty(), title.trim(), description.trim().ifEmpty { null }, start, start + minutes * 60_000L, zone, people.keys.toList(), meeting?.rev,
-                repeat = repeat.takeIf { repeatAvailable },
-            )
-            scope.launch {
-                runCatching {
-                    if (meeting == null) container.api.post<MeetingReq, MeetingRes>("/v1/orgs/$orgId/meetings", req) else container.api.put<MeetingReq, MeetingRes>("/v1/meetings/${meeting.id}", req)
-                }.onSuccess { onSaved() }.onFailure { error = it.friendly() }
-            }
-        }, Modifier.fillMaxWidth(), enabled = problems.isEmpty(), height = 48.dp)
+        Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+            if (step > 1) PillButton(stringResource(R.string.ux_back), { step-- }, Modifier.weight(1f), tone = ButtonTone.Glass, height = 48.dp)
+            if (step < 3) PillButton(stringResource(R.string.ux_next), { step++ }, Modifier.weight(1f), enabled = stepOk, height = 48.dp)
+            else PillButton(stringResource(R.string.mtg_save), {
+                val start = MeetingRules.startMs(date, time, zone) ?: return@PillButton
+                val req = MeetingReq(
+                    roomId.orEmpty(), title.trim(), description.trim().ifEmpty { null }, start, start + minutes * 60_000L, zone, people.keys.toList(), meeting?.rev,
+                    repeat = repeat.takeIf { repeatAvailable },
+                )
+                scope.launch {
+                    runCatching {
+                        if (meeting == null) container.api.post<MeetingReq, MeetingRes>("/v1/orgs/$orgId/meetings", req) else container.api.put<MeetingReq, MeetingRes>("/v1/meetings/${meeting.id}", req)
+                    }.onSuccess { onSaved() }.onFailure { error = it.friendly() }
+                }
+            }, Modifier.weight(1f), enabled = problems.isEmpty(), height = 48.dp)
+        }
         Spacer(Modifier.height(16.dp))
     }
 }

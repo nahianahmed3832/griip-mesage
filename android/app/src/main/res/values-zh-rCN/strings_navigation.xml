@@ -685,4 +685,11 @@
     <string name="ux_swipe_reply_sub">在消息上向右滑动即可回复。</string>
     <string name="ux_double_tap">双击以回应</string>
     <string name="ux_double_tap_sub">双击消息添加此回应，再次双击可撤回。</string>
+    <string name="ux_step_of">第 %1$d 步，共 %2$d 步</string>
+    <string name="ux_event_where">活动在哪里举行？</string>
+    <string name="ux_event_what">活动内容和时间？</string>
+    <string name="ux_event_preview">预览效果</string>
+    <string name="ux_event_invited">已邀请 %1$d 人</string>
+    <string name="ux_back">返回</string>
+    <string name="ux_next">下一步</string>
 </resources>

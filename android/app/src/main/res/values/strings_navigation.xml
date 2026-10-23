@@ -685,4 +685,11 @@
     <string name="ux_swipe_reply_sub">Swipe right on a message to start a reply to it.</string>
     <string name="ux_double_tap">Double-tap to react</string>
     <string name="ux_double_tap_sub">Double-tap a message to add this reaction; again to take it back.</string>
+    <string name="ux_step_of">Step %1$d of %2$d</string>
+    <string name="ux_event_where">Where is your event?</string>
+    <string name="ux_event_what">What\'s it about, and when?</string>
+    <string name="ux_event_preview">Here\'s how it will look</string>
+    <string name="ux_event_invited">%1$d invited</string>
+    <string name="ux_back">Back</string>
+    <string name="ux_next">Next</string>
 </resources>

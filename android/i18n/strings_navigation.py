@@ -702,4 +702,11 @@ S = {
 "ux_swipe_reply_sub": ("Swipe right on a message to start a reply to it.", "在消息上向右滑动即可回复。", "কোনো মেসেজে ডানে সোয়াইপ করলে উত্তর শুরু হয়।"),
 "ux_double_tap": ("Double-tap to react", "双击以回应", "রিঅ্যাক্ট করতে দুবার ট্যাপ করুন"),
 "ux_double_tap_sub": ("Double-tap a message to add this reaction; again to take it back.", "双击消息添加此回应，再次双击可撤回。", "এই রিঅ্যাকশন দিতে মেসেজে দুবার ট্যাপ করুন; আবার করলে সরে যাবে।"),
+"ux_step_of": ("Step %1$d of %2$d", "第 %1$d 步，共 %2$d 步", "ধাপ %1$d / %2$d"),
+"ux_event_where": ("Where is your event?", "活动在哪里举行？", "আপনার ইভেন্ট কোথায়?"),
+"ux_event_what": ("What's it about, and when?", "活动内容和时间？", "ইভেন্টটি কী নিয়ে, আর কখন?"),
+"ux_event_preview": ("Here's how it will look", "预览效果", "যেমন দেখাবে"),
+"ux_event_invited": ("%1$d invited", "已邀请 %1$d 人", "%1$d জন আমন্ত্রিত"),
+"ux_back": ("Back", "返回", "ফিরে যান"),
+"ux_next": ("Next", "下一步", "পরের ধাপ"),
 }
