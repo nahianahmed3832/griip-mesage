@@ -71,3 +71,27 @@ Screen numbers (#nnn) refer to `INDEX.md`.
 
 Long-press menus, the in-call controls drawer, mic/camera/screen-share capture and the full role-permission list could
 not be driven through iPhone Mirroring. The Android equivalents already exist (`MELDIQ_ANDROID_INTERACTION_MATRIX.md`).
+
+## Status (2026-10-23, owner: "start A2–A7, hold A1", then "include the features from the 220 screens")
+
+| # | Result |
+|---|---|
+| A1 | Held by the owner |
+| A2 | Done: Settings › Chats › Upload quality (photos Standard / HD / Original, videos Original / 1080p / 720p); the send preview starts there. Auto-download (never / Wi-Fi / always) already existed |
+| A3 | Done: Basic / Advanced on channel and category permissions. Basic = Private switch, "Who can access" with remove, "Add members or roles", a warning when only admins can see it. Only `channels.view` changes (`OverwriteRules.privacy`, `access`, `whoCanView`, tested) |
+| A4 | Already built: "Not synced with … · Sync now" banner |
+| A5 | Done: rows show values (Notifications On / Off / Paused / Blocked by Android; Appearance theme · palette; Language) — `SettingsSummary`, `ValueChevron` |
+| A6 | Mostly already built (`EmptyState` on 26 screens); the forum's no-match list now uses it with "Clear search and tags" |
+| A7 | Done: text channels' header bell — mute 15 min to 24 h or until turned back on, unmute with "Muted until …", and the channel's level with what "default" follows now |
+| B1 | Member sheet already had roles, title, timeout, remove, ban, report; actions now go from least to most severe |
+| B2 | **Blocked, owner decision**: phones accept a delete only from the message's author, so a moderator can't delete someone else's messages. Allowing it means receivers trusting a moderator's delete (Android, web, and the realtime/encrypted control rules) |
+| B3 | Not built (P3) |
+| B4 | Already built: invites can give a role, and invite joins don't go through join questions |
+| B5 | Done: events in three steps (where → what and when → preview card), Next only when the step is valid; same route |
+| B6 | Not built on purpose: UI-003 removed auto-hiding call controls after the owner's report; tap to hide over video stays |
+| B7 | Done: Settings › Chats › Gestures — swipe to reply on/off; double-tap to react on/off with 👍 ❤️ ✅ 😂 🔥 🙏 (a second double-tap takes it back) |
+| B8 | Done: chat-list message previews All / Unread only / None; time format Automatic / 12-hour / 24-hour (`TimeFmt.hourFormat`) |
+| B9 | Partly: links were already underlined. Role colours in names need each person's roles cached on the phone (a local database migration): not done |
+| B10 | Done: `from:`, `has:image|file|video|link`, `before:` and `after:` (yyyy-mm-dd) narrow messages on the phone; chips add them (`SearchQuery`, tested) |
+| B11 | Not needed: Activity counts mentions per conversation and each community already has "Ignore @everyone"; role mentions aren't built (MSG-10) |
+| B12 | Done through A3 (category permissions Basic view and warning) |
