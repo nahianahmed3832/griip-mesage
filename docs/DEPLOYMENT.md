@@ -115,6 +115,26 @@ Not verifiable on production yet: no one can connect an app there (`integrations
 provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
 `up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
 
+### API 0.29.0 (2026-10-23, 09:44 UTC, owner's go-ahead)
+
+Passkeys for signing in (`internal-beta` `3906e62`, docs/PASSKEYS.md): six account routes and
+`/.well-known/assetlinks.json`, `@simplewebauthn/server` 14.0.2. Migration 045 (schema 45: `account_passkeys`,
+`account_passkey_challenges`). Clients: Android from `a6a5c78` (employee APK `meldiq-test-passkeys-production-debug.apk`).
+
+| Step | Result |
+|---|---|
+| Checks before | server tests 766 passed (+ contracts regenerated), Android unit tests 701 passed |
+| Pre-flight | running 0.28.0, healthy; a dry-run upload changed only the passkey files and the version; 47 GB free |
+| Backup | `backups/pre-0.29.0-20261023T093829Z`: integrity ok, schema 44, 36 users, `.env` + `compose.yaml` copies; image tagged `0.28.0-rollback`; sources kept as `server.pre-0.29.0` |
+| Build | `docker build -t griip-internal-messaging-api:0.29.0 server` (nohup) |
+| Rehearsal | copy of the snapshot in `rehearsal-0.29.0`, `--network none`, uid 1000, push off: `stats` migrated it to 45, `verify-backup` ok (36 users); removed after |
+| Config | `.env` += `PASSKEY_RP_ID=msg.meldiq.app`, `PASSKEY_ANDROID_APPS` (`com.meldiq.android` and `com.meldiq.android.test`, debug certificate `B6:02:DC:…:E5:87`); parsed by the new image before the switch. **Add the release certificate before a release build** |
+| Switch | `compose.yaml` image 0.29.0, `validate-env.sh` 0 errors, `config -q`, `up -d --no-deps --no-build api` |
+| Checks after | healthy, `verify.sh` 0 restarts, `/healthz` 0.29.0 on msg.meldiq.app and msg.griipbuddy.cloud, assetlinks.json served, passkey options answer, no errors in the log; backup `post-0.29.0-20261023T094520Z` (schema 45) |
+
+Rollback: `image: griip-internal-messaging-api:0.28.0-rollback` and the same `up -d`; 0.28.0 ignores the new tables and
+variables.
+
 ### API 0.28.0 (2026-10-23, 05:07 UTC, owner's go-ahead)
 
 Profile and settings changes reach every device live (`internal-beta` `c8dcd07`): a new `user.updated` frame for name,
