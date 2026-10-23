@@ -60,6 +60,7 @@ import com.meldiq.android.ui.components.ButtonTone
 import com.meldiq.android.ui.components.GlassCard
 import com.meldiq.android.ui.components.GlassSheet
 import com.meldiq.android.ui.components.ListCard
+import com.meldiq.android.ui.components.ValueChevron
 import com.meldiq.android.ui.components.MenuRow
 import com.meldiq.android.ui.components.PillButton
 import com.meldiq.android.ui.components.SegmentedPills
@@ -215,10 +216,13 @@ fun YouScreen(nav: NavHostController) {
         item(key = "settings") {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), contentPadding = PaddingValues(6.dp)) {
                 MenuRow(Icons.Outlined.Settings, stringResource(R.string.settings_title), onClick = { nav.navigate(Routes.PROFILE) })
-                MenuRow(Icons.Outlined.Notifications, stringResource(R.string.settings_notifications), tint = c.peach, tintBg = c.peachSoft, onClick = { nav.navigate(Routes.NOTIFICATION_SETTINGS) })
-                MenuRow(Icons.Outlined.Palette, stringResource(R.string.chat_appearance), onClick = { nav.navigate(Routes.CHAT_SETTINGS) })
+                MenuRow(Icons.Outlined.Notifications, stringResource(R.string.settings_notifications), tint = c.peach, tintBg = c.peachSoft, onClick = { nav.navigate(Routes.NOTIFICATION_SETTINGS) }, trailing = { ValueChevron(com.meldiq.android.ui.screens.profile.notificationsValue()) })
+                MenuRow(Icons.Outlined.Palette, stringResource(R.string.chat_appearance), onClick = { nav.navigate(Routes.CHAT_SETTINGS) }, trailing = { ValueChevron(com.meldiq.android.ui.screens.profile.appearanceValue()) })
                 MenuRow(Icons.Outlined.Lock, stringResource(R.string.settings_privacy), tint = c.lavender, tintBg = c.lavenderSoft, onClick = { nav.navigate(Routes.PRIVACY) })
-                MenuRow(Icons.Outlined.Language, stringResource(R.string.settings_language), tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.LANGUAGE) })
+                MenuRow(
+                    Icons.Outlined.Language, stringResource(R.string.settings_language), tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.LANGUAGE) },
+                    trailing = { ValueChevron(com.meldiq.android.ui.screens.profile.languageValue()) },
+                )
             }
         }
         item(key = "people") {

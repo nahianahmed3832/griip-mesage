@@ -102,7 +102,24 @@ object OverwriteRules {
     fun syncTargets(channelOverwrites: List<OverwriteDto>): List<String> = channelOverwrites.filter { it.allow.isNotEmpty() || it.deny.isNotEmpty() }.map { it.subject }
 
     /** True when the channel or category is hidden from people without a role (the lock on its name). */
-    fun gated(list: List<OverwriteDto>): Boolean = list.any { it.subject == EVERYONE && "channels.view" in it.deny }
+    fun gated(list: List<OverwriteDto>): Boolean = list.any { it.subject == EVERYONE && VIEW in it.deny }
+
+    /** Seeing the channel at all: the one capability the Basic view of permissions works with. */
+    const val VIEW = "channels.view"
+
+    /** Basic view: private means @everyone is denied [VIEW]. */
+    fun isPrivate(list: List<OverwriteDto>): Boolean = gated(list)
+
+    /** Basic view's "Who can access": the roles and members allowed [VIEW], roles first. */
+    fun whoCanView(list: List<OverwriteDto>): List<OverwriteDto> = ordered(list.filter { it.subject != EVERYONE && VIEW in it.allow })
+
+    /** @everyone's allow and deny for the Private switch; every other capability on it stays as it was. */
+    fun privacy(everyone: OverwriteDto?, private: Boolean): Pair<List<String>, List<String>> =
+        with(everyone, VIEW, if (private) OverwriteState.DENY else OverwriteState.INHERIT)
+
+    /** A role's or member's allow and deny after giving ([can] true) or taking away access; only [VIEW] changes. */
+    fun access(o: OverwriteDto?, can: Boolean): Pair<List<String>, List<String>> =
+        with(o, VIEW, if (can) OverwriteState.ALLOW else OverwriteState.INHERIT)
 }
 
 object LayoutRules {

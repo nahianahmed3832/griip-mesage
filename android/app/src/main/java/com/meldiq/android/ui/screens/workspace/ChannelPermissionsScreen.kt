@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material3.Text
@@ -71,6 +72,8 @@ fun ChannelPermissionsScreen(nav: NavHostController, category: Boolean, id: Stri
     // A channel's category and its rules: what the channel inherits, and what "Sync with category" returns it to.
     var parent by remember { mutableStateOf<Pair<String, OverwritesRes?>?>(null) }
     var confirmSync by remember { mutableStateOf(false) }
+    // Basic (a Private switch and who can access) or Advanced (every capability per role and member).
+    var basic by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     fun load() = scope.launch {
         runCatching { if (category) container.orgs.categoryOverwrites(id) else container.orgs.channelOverwrites(id) }
             .onSuccess { data = it; error = null }.onFailure { error = it.friendly() }
@@ -116,6 +119,12 @@ fun ChannelPermissionsScreen(nav: NavHostController, category: Boolean, id: Stri
             Text(stringResource(R.string.perm_hint), style = Griip.type.caption, color = c.textTertiary, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 6.dp))
         }
         if (!d.canManage) item { StatusBanner(stringResource(R.string.perm_readonly), BannerKind.Info, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp)) }
+        item(key = "mode") {
+            Row(Modifier.padding(horizontal = Space.gutter, vertical = 6.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                PillChip(stringResource(R.string.ux_perm_basic), basic, { basic = true })
+                PillChip(stringResource(R.string.ux_perm_advanced), !basic, { basic = false })
+            }
+        }
         parent?.let { (catName, _) ->
             item(key = "sync") {
                 if (OverwriteRules.synced(d.overwrites)) StatusBanner(stringResource(R.string.nv_synced_with, catName), BannerKind.Success, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp))
@@ -128,6 +137,14 @@ fun ChannelPermissionsScreen(nav: NavHostController, category: Boolean, id: Stri
         // @everyone is always listed, even without a rule yet, so its defaults can be changed.
         val everyone = d.overwrites.firstOrNull { it.subject == OverwriteRules.EVERYONE }
             ?: OverwriteDto(OverwriteRules.EVERYONE, "everyone", "@everyone")
+        if (basic) {
+            basicView(d, category, enabled = d.canManage && !busy,
+                onPrivate = { on -> val (allow, deny) = OverwriteRules.privacy(everyone, on); save(OverwriteRules.EVERYONE, allow, deny) },
+                onRemove = { o -> val (allow, deny) = OverwriteRules.access(o, false); save(o.subject, allow, deny) },
+                onAdd = { adding = true },
+            )
+            return@LazyColumn
+        }
         val rules = listOf(everyone) + OverwriteRules.ordered(d.overwrites.filter { it.subject != OverwriteRules.EVERYONE })
         items(rules, key = { it.subject }) { o ->
             OverwriteCard(
@@ -159,11 +176,18 @@ fun ChannelPermissionsScreen(nav: NavHostController, category: Boolean, id: Stri
     )
     if (adding && d != null) AddSubjectSheet(
         d, orgId,
+        taken = if (basic) OverwriteRules.whoCanView(d.overwrites).map { it.subject }.toSet() else d.overwrites.map { it.subject }.toSet(),
         onDismiss = { adding = false },
-        // A new rule starts by allowing nothing and denying nothing: saving it with one choice is what creates it.
         onPick = { subject, label, kind ->
             adding = false
-            data = d.copy(overwrites = d.overwrites + OverwriteDto(subject, kind, label))
+            if (basic) {
+                // Basic: giving access is saving view on that role or member, keeping anything else it already has.
+                val (allow, deny) = OverwriteRules.access(d.overwrites.firstOrNull { it.subject == subject }, true)
+                save(subject, allow, deny)
+            } else {
+                // A new rule starts by allowing nothing and denying nothing: saving it with one choice is what creates it.
+                data = d.copy(overwrites = d.overwrites + OverwriteDto(subject, kind, label))
+            }
         },
     )
 }
@@ -200,14 +224,57 @@ private fun OverwriteCard(o: OverwriteDto, d: OverwritesRes, enabled: Boolean, i
     }
 }
 
+/**
+ * Basic view (2026-10-23, the reference's simple permissions): a Private switch, and while private the roles and members
+ * who can see it, each removable, with "Add members or roles". It only ever changes [OverwriteRules.VIEW]; everything
+ * else stays in Advanced.
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.basicView(
+    d: OverwritesRes, category: Boolean, enabled: Boolean,
+    onPrivate: (Boolean) -> Unit, onRemove: (OverwriteDto) -> Unit, onAdd: () -> Unit,
+) {
+    val private = OverwriteRules.isPrivate(d.overwrites)
+    val access = OverwriteRules.whoCanView(d.overwrites)
+    item(key = "private") {
+        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), contentPadding = PaddingValues(4.dp)) {
+            MenuRow(
+                Icons.Outlined.Lock, stringResource(if (category) R.string.ux_private_category else R.string.ux_private_channel),
+                subtitle = stringResource(if (private) R.string.ux_private_sub else R.string.ux_public_sub),
+                trailing = { com.meldiq.android.ui.components.GriipSwitch(private, onPrivate, enabled = enabled) },
+            )
+        }
+    }
+    if (!private) return
+    if (access.isEmpty()) item(key = "nobody") {
+        StatusBanner(stringResource(R.string.ux_nobody_can_view), BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp))
+    }
+    item(key = "who") {
+        Text(stringResource(R.string.ux_who_can_access), style = Griip.type.section, color = Griip.colors.textSecondary, modifier = Modifier.padding(start = Space.gutter, top = 12.dp, bottom = 4.dp))
+    }
+    items(access, key = { "a:" + it.subject }) { o ->
+        GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 3.dp), contentPadding = PaddingValues(4.dp)) {
+            MenuRow(
+                if (o.kind == "role") Icons.Outlined.Security else Icons.Outlined.PersonAdd, o.label,
+                subtitle = stringResource(if (o.kind == "role") R.string.ux_role else R.string.ux_member),
+                trailing = if (enabled) ({ CircleIconButton(Icons.Outlined.DeleteOutline, stringResource(R.string.ux_remove_access), { onRemove(o) }, tint = Griip.colors.danger) }) else null,
+            )
+        }
+    }
+    item(key = "always") {
+        Text(stringResource(R.string.ux_admins_always), style = Griip.type.caption, color = Griip.colors.textTertiary, modifier = Modifier.padding(horizontal = Space.gutter, vertical = 6.dp))
+    }
+    if (enabled) item(key = "add") {
+        PillButton(stringResource(R.string.ux_add_access), onAdd, Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 8.dp), tone = ButtonTone.Glass, leadingIcon = Icons.Outlined.PersonAdd)
+    }
+}
+
 /** Adds a rule for a role, or a member of the community. */
 @Composable
-private fun AddSubjectSheet(d: OverwritesRes, orgId: String?, onDismiss: () -> Unit, onPick: (String, String, String) -> Unit) {
+private fun AddSubjectSheet(d: OverwritesRes, orgId: String?, taken: Set<String>, onDismiss: () -> Unit, onPick: (String, String, String) -> Unit) {
     val container = LocalContainer.current
     val c = Griip.colors
     var members by remember { mutableStateOf<List<UserDto>>(emptyList()) }
     LaunchedEffect(orgId) { if (orgId != null) members = runCatching { container.orgs.members(orgId) }.getOrDefault(emptyList()) }
-    val taken = d.overwrites.map { it.subject }.toSet()
     GlassSheet(onDismiss, title = stringResource(R.string.perm_add_role)) {
         Column {
             GlassCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(6.dp)) {

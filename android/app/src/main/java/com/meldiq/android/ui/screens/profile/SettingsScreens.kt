@@ -87,6 +87,7 @@ import com.meldiq.android.GriipApp
 import com.meldiq.android.R
 import com.meldiq.android.call.CallPhase
 import com.meldiq.android.data.repo.AutoDownload
+import com.meldiq.android.data.model.AttachmentPolicy.Quality
 import com.meldiq.android.data.repo.LinkOpening
 import com.meldiq.android.data.repo.Settings
 import com.meldiq.android.ui.AppLanguage
@@ -161,9 +162,9 @@ fun SettingsHub(nav: NavHostController) {
         }
         item {
             GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), contentPadding = PaddingValues(4.dp)) {
-                MenuRow(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.settings_chats), subtitle = stringResource(R.string.settings_chats_sub), onClick = { nav.navigate(Routes.CHAT_SETTINGS) })
+                MenuRow(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.settings_chats), subtitle = stringResource(R.string.settings_chats_sub), onClick = { nav.navigate(Routes.CHAT_SETTINGS) }, trailing = { com.meldiq.android.ui.components.ValueChevron(appearanceValue()) })
                 MenuRow(Icons.Outlined.Lock, stringResource(R.string.settings_privacy), subtitle = stringResource(R.string.settings_privacy_sub), tint = c.lavender, tintBg = c.lavenderSoft, onClick = { nav.navigate(Routes.PRIVACY) })
-                MenuRow(Icons.Outlined.Notifications, stringResource(R.string.settings_notifications), subtitle = stringResource(R.string.settings_notifications_sub), tint = c.peach, tintBg = c.peachSoft, onClick = { nav.navigate(Routes.NOTIFICATION_SETTINGS) })
+                MenuRow(Icons.Outlined.Notifications, stringResource(R.string.settings_notifications), subtitle = stringResource(R.string.settings_notifications_sub), tint = c.peach, tintBg = c.peachSoft, onClick = { nav.navigate(Routes.NOTIFICATION_SETTINGS) }, trailing = { com.meldiq.android.ui.components.ValueChevron(notificationsValue()) })
                 MenuRow(Icons.Outlined.Call, stringResource(R.string.settings_calls), subtitle = stringResource(R.string.settings_calls_sub), onClick = { nav.navigate(Routes.CALL_SETTINGS) })
                 MenuRow(Icons.Outlined.Storage, stringResource(R.string.settings_storage), subtitle = stringResource(R.string.settings_storage_sub), tint = c.textSecondary, tintBg = c.surfaceVariant, onClick = { nav.navigate(Routes.STORAGE) })
                 MenuRow(
@@ -313,6 +314,25 @@ fun ChatSettingsScreen(nav: NavHostController) {
                     }
                 }
                 Text(stringResource(R.string.chat_auto_download_sub), style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp))
+            }
+        }
+        item {
+            // Where a send of photos and videos starts; the send preview can still change it each time.
+            GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter).padding(top = 8.dp), contentPadding = PaddingValues(4.dp)) {
+                Text(stringResource(R.string.ux_upload_quality), style = Griip.type.titleSmall, color = c.textPrimary, modifier = Modifier.padding(start = 12.dp, top = 10.dp))
+                Text(stringResource(R.string.ux_photos), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(start = 12.dp, top = 8.dp))
+                ChipRow {
+                    listOf(Quality.STANDARD to R.string.ux_q_standard, Quality.HD to R.string.ux_q_hd, Quality.ORIGINAL to R.string.ux_q_original).forEach { (q, label) ->
+                        PillChip(stringResource(label), s.photoQuality == q, { update { it.copy(photoQuality = q) } })
+                    }
+                }
+                Text(stringResource(R.string.ux_videos), style = Griip.type.label, color = c.textSecondary, modifier = Modifier.padding(start = 12.dp, top = 4.dp))
+                ChipRow {
+                    listOf(Quality.ORIGINAL to R.string.ux_q_original, Quality.HD to R.string.ux_q_1080, Quality.STANDARD to R.string.ux_q_720).forEach { (q, label) ->
+                        PillChip(stringResource(label), s.videoQuality == q, { update { it.copy(videoQuality = q) } })
+                    }
+                }
+                Text(stringResource(R.string.ux_upload_quality_sub), style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp))
             }
         }
     }

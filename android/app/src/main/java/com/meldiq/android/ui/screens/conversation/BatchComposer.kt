@@ -80,11 +80,13 @@ fun BatchComposer(
     onSend: (photoQuality: Quality, videoQuality: Quality, caption: String) -> Unit,
     onDismiss: () -> Unit,
     maxFile: Long = AttachmentPolicy.MAX_FILE_BYTES,
+    defaultPhotoQuality: Quality = Quality.STANDARD,
+    defaultVideoQuality: Quality = Quality.ORIGINAL,
 ) {
     val c = Griip.colors
-    // Photos default to Standard; videos and every other file to Original, unless compression is chosen.
-    var quality by rememberSaveable { mutableStateOf(Quality.STANDARD) }
-    var videoQuality by rememberSaveable { mutableStateOf(Quality.ORIGINAL) }
+    // Photos start at Standard and videos at Original unless Settings › Chats says otherwise; files are never compressed.
+    var quality by rememberSaveable { mutableStateOf(defaultPhotoQuality) }
+    var videoQuality by rememberSaveable { mutableStateOf(defaultVideoQuality) }
     var caption by rememberSaveable { mutableStateOf("") }
     val qualityOf = { k: AttachmentPolicy.Kind -> if (k == AttachmentPolicy.Kind.VIDEO) videoQuality else quality }
     val verdicts = items.map { AttachmentPolicy.check(it.item.kind, it.item.sniffed, it.item.size, qualityOf(it.item.kind), maxFile, it.item.durationMs) }

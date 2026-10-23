@@ -1,5 +1,6 @@
 package com.meldiq.android.data.repo
 
+import com.meldiq.android.data.model.AttachmentPolicy
 import android.content.Context
 import com.meldiq.android.BuildConfig
 import com.meldiq.android.ui.theme.MeldiqPalettes
@@ -53,6 +54,9 @@ data class Settings(
     val introSeen: Boolean = false,
     /** Download received photos automatically: never, on Wi-Fi, or always. Files and videos are always tapped first. */
     val autoDownload: AutoDownload = AutoDownload.WIFI,
+    /** The quality a photo or video send starts at (Settings › Chats); each send can still change it. */
+    val photoQuality: AttachmentPolicy.Quality = AttachmentPolicy.Quality.STANDARD,
+    val videoQuality: AttachmentPolicy.Quality = AttachmentPolicy.Quality.ORIGINAL,
     // Notifications & sounds.
     val messageSound: Boolean = true,
     val groupNotifications: Boolean = true,
@@ -108,6 +112,8 @@ class SettingsStore(
         setupDismissed = prefs.getBoolean("setupDismissed", false),
         introSeen = prefs.getBoolean("introSeen", false),
         autoDownload = runCatching { AutoDownload.valueOf(prefs.getString("autoDownload", null)!!) }.getOrDefault(AutoDownload.WIFI),
+        photoQuality = runCatching { AttachmentPolicy.Quality.valueOf(prefs.getString("photoQuality", null)!!) }.getOrDefault(AttachmentPolicy.Quality.STANDARD),
+        videoQuality = runCatching { AttachmentPolicy.Quality.valueOf(prefs.getString("videoQuality", null)!!) }.getOrDefault(AttachmentPolicy.Quality.ORIGINAL),
         messageSound = prefs.getBoolean("messageSound", true),
         groupNotifications = prefs.getBoolean("groupNotifications", true),
         callRingtone = prefs.getBoolean("callRingtone", true),
@@ -143,6 +149,8 @@ class SettingsStore(
             .putBoolean("setupDismissed", n.setupDismissed)
             .putBoolean("introSeen", n.introSeen)
             .putString("autoDownload", n.autoDownload.name)
+            .putString("photoQuality", n.photoQuality.name)
+            .putString("videoQuality", n.videoQuality.name)
             .putBoolean("messageSound", n.messageSound)
             .putBoolean("groupNotifications", n.groupNotifications)
             .putBoolean("callRingtone", n.callRingtone)

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -279,6 +280,15 @@ fun MenuRow(
             Spacer(Modifier.width(8.dp))
             trailing()
         }
+    }
+}
+
+/** A settings row's current value before its chevron ("Dark · Graphite", "On"), for [MenuRow]'s trailing slot. */
+@Composable
+fun ValueChevron(value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(value, style = Griip.type.caption, color = Griip.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 140.dp))
+        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = Griip.colors.textTertiary)
     }
 }
 

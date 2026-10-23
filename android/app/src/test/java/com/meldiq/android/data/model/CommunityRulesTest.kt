@@ -91,4 +91,34 @@ class CommunityRulesTest {
         assertEquals(false, OverwriteRules.synced(listOf(none, own)))
         assertEquals(listOf("role_a"), OverwriteRules.syncTargets(listOf(none, own)))
     }
+
+    @Test
+    fun `basic view reads private and who can see it from the view capability`() {
+        val list = listOf(
+            OverwriteDto("everyone", "everyone", "@everyone", deny = listOf("channels.view")),
+            OverwriteDto("user:u1", "member", "Zed", allow = listOf("channels.view", "messages.post")),
+            OverwriteDto("r1", "role", "Mods", allow = listOf("channels.view")),
+            OverwriteDto("r2", "role", "Muted", deny = listOf("messages.post")),
+        )
+        assertTrue(OverwriteRules.isPrivate(list))
+        assertEquals(listOf("r1", "user:u1"), OverwriteRules.whoCanView(list).map { it.subject })
+        assertFalse(OverwriteRules.isPrivate(list.drop(1)))
+    }
+
+    @Test
+    fun `making a channel private only changes view on everyone, keeping its other rules`() {
+        val everyone = OverwriteDto("everyone", "everyone", "@everyone", allow = listOf("messages.post"))
+        assertEquals(listOf("messages.post") to listOf("channels.view"), OverwriteRules.privacy(everyone, private = true))
+        val gated = OverwriteDto("everyone", "everyone", "@everyone", deny = listOf("channels.view", "messages.attach"))
+        assertEquals(emptyList<String>() to listOf("messages.attach"), OverwriteRules.privacy(gated, private = false))
+        assertEquals(emptyList<String>() to listOf("channels.view"), OverwriteRules.privacy(null, private = true))
+    }
+
+    @Test
+    fun `granting and removing access touches only view`() {
+        val o = OverwriteDto("r2", "role", "Muted", deny = listOf("messages.post"))
+        assertEquals(listOf("channels.view") to listOf("messages.post"), OverwriteRules.access(o, true))
+        val v = OverwriteDto("r1", "role", "Mods", allow = listOf("channels.view", "messages.pin"))
+        assertEquals(listOf("messages.pin") to emptyList<String>(), OverwriteRules.access(v, false))
+    }
 }
