@@ -1,5 +1,9 @@
 package com.meldiq.android.ui.screens.chats
 
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.meldiq.android.data.repo.PreviewMode
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -89,16 +93,18 @@ fun ConversationAvatar(conv: ConversationEntity, myUserId: String?, size: androi
 
 /** What the second line of a chat row shows, in priority order. Pure, so it is unit-tested. */
 data class ChatPreview(val prefix: String?, val text: String, val kind: Kind) {
-    enum class Kind { Typing, Draft, Message, Empty }
+    enum class Kind { Typing, Draft, Message, Empty, Hidden }
 
     companion object {
-        fun of(conv: ConversationEntity, typingNames: List<String>): ChatPreview {
+        /** [mode] (Settings › Appearance): message text always, only while unread, or never; typing and drafts always show. */
+        fun of(conv: ConversationEntity, typingNames: List<String>, mode: PreviewMode = PreviewMode.ALL): ChatPreview {
             if (typingNames.isNotEmpty()) {
                 return ChatPreview(null, if (conv.type == "DM") "typing…" else "${typingNames.first()} is typing…", Kind.Typing)
             }
             val draft = conv.draft?.trim().orEmpty()
             if (draft.isNotEmpty()) return ChatPreview("Draft", draft.replace('\n', ' '), Kind.Draft)
             val last = conv.lastMessagePreview
+            if (mode == PreviewMode.NONE || (mode == PreviewMode.UNREAD && conv.unreadCount == 0)) return ChatPreview(null, "", Kind.Hidden)
             if (last != null) {
                 val who = conv.lastSenderName
                 val prefix = when {
@@ -138,7 +144,8 @@ fun ConversationRow(
     val c = Griip.colors
     val title = ConversationRepository.title(conv, myUserId).let { if (conv.type == "CHANNEL") "#$it" else it }
     val unread = conv.unreadCount > 0
-    val preview = ChatPreview.of(conv, typingNames)
+    val settings by com.meldiq.android.ui.LocalContainer.current.settings.state.collectAsStateWithLifecycle()
+    val preview = ChatPreview.of(conv, typingNames, settings.previewMode)
     val stamp = TimeFmt.listStamp(if (conv.lastMessageAt > 0) conv.lastMessageAt else conv.serverUpdatedAt)
     Column(modifier.fillMaxWidth()) {
         Row(
@@ -175,7 +182,7 @@ fun ConversationRow(
                     Spacer(Modifier.width(8.dp))
                     Text(stamp, style = Griip.type.caption.copy(fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Medium), color = if (unread && !conv.muted) c.primary else c.textSecondary)
                 }
-                Spacer(Modifier.height(4.dp))
+                if (preview.kind != ChatPreview.Kind.Hidden || conv.mentionCount > 0 || unread) Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val line = buildAnnotatedString {
                         preview.prefix?.let { p ->

@@ -21,4 +21,19 @@ class TimeFmtTest {
         assertEquals("just now", TimeFmt.relative(System.currentTimeMillis() - 5_000))
         assertEquals("3 min ago", TimeFmt.relative(System.currentTimeMillis() - 3 * 60_000 - 1_000))
     }
+
+    @Test
+    fun `the hour format setting overrides the phone's`() {
+        val t = java.util.Calendar.getInstance().apply { set(2026, 9, 23, 13, 5, 0) }.timeInMillis
+        try {
+            TimeFmt.hourFormat = com.meldiq.android.data.repo.HourFormat.H24
+            assertEquals("13:05", TimeFmt.clock(t))
+            TimeFmt.hourFormat = com.meldiq.android.data.repo.HourFormat.H12
+            assertEquals("1:05 PM", TimeFmt.clock(t))
+            TimeFmt.hourFormat = com.meldiq.android.data.repo.HourFormat.AUTO
+            assertEquals("13:05", TimeFmt.clock(t, use24 = true))
+        } finally {
+            TimeFmt.hourFormat = com.meldiq.android.data.repo.HourFormat.AUTO
+        }
+    }
 }

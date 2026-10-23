@@ -73,8 +73,32 @@ fun AppearanceSettings(s: Settings, update: ((Settings) -> Settings) -> Unit) {
             stringResource(if (s.messageLayout == MessageLayout.STREAM) R.string.appearance_layout_stream_sub else R.string.appearance_layout_bubbles_sub),
             style = Griip.type.caption, color = c.textSecondary, modifier = Modifier.padding(top = 6.dp),
         )
+        // 2026-10-23: what the chat list shows of the last message, and 12- or 24-hour times.
+        Label(stringResource(R.string.ux_previews), Modifier.padding(top = 18.dp))
+        val modes2 = listOf(com.meldiq.android.data.repo.PreviewMode.ALL, com.meldiq.android.data.repo.PreviewMode.UNREAD, com.meldiq.android.data.repo.PreviewMode.NONE)
+        SegmentedPills(
+            listOf(stringResource(R.string.ux_previews_all), stringResource(R.string.ux_previews_unread), stringResource(R.string.ux_previews_none)),
+            modes2.indexOf(s.previewMode).coerceAtLeast(0), { i -> update { it.copy(previewMode = modes2[i]) } },
+        )
+        Label(stringResource(R.string.ux_time_format), Modifier.padding(top = 18.dp))
+        val hours = listOf(com.meldiq.android.data.repo.HourFormat.AUTO, com.meldiq.android.data.repo.HourFormat.H12, com.meldiq.android.data.repo.HourFormat.H24)
+        SegmentedPills(
+            listOf(stringResource(R.string.ux_time_auto), stringResource(R.string.ux_time_12), stringResource(R.string.ux_time_24)),
+            hours.indexOf(s.hourFormat).coerceAtLeast(0), { i -> update { it.copy(hourFormat = hours[i]) } },
+        )
     }
 }
+
+/** A colour preset's name in the app's language. */
+@Composable
+internal fun paletteName(id: String): String = stringResource(
+    when (id) {
+        "sunset" -> R.string.palette_sunset
+        "meadow" -> R.string.palette_meadow
+        "aurora" -> R.string.palette_aurora
+        else -> R.string.palette_graphite
+    },
+)
 
 @Composable
 private fun Label(text: String, modifier: Modifier = Modifier) {
@@ -86,14 +110,7 @@ private fun Label(text: String, modifier: Modifier = Modifier) {
 private fun PaletteCard(preset: MeldiqPalettes.Preset, selected: Boolean, dark: Boolean, modifier: Modifier, onPick: () -> Unit) {
     val p = if (dark) preset.dark else preset.light
     val c = Griip.colors
-    val name = stringResource(
-        when (preset.id) {
-            "sunset" -> R.string.palette_sunset
-            "meadow" -> R.string.palette_meadow
-            "aurora" -> R.string.palette_aurora
-            else -> R.string.palette_graphite
-        },
-    )
+    val name = paletteName(preset.id)
     val selectedText = stringResource(R.string.palette_selected)
     Column(
         modifier.clip(Shapes.card).background(p.surface)

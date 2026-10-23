@@ -2,6 +2,7 @@ package com.meldiq.android.ui.screens.chats
 
 import com.meldiq.android.data.db.ConversationEntity
 import com.meldiq.android.ui.screens.chats.ChatPreview.Kind
+import com.meldiq.android.data.repo.PreviewMode
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -37,5 +38,17 @@ class ChatPreviewTest {
     fun emptyConversationsSayNoMessagesOrDescribeTheChannel() {
         assertEquals(ChatPreview(null, "No messages yet", Kind.Empty), ChatPreview.of(conv(), emptyList()))
         assertEquals(ChatPreview(null, "Dhaka · Daily ops", Kind.Empty), ChatPreview.of(conv(type = "CHANNEL", scope = "Dhaka", topic = "Daily ops"), emptyList()))
+    }
+
+    @Test
+    fun `preview setting hides message text, or shows it only while unread`() {
+        val read = conv(preview = "hello", sender = "Ana")
+        val unread = read.copy(unreadCount = 2)
+        assertEquals(Kind.Hidden, ChatPreview.of(read, emptyList(), PreviewMode.NONE).kind)
+        assertEquals(Kind.Hidden, ChatPreview.of(read, emptyList(), PreviewMode.UNREAD).kind)
+        assertEquals(ChatPreview(null, "hello", Kind.Message), ChatPreview.of(unread, emptyList(), PreviewMode.UNREAD))
+        // Typing and your own drafts are not message previews: they always show.
+        assertEquals(Kind.Typing, ChatPreview.of(read, listOf("Ana"), PreviewMode.NONE).kind)
+        assertEquals(Kind.Draft, ChatPreview.of(read.copy(draft = "x"), emptyList(), PreviewMode.NONE).kind)
     }
 }

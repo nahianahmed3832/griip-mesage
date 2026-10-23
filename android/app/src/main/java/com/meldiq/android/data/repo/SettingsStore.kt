@@ -57,6 +57,8 @@ data class Settings(
     /** The quality a photo or video send starts at (Settings › Chats); each send can still change it. */
     val photoQuality: AttachmentPolicy.Quality = AttachmentPolicy.Quality.STANDARD,
     val videoQuality: AttachmentPolicy.Quality = AttachmentPolicy.Quality.ORIGINAL,
+    val previewMode: PreviewMode = PreviewMode.ALL,
+    val hourFormat: HourFormat = HourFormat.AUTO,
     // Notifications & sounds.
     val messageSound: Boolean = true,
     val groupNotifications: Boolean = true,
@@ -73,6 +75,10 @@ data class Settings(
 enum class LinkOpening { IN_APP, EXTERNAL, ASK }
 enum class MessageLayout { STREAM, BUBBLES }
 enum class AutoDownload { NEVER, WIFI, ALWAYS }
+/** Settings › Appearance (2026-10-23): message text in the chat list always, only while unread, or never. */
+enum class PreviewMode { ALL, UNREAD, NONE }
+/** Settings › Appearance (2026-10-23): times in the phone's format, or always 12-hour or 24-hour. */
+enum class HourFormat { AUTO, H12, H24 }
 
 /**
  * Non-secret user preferences. Appearance and behaviour are shared by every server profile on the phone;
@@ -114,6 +120,8 @@ class SettingsStore(
         autoDownload = runCatching { AutoDownload.valueOf(prefs.getString("autoDownload", null)!!) }.getOrDefault(AutoDownload.WIFI),
         photoQuality = runCatching { AttachmentPolicy.Quality.valueOf(prefs.getString("photoQuality", null)!!) }.getOrDefault(AttachmentPolicy.Quality.STANDARD),
         videoQuality = runCatching { AttachmentPolicy.Quality.valueOf(prefs.getString("videoQuality", null)!!) }.getOrDefault(AttachmentPolicy.Quality.ORIGINAL),
+        previewMode = runCatching { PreviewMode.valueOf(prefs.getString("previewMode", null)!!) }.getOrDefault(PreviewMode.ALL),
+        hourFormat = runCatching { HourFormat.valueOf(prefs.getString("hourFormat", null)!!) }.getOrDefault(HourFormat.AUTO),
         messageSound = prefs.getBoolean("messageSound", true),
         groupNotifications = prefs.getBoolean("groupNotifications", true),
         callRingtone = prefs.getBoolean("callRingtone", true),
@@ -151,6 +159,8 @@ class SettingsStore(
             .putString("autoDownload", n.autoDownload.name)
             .putString("photoQuality", n.photoQuality.name)
             .putString("videoQuality", n.videoQuality.name)
+            .putString("previewMode", n.previewMode.name)
+            .putString("hourFormat", n.hourFormat.name)
             .putBoolean("messageSound", n.messageSound)
             .putBoolean("groupNotifications", n.groupNotifications)
             .putBoolean("callRingtone", n.callRingtone)

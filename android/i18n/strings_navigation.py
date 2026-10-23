@@ -689,4 +689,12 @@ S = {
 "ux_channel_notifications": ("Channel notifications", "频道通知", "চ্যানেলের নোটিফিকেশন"),
 "ux_muted_until": ("Muted until %1$s", "静音至 %1$s", "%1$s পর্যন্ত মিউট"),
 "ux_notification_settings": ("Notification settings", "通知设置", "নোটিফিকেশন সেটিংস"),
+"ux_previews": ("Message previews in the chat list", "聊天列表中的消息预览", "চ্যাট তালিকায় মেসেজের প্রিভিউ"),
+"ux_previews_all": ("All", "全部", "সব"),
+"ux_previews_unread": ("Unread only", "仅未读", "শুধু অপঠিত"),
+"ux_previews_none": ("None", "不显示", "কোনোটি না"),
+"ux_time_format": ("Time format", "时间格式", "সময়ের ফরম্যাট"),
+"ux_time_auto": ("Automatic", "自动", "স্বয়ংক্রিয়"),
+"ux_time_12": ("12-hour", "12 小时制", "১২ ঘণ্টা"),
+"ux_time_24": ("24-hour", "24 小时制", "২৪ ঘণ্টা"),
 }

@@ -672,4 +672,12 @@
     <string name="ux_channel_notifications">频道通知</string>
     <string name="ux_muted_until">静音至 %1$s</string>
     <string name="ux_notification_settings">通知设置</string>
+    <string name="ux_previews">聊天列表中的消息预览</string>
+    <string name="ux_previews_all">全部</string>
+    <string name="ux_previews_unread">仅未读</string>
+    <string name="ux_previews_none">不显示</string>
+    <string name="ux_time_format">时间格式</string>
+    <string name="ux_time_auto">自动</string>
+    <string name="ux_time_12">12 小时制</string>
+    <string name="ux_time_24">24 小时制</string>
 </resources>

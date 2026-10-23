@@ -672,4 +672,12 @@
     <string name="ux_channel_notifications">Channel notifications</string>
     <string name="ux_muted_until">Muted until %1$s</string>
     <string name="ux_notification_settings">Notification settings</string>
+    <string name="ux_previews">Message previews in the chat list</string>
+    <string name="ux_previews_all">All</string>
+    <string name="ux_previews_unread">Unread only</string>
+    <string name="ux_previews_none">None</string>
+    <string name="ux_time_format">Time format</string>
+    <string name="ux_time_auto">Automatic</string>
+    <string name="ux_time_12">12-hour</string>
+    <string name="ux_time_24">24-hour</string>
 </resources>

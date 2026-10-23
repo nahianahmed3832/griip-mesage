@@ -672,4 +672,12 @@
     <string name="ux_channel_notifications">চ্যানেলের নোটিফিকেশন</string>
     <string name="ux_muted_until">%1$s পর্যন্ত মিউট</string>
     <string name="ux_notification_settings">নোটিফিকেশন সেটিংস</string>
+    <string name="ux_previews">চ্যাট তালিকায় মেসেজের প্রিভিউ</string>
+    <string name="ux_previews_all">সব</string>
+    <string name="ux_previews_unread">শুধু অপঠিত</string>
+    <string name="ux_previews_none">কোনোটি না</string>
+    <string name="ux_time_format">সময়ের ফরম্যাট</string>
+    <string name="ux_time_auto">স্বয়ংক্রিয়</string>
+    <string name="ux_time_12">১২ ঘণ্টা</string>
+    <string name="ux_time_24">২৪ ঘণ্টা</string>
 </resources>

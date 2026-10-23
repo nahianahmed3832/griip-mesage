@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
             // an erase or a profile switch (a read only inside a nested lambda kept the old one).
             val container = androidx.compose.runtime.remember(gen) { app.container!! }
             val settings by container.settings.state.collectAsStateWithLifecycle()
+            com.meldiq.android.ui.TimeFmt.hourFormat = settings.hourFormat
             val dark = when (settings.theme) {
                 ThemeMode.DARK -> true
                 ThemeMode.LIGHT -> false

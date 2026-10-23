@@ -1,5 +1,8 @@
 package com.meldiq.android.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import com.meldiq.android.data.repo.HourFormat
 import android.text.format.DateFormat
 import android.widget.Toast
 import androidx.compose.runtime.Composable
@@ -45,14 +48,20 @@ object TimeFmt {
 
     private fun cal(t: Long) = Calendar.getInstance().apply { timeInMillis = t }
 
-    /** The time of day in the phone's format (24-hour if the phone uses it), or 24-hour when [use24]. */
+    /** Snapshot state, so times on screen redraw when the setting changes. Set from the settings in AppRoot. */
+    var hourFormat: HourFormat by androidx.compose.runtime.mutableStateOf(HourFormat.AUTO)
+
+    /** The time of day in the chosen format ([hourFormat]; the phone's when automatic), or 24-hour when [use24]. */
     fun clock(t: Long, use24: Boolean = false): String {
+        val format = if (use24) HourFormat.H24 else hourFormat
         val r = res
-        if (!use24 && r != null) return DateFormat.getTimeFormat(r).format(Date(t))
+        if (format == HourFormat.AUTO && r != null) return DateFormat.getTimeFormat(r).format(Date(t))
         val c = cal(t)
         val h = c.get(Calendar.HOUR_OF_DAY)
         val m = c.get(Calendar.MINUTE)
-        return if (use24) "%02d:%02d".format(h, m) else "%d:%02d %s".format(if (h % 12 == 0) 12 else h % 12, m, if (h < 12) "AM" else "PM")
+        if (format == HourFormat.H24) return "%02d:%02d".format(h, m)
+        if (r != null) return java.text.SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(t))
+        return "%d:%02d %s".format(if (h % 12 == 0) 12 else h % 12, m, if (h < 12) "AM" else "PM")
     }
 
     fun sameDay(a: Long, b: Long): Boolean {

@@ -50,7 +50,7 @@ fun appearanceValue(): String {
             com.meldiq.android.ui.theme.ThemeMode.DARK -> com.meldiq.android.R.string.appearance_theme_dark
         },
     )
-    return theme + " · " + com.meldiq.android.ui.theme.MeldiqPalettes.of(settings.palette).label
+    return theme + " · " + paletteName(com.meldiq.android.ui.theme.MeldiqPalettes.of(settings.palette).id)
 }
 
 /** The app's language as a row value ("System default", "বাংলা"). */
