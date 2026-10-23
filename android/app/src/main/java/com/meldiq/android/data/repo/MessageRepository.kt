@@ -196,6 +196,18 @@ class MessageRepository(
         return if (cid == null) db.messages().search(esc) else db.messages().searchIn(cid, esc)
     }
 
+    /**
+     * Messages on this phone matching [sq]'s words and its from:, has:, before: and after: filters (2026-10-23), newest
+     * first. Senders are matched by display name or username among the people this phone knows.
+     */
+    suspend fun search(sq: com.meldiq.android.data.model.SearchQuery): List<MessageEntity> {
+        val esc = sq.text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        val names = if (sq.from == null) emptyMap() else db.users().all().associate { it.id to listOf(it.displayName, it.username) }
+        return db.messages().searchBetween(esc, sq.after ?: 0L, sq.before ?: Long.MAX_VALUE)
+            .filter { m -> sq.matches(names[m.senderUserId].orEmpty(), m.sortTs, m.text, attachments(m).map { it.mime }) }
+            .take(100)
+    }
+
     /** Files on this phone whose name contains [q], newest first, with the message each belongs to (round 7 search). */
     suspend fun searchFiles(q: String): List<Pair<MessageEntity, AttachmentRef>> {
         val esc = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

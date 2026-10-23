@@ -189,6 +189,10 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE kind = 'text' AND deleted = 0 AND text LIKE '%' || :q || '%' ESCAPE '\\' ORDER BY sortTs DESC LIMIT 100")
     suspend fun search(q: String): List<MessageEntity>
 
+    /** Search with operators (2026-10-23): words and a time window here; sender and has: are checked by the caller. */
+    @Query("SELECT * FROM messages WHERE kind = 'text' AND deleted = 0 AND text LIKE '%' || :q || '%' ESCAPE '\\' AND sortTs >= :after AND sortTs < :before ORDER BY sortTs DESC LIMIT 1000")
+    suspend fun searchBetween(q: String, after: Long, before: Long): List<MessageEntity>
+
     @Query("SELECT * FROM messages WHERE conversationId = :cid AND kind = 'text' AND deleted = 0 AND text LIKE '%' || :q || '%' ESCAPE '\\' ORDER BY sortTs DESC LIMIT 100")
     suspend fun searchIn(cid: String, q: String): List<MessageEntity>
 

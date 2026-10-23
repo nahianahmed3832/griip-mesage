@@ -217,21 +217,7 @@ private fun MemberSheet(d: OrgDetailRes, u: UserDto, ownerCount: Int?, onDismiss
                 OrgTitleField(d, u, onSaved = onChanged, onError = { error = it })
                 if (role == "GUEST") GuestExpirySection(d, u, onChanged = onChanged, onError = { error = it })
             }
-            if (WorkspaceRoles.canRemove(d.org.myRole, role, self = u.id == me)) item {
-                Spacer(Modifier.height(16.dp))
-                PillButton(stringResource(R.string.member_remove), { confirmRemove = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, showKnob = false, leadingIcon = Icons.Outlined.DeleteOutline, height = 48.dp)
-            }
-            // Bans (communities): removed and kept out until lifted. Owners can't be banned; the server checks the rest.
-            if (d.permissions.canBan && u.id != me && role != "OWNER" && (d.org.myRole == "OWNER" || role in setOf("MEMBER", "GUEST"))) item {
-                Spacer(Modifier.height(10.dp))
-                PillButton(stringResource(R.string.bn_ban), { banning = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, showKnob = false, leadingIcon = Icons.Outlined.Block, height = 48.dp)
-            }
-            // Batch B4: anyone can report another member to this community's moderators.
-            if (reportsAvailable && u.id != me) item {
-                Spacer(Modifier.height(10.dp))
-                PillButton(stringResource(R.string.rp_title_person, u.displayName), { reporting = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, showKnob = false, leadingIcon = Icons.Outlined.Flag, height = 48.dp)
-            }
-            // Timeouts (MOD-06): read-only in the community for a while; the server checks who may time out whom.
+            // Least to most severe (2026-10-23, the reference's member page): timeout, remove, ban. Timeouts (MOD-06): read-only in the community for a while; the server checks who may time out whom.
             if (TimeoutRules.canOffer(d.org.myRole, d.permissions.effective.toSet(), role, self = u.id == me)) item {
                 Spacer(Modifier.height(10.dp))
                 val until = u.timeoutUntil
@@ -247,6 +233,20 @@ private fun MemberSheet(d: OrgDetailRes, u: UserDto, ownerCount: Int?, onDismiss
                 } else {
                     PillButton(stringResource(R.string.to_action), { timingOut = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, showKnob = false, leadingIcon = Icons.Outlined.Timer, height = 48.dp)
                 }
+            }
+            if (WorkspaceRoles.canRemove(d.org.myRole, role, self = u.id == me)) item {
+                Spacer(Modifier.height(16.dp))
+                PillButton(stringResource(R.string.member_remove), { confirmRemove = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, showKnob = false, leadingIcon = Icons.Outlined.DeleteOutline, height = 48.dp)
+            }
+            // Bans (communities): removed and kept out until lifted. Owners can't be banned; the server checks the rest.
+            if (d.permissions.canBan && u.id != me && role != "OWNER" && (d.org.myRole == "OWNER" || role in setOf("MEMBER", "GUEST"))) item {
+                Spacer(Modifier.height(10.dp))
+                PillButton(stringResource(R.string.bn_ban), { banning = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Danger, showKnob = false, leadingIcon = Icons.Outlined.Block, height = 48.dp)
+            }
+            // Batch B4: anyone can report another member to this community's moderators.
+            if (reportsAvailable && u.id != me) item {
+                Spacer(Modifier.height(10.dp))
+                PillButton(stringResource(R.string.rp_title_person, u.displayName), { reporting = true }, Modifier.fillMaxWidth(), tone = ButtonTone.Glass, showKnob = false, leadingIcon = Icons.Outlined.Flag, height = 48.dp)
             }
         }
     }

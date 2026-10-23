@@ -103,13 +103,16 @@ fun SearchScreen(nav: NavHostController) {
         searching = true
         delay(SearchRules.DEBOUNCE_MS)
         val sections = SearchRules.sections(filter)
+        // 2026-10-23: from:, has:, before: and after: narrow the messages on this phone; the words alone go elsewhere.
+        val sq = com.meldiq.android.data.model.SearchQuery.parse(term)
+        val words = sq.text
         device = DeviceHits(
-            messages = if (Section.MESSAGES in sections) container.messages.search(term) else emptyList(),
-            files = if (Section.FILES in sections) container.messages.searchFiles(term) else emptyList(),
-            pinned = if (Section.PINNED in sections) container.messages.searchPinned(term) else emptyList(),
+            messages = if (Section.MESSAGES !in sections) emptyList() else if (sq.filtered) container.messages.search(sq) else container.messages.search(term),
+            files = if (Section.FILES in sections && words.isNotEmpty()) container.messages.searchFiles(words) else emptyList(),
+            pinned = if (Section.PINNED in sections && words.isNotEmpty()) container.messages.searchPinned(words) else emptyList(),
         )
-        val types = SearchRules.serverTypes(filter)
-        val found = if (types == null) Result.success(ServerHits()) else runCatching { searchServer(container, term, types, filter) }
+        val types = SearchRules.serverTypes(filter)?.takeIf { words.isNotEmpty() }
+        val found = if (types == null) Result.success(ServerHits()) else runCatching { searchServer(container, words, types, filter) }
         serverFailed = found.isFailure
         server = found.getOrDefault(ServerHits())
         searching = false
@@ -142,8 +145,9 @@ fun SearchScreen(nav: NavHostController) {
 
     val term = q.trim()
     val sections = SearchRules.sections(filter)
-    val convMatches = if (term.isEmpty() || Section.CONVERSATIONS !in sections) emptyList()
-    else convs.filter { !it.removed && ConversationRepository.title(it, me).contains(term, ignoreCase = true) }
+    val titleWords = remember(term) { com.meldiq.android.data.model.SearchQuery.parse(term).text }
+    val convMatches = if (titleWords.isEmpty() || Section.CONVERSATIONS !in sections) emptyList()
+    else convs.filter { !it.removed && ConversationRepository.title(it, me).contains(titleWords, ignoreCase = true) }
     val limit = if (filter == Filter.ALL) SearchRules.PREVIEW_COUNT else Int.MAX_VALUE
     val nothing = term.isNotEmpty() && !searching && convMatches.isEmpty() && server == ServerHits() && device == DeviceHits()
 
@@ -152,6 +156,12 @@ fun SearchScreen(nav: NavHostController) {
         SearchPill(q, { q = it }, stringResource(R.string.search_hint), Modifier.padding(horizontal = Space.gutter, vertical = 6.dp))
         ChipRow(Modifier.padding(vertical = 4.dp)) {
             Filter.entries.forEach { f -> PillChip(filterLabel(f), filter == f, { filter = f }) }
+        }
+        // Search operators for messages (2026-10-23): a tap adds one to the query to finish typing.
+        if (filter == Filter.ALL || filter == Filter.MESSAGES) ChipRow(Modifier.padding(bottom = 4.dp)) {
+            listOf("from:", "has:image", "has:file", "has:link", "before:", "after:").forEach { op ->
+                PillChip(op, false, { q = (q.trimEnd() + " " + op).trimStart() })
+            }
         }
         if (searching) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = Space.gutter, vertical = 6.dp), color = c.primary, trackColor = c.surfaceVariant)
         if (serverFailed && !searching) StatusBanner(stringResource(R.string.search_server_failed), BannerKind.Warning, Modifier.padding(horizontal = Space.gutter, vertical = 4.dp))
