@@ -193,3 +193,14 @@ change. Media stays end-to-end encrypted (the relay forwards the same encrypted 
 trust boundary doesn't move. Cost: relayed participants' traffic passes the VPS twice. Whether it's needed should come
 from the "Network path" in Connection details on the networks that fail. Details and steps:
 `ORBIT_UI003_CALLING_ATTACHMENTS_2026-10-18.md` §6. Needs the owner's approval; nothing was changed.
+
+## One device per person in a call (API 0.33.0, 2026-10-24)
+
+An account is in a call from one device at a time; the newest device wins. When a device confirms it's connected
+(`POST /v1/calls/:id/connected`) or LiveKit reports it joined (`participant_joined` webhook), the same account's other
+devices in that call are moved out (`replaceOtherDevices` in `server/src/modules/calls/routes.ts`): removed from the
+LiveKit room, marked as left in `call_participants`, and sent `{ t: "call", event: "ended", call: { …, endReason:
+"joined_elsewhere" } }` on that device only. Nothing else changes: every device stays signed in, other people's devices
+are untouched, and the call goes on (a 1:1 call isn't ended, since the person is still in it). Of two devices joining
+together, the one whose join is handled last stays. Meldiq Web shows "You joined this call on another device."; Android
+ends the call on the event (its generic ended text). Tests: `server/test/call_newest_device.test.ts`.
