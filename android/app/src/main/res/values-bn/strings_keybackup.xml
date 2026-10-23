@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Key backup strings (docs/LANGUAGES.md). Generated from strings_keybackup.py. -->
 <resources>
-    <string name="kb_setup_email">ইমেইলে কোড নিন</string>
+    <string name="kb_setup_sending">আপনার ইমেইলে কোড পাঠানো হচ্ছে…</string>
+    <string name="kb_setup_send_again">আবার কোড পাঠান</string>
+    <string name="kb_unlock_trouble">সমস্যা হচ্ছে?</string>
     <string name="kb_setup_email_sub">আপনার কী পাসওয়ার্ড দিয়ে ব্যাকআপ করা আছে। এখানে আনলক করতে আমরা ইমেইলে একটি কোড পাঠাব।</string>
     <string name="kb_setup_other_ways">ইমেইল পাচ্ছেন না?</string>
     <string name="kb_setup_no_backup">আপনার বর্তমান পাসওয়ার্ডের জন্য কোনো কী ব্যাকআপ নেই (যেমন পাসওয়ার্ড রিসেটের পরে), তাই অন্য ফোন বা রিকভারি কী ব্যবহার করুন।</string>
@@ -26,7 +28,6 @@
     <string name="auth_help_lost_email">আমি ইমেইলে ঢুকতে পারছি না</string>
     <string name="auth_help_lost_email_sub">সংরক্ষিত একটি রিকভারি কোড দিয়ে অ্যাকাউন্টটি নতুন ঠিকানায় সরান</string>
     <string name="auth_help_back_signin">সাইন ইনে ফিরে যান</string>
-    <string name="auth_help_unlock_link">ইমেইলে ঢুকতে পারছেন না?</string>
     <string name="auth_help_unlock_title">আনলক করার অন্য উপায়</string>
     <string name="auth_help_unlock_body">আপনার বার্তা এন্ড-টু-এন্ড এনক্রিপ্টেড, তাই এই ফোনে অ্যাকাউন্টের কী লাগবে। ইমেইলের কোড না পেলে এর একটি ব্যবহার করুন।</string>
     <string name="auth_help_back_unlock">ইমেইল কোডে ফিরে যান</string>

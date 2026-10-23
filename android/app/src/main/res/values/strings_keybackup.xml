@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Key backup strings (docs/LANGUAGES.md). Generated from strings_keybackup.py. -->
 <resources>
-    <string name="kb_setup_email">Get a code by email</string>
+    <string name="kb_setup_sending">Sending a code to your email…</string>
+    <string name="kb_setup_send_again">Send the code again</string>
+    <string name="kb_unlock_trouble">Having trouble?</string>
     <string name="kb_setup_email_sub">Your keys are backed up with your password. We\'ll email you a code to unlock them here.</string>
     <string name="kb_setup_other_ways">Can\'t get the email?</string>
     <string name="kb_setup_no_backup">There\'s no key backup for your current password (for example after a password reset), so use another phone or your recovery key.</string>
@@ -26,7 +28,6 @@
     <string name="auth_help_lost_email">I can\'t get into my email</string>
     <string name="auth_help_lost_email_sub">Use one of your saved recovery codes to move the account to a new address</string>
     <string name="auth_help_back_signin">Back to sign in</string>
-    <string name="auth_help_unlock_link">Can\'t access your email?</string>
     <string name="auth_help_unlock_title">Other ways to unlock</string>
     <string name="auth_help_unlock_body">Your messages are end-to-end encrypted, so this phone needs your account\'s keys. If the email code can\'t reach you, use one of these.</string>
     <string name="auth_help_back_unlock">Back to the email code</string>

@@ -22,6 +22,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -35,7 +36,10 @@ class AccountHelpTest {
     /** The server's key backup, failing [status] while [failing] is set (a dropped connection). */
     private class FlakyBackups(private val real: KeyBackupApi) : KeyBackupApi by real {
         var failing = false
+        var sendFails = false
+        var codesSent = 0
         override suspend fun status(): KeyBackupStatus = if (failing) throw IOException("offline") else real.status()
+        override suspend fun startUnlock() = if (sendFails) throw IOException("offline") else real.startUnlock().also { codesSent++ }
     }
 
     private val backups = FlakyBackups(FakeKeyBackupApi(api))
@@ -62,17 +66,55 @@ class AccountHelpTest {
         assertEquals(listOf(AccountStep.Link, AccountStep.RestoreKey, AccountStep.StartFresh), deviceUnlockOptions.map { it.step })
     }
 
-    @Test
-    fun `a new phone with a key backup is offered the emailed code`() = runTest(dispatcher) {
+    /** Signs in on a new phone of an account that has a key backup, and waits for the flow to settle. */
+    private suspend fun newPhone(): AccountFlowViewModel {
         api.verifiedAccount(email)
         phone().login(URL, email, PASSWORD)
         val vm = flow(phone())
         vm.edit { it.copy(email = email, password = PASSWORD) }
         vm.logIn()
         vm.form.first { !it.submitting && !it.keyBackupChecking }
-        assertEquals(AccountStep.DeviceSetup, vm.form.value.step)
+        return vm
+    }
+
+    @Test
+    fun `a new phone with a key backup gets the code without asking and lands on the code`() = runTest(dispatcher) {
+        val vm = newPhone()
+        assertEquals(AccountStep.EmailUnlock, vm.form.value.step)
         assertEquals(true, vm.form.value.keyBackup)
-        assertFalse(vm.form.value.keyBackupChecking)
+        assertEquals(1, backups.codesSent)
+        assertEquals("a***e@example.com", vm.form.value.unlockSentTo)
+    }
+
+    @Test
+    fun `back from another way to unlock returns to the code, and nothing is sent again`() = runTest(dispatcher) {
+        val vm = newPhone()
+        vm.goTo(AccountStep.RestoreKey)
+        vm.back()
+        assertEquals(AccountStep.EmailUnlock, vm.form.value.step)
+        assertEquals(1, backups.codesSent)
+        assertFalse("the code step is left only by signing out", vm.back())
+    }
+
+    @Test
+    fun `send a new one asks the server again`() = runTest(dispatcher) {
+        val vm = newPhone()
+        vm.startEmailUnlock()
+        vm.form.first { !it.submitting }
+        assertEquals(2, backups.codesSent)
+        assertEquals(AccountStep.EmailUnlock, vm.form.value.step)
+    }
+
+    @Test
+    fun `when sending fails the phone stays on setup with the error, ready to try again`() = runTest(dispatcher) {
+        backups.sendFails = true
+        val vm = newPhone()
+        assertEquals(AccountStep.DeviceSetup, vm.form.value.step)
+        assertTrue(vm.form.value.error != null)
+        backups.sendFails = false
+        vm.startEmailUnlock()
+        vm.form.first { !it.submitting }
+        assertEquals(AccountStep.EmailUnlock, vm.form.value.step)
     }
 
     @Test

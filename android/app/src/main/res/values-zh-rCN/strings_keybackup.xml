@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Key backup strings (docs/LANGUAGES.md). Generated from strings_keybackup.py. -->
 <resources>
-    <string name="kb_setup_email">通过邮件获取验证码</string>
+    <string name="kb_setup_sending">正在向你的邮箱发送验证码…</string>
+    <string name="kb_setup_send_again">重新发送验证码</string>
+    <string name="kb_unlock_trouble">遇到问题？</string>
     <string name="kb_setup_email_sub">你的密钥已用密码备份。我们会通过邮件发送验证码，在这里解锁。</string>
     <string name="kb_setup_other_ways">收不到邮件？</string>
     <string name="kb_setup_no_backup">你当前的密码没有对应的密钥备份（例如重置密码之后），请使用另一台手机或恢复密钥。</string>
@@ -26,7 +28,6 @@
     <string name="auth_help_lost_email">我无法访问我的邮箱</string>
     <string name="auth_help_lost_email_sub">使用你保存的恢复码之一，将账号转到新邮箱</string>
     <string name="auth_help_back_signin">返回登录</string>
-    <string name="auth_help_unlock_link">无法访问你的邮箱？</string>
     <string name="auth_help_unlock_title">其他解锁方式</string>
     <string name="auth_help_unlock_body">你的消息经过端到端加密，所以这台手机需要你账号的密钥。如果收不到邮件验证码，请使用以下方式之一。</string>
     <string name="auth_help_back_unlock">返回邮件验证码</string>

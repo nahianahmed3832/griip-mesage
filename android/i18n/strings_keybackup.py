@@ -1,7 +1,9 @@
 # Key backup strings (docs/KEY_BACKUP.md, 2026-10-21): a new phone unlocks the keys with the password and an emailed
 # code; the recovery key is for when that can't work. key: (English, Simplified Chinese, Bengali).
 S = {
-"kb_setup_email": ("Get a code by email", "通过邮件获取验证码", "ইমেইলে কোড নিন"),
+"kb_setup_sending": ("Sending a code to your email…", "正在向你的邮箱发送验证码…", "আপনার ইমেইলে কোড পাঠানো হচ্ছে…"),
+"kb_setup_send_again": ("Send the code again", "重新发送验证码", "আবার কোড পাঠান"),
+"kb_unlock_trouble": ("Having trouble?", "遇到问题？", "সমস্যা হচ্ছে?"),
 "kb_setup_email_sub": ("Your keys are backed up with your password. We'll email you a code to unlock them here.", "你的密钥已用密码备份。我们会通过邮件发送验证码，在这里解锁。", "আপনার কী পাসওয়ার্ড দিয়ে ব্যাকআপ করা আছে। এখানে আনলক করতে আমরা ইমেইলে একটি কোড পাঠাব।"),
 "kb_setup_other_ways": ("Can't get the email?", "收不到邮件？", "ইমেইল পাচ্ছেন না?"),
 "kb_setup_no_backup": ("There's no key backup for your current password (for example after a password reset), so use another phone or your recovery key.", "你当前的密码没有对应的密钥备份（例如重置密码之后），请使用另一台手机或恢复密钥。", "আপনার বর্তমান পাসওয়ার্ডের জন্য কোনো কী ব্যাকআপ নেই (যেমন পাসওয়ার্ড রিসেটের পরে), তাই অন্য ফোন বা রিকভারি কী ব্যবহার করুন।"),
@@ -28,7 +30,6 @@ S = {
 "auth_help_lost_email": ("I can't get into my email", "我无法访问我的邮箱", "আমি ইমেইলে ঢুকতে পারছি না"),
 "auth_help_lost_email_sub": ("Use one of your saved recovery codes to move the account to a new address", "使用你保存的恢复码之一，将账号转到新邮箱", "সংরক্ষিত একটি রিকভারি কোড দিয়ে অ্যাকাউন্টটি নতুন ঠিকানায় সরান"),
 "auth_help_back_signin": ("Back to sign in", "返回登录", "সাইন ইনে ফিরে যান"),
-"auth_help_unlock_link": ("Can't access your email?", "无法访问你的邮箱？", "ইমেইলে ঢুকতে পারছেন না?"),
 "auth_help_unlock_title": ("Other ways to unlock", "其他解锁方式", "আনলক করার অন্য উপায়"),
 "auth_help_unlock_body": ("Your messages are end-to-end encrypted, so this phone needs your account's keys. If the email code can't reach you, use one of these.", "你的消息经过端到端加密，所以这台手机需要你账号的密钥。如果收不到邮件验证码，请使用以下方式之一。", "আপনার বার্তা এন্ড-টু-এন্ড এনক্রিপ্টেড, তাই এই ফোনে অ্যাকাউন্টের কী লাগবে। ইমেইলের কোড না পেলে এর একটি ব্যবহার করুন।"),
 "auth_help_back_unlock": ("Back to the email code", "返回邮件验证码", "ইমেইল কোডে ফিরে যান"),

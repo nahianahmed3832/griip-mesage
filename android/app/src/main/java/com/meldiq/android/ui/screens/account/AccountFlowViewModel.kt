@@ -13,6 +13,7 @@ import com.meldiq.android.ui.screens.onboarding.AuthErrors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -32,8 +33,8 @@ enum class AccountStep {
             Verify -> null
             Forgot -> LogIn
             Reset -> Forgot
-            DeviceSetup -> null
-            RestoreKey, Link, StartFresh, EmailUnlock -> DeviceSetup
+            DeviceSetup, EmailUnlock -> null
+            RestoreKey, Link, StartFresh -> DeviceSetup
             LegacyCredentials -> LogIn
             LegacyDetails -> LegacyCredentials
             Recover -> LogIn
@@ -41,7 +42,7 @@ enum class AccountStep {
         }
 
     /** Steps the account's phase decides; the person can't wander off them with Back. */
-    val pinned: Boolean get() = this == Verify || this == DeviceSetup
+    val pinned: Boolean get() = this == Verify || this == DeviceSetup || this == EmailUnlock
 }
 
 /** A confirmation shown above a form. */
@@ -135,7 +136,10 @@ class AccountFlowViewModel(
                 }
                 if (_form.value.keyBackup == null) checkKeyBackup()
             }
-            is AccountPhase.SignedOut -> _form.update { it.copy(step = AccountStep.LogIn, email = phase.email, signedOutReason = phase.reason, keyBackup = null) }
+            is AccountPhase.SignedOut -> {
+                unlockCodeRequested = false
+                _form.update { it.copy(step = AccountStep.LogIn, email = phase.email, signedOutReason = phase.reason, keyBackup = null, unlockSentTo = null) }
+            }
             AccountPhase.None, is AccountPhase.Ready -> Unit
         }
     }
@@ -147,7 +151,23 @@ class AccountFlowViewModel(
         viewModelScope.launch {
             val available = accounts.devices.backupAvailable()
             _form.update { it.copy(keyBackup = available, keyBackupChecking = false) }
+            if (available == true) sendUnlockCodeOnce()
         }
+    }
+
+    private var unlockCodeRequested = false
+
+    /**
+     * With a key backup the emailed code is the way in, so it's sent without asking (the owner, 2026-10-23: no "Email me a
+     * code" button). Once per sign-in: Back from the help steps returns to the code, and "Send a new one" asks again. The
+     * server sends at most one code per minute and keeps the last one valid, so a quick repeat costs nothing.
+     */
+    private suspend fun sendUnlockCodeOnce() {
+        if (unlockCodeRequested) return
+        _form.first { !it.submitting }
+        if (unlockCodeRequested || _form.value.step != AccountStep.DeviceSetup) return
+        unlockCodeRequested = true
+        startEmailUnlock()
     }
 
     fun goTo(step: AccountStep) = _form.update { it.copy(step = step, error = null, notice = null) }
@@ -164,7 +184,8 @@ class AccountFlowViewModel(
             return true
         }
         val to = s.step.back ?: return false
-        goTo(to)
+        // The help steps return to the emailed code once it was sent, not to the screen that sent it.
+        goTo(if (to == AccountStep.DeviceSetup && s.unlockSentTo != null && s.keyBackup == true) AccountStep.EmailUnlock else to)
         return true
     }
 
