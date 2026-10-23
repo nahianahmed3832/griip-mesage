@@ -250,6 +250,43 @@ export async function evictFromCall(ctx: AppContext, c: CallRow): Promise<number
   return devices;
 }
 
+/**
+ * Newest device wins in a call (2026-10-24): one account is in a call from one device at a time. When [deviceId] joins
+ * (it confirmed it's connected, or LiveKit says it joined), the account's other devices in the call leave it: out of the
+ * LiveKit room, marked as left, and told the call ended for them (`endReason: "joined_elsewhere"`). The account stays
+ * signed in on them, and the call goes on for everyone else. Returns the devices moved out.
+ */
+export async function replaceOtherDevices(ctx: AppContext, c: CallRow, userId: string, deviceId: string): Promise<string[]> {
+  // Decided in the same turn as the join that triggered it, so of two devices joining together the later one stays.
+  const moved = new Set(
+    (
+      ctx.db
+        .prepare("UPDATE call_participants SET left_at = ? WHERE call_id = ? AND user_id = ? AND device_id != ? AND left_at IS NULL RETURNING device_id")
+        .all(now(), c.id, userId, deviceId) as { device_id: string }[]
+    ).map((r) => r.device_id),
+  );
+  // A device may be in the room without having confirmed yet: LiveKit knows it.
+  const candidates = new Set(moved);
+  for (const identity of (ctx.livekit && (await ctx.livekit.participantIdentities(c.room_name))) || []) {
+    const [u, d] = identity.split(".");
+    if (u === userId && d && d !== deviceId) candidates.add(d);
+  }
+  const out: string[] = [];
+  for (const d of candidates) {
+    // It joined again meanwhile (now the newest itself): leave it be.
+    const back = ctx.db.prepare("SELECT 1 FROM call_participants WHERE call_id = ? AND device_id = ? AND left_at IS NULL").get(c.id, d);
+    if (back) continue;
+    // Told before it's removed, so the app knows why its media connection is about to close. (Once: a device already
+    // moved out is neither in the call nor in the room, so a second join report finds nothing to do.)
+    ctx.hub.sendToDevice(d, { t: "call", event: "ended", call: { ...callView(ctx, loadCall(ctx, c.id)!), endReason: "joined_elsewhere" } });
+    out.push(d);
+    const outcome = ctx.livekit ? await ctx.livekit.removeParticipant(c.room_name, `${userId}.${d}`) : "absent";
+    if (outcome === "error") ctx.log.warn({ callId: c.id }, "call: LiveKit unreachable while moving a device out");
+  }
+  if (out.length) ctx.log.info({ callId: c.id, devices: out.length }, "call: joined on another device, older device moved out");
+  return out;
+}
+
 /** After a membership change: evict `userId` from live calls of the conversations they were removed from. */
 export async function evictRemovedMember(ctx: AppContext, userId: string, conversationIds: Iterable<string>): Promise<number> {
   let n = 0;
@@ -321,6 +358,7 @@ export function callActions(ctx: AppContext) {
       db.prepare(
         "INSERT INTO call_participants (call_id, user_id, device_id, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT(call_id, device_id) DO UPDATE SET left_at = NULL",
       ).run(c.id, userId, deviceId, now());
+      await replaceOtherDevices(ctx, c, userId, deviceId);
       const users = (db.prepare("SELECT COUNT(DISTINCT user_id) n FROM call_participants WHERE call_id = ? AND left_at IS NULL").get(c.id) as { n: number }).n;
       if (c.state === "RINGING" && users >= 2) db.prepare("UPDATE calls SET state = 'ACTIVE', answered_at = ? WHERE id = ?").run(now(), c.id);
       if (users >= 2) cancelLostTimer(ctx, c.id); // came back in time
@@ -643,6 +681,7 @@ export default async function callRoutes(app: FastifyInstance, ctx: AppContext) 
       db.prepare(
         "INSERT INTO call_participants (call_id, user_id, device_id, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT(call_id, device_id) DO UPDATE SET left_at = NULL, joined_at = excluded.joined_at",
       ).run(c.id, pUser, pDevice, now());
+      await replaceOtherDevices(ctx, c, pUser, pDevice);
       const count = (db.prepare("SELECT COUNT(DISTINCT user_id) n FROM call_participants WHERE call_id = ? AND left_at IS NULL").get(c.id) as { n: number }).n;
       if (c.state === "RINGING" && count >= 2) db.prepare("UPDATE calls SET state = 'ACTIVE', answered_at = ? WHERE id = ?").run(now(), c.id);
       if (count >= 2) cancelLostTimer(ctx, c.id);
