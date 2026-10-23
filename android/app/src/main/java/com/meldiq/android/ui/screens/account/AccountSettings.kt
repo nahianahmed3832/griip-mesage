@@ -1,5 +1,6 @@
 package com.meldiq.android.ui.screens.account
 
+import androidx.compose.material.icons.outlined.Phone
 import com.meldiq.android.ui.components.ValueChevron
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.AlternateEmail
@@ -80,6 +81,10 @@ fun AccountSecurityCard(modifier: Modifier = Modifier, onEditProfile: (() -> Uni
             MenuRow(Icons.Outlined.Badge, stringResource(R.string.ux_display_name), onClick = onEditProfile, trailing = { ValueChevron(u.displayName) })
         }
         MenuRow(Icons.Outlined.Email, stringResource(R.string.acct_settings_email), trailing = { Text(account.email, style = Griip.type.caption, color = c.textSecondary, maxLines = 1) })
+        // The optional phone number lives on the profile (who may see it is a privacy setting); edited in Edit profile.
+        var phone by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(account.id) { phone = runCatching { container.profiles.me().phone }.getOrNull()?.ifEmpty { null } }
+        MenuRow(Icons.Outlined.Phone, stringResource(R.string.ux_phone), onClick = onEditProfile, trailing = { ValueChevron(phone ?: stringResource(R.string.ux_add)) })
     }
     AccountSection(R.string.ux_how_you_sign_in)
     GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(6.dp)) {
@@ -87,6 +92,7 @@ fun AccountSecurityCard(modifier: Modifier = Modifier, onEditProfile: (() -> Uni
         KeyBackupRow()
         RecoveryCodesRow()
     }
+    PasskeysSection()
     AccountSection(R.string.ux_account_management)
     GlassCard(Modifier.fillMaxWidth().padding(horizontal = Space.gutter), contentPadding = PaddingValues(6.dp)) {
         MenuRow(Icons.AutoMirrored.Outlined.Logout, stringResource(R.string.acct_settings_logout), subtitle = stringResource(R.string.acct_settings_logout_sub), onClick = { confirmLogout = true })

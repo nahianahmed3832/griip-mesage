@@ -182,3 +182,24 @@ data class AccountTokens(
     val refreshToken: String,
     val refreshTokenExpiresAt: Long,
 )
+
+// ───────────── Passkeys (2026-10-23, docs/PASSKEYS.md) ─────────────
+
+/** Options for the platform's passkey prompt (WebAuthn JSON, passed to Credential Manager as is) and this ceremony's id. */
+@Serializable
+data class PasskeyOptionsRes(val challengeId: String, val options: kotlinx.serialization.json.JsonObject)
+
+@Serializable
+data class PasskeyLoginReq(val challengeId: String, val response: kotlinx.serialization.json.JsonObject, val deviceName: String? = null, val device: DeviceProofDto? = null)
+
+@Serializable
+data class PasskeyRegisterReq(val challengeId: String, val response: kotlinx.serialization.json.JsonObject, val name: String? = null)
+
+@Serializable
+data class PasskeyDto(val id: String, val name: String, val createdAt: Long = 0, val lastUsedAt: Long? = null, val synced: Boolean = false)
+
+@Serializable
+data class PasskeyListRes(val available: Boolean = false, val passkeys: List<PasskeyDto> = emptyList())
+
+@Serializable
+data class PasskeyAddedRes(val passkey: PasskeyDto)

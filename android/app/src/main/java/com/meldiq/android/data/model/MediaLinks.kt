@@ -13,7 +13,15 @@ object MediaLinks {
 
     enum class Kind { VIDEO, SHORT, TRACK, ALBUM, PLAYLIST, ARTIST, EPISODE, SHOW, LIVE }
 
-    data class MediaLink(val provider: Provider, val kind: Kind, val url: String)
+    /** [videoId]: a YouTube video, Short or live stream, which plays inside Meldiq when tapped (2026-10-23). */
+    data class MediaLink(val provider: Provider, val kind: Kind, val url: String, val videoId: String? = null)
+
+    /**
+     * The privacy-enhanced YouTube player for [videoId] (youtube-nocookie.com: no cookies until playback). Only built for
+     * ids that match the 11-character pattern, so nothing else can be loaded through it.
+     */
+    fun embedUrl(videoId: String): String? =
+        if (YOUTUBE_ID.matches(videoId)) "https://www.youtube-nocookie.com/embed/$videoId?autoplay=1&playsinline=1&rel=0" else null
 
     private val YOUTUBE_ID = Regex("^[A-Za-z0-9_-]{11}$")
     private val SPOTIFY_ID = Regex("^[A-Za-z0-9]{22}$")
@@ -34,7 +42,7 @@ object MediaLinks {
         return when (host) {
             "youtube.com" -> youtube(path, query, url, Provider.YOUTUBE)
             "music.youtube.com" -> youtube(path, query, url, Provider.YOUTUBE_MUSIC)
-            "youtu.be" -> path.firstOrNull()?.takeIf { YOUTUBE_ID.matches(it) }?.let { MediaLink(Provider.YOUTUBE, Kind.VIDEO, url) }
+            "youtu.be" -> path.firstOrNull()?.takeIf { YOUTUBE_ID.matches(it) }?.let { MediaLink(Provider.YOUTUBE, Kind.VIDEO, url, it) }
             "open.spotify.com" -> {
                 // Spotify adds a locale segment to some links: open.spotify.com/intl-de/track/…
                 val p = if (path.firstOrNull()?.startsWith("intl-") == true) path.drop(1) else path
@@ -53,10 +61,10 @@ object MediaLinks {
 
     private fun youtube(path: List<String>, query: Map<String, String>, url: String, provider: Provider): MediaLink? = when {
         path.firstOrNull() == "watch" && query["v"]?.let { YOUTUBE_ID.matches(it) } == true ->
-            MediaLink(provider, if (provider == Provider.YOUTUBE_MUSIC) Kind.TRACK else Kind.VIDEO, url)
+            MediaLink(provider, if (provider == Provider.YOUTUBE_MUSIC) Kind.TRACK else Kind.VIDEO, url, query["v"].takeIf { provider == Provider.YOUTUBE })
         path.firstOrNull() == "playlist" && !query["list"].isNullOrBlank() -> MediaLink(provider, Kind.PLAYLIST, url)
-        path.firstOrNull() == "shorts" && path.getOrNull(1)?.let { YOUTUBE_ID.matches(it) } == true -> MediaLink(provider, Kind.SHORT, url)
-        path.firstOrNull() == "live" && path.getOrNull(1)?.let { YOUTUBE_ID.matches(it) } == true -> MediaLink(provider, Kind.LIVE, url)
+        path.firstOrNull() == "shorts" && path.getOrNull(1)?.let { YOUTUBE_ID.matches(it) } == true -> MediaLink(provider, Kind.SHORT, url, path[1].takeIf { provider == Provider.YOUTUBE })
+        path.firstOrNull() == "live" && path.getOrNull(1)?.let { YOUTUBE_ID.matches(it) } == true -> MediaLink(provider, Kind.LIVE, url, path[1].takeIf { provider == Provider.YOUTUBE })
         else -> null
     }
 }

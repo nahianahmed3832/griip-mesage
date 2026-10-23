@@ -302,6 +302,9 @@ fun ChatSettingsScreen(nav: NavHostController) {
                 MenuRow(Icons.Outlined.MusicNote, stringResource(R.string.chat_media_cards), subtitle = stringResource(R.string.chat_media_cards_sub), trailing = {
                     GriipSwitch(s.mediaCards, { v -> update { it.copy(mediaCards = v) } })
                 })
+                if (s.mediaCards) MenuRow(Icons.Outlined.MusicNote, stringResource(R.string.ux_in_app_video), subtitle = stringResource(R.string.ux_in_app_video_sub), trailing = {
+                    GriipSwitch(s.inAppVideo, { v -> update { it.copy(inAppVideo = v) } })
+                })
             }
         }
         item { SectionHeader(stringResource(R.string.chat_media), Modifier.padding(top = 16.dp, bottom = 6.dp)) }

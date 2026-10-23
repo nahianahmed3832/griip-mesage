@@ -46,13 +46,13 @@ import com.meldiq.android.ui.theme.Shapes
  * accounts, subscriptions and regional rules stay with the provider.
  */
 @Composable
-fun MediaLinkCard(link: MediaLinks.MediaLink, preview: LinkPreview?, onOpen: (String) -> Unit, modifier: Modifier = Modifier) {
+fun MediaLinkCard(link: MediaLinks.MediaLink, preview: LinkPreview?, onOpen: (String) -> Unit, modifier: Modifier = Modifier, onPlay: (() -> Unit)? = null) {
     val c = Griip.colors
     val brand = providerColor(link.provider)
     val provider = link.provider.label
     Row(
         modifier.padding(top = 6.dp).widthIn(min = 240.dp, max = 320.dp).clip(Shapes.card).background(c.surface).border(1.dp, c.border, Shapes.card)
-            .pressable({ onOpen(link.url) }, role = Role.Button, onClickLabel = stringResource(R.string.media_open_in, provider))
+            .pressable(onPlay ?: { onOpen(link.url) }, role = Role.Button, onClickLabel = if (onPlay != null) stringResource(R.string.ux_play_video) else stringResource(R.string.media_open_in, provider))
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -65,10 +65,11 @@ fun MediaLinkCard(link: MediaLinks.MediaLink, preview: LinkPreview?, onOpen: (St
             Text("$provider · ${stringResource(kindLabel(link.kind))}", style = Griip.type.caption.copy(fontWeight = FontWeight.SemiBold), color = c.textSecondary, maxLines = 1)
             val title = preview?.title
             if (title != null) Text(title, style = Griip.type.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(stringResource(R.string.media_plays_in, provider), style = Griip.type.caption, color = c.textSecondary, maxLines = 2)
+            Text(if (onPlay != null) stringResource(R.string.ux_plays_here) else stringResource(R.string.media_plays_in, provider), style = Griip.type.caption, color = c.textSecondary, maxLines = 2)
         }
         Spacer(Modifier.width(6.dp))
-        Box(Modifier.size(32.dp).clip(CircleShape).background(c.surfaceVariant), contentAlignment = Alignment.Center) {
+        // With the in-app player, this corner still opens the video in YouTube itself.
+        Box(Modifier.size(32.dp).clip(CircleShape).background(c.surfaceVariant).then(if (onPlay != null) Modifier.pressable({ onOpen(link.url) }, onClickLabel = stringResource(R.string.media_open_in, provider)) else Modifier), contentAlignment = Alignment.Center) {
             Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, tint = c.textSecondary, modifier = Modifier.size(16.dp))
         }
     }

@@ -338,6 +338,8 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     var reportsAvailable by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { reportsAvailable = vm.c.features.has(com.meldiq.android.data.repo.ServerFeatures.REPORTS) == true }
     // Photos and videos open in the in-app viewer; other files are opened explicitly with another app.
+    // 2026-10-23: the YouTube video playing inside Meldiq (message id, video id).
+    var playing by remember { mutableStateOf<Pair<String, String>?>(null) }
     var viewerFor by rememberSaveable { mutableStateOf<String?>(null) }
     var saveTarget by remember { mutableStateOf<AttachmentRef?>(null) }
     val notice by vm.notice.collectAsStateWithLifecycle()
@@ -782,6 +784,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                                 // Received photos load as their message comes on screen (Settings › Chats › media).
                                 onShown = { vm.loadShownMedia(m, ctx) },
                                 onDoubleTap = if (chatSettings.doubleTapReact && !m.deleted && m.kind == "text" && selected == null) ({ vm.react(m, chatSettings.doubleTapEmoji) }) else null,
+                                onPlayVideo = if (chatSettings.inAppVideo) ({ id -> playing = m.id to id }) else null,
                             )
                             }
                         }
@@ -1143,6 +1146,16 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 content = com.meldiq.android.data.model.ReportRules.content(line(m), messages.map(line)),
             ),
             onDismiss = { reportFor = null },
+        )
+    }
+    playing?.let { (messageId, videoId) ->
+        val pm = messages.firstOrNull { it.id == messageId }
+        com.meldiq.android.ui.media.YouTubePlayerDialog(
+            videoId, sender = pm?.let { if (it.outgoing) youLabel else users[it.senderUserId]?.displayName }, sentAt = pm?.sortTs,
+            caption = pm?.text?.trim()?.ifEmpty { null },
+            onReact = if (pm != null && conv?.canPost != false) ({ e -> vm.react(pm, e) }) else null,
+            onOpenOutside = { url -> playing = null; onOpenLink(url) },
+            onDismiss = { playing = null },
         )
     }
     forwardFor?.let { m ->

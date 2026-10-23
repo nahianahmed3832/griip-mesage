@@ -1,5 +1,7 @@
 package com.meldiq.android.data.account
 
+import kotlinx.serialization.json.jsonObject
+import com.meldiq.android.data.api.GriipJson
 import com.meldiq.android.crypto.Canonical
 import com.meldiq.android.crypto.KeyBackupCrypto
 import com.meldiq.android.crypto.LocalKeys
@@ -213,6 +215,48 @@ class AccountRepository(
         }
         adopt(serverUrl, res, keepDevice = !deviceUnusable)
     }
+
+    /**
+     * Signs in with a passkey (2026-10-23, docs/PASSKEYS.md). [assert] shows the platform's passkey prompt for the
+     * server's options (WebAuthn JSON) and returns its answer. When this phone holds an account's keys for this server,
+     * its device key proves it as with a password; if the passkey belongs to another account that proof is refused, and
+     * the sign-in is tried once more without it (a second prompt), after which keys of another account still stop it.
+     */
+    suspend fun loginWithPasskey(serverUrl: String, assert: suspend (String) -> String) {
+        val here = vault.account()?.takeIf { it.serverUrl == serverUrl }
+        val keys = vault.keys()
+        val device = here?.deviceId?.let { id -> keys?.let { id to it } }
+        devices.rememberPassword(null)
+        suspend fun attempt(proveDevice: Boolean): AccountSessionRes {
+            val o = api.passkeyLoginOptions(serverUrl)
+            val answer = GriipJson.parseToJsonElement(assert(o.options.toString())).jsonObject
+            val proof = if (proveDevice) device?.let { deviceProof(serverUrl, it.first, it.second) } else null
+            return api.passkeyLogin(serverUrl, PasskeyLoginReq(o.challengeId, answer, deviceName(), proof))
+        }
+        var provedDevice = device != null
+        val res = try {
+            attempt(provedDevice)
+        } catch (e: ApiException) {
+            if (!provedDevice || e.code !in DEVICE_UNUSABLE) throw e
+            provedDevice = false
+            attempt(false)
+        }
+        // Keys for another account must never be set up under this one (the same rule as a password sign-in).
+        requireProfileFor(res.account.email)
+        adopt(serverUrl, res, keepDevice = provedDevice || here?.email == res.account.email)
+    }
+
+    /** This account's passkeys, and whether its server offers them. */
+    suspend fun passkeys(): PasskeyListRes = api.passkeys()
+
+    /** Adds a passkey: [create] shows the platform's create-passkey prompt for the server's options and returns its answer. */
+    suspend fun addPasskey(name: String, create: suspend (String) -> String): PasskeyDto {
+        val o = api.passkeyRegisterOptions()
+        val answer = GriipJson.parseToJsonElement(create(o.options.toString())).jsonObject
+        return api.addPasskey(PasskeyRegisterReq(o.challengeId, answer, name.trim().take(80).ifEmpty { null })).passkey
+    }
+
+    suspend fun removePasskey(id: String) = api.removePasskey(id)
 
     /** Signs in, proving [device]'s key when given; a challenge that expired on the way is asked for again once. */
     private suspend fun loginWithProof(serverUrl: String, email: String, password: String, device: Pair<String, LocalKeys>?): AccountSessionRes {

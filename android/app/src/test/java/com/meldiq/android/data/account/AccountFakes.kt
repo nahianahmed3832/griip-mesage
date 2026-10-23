@@ -114,6 +114,27 @@ class FakeAccountApi : AccountApi {
         return session(a, proof.deviceId)
     }
 
+    /** Passkeys (2026-10-23): credential id → account email. The platform prompt is faked by the test. */
+    val passkeyOwners = mutableMapOf<String, String>()
+
+    override suspend fun passkeyLoginOptions(serverUrl: String): PasskeyOptionsRes {
+        calls += "passkey-options"
+        return PasskeyOptionsRes(next("ch"), kotlinx.serialization.json.buildJsonObject { put("challenge", kotlinx.serialization.json.JsonPrimitive("c")) })
+    }
+
+    override suspend fun passkeyLogin(serverUrl: String, req: PasskeyLoginReq): AccountSessionRes {
+        calls += if (req.device != null) "passkey+device" else "passkey"
+        val id = (req.response["id"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+        val a = passkeyOwners[id]?.let { accounts[it] } ?: throw ApiException(401, "passkey_unknown", "Unknown passkey")
+        val proof = req.device ?: return session(a, null)
+        val key = a.devices[proof.deviceId]
+        if (key == null || !Ed25519.verify(key.unb64(), Canonical.authProof("login", proof.nonce, key).toByteArray(), proof.signature.unb64())) {
+            throw ApiException(401, "invalid_device_proof", "Not this account's device")
+        }
+        consume(proof.nonce)
+        return session(a, proof.deviceId)
+    }
+
     override suspend fun refresh(serverUrl: String, refreshToken: String): AccountSessionRes {
         calls += "refresh"
         refreshes++

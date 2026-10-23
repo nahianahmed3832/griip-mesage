@@ -270,4 +270,52 @@ class AccountRepositoryTest {
         assertEquals(AccountPhase.SignedOut("restart@example.com", null), AccountRepository(api, vault, session, deviceName = { "x" }).phase.value)
         assertEquals(AccountPhase.None, AccountRepository(api, MemoryVault(), FakeMessagingSession(), deviceName = { "x" }).phase.value)
     }
+
+    /** The platform's passkey prompt, faked: answers with passkey [id] and counts how often it was shown. */
+    private var prompts = 0
+    private fun passkey(id: String): suspend (String) -> String = { _ -> prompts++; """{"id":"$id","rawId":"$id","type":"public-key","response":{}}""" }
+
+    @Test
+    fun `this phone signs in again with a passkey, proving its device key, and keeps its keys`() = runBlocking {
+        val r = repo()
+        api.verifiedAccount("pia@example.com")
+        r.login(URL, "pia@example.com", PASSWORD)
+        val keys = vault.localKeys
+        val device = vault.record!!.deviceId
+        api.passkeyOwners["pk1"] = "pia@example.com"
+        r.logout()
+        api.calls.clear()
+        r.loginWithPasskey(URL, passkey("pk1"))
+        assertEquals(listOf("passkey-options", "passkey+device"), api.calls)
+        assertEquals(1, prompts)
+        assertEquals(keys, vault.localKeys)
+        assertEquals(device, session.current!!.deviceId)
+        assertTrue(r.phase.value is AccountPhase.Ready)
+    }
+
+    @Test
+    fun `a passkey of another account is asked again without the device proof, then refused here`() = runBlocking {
+        val r = repo()
+        api.verifiedAccount("owner@example.com")
+        r.login(URL, "owner@example.com", PASSWORD)
+        r.logout()
+        api.verifiedAccount("other@example.com")
+        api.passkeyOwners["pk2"] = "other@example.com"
+        api.calls.clear()
+        expectCode(OTHER_ACCOUNT_HERE) { r.loginWithPasskey(URL, passkey("pk2")) }
+        assertEquals(listOf("passkey-options", "passkey+device", "passkey-options", "passkey"), api.calls)
+        assertEquals(2, prompts)
+        assertEquals("owner@example.com", vault.record!!.email)
+    }
+
+    @Test
+    fun `a new phone signs in with a passkey and goes on to set up encryption`() = runBlocking {
+        api.verifiedAccount("nia@example.com")
+        api.passkeyOwners["pk3"] = "nia@example.com"
+        val r = repo()
+        r.loginWithPasskey(URL, passkey("pk3"))
+        assertEquals("nia@example.com", vault.record!!.email)
+        assertTrue(r.phase.value !is AccountPhase.SignedOut)
+        expectCode("passkey_unknown") { repo().loginWithPasskey(URL, passkey("nobody")) }
+    }
 }

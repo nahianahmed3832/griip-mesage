@@ -234,6 +234,20 @@ class AccountFlowViewModel(
     }
 
     /**
+     * 2026-10-23: signs in with a passkey; [prompt] shows the platform's passkey prompt (docs/PASSKEYS.md). Closing the
+     * prompt is not an error.
+     */
+    fun logInWithPasskey(prompt: suspend (String) -> String) {
+        run {
+            try {
+                accounts.loginWithPasskey(serverUrl(), prompt)
+                _form.update { it.copy(password = "", signedOutReason = null) }
+            } catch (_: PasskeyPrompt.Cancelled) {
+            }
+        }
+    }
+
+    /**
      * The code (with the password, which the server checks too), then signing in. If the sign-in failed after the code
      * went through, trying again only signs in: the code is used up by then.
      */

@@ -35,6 +35,14 @@ interface AccountApi {
     suspend fun resetIdentity(req: ResetIdentityReq): EnrollRes
     suspend fun workspaces(): WorkspacesRes
     suspend fun selectWorkspace(id: String): String
+
+    // Passkeys (2026-10-23, docs/PASSKEYS.md). Defaults so fakes that don't use them needn't implement them.
+    suspend fun passkeyLoginOptions(serverUrl: String): PasskeyOptionsRes = throw UnsupportedOperationException("passkeys")
+    suspend fun passkeyLogin(serverUrl: String, req: PasskeyLoginReq): AccountSessionRes = throw UnsupportedOperationException("passkeys")
+    suspend fun passkeys(): PasskeyListRes = throw UnsupportedOperationException("passkeys")
+    suspend fun passkeyRegisterOptions(): PasskeyOptionsRes = throw UnsupportedOperationException("passkeys")
+    suspend fun addPasskey(req: PasskeyRegisterReq): PasskeyAddedRes = throw UnsupportedOperationException("passkeys")
+    suspend fun removePasskey(id: String): Unit = throw UnsupportedOperationException("passkeys")
 }
 
 class HttpAccountApi(
@@ -77,6 +85,22 @@ class HttpAccountApi(
 
     override suspend fun legacyComplete(serverUrl: String, req: LegacyCompleteReq): VerificationSentRes =
         open(serverUrl, "/v2/migration/legacy/complete", req, serializer(), serializer())
+
+    override suspend fun passkeyLoginOptions(serverUrl: String): PasskeyOptionsRes =
+        setupClient(serverUrl).request("POST", "/v2/auth/passkey/options", "{}", PasskeyOptionsRes.serializer(), auth = false)
+
+    override suspend fun passkeyLogin(serverUrl: String, req: PasskeyLoginReq): AccountSessionRes =
+        open(serverUrl, "/v2/auth/passkey/login", req, serializer(), serializer())
+
+    override suspend fun passkeys(): PasskeyListRes = authed.get("/v2/account/passkeys")
+
+    override suspend fun passkeyRegisterOptions(): PasskeyOptionsRes = authed.post("/v2/account/passkeys/options")
+
+    override suspend fun addPasskey(req: PasskeyRegisterReq): PasskeyAddedRes = authed.post("/v2/account/passkeys", req)
+
+    override suspend fun removePasskey(id: String) {
+        authed.delete<OkRes>("/v2/account/passkeys/${java.net.URLEncoder.encode(id, "UTF-8")}")
+    }
 
     override suspend fun logout() {
         authed.post<OkRes>("/v2/auth/logout")

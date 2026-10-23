@@ -157,6 +157,7 @@ private class MessageCallbacks(
     val onVote: (List<String>) -> Unit,
     val linkDetails: (@Composable (String) -> Unit)?,
     val onDoubleTap: (() -> Unit)?,
+    val onPlayVideo: ((String) -> Unit)?,
 )
 
 /**
@@ -190,6 +191,8 @@ fun MessageBubble(
     onShown: (suspend () -> Unit)? = null,
     /** Settings › Chats › Gestures: a double-tap adds the chosen reaction; null when off or not allowed here. */
     onDoubleTap: (() -> Unit)? = null,
+    /** 2026-10-23: plays a YouTube video (its id) inside Meldiq; null opens the YouTube app instead. */
+    onPlayVideo: ((String) -> Unit)? = null,
 ) {
     val m = b.m
     if (onShown != null && !m.outgoing && b.attachments.isNotEmpty()) LaunchedEffect(m.id) { onShown() }
@@ -199,7 +202,7 @@ fun MessageBubble(
     }
     val cb = MessageCallbacks(
         onLongPress, onReact, onOpenAttachment, onOpenThread, onRetry, onReplyClick, onVoiceToggle, onVoiceSeek, onMentionClick,
-        onCopyText, onFindPhone, onOpenLink, onVote, linkDetails, onDoubleTap,
+        onCopyText, onFindPhone, onOpenLink, onVote, linkDetails, onDoubleTap, onPlayVideo,
     )
     if (b.stream) StreamMessage(b, me, transfer, localFile, voice, cb) else BubbleMessage(b, me, transfer, localFile, voice, cb)
 }
@@ -431,7 +434,7 @@ private fun MessageContent(b: BubbleModel, me: String?, tinted: Boolean, transfe
                 }
             }
             val mediaLink = if (b.mediaCards && rich?.structured != true) com.meldiq.android.data.model.MediaLinks.find(m.text) else null
-            if (mediaLink != null) MediaLinkCard(mediaLink, rich?.link?.takeIf { it.url == mediaLink.url }, cb.onOpenLink)
+            if (mediaLink != null) MediaLinkCard(mediaLink, rich?.link?.takeIf { it.url == mediaLink.url }, cb.onOpenLink, onPlay = mediaLink.videoId?.let { id -> cb.onPlayVideo?.let { play -> { play(id) } } })
             else rich?.link?.let { LinkPreviewCard(it, tinted, cb.onOpenLink) }
             if (cb.linkDetails != null) (rich?.link?.url ?: com.meldiq.android.data.model.LinkRules.find(m.text).firstOrNull()?.url)?.let { cb.linkDetails.invoke(it) }
             b.translation?.let { t ->

@@ -704,4 +704,26 @@
     <string name="ux_display_name">Display name</string>
     <string name="ux_how_you_sign_in">How you sign in</string>
     <string name="ux_account_management">Account management</string>
+    <string name="ux_close">Close</string>
+    <string name="ux_play_video">Play video</string>
+    <string name="ux_plays_here">Tap to play here</string>
+    <string name="ux_in_app_video">Play YouTube videos in Meldiq</string>
+    <string name="ux_in_app_video_sub">YouTube\'s privacy-enhanced player loads only when you tap a video. Off: videos open in the YouTube app.</string>
+    <string name="ux_phone">Phone</string>
+    <string name="ux_add">Add</string>
+    <string name="ux_passkeys">Passkeys</string>
+    <string name="ux_passkeys_sub">Sign in with your fingerprint, face or screen lock instead of the password</string>
+    <string name="ux_passkeys_added">%1$d added</string>
+    <string name="ux_passkeys_explain">A passkey lives in your password manager (Google Password Manager on Android) and signs you in with your screen lock. It replaces the password at sign-in only: your messages still need this phone\'s keys, your key backup or your recovery key.</string>
+    <string name="ux_passkey_add">Add a passkey</string>
+    <string name="ux_passkey_added">Passkey added. Next time, sign in with it.</string>
+    <string name="ux_passkey_remove">Remove passkey</string>
+    <string name="ux_passkey_created">Added %1$s</string>
+    <string name="ux_passkey_used">used %1$s</string>
+    <string name="ux_passkey_never_used">not used yet</string>
+    <string name="ux_passkey_synced">synced</string>
+    <string name="ux_passkey_promo_title">Forget about your password</string>
+    <string name="ux_passkey_promo_body">Add a passkey and sign in with a single tap.</string>
+    <string name="ux_get_started">Get started</string>
+    <string name="ux_passkey_sign_in">Sign in with a passkey</string>
 </resources>

@@ -704,4 +704,26 @@
     <string name="ux_display_name">显示名称</string>
     <string name="ux_how_you_sign_in">登录方式</string>
     <string name="ux_account_management">账号管理</string>
+    <string name="ux_close">关闭</string>
+    <string name="ux_play_video">播放视频</string>
+    <string name="ux_plays_here">点按即可在此播放</string>
+    <string name="ux_in_app_video">在 Meldiq 中播放 YouTube 视频</string>
+    <string name="ux_in_app_video_sub">仅在你点按视频时加载 YouTube 隐私增强播放器。关闭后，视频会在 YouTube 应用中打开。</string>
+    <string name="ux_phone">电话</string>
+    <string name="ux_add">添加</string>
+    <string name="ux_passkeys">通行密钥</string>
+    <string name="ux_passkeys_sub">使用指纹、面容或屏幕锁登录，无需密码</string>
+    <string name="ux_passkeys_added">已添加 %1$d 个</string>
+    <string name="ux_passkeys_explain">通行密钥保存在你的密码管理器中（Android 上为 Google 密码管理工具），用屏幕锁即可登录。它只在登录时代替密码：你的消息仍需要本机密钥、密钥备份或恢复密钥。</string>
+    <string name="ux_passkey_add">添加通行密钥</string>
+    <string name="ux_passkey_added">已添加通行密钥。下次可用它登录。</string>
+    <string name="ux_passkey_remove">移除通行密钥</string>
+    <string name="ux_passkey_created">添加于 %1$s</string>
+    <string name="ux_passkey_used">上次使用 %1$s</string>
+    <string name="ux_passkey_never_used">尚未使用</string>
+    <string name="ux_passkey_synced">已同步</string>
+    <string name="ux_passkey_promo_title">不用再记密码</string>
+    <string name="ux_passkey_promo_body">添加通行密钥，一键登录。</string>
+    <string name="ux_get_started">开始</string>
+    <string name="ux_passkey_sign_in">使用通行密钥登录</string>
 </resources>

@@ -704,4 +704,26 @@
     <string name="ux_display_name">প্রদর্শিত নাম</string>
     <string name="ux_how_you_sign_in">যেভাবে সাইন ইন করেন</string>
     <string name="ux_account_management">অ্যাকাউন্ট ব্যবস্থাপনা</string>
+    <string name="ux_close">বন্ধ করুন</string>
+    <string name="ux_play_video">ভিডিও চালান</string>
+    <string name="ux_plays_here">এখানে চালাতে ট্যাপ করুন</string>
+    <string name="ux_in_app_video">Meldiq-এ YouTube ভিডিও চালান</string>
+    <string name="ux_in_app_video_sub">ভিডিওতে ট্যাপ করলেই শুধু YouTube-এর গোপনীয়তা-সুরক্ষিত প্লেয়ার লোড হয়। বন্ধ থাকলে ভিডিও YouTube অ্যাপে খোলে।</string>
+    <string name="ux_phone">ফোন</string>
+    <string name="ux_add">যোগ করুন</string>
+    <string name="ux_passkeys">পাসকি</string>
+    <string name="ux_passkeys_sub">পাসওয়ার্ডের বদলে আঙুলের ছাপ, মুখ বা স্ক্রিন লক দিয়ে সাইন ইন করুন</string>
+    <string name="ux_passkeys_added">%1$dটি যোগ করা</string>
+    <string name="ux_passkeys_explain">পাসকি আপনার পাসওয়ার্ড ম্যানেজারে (Android-এ Google Password Manager) থাকে এবং স্ক্রিন লক দিয়ে সাইন ইন করায়। এটি শুধু সাইন ইনের সময় পাসওয়ার্ডের জায়গা নেয়: আপনার মেসেজের জন্য এখনও এই ফোনের কী, কী ব্যাকআপ বা রিকভারি কী লাগবে।</string>
+    <string name="ux_passkey_add">পাসকি যোগ করুন</string>
+    <string name="ux_passkey_added">পাসকি যোগ হয়েছে। পরের বার এটি দিয়ে সাইন ইন করুন।</string>
+    <string name="ux_passkey_remove">পাসকি সরান</string>
+    <string name="ux_passkey_created">যোগ করা হয়েছে %1$s</string>
+    <string name="ux_passkey_used">ব্যবহার %1$s</string>
+    <string name="ux_passkey_never_used">এখনও ব্যবহার হয়নি</string>
+    <string name="ux_passkey_synced">সিঙ্ক করা</string>
+    <string name="ux_passkey_promo_title">পাসওয়ার্ড মনে রাখার দরকার নেই</string>
+    <string name="ux_passkey_promo_body">একটি পাসকি যোগ করুন, এক ট্যাপে সাইন ইন করুন।</string>
+    <string name="ux_get_started">শুরু করুন</string>
+    <string name="ux_passkey_sign_in">পাসকি দিয়ে সাইন ইন করুন</string>
 </resources>

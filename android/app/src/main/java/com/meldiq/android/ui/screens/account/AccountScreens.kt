@@ -1,5 +1,6 @@
 package com.meldiq.android.ui.screens.account
 
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -198,6 +199,14 @@ internal fun LogInEmailScreen(
         Spacer(Modifier.height(Space.sm))
         AuthHelpLink(stringResource(R.string.auth_help_signin_link), { help = true }, Modifier.align(Alignment.End))
         FormProblems(state)
+        // 2026-10-23: passkeys sign in without the password (docs/PASSKEYS.md); the server says if it offers them.
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        Spacer(Modifier.height(Space.md))
+        com.meldiq.android.ui.components.PillButton(
+            stringResource(R.string.ux_passkey_sign_in), { focus.clearFocus(); vm.logInWithPasskey { json -> PasskeyPrompt.get(ctx, json) } },
+            Modifier.fillMaxWidth(), enabled = !state.submitting, tone = com.meldiq.android.ui.components.ButtonTone.Glass,
+            leadingIcon = androidx.compose.material.icons.Icons.Outlined.Key, showKnob = false,
+        )
         if (onOtherAccount != null) {
             Spacer(Modifier.height(Space.md))
             AuthSwitchLink(stringResource(R.string.acct_other_q), stringResource(R.string.acct_other_action), onOtherAccount)

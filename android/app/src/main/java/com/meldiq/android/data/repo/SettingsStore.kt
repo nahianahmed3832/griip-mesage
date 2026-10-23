@@ -63,6 +63,8 @@ data class Settings(
     val swipeReply: Boolean = true,
     val doubleTapReact: Boolean = true,
     val doubleTapEmoji: String = "👍",
+    /** Settings › Chats (2026-10-23): YouTube videos play inside Meldiq when tapped; off opens the YouTube app. */
+    val inAppVideo: Boolean = true,
     // Notifications & sounds.
     val messageSound: Boolean = true,
     val groupNotifications: Boolean = true,
@@ -131,6 +133,7 @@ class SettingsStore(
         swipeReply = prefs.getBoolean("swipeReply", true),
         doubleTapReact = prefs.getBoolean("doubleTapReact", true),
         doubleTapEmoji = prefs.getString("doubleTapEmoji", null)?.takeIf { it in DOUBLE_TAP_EMOJI } ?: "👍",
+        inAppVideo = prefs.getBoolean("inAppVideo", true),
         messageSound = prefs.getBoolean("messageSound", true),
         groupNotifications = prefs.getBoolean("groupNotifications", true),
         callRingtone = prefs.getBoolean("callRingtone", true),
@@ -173,6 +176,7 @@ class SettingsStore(
             .putBoolean("swipeReply", n.swipeReply)
             .putBoolean("doubleTapReact", n.doubleTapReact)
             .putString("doubleTapEmoji", n.doubleTapEmoji)
+            .putBoolean("inAppVideo", n.inAppVideo)
             .putBoolean("messageSound", n.messageSound)
             .putBoolean("groupNotifications", n.groupNotifications)
             .putBoolean("callRingtone", n.callRingtone)

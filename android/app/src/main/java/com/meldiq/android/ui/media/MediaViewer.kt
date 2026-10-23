@@ -165,8 +165,6 @@ fun MediaViewer(
 
 @Composable
 private fun ViewerCaption(item: MediaItem, sender: String, caption: String?, onReact: ((MediaItem, String) -> Unit)?) {
-    var picking by remember(item.messageId) { mutableStateOf(false) }
-    var reacted by remember(item.messageId) { mutableStateOf<String?>(null) }
     Column(
         Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.55f)).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
@@ -175,23 +173,7 @@ private fun ViewerCaption(item: MediaItem, sender: String, caption: String?, onR
             style = Griip.type.label, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
         caption?.let { Text(it, style = Griip.type.bodySmall, color = Color.White.copy(alpha = 0.9f), maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp)) }
-        if (onReact != null) Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (!picking) {
-                Row(
-                    Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.14f))
-                        .clickable(onClickLabel = "React") { picking = true }.padding(horizontal = 12.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(reacted ?: "☺", color = Color.White)
-                    Text("  " + androidx.compose.ui.res.stringResource(com.meldiq.android.R.string.ux_react), style = Griip.type.label, color = Color.White)
-                }
-            } else com.meldiq.android.data.repo.DOUBLE_TAP_EMOJI.forEach { e ->
-                Text(
-                    e, style = Griip.type.title,
-                    modifier = Modifier.clip(androidx.compose.foundation.shape.CircleShape).clickable(onClickLabel = "React $e") { onReact(item, e); reacted = e; picking = false }.padding(6.dp),
-                )
-            }
-        }
+        if (onReact != null) QuickReact({ e -> onReact(item, e) }, Modifier.padding(top = 8.dp))
     }
 }
 
