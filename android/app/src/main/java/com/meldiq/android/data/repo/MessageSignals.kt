@@ -17,6 +17,8 @@ class MessageSignals(
     private val db: GriipDatabase,
     private val conversations: ConversationRepository,
     private val directory: KeyDirectory,
+    private val users: UserRepository,
+    private val myUserId: () -> String?,
 ) {
     private val _typing = MutableStateFlow<Map<String, Map<String, Long>>>(emptyMap())
     val typing: StateFlow<Map<String, Map<String, Long>>> = _typing
@@ -44,6 +46,10 @@ class MessageSignals(
     /** Workspaces whose personal preferences another device of this person changed ("prefs.updated"). */
     val prefsUpdated: SharedFlow<String> = _prefsUpdated
     val backlogDrained = MutableStateFlow(false)
+
+    private val _userUpdates = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    /** Your own profile or account settings changed on another device (your id): screens showing them reload. */
+    val ownAccountUpdates: SharedFlow<String> = _userUpdates
 
     /** A call's media key arrived from someone else (the receiver opened it). */
     internal fun emitCallInvite(key: IncomingCallKey) {
@@ -76,6 +82,12 @@ class MessageSignals(
                 _orgEvents.tryEmit(e.orgId)
             }
             is ServerEvent.DevicesChanged -> directory.invalidateUser(e.userId)
+            // Live profile changes: names, photos and statuses everywhere read the refreshed rows; a DM's title comes
+            // from its conversation, so the list is reloaded too.
+            is ServerEvent.UserUpdated -> {
+                runCatching { users.fetch(e.userId) }
+                if (e.userId == myUserId()) _userUpdates.tryEmit(e.userId) else runCatching { conversations.refresh() }
+            }
             ServerEvent.ConnectionsUpdated -> _connectionsChanged.tryEmit(Unit)
             is ServerEvent.PrefsUpdated -> _prefsUpdated.tryEmit(e.workspaceId)
             is ServerEvent.ReminderDue -> _reminderEvents.tryEmit(e.id)

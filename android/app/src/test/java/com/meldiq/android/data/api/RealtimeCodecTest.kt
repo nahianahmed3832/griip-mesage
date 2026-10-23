@@ -91,6 +91,11 @@ class RealtimeCodecTest {
     }
 
     @Test
+    fun `a profile change names whose profile to fetch again`() {
+        assertEquals(ServerEvent.UserUpdated("u_1"), RealtimeCodec.decode("""{"t":"user.updated","userId":"u_1"}"""))
+    }
+
+    @Test
     fun `fieldless frames decode to their objects`() {
         assertEquals(ServerEvent.QueueDrained, RealtimeCodec.decode("""{"t":"queue.drained"}"""))
         assertEquals(ServerEvent.ConnectionsUpdated, RealtimeCodec.decode("""{"t":"connections.updated"}"""))

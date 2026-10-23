@@ -96,7 +96,7 @@ class MessageRepository(
     private val myUserId get() = session.session?.userId
     private val myDeviceId get() = session.session?.deviceId
 
-    private val signals = MessageSignals(db, conversations, directory)
+    private val signals = MessageSignals(db, conversations, directory, users) { session.session?.userId }
     private val controls = MessageControls(db, realtime, session, conversations, settings, files, ::sendControl)
     private val receiver = MessageReceiver(
         context, db, api, realtime, session, crypto, directory, conversations, users, settings, appState, scope, files, keyRequests,
@@ -129,6 +129,8 @@ class MessageRepository(
     /** Workspaces whose personal preferences another device of this person changed ("prefs.updated"). */
     val prefsUpdated: SharedFlow<String> = signals.prefsUpdated
     val backlogDrained: MutableStateFlow<Boolean> = signals.backlogDrained
+    /** Your profile or account settings changed on another of your devices (server 0.28.0+). */
+    val ownAccountUpdates: SharedFlow<String> = signals.ownAccountUpdates
 
     /** REST fallback used by the background service when the socket is unavailable. */
     suspend fun pollQueueOnce() = receiver.pollQueueOnce()

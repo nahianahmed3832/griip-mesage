@@ -60,6 +60,11 @@ sealed interface ServerEvent {
     @Serializable data class OrgAlert(val orgId: String, val kind: String? = null, val count: Int = 0, val at: Long? = null) : ServerEvent
     /** Someone's devices changed: refresh their keys before encrypting to them. */
     @Serializable data class DevicesChanged(val userId: String) : ServerEvent
+    /**
+     * Someone's profile changed (name, status, photo, privacy), or one of your own account settings did: fetch it again.
+     * Server 0.28.0 and later; older servers never send it.
+     */
+    @Serializable data class UserUpdated(val userId: String) : ServerEvent
     /** Batch B6: a connection request, acceptance or removal involving you. */
     data object ConnectionsUpdated : ServerEvent
     /** Which workspace's personal preferences changed on another device of this person. */
@@ -120,6 +125,7 @@ object RealtimeCodec {
         "org.application" to ServerEvent.OrgApplication.serializer(),
         "org.alert" to ServerEvent.OrgAlert.serializer(),
         "devices.changed" to ServerEvent.DevicesChanged.serializer(),
+        "user.updated" to ServerEvent.UserUpdated.serializer(),
         "prefs.updated" to ServerEvent.PrefsUpdated.serializer(),
         "reminders.changed" to ServerEvent.RemindersChanged.serializer(),
         "reminder.due" to ServerEvent.ReminderDue.serializer(),
