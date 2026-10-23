@@ -1,8 +1,8 @@
 {
   "health": {
-    "version": "0.27.0",
-    "generatedAt": 1792687717865,
-    "uptimeSeconds": 2,
+    "version": "0.28.0",
+    "generatedAt": 1792731227475,
+    "uptimeSeconds": 1,
     "checks": {
       "database": {
         "available": true,
@@ -24,9 +24,9 @@
       }
     },
     "process": {
-      "rssBytes": 201392128,
-      "heapUsedBytes": 93389080,
-      "eventLoopDelayP99Ms": 540
+      "rssBytes": 203358208,
+      "heapUsedBytes": 93450072,
+      "eventLoopDelayP99Ms": 384
     },
     "realtime": {
       "onlineDevices": 0
@@ -46,13 +46,13 @@
       }
     },
     "metrics": {
-      "since": 1792687717498,
+      "since": 1792731227275,
       "window": {
         "minutes": 15,
         "requests": 9,
         "serverErrors": 0,
         "errorRate": 0,
-        "p95Ms": 10
+        "p95Ms": 25
       },
       "routes": [
         {
@@ -60,18 +60,18 @@
           "count": 2,
           "clientErrors": 0,
           "serverErrors": 0,
-          "avgMs": 3,
-          "p95Ms": 10,
-          "maxMs": 6
+          "avgMs": 6,
+          "p95Ms": 25,
+          "maxMs": 11
         },
         {
           "route": "POST /v1/auth/register",
           "count": 2,
           "clientErrors": 0,
           "serverErrors": 0,
-          "avgMs": 4,
-          "p95Ms": 10,
-          "maxMs": 6
+          "avgMs": 13,
+          "p95Ms": 25,
+          "maxMs": 18
         },
         {
           "route": "GET /v1/admin/health",
@@ -87,34 +87,34 @@
           "count": 1,
           "clientErrors": 0,
           "serverErrors": 0,
-          "avgMs": 7,
-          "p95Ms": 10,
-          "maxMs": 7
+          "avgMs": 17,
+          "p95Ms": 25,
+          "maxMs": 17
         },
         {
           "route": "GET /v1/conversations/:id",
           "count": 1,
           "clientErrors": 0,
           "serverErrors": 0,
-          "avgMs": 1,
+          "avgMs": 6,
           "p95Ms": 10,
-          "maxMs": 1
+          "maxMs": 6
         },
         {
           "route": "POST /v1/orgs",
           "count": 1,
           "clientErrors": 0,
           "serverErrors": 0,
-          "avgMs": 7,
+          "avgMs": 8,
           "p95Ms": 10,
-          "maxMs": 7
+          "maxMs": 8
         }
       ],
       "jobs": [],
       "providers": []
     },
     "warnings": [
-      "The server is slow to respond (event-loop delay 540 ms at the 99th percentile)."
+      "The server is slow to respond (event-loop delay 384 ms at the 99th percentile)."
     ]
   }
 }

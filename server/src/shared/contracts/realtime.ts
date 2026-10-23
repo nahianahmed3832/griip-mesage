@@ -113,6 +113,12 @@ export const ServerEvent = z.discriminatedUnion("t", [
   z.strictObject({ t: z.literal("org.alert"), ...orgId, kind: z.literal("joins"), count: z.number().int().positive(), at: time }),
   /** Someone's devices changed: refresh their keys before encrypting to them. */
   z.strictObject({ t: z.literal("devices.changed"), userId: id }),
+  /**
+   * Someone's profile changed (name, status, photo, privacy), or, sent only to that person's own devices, one of their
+   * account settings (who may message them, blocks, the selected workspace). Fetch it again: what you're allowed to see
+   * is decided by that fetch, never by the frame.
+   */
+  z.strictObject({ t: z.literal("user.updated"), userId: id }),
   z.strictObject({ t: z.literal("connections.updated") }),
   z.strictObject({ t: z.literal("prefs.updated"), workspaceId: id, rev: z.number().int().nonnegative() }),
   z.strictObject({ t: z.literal("reminders.changed"), id, rev: z.number().int().nonnegative().optional(), deleted: z.literal(true).optional() }),

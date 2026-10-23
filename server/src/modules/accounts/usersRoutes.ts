@@ -20,6 +20,7 @@ import {
 import { keyFingerprint } from "../../shared/utilities/crypto.js";
 import { allows, appearsOnline, canSeeLastSeen, type ProfileRow, privacyOf, profileView, relation, shownPresence } from "./profile.js";
 import { announcePresence } from "../realtime/ws.js";
+import { announceOwnSettingsChange, announceProfileChange } from "./profileEvents.js";
 import { ApiError, badRequest, conflict, notFound } from "../../shared/errors.js";
 import { now } from "../../shared/utilities/util.js";
 import { userSummary } from "../auth/routes.js";
@@ -167,6 +168,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
         userId,
       );
     const updated = ctx.db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
+    announceProfileChange(ctx, userId);
     return { user: meView(updated) };
   });
 
@@ -192,6 +194,8 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
     const u = ctx.db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
     const next = { ...privacyOf(u), ...Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)) };
     ctx.db.prepare("UPDATE users SET privacy = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(next), now(), userId);
+    // What others may see changed, so they fetch the profile again (and get only what's now allowed).
+    announceProfileChange(ctx, userId);
     return { privacy: next };
   });
 
@@ -208,6 +212,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
       await deleteBlobNow(ctx, "profile-photos", photoId(userId, previous));
       await deleteBlobNow(ctx, "profile-photos", userId);
     }
+    announceProfileChange(ctx, userId);
     return { photoRev: rev };
   });
 
@@ -217,6 +222,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
     ctx.db.prepare("UPDATE users SET photo_rev = NULL, updated_at = ? WHERE id = ?").run(now(), userId);
     if (previous) await deleteBlobNow(ctx, "profile-photos", photoId(userId, previous));
     await deleteBlobNow(ctx, "profile-photos", userId);
+    announceProfileChange(ctx, userId);
     return { photoRev: null };
   });
 
@@ -313,6 +319,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
     if (other === userId) throw badRequest("You can't block yourself");
     if (!ctx.db.prepare("SELECT 1 FROM users WHERE id = ?").get(other)) throw notFound("User not found");
     ctx.db.prepare("INSERT OR IGNORE INTO user_blocks (user_id, blocked_user_id, created_at) VALUES (?, ?, ?)").run(userId, other, now());
+    announceOwnSettingsChange(ctx, userId);
     return { blocked: true };
   });
 
@@ -320,6 +327,7 @@ export default async function userRoutes(app: FastifyInstance, ctx: AppContext) 
     const { userId } = me(req);
     const { userId: other } = parse(UserIdParams, req.params);
     ctx.db.prepare("DELETE FROM user_blocks WHERE user_id = ? AND blocked_user_id = ?").run(userId, other);
+    announceOwnSettingsChange(ctx, userId);
     return { blocked: false };
   });
 

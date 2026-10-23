@@ -30,6 +30,7 @@ import {
   VerifyEmailBody,
 } from "../../shared/contracts/http/accounts.js";
 import type { ActiveSession } from "./store.js";
+import { announceOwnSettingsChange, announceProfileChange } from "./profileEvents.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -135,7 +136,10 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
     const t = now();
     await store.updateAccount(a.id, { name }, t);
     // The encryption identity shows the same name to contacts (the same edit again repairs a half-done one).
-    if (a.user_id) ctx.db.prepare("UPDATE users SET display_name = ?, updated_at = ? WHERE id = ?").run(name, t, a.user_id);
+    if (a.user_id) {
+      ctx.db.prepare("UPDATE users SET display_name = ?, updated_at = ? WHERE id = ?").run(name, t, a.user_id);
+      announceProfileChange(ctx, a.user_id);
+    }
     return { account: service.view((await store.accountById(a.id))!) };
   });
 
@@ -196,7 +200,10 @@ export default async function accountRoutes(app: FastifyInstance, ctx: AppContex
 
   app.put("/v2/account/preferences", authed, async (req) => {
     const { selectedWorkspaceId } = parse(PreferencesBody, req.body);
-    return { selectedWorkspaceId: await workspaces.select(await accountOf(req), selectedWorkspaceId) };
+    const a = await accountOf(req);
+    const selected = await workspaces.select(a, selectedWorkspaceId);
+    if (a.user_id) announceOwnSettingsChange(ctx, a.user_id);
+    return { selectedWorkspaceId: selected };
   });
 
   // ───────────── Encryption setup on this device ─────────────

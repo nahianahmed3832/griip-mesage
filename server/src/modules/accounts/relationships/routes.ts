@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { type AppContext } from "../../../app/context.js";
 import { me, requireAuth } from "../../auth/index.js";
 import { parse } from "../../../shared/validation/index.js";
+import { announceOwnSettingsChange } from "../profileEvents.js";
 import { availableUser, blockedEitherWay, notAvailable, requestAllowed, requireRequestBudget, settingsOf, sharesCommunity } from "./rules.js";
 import { type ConnectionRow, type MessagingSettings, pairOf } from "./store.js";
 import { ConnectBody, ConnectionUserParams, MessagingSettingsBody, RequestAnswerBody, RequestParams } from "../../../shared/contracts/http/relationships.js";
@@ -98,6 +99,7 @@ export default async function connectionRoutes(app: FastifyInstance, ctx: AppCon
     const current = await settingsOf(ctx, userId);
     const next = { dm_policy: body.dmPolicy ?? current.dm_policy, request_policy: body.requestPolicy ?? current.request_policy } as MessagingSettings;
     await rel.putSettings(userId, next, now());
+    announceOwnSettingsChange(ctx, userId);
     return { dmPolicy: next.dm_policy, requestPolicy: next.request_policy };
   });
 
