@@ -725,5 +725,10 @@
     <string name="ux_passkey_promo_title">不用再记密码</string>
     <string name="ux_passkey_promo_body">添加通行密钥，一键登录。</string>
     <string name="ux_get_started">开始</string>
+    <string name="ux_passkeys_where">在 Meldiq 应用中创建的通行密钥用于应用。Meldiq 网页版会为其网址另建通行密钥；两者都列在这里。</string>
+    <string name="ux_passkey_keep">保留</string>
+    <string name="ux_passkey_remove_confirm">移除</string>
+    <string name="ux_passkey_exists">你的密码管理器中已有此账号的通行密钥。</string>
+    <string name="ux_passkey_no_manager">此手机没有可保存通行密钥的密码管理器。请在设置中开启 Google 密码管理工具后重试。</string>
     <string name="ux_passkey_sign_in">使用通行密钥登录</string>
 </resources>

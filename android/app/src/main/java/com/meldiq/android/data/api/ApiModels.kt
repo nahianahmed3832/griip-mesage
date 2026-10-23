@@ -33,7 +33,12 @@ import kotlinx.serialization.json.JsonObject
     // Orbit 2.0 (docs/ORBIT_2_ARCHITECTURE §6–7): the largest file in bytes of the file itself, and the account system.
     val fileMaxBytes: Long? = null,
     val accounts: com.meldiq.android.data.account.AccountsInfo? = null,
+    // Passkeys (API 0.30.0, docs/PASSKEYS.md): null when the server doesn't offer them (or is older than 0.30.0).
+    val passkeys: ServerPasskeysInfo? = null,
 )
+
+/** [webOrigins]: web apps on other hosts with passkeys of their own (Meldiq Web); the app uses the server's. */
+@Serializable data class ServerPasskeysInfo(val webOrigins: List<String> = emptyList())
 
 @Serializable data class ServerPushInfo(val unifiedPushHosts: List<String> = emptyList())
 

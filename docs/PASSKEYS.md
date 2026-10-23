@@ -73,6 +73,10 @@ moving everything to `meldiq.app`, which would have invalidated the Android pass
 - `AccountRepository.loginWithPasskey`: proves this phone's device key when it has one; if the passkey is another
   account's, asks once more without the proof, and the "this phone holds another account's messages" rule still applies.
 - Dependencies: `androidx.credentials` 1.5.0 with its Play services provider.
+- From API 0.30.0, as on Meldiq Web: "Sign in with a passkey" shows only when `server-info.passkeys` is set (an
+  older server, or one with passkeys off, hides it); removing a passkey asks Keep/Remove first; the sheet says app and
+  web passkeys are separate. The prompt runs on the activity behind a sheet's context, and "already has a passkey" and
+  "no password manager" get their own messages (the platform's detail goes to the log, tag `Passkeys`).
 
 ## Web
 

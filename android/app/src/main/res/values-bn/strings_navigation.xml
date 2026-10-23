@@ -725,5 +725,10 @@
     <string name="ux_passkey_promo_title">পাসওয়ার্ড মনে রাখার দরকার নেই</string>
     <string name="ux_passkey_promo_body">একটি পাসকি যোগ করুন, এক ট্যাপে সাইন ইন করুন।</string>
     <string name="ux_get_started">শুরু করুন</string>
+    <string name="ux_passkeys_where">Meldiq অ্যাপে তৈরি পাসকি অ্যাপে কাজ করে। Meldiq Web তার ঠিকানার জন্য আলাদা পাসকি তৈরি করে; দুটোই এখানে দেখানো হয়।</string>
+    <string name="ux_passkey_keep">রাখুন</string>
+    <string name="ux_passkey_remove_confirm">সরান</string>
+    <string name="ux_passkey_exists">আপনার পাসওয়ার্ড ম্যানেজারে এই অ্যাকাউন্টের পাসকি আগে থেকেই আছে।</string>
+    <string name="ux_passkey_no_manager">এই ফোনে পাসকি রাখার মতো পাসওয়ার্ড ম্যানেজার নেই। সেটিংসে Google Password Manager চালু করে আবার চেষ্টা করুন।</string>
     <string name="ux_passkey_sign_in">পাসকি দিয়ে সাইন ইন করুন</string>
 </resources>

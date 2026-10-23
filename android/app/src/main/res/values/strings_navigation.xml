@@ -725,5 +725,10 @@
     <string name="ux_passkey_promo_title">Forget about your password</string>
     <string name="ux_passkey_promo_body">Add a passkey and sign in with a single tap.</string>
     <string name="ux_get_started">Get started</string>
+    <string name="ux_passkeys_where">Passkeys made in the Meldiq app work in the app. Meldiq Web makes its own for its address; both are listed here.</string>
+    <string name="ux_passkey_keep">Keep</string>
+    <string name="ux_passkey_remove_confirm">Remove</string>
+    <string name="ux_passkey_exists">Your password manager already has a passkey for this account.</string>
+    <string name="ux_passkey_no_manager">This phone has no password manager that can save passkeys. Turn on Google Password Manager in Settings, then try again.</string>
     <string name="ux_passkey_sign_in">Sign in with a passkey</string>
 </resources>

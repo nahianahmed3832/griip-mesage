@@ -742,5 +742,10 @@ S = {
 "ux_passkey_promo_title": ("Forget about your password", "不用再记密码", "পাসওয়ার্ড মনে রাখার দরকার নেই"),
 "ux_passkey_promo_body": ("Add a passkey and sign in with a single tap.", "添加通行密钥，一键登录。", "একটি পাসকি যোগ করুন, এক ট্যাপে সাইন ইন করুন।"),
 "ux_get_started": ("Get started", "开始", "শুরু করুন"),
+"ux_passkeys_where": ("Passkeys made in the Meldiq app work in the app. Meldiq Web makes its own for its address; both are listed here.", "在 Meldiq 应用中创建的通行密钥用于应用。Meldiq 网页版会为其网址另建通行密钥；两者都列在这里。", "Meldiq অ্যাপে তৈরি পাসকি অ্যাপে কাজ করে। Meldiq Web তার ঠিকানার জন্য আলাদা পাসকি তৈরি করে; দুটোই এখানে দেখানো হয়।"),
+"ux_passkey_keep": ("Keep", "保留", "রাখুন"),
+"ux_passkey_remove_confirm": ("Remove", "移除", "সরান"),
+"ux_passkey_exists": ("Your password manager already has a passkey for this account.", "你的密码管理器中已有此账号的通行密钥。", "আপনার পাসওয়ার্ড ম্যানেজারে এই অ্যাকাউন্টের পাসকি আগে থেকেই আছে।"),
+"ux_passkey_no_manager": ("This phone has no password manager that can save passkeys. Turn on Google Password Manager in Settings, then try again.", "此手机没有可保存通行密钥的密码管理器。请在设置中开启 Google 密码管理工具后重试。", "এই ফোনে পাসকি রাখার মতো পাসওয়ার্ড ম্যানেজার নেই। সেটিংসে Google Password Manager চালু করে আবার চেষ্টা করুন।"),
 "ux_passkey_sign_in": ("Sign in with a passkey", "使用通行密钥登录", "পাসকি দিয়ে সাইন ইন করুন"),
 }
