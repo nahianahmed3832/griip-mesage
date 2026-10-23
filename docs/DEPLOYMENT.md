@@ -7,7 +7,7 @@
 | VPS | Hostinger VM 1245833, `srv1245833.hstgr.cloud`, **72.60.107.88** (Ubuntu 24.04, 2 vCPU, 8 GB) |
 | Compose project | **`griip-internal-messaging`** |
 | Directory | **`/opt/griip-internal-messaging`** (root, 0750; `.env` 0600) |
-| Services | `api` (`griip-internal-messaging-api:0.27.0` since 2026-10-22 17:02 UTC, built on the VPS; `0.26.0-rollback`, `0.25.0-rollback`, `0.24.0-rollback`, `0.13.0-rollback`, `0.12.0-rollback`, `0.11.0-rollback`, `0.10.0-rollback`, `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
+| Services | `api` (`griip-internal-messaging-api:0.28.0` since 2026-10-23 05:07 UTC, built on the VPS; `0.27.0-rollback`, `0.26.0-rollback`, `0.25.0-rollback`, `0.24.0-rollback`, `0.13.0-rollback`, `0.12.0-rollback`, `0.11.0-rollback`, `0.10.0-rollback`, `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
 | Volume / network | `griip-internal-messaging_api-data`, `griip-internal-messaging_default` |
 | Public URLs | **`https://msg.meldiq.app`** (API + WebSocket) and **`wss://rtc.meldiq.app`** (LiveKit signalling) since 2026-10-22; the former `msg.griipbuddy.cloud` and `rtc.griipbuddy.cloud` still serve the same backends for apps installed earlier |
 | TLS | host nginx: `meldiq-msg.conf` (certificate `meldiq-msg`, msg and rtc.meldiq.app) and `griip-message.conf` (certificate `griip-message`, the former names); both renew automatically (certbot, webroot `/var/www/griip-message-acme`) |
@@ -114,6 +114,28 @@ Branch `api-0.8.1-web-return`. No migrations (schema stays 28).
 Not verifiable on production yet: no one can connect an app there (`integrations-status`: no `INTEGRATIONS_TOKEN_KEY`, no
 provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
 `up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
+
+### API 0.28.0 (2026-10-23, 05:07 UTC, owner's go-ahead)
+
+Profile and settings changes reach every device live (`internal-beta` `c8dcd07`): a new `user.updated` frame for name,
+status, photo, privacy and account-name changes (to the person's devices and everyone sharing a conversation with them)
+and for who-may-message, blocks and the selected workspace (the person's own devices only). From now on every deploy
+gets a new version (the owner, 2026-10-23). No migration (schema 44), no `.env` or `compose.yaml` change apart from
+the image tag.
+
+| Step | Result |
+|---|---|
+| Checks before | `tsc` clean; server 759 passed / 10 skipped (SQLite); MongoDB mode 757 passed, 2 failed under full load (`ordering` timeout, `push_wakeup`, the known pair), both passing on their own; Android 686 passed, lint 0 errors |
+| Pre-flight | running 0.27.0, healthy; the VPS's `server/` and `scripts/` byte-equal to `7a17d3a` |
+| Backup | `backups/pre-0.28.0-20261023T050143Z` (archive, `.env`, `compose.yaml`, `server-0.27.0`): verified, schema 44, 36 users. Image `0.27.0-rollback` tagged |
+| Build | `git archive c8dcd07` synced with `rsync -c --delete` (0 differences after); `docker build -t griip-internal-messaging-api:0.28.0 server` (run with `nohup`: the SSH session drops when a build starts) |
+| Rehearsal | 0.28.0 on a copy of the snapshot, `--network none`: `stats` (36 users, 7 orgs, 74 conversations), healthy with 0 restarts, `/healthz` 0.28.0, nothing logged at warning or above, `verify-backup` ok. Copy deleted |
+| Switch | `compose.yaml` image 0.28.0, `validate-env.sh` 0 errors, `config -q`, `up -d --no-deps --no-build api` at 05:07:35; healthy in 6 s; LiveKit and ntfy not restarted |
+| Checks after | `/healthz` 0.28.0 on msg.meldiq.app and msg.griipbuddy.cloud; server-info features identical to 0.27.0's; 401 without a session; the site's `/v1` proxy answers; bad WebSocket token closes with 4401; **live check:** test bot `griipbot6f13` changed its status and `griipboteeb7`, which shares a DM with it, received `user.updated` 188 ms later and fetched the new status (then cleared); `verify.sh` OK (restarts 0, 46 GB free); 220 requests, 0 server errors, nothing logged at warning or above; `backups/post-0.28.0-20261023T050843Z` verified |
+
+Rollback: `image: griip-internal-messaging-api:0.27.0-rollback`, then `up -d --no-deps --no-build api` (same schema).
+Clients: Android handles `user.updated` from `3d0380e` (employee APK `meldiq-test-live-quiet-production-debug.apk`);
+the web's handling was asked of the "Meldiq web parity with Android" session.
 
 ### API 0.27.0 (2026-10-22, 17:02 UTC, owner's go-ahead, Architecture 1.0)
 
