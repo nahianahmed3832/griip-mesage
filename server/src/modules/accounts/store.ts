@@ -65,7 +65,10 @@ export interface TicketRow {
 }
 
 export type AccountPatch = Partial<
-  Pick<AccountRow, "name" | "password_hash" | "password_changed_at" | "email_verified_at" | "user_id" | "legacy_linked_at" | "selected_workspace_id" | "admitted_via">
+  Pick<
+    AccountRow,
+    "name" | "password_hash" | "password_changed_at" | "email_verified_at" | "user_id" | "legacy_linked_at" | "selected_workspace_id" | "admitted_via" | "disabled_at"
+  >
 >;
 
 export type SessionRotation = Pick<
@@ -148,6 +151,10 @@ export interface AccountStore {
   revokeAccountSessions(accountId: string, reason: string, at: number, exceptSessionId?: string): Promise<string[]>;
   revokeDeviceSessions(deviceId: string, reason: string, at: number): Promise<void>;
   activeSessions(accountId: string, at: number): Promise<SessionRow[]>;
+  /** Every session of [accountId] still valid or ended since [since] (the platform console's session list), newest first. */
+  recentSessions(accountId: string, since: number, limit: number): Promise<SessionRow[]>;
+  /** How many accounts hold at least one valid session at [at]. */
+  sessionHolders(at: number): Promise<number>;
 
   putCode(row: CodeRow): Promise<void>;
   code(accountId: string, purpose: CodePurpose): Promise<CodeRow | undefined>;
@@ -176,6 +183,8 @@ const PATCHABLE = new Set<keyof AccountPatch>([
   "legacy_linked_at",
   "selected_workspace_id",
   "admitted_via",
+  // Suspension by a platform admin (the Platform Admin Console, 2026-10-23).
+  "disabled_at",
 ]);
 
 export class SqliteAccountStore implements AccountStore {
@@ -303,6 +312,20 @@ export class SqliteAccountStore implements AccountStore {
     return this.db
       .prepare("SELECT * FROM account_sessions WHERE account_id = ? AND revoked_at IS NULL AND expires_at > ? AND refresh_expires_at > ? ORDER BY last_used_at DESC")
       .all(accountId, at, at) as SessionRow[];
+  }
+
+  async recentSessions(accountId: string, since: number, limit: number): Promise<SessionRow[]> {
+    return this.db
+      .prepare("SELECT * FROM account_sessions WHERE account_id = ? AND (revoked_at IS NULL OR revoked_at > ?) AND expires_at > ? ORDER BY last_used_at DESC LIMIT ?")
+      .all(accountId, since, since, limit) as SessionRow[];
+  }
+
+  async sessionHolders(at: number): Promise<number> {
+    return (
+      this.db
+        .prepare("SELECT COUNT(DISTINCT account_id) n FROM account_sessions WHERE revoked_at IS NULL AND expires_at > ? AND refresh_expires_at > ?")
+        .get(at, at) as { n: number }
+    ).n;
   }
 
   async putCode(r: CodeRow): Promise<void> {

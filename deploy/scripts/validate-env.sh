@@ -48,6 +48,22 @@ case "${REGISTRATION_MODE:-invite}" in
   *) err "REGISTRATION_MODE must be invite or open (is ${REGISTRATION_MODE})" ;;
 esac
 
+# Platform Admin Console (docs/PLATFORM_ADMIN_CONSOLE.md): optional; production needs its https origin.
+case "${ADMIN_CONSOLE_ORIGIN:-}" in
+  '') ok "ADMIN_CONSOLE_ORIGIN unset (no console routes)" ;;
+  https://*/*) err "ADMIN_CONSOLE_ORIGIN must be an origin without a path (${ADMIN_CONSOLE_ORIGIN})" ;;
+  https://*) ok "ADMIN_CONSOLE_ORIGIN = $ADMIN_CONSOLE_ORIGIN${ADMIN_ALLOWED_NETWORKS:+ (networks: $ADMIN_ALLOWED_NETWORKS)}" ;;
+  *) err "ADMIN_CONSOLE_ORIGIN must start with https:// (${ADMIN_CONSOLE_ORIGIN})" ;;
+esac
+
+# Platform Admin 2.0: the credentials key, if set, must be 32 bytes (hex or base64); the server refuses to start otherwise.
+case "${PLATFORM_SECRETS_KEY:-}" in
+  '') ok "PLATFORM_SECRETS_KEY unset (the console can't store AI credentials)" ;;
+  *)
+    if [[ "$PLATFORM_SECRETS_KEY" =~ ^[0-9a-fA-F]{64}$ ]] || [[ "$PLATFORM_SECRETS_KEY" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then ok "PLATFORM_SECRETS_KEY set (32 bytes)"
+    else err "PLATFORM_SECRETS_KEY must be 32 bytes: 64 hex characters (openssl rand -hex 32)"; fi ;;
+esac
+
 NTFY_HOST_PORT="${NTFY_HOST_PORT:-18081}"   # compose.yaml's default; .env files from before the ntfy service lack it
 ports=()
 for name in API_HOST_PORT LIVEKIT_SIGNAL_HOST_PORT LIVEKIT_RTC_TCP_PORT LIVEKIT_RTC_UDP_PORT NTFY_HOST_PORT; do

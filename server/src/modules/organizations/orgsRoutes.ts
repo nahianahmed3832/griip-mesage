@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { markSyntheticOrg } from "./syntheticScope.js";
 import { type ConversationRow, parsePermissionList } from "./authz.js";
 import { type AppContext } from "../../app/context.js";
 import { me, requireAuth } from "../auth/index.js";
@@ -174,6 +175,8 @@ export default async function orgRoutes(app: FastifyInstance, ctx: AppContext) {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'community', ?, ?, ?)`,
       ).run(id, body.name, slug, body.description ?? null, userId, t, t, body.requestId ?? null, body.visibility ?? "private", body.joinPolicy ?? "invite", body.rules ?? null);
       db.prepare("INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES (?, ?, 'OWNER', ?)").run(id, userId, t);
+      // A community a synthetic load-test account creates is a load-test community: the only kind such accounts join.
+      markSyntheticOrg(db, id, userId);
     })();
     ctx.audit({ actorId: userId, orgId: id, action: "org.create", target: id, detail: `visibility=${body.visibility ?? "private"}` });
     // A community starts with its welcome, announcements, general, introductions and lounge channels in two

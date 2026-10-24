@@ -92,3 +92,8 @@ export function assignments(cfg: ExperimentsConfig, userId: string, isPreview: b
   }
   return out;
 }
+
+/** Every experiment with its code status and the status the operator's settings give it (read-only in the console). */
+export function experimentsReport(cfg: ExperimentsConfig): { id: string; description: string; status: string; effectiveStatus: string }[] {
+  return EXPERIMENTS.map((d) => ({ id: d.id, description: d.description, status: d.status, effectiveStatus: effectiveStatus(cfg, d) }));
+}

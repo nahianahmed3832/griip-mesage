@@ -1,0 +1,15 @@
+# Meldiq host collector (docs/RESOURCE_MONITORING.md): one reading, written for the API (read-only mount).
+[Unit]
+Description=Meldiq host metrics collector
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/griip-internal-messaging/scripts/host-metrics.py
+Nice=10
+# Reads /proc, cgroups and `docker ps/inspect`; writes only its output folder.
+ProtectSystem=strict
+ReadWritePaths=/opt/griip-internal-messaging/host-metrics /run/docker.sock
+PrivateTmp=true
+NoNewPrivileges=true
+TimeoutStartSec=30

@@ -3,3 +3,4 @@
  */
 export type { QueueInsert, QueueItemRow, RelayStats, RelayStore, Submission } from "./relay/store.js";
 export { conversationPeers } from "./peers.js";
+export { channelCounts } from "./platformQueries.js";

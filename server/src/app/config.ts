@@ -1,10 +1,13 @@
+import { secretsKey } from "../modules/ai/index.js";
 import path from "node:path";
+import { networkKey } from "./middleware/abuse.js";
 import { type MongoConfig, mongoConfig } from "../infrastructure/database/mongo/config.js";
 import { type AccountsConfig, accountsConfig } from "../modules/accounts/config.js";
 import { type EntitlementConfig, entitlementConfig } from "../modules/administration/entitlements.js";
 import { type ExperimentsConfig, experimentsConfig } from "../modules/administration/experiments/assign.js";
 import type { S3Config } from "../infrastructure/storage/s3.js";
 import { type FcmConfig, fcmConfig } from "../modules/notifications/fcm.js";
+import { type AdminConsoleConfig, adminConsoleConfig } from "../modules/platformAdmin/config.js";
 
 const SEVEN_DAYS_S = 7 * 24 * 3600;
 const MiB = 1024 * 1024;
@@ -54,6 +57,10 @@ export interface Config {
   defaultDmPolicy: "everyone" | "communities" | "connections";
   /** How often due reminders are fired (docs/REMINDERS.md); 0 turns the loop off (tests fire them by hand). */
   reminderTickMs: number;
+  /** How often telemetry is written and sampled (TELEMETRY_TICK_MS, default a minute; 0: never, tests drive it). */
+  telemetryTickMs: number;
+  /** PLATFORM_SECRETS_KEY: the key that encrypts credentials stored by the platform console (AI providers); null unset. */
+  platformSecretsKey: Buffer | null;
   /** How often background schedules (meeting "starting soon" notices) are checked; 0 stops them (tests drive them). */
   workflowTickMs: number;
   attachmentTtlSeconds: number;
@@ -103,6 +110,11 @@ export interface Config {
    * grants anything inside a community.
    */
   platformAdmins: ReadonlySet<string>;
+  /**
+   * The Platform Admin Console (ADMIN_CONSOLE_ORIGIN, src/modules/platformAdmin): its routes exist only when set. Its
+   * roles are its own (platform_admins); PLATFORM_ADMIN_USER_IDS above stays the in-app Service health switch.
+   */
+  adminConsole: AdminConsoleConfig | null;
   /** Server-wide limits for future plans (docs/PLANS.md); none by default. */
   entitlements: EntitlementConfig;
   /** Product experiments (docs/product/EXPERIMENTS.md): off unless EXPERIMENTS_MODE says otherwise. */
@@ -111,6 +123,12 @@ export interface Config {
   analyticsEnabled: boolean;
   /** "invite" (default): registering needs a registration or org invite code. "open": anyone may register. */
   registrationMode: "invite" | "open";
+  /**
+   * Synthetic load-test accounts registered with an operator's load-test invite (docs/LOADTEST_PROVISIONING.md):
+   * rolling-hour and rolling-24-hour quotas (both > 0 to enable; 0, the default: the path is closed) and the networks
+   * allowed to use it (empty: any network that holds a valid load-test invite).
+   */
+  loadtestRegistration: { hourly: number; daily: number; networks: string[] };
   sessionTtlSeconds: number;
   cleanupIntervalSeconds: number;
   ringTimeoutSeconds: number;
@@ -368,6 +386,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     queueTtlSeconds: Math.max(queueTtl, 1),
     defaultDmPolicy: dmPolicyFrom(env.DEFAULT_DM_POLICY),
     reminderTickMs: Math.min(Math.max(int("REMINDER_TICK_MS", 15_000), 0), 300_000),
+    telemetryTickMs: Math.min(Math.max(int("TELEMETRY_TICK_MS", 60_000), 0), 300_000),
+    platformSecretsKey: secretsKey(env),
     workflowTickMs: Math.min(Math.max(int("WORKFLOW_TICK_MS", 3_000), 0), 300_000),
     attachmentTtlSeconds: Math.min(int("ATTACHMENT_TTL_SECONDS", SEVEN_DAYS_S), SEVEN_DAYS_S),
     // 1 GiB per file since Orbit 2.0 (files over 25 MB use the chunked format; docs/ATTACHMENTS.md). Uploads to S3 go
@@ -377,6 +397,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     accounts: accountsConfig(env, dataDir, int),
     mongo: mongoConfig(env, env.APP_ENV?.trim() || "development", int),
     platformAdmins: new Set((env.PLATFORM_ADMIN_USER_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean)),
+    adminConsole: adminConsoleConfig(env, int),
     entitlements: entitlementConfig(env),
     experiments: experimentsConfig(env),
     analyticsEnabled: (env.ANALYTICS_ENABLED ?? "").trim().toLowerCase() === "true",
@@ -407,6 +428,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       maxTotalBytes: Math.max(int("HISTORY_TOTAL_BYTES", 10 * 1024 * MiB), 0),
     },
     registrationMode: registrationMode(env.REGISTRATION_MODE),
+    loadtestRegistration: {
+      hourly: Math.max(int("LOADTEST_REGISTRATION_HOURLY_LIMIT", 0), 0),
+      daily: Math.max(int("LOADTEST_REGISTRATION_DAILY_LIMIT", 0), 0),
+      networks: (env.LOADTEST_REGISTRATION_NETWORKS ?? "").split(",").map((n) => n.trim()).filter(Boolean).map((n) => networkKey(n)),
+    },
     sessionTtlSeconds: int("SESSION_TTL_SECONDS", 7 * 24 * 3600),
     cleanupIntervalSeconds: Math.max(int("CLEANUP_INTERVAL_SECONDS", 60), 1),
     ringTimeoutSeconds: int("RING_TIMEOUT_SECONDS", 45),

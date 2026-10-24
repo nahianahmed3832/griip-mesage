@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { requireSyntheticScopeForOrg } from "./syntheticScope.js";
 import {
   BanBody,
   CATEGORY_LIMIT,
@@ -377,6 +378,7 @@ export default async function communityRoutes(app: FastifyInstance, ctx: AppCont
     const o = db.prepare("SELECT * FROM orgs WHERE id = ?").get(id) as any;
     if (!o || o.visibility !== "public") throw notFound("Community not found");
     if (authz.orgRole(id, userId)) return { org: orgSummary(ctx, o, userId), alreadyMember: true };
+    requireSyntheticScopeForOrg(db, userId, id);
     if (o.join_policy !== "open") throw forbidden("This community is invite-only: ask a member for an invitation");
     // Batch B4b: a community with questions takes applications instead.
     if (joinQuestions(o)) throw new ApiError(403, "application_required", "This community asks a few questions first: apply to join");

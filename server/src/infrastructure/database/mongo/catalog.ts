@@ -23,7 +23,8 @@ export type TableDomain =
   | "history"
   | "reports"
   | "relationships"
-  | "federation";
+  | "federation"
+  | "platform";
 
 /**
  * Tables that never go to MongoDB, and why. They are either SQLite's own bookkeeping or short-lived security material
@@ -36,6 +37,14 @@ export const EXCLUDED_TABLES: Readonly<Record<string, string>> = {
   pairing_requests: "device pairing in progress (10 minutes), carries sealed identity material for the new device",
   sessions: "v1 session token hashes (7 days); v1 apps sign in again by signature on their own",
   federation_nonces: "replay protection for signed server requests, minutes",
+  // The Platform Admin Console (migration 046): sign-in material that is worthless after minutes or hours.
+  platform_admin_challenges: "console passkey ceremonies in progress, 5 minutes",
+  platform_admin_enrolments: "one-time console enrolment code hashes, 30 minutes",
+  platform_admin_sessions: "console session token hashes, at most 12 hours",
+  // Platform Admin 2.0 (migration 048): per-minute telemetry, worth little once its hourly rollup exists.
+  presence_samples: "per-minute concurrency samples, 30 days (presence_hourly keeps the long view)",
+  resource_samples: "per-minute resource samples, 7 days (resource_hourly keeps the long view)",
+  quota_reservations: "quota reservations in flight, minutes",
 };
 
 export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
@@ -73,6 +82,8 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   reminders: "identity",
   reminder_occurrences: "identity",
   registration_invites: "identity",
+  // Load-test provisioning counts (2026-10-23, docs/LOADTEST_PROVISIONING.md).
+  loadtest_registrations: "identity",
   orgs: "workspace",
   org_members: "workspace",
   // Community rebuild (2026-10-21, docs/COMMUNITY_REBUILD_2026-10-21.md).
@@ -150,6 +161,33 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   federation_inbox: "federation",
   federation_outbox: "federation",
   federation_peers: "federation",
+  // The Platform Admin Console (migration 046): grants, console passkeys, the append-only audit and incidents. Kept in
+  // SQLite in every mode (copy and verify only, like identity).
+  platform_admins: "platform",
+  platform_admin_passkeys: "platform",
+  platform_audit: "platform",
+  platform_incidents: "platform",
+  platform_incident_events: "platform",
+  // Platform Admin 2.0 (migration 048): telemetry, quotas, AI providers, settings and alerts. Kept in SQLite in every mode.
+  activity_daily: "platform",
+  telemetry_epochs: "platform",
+  traffic_user_daily: "platform",
+  presence_hourly: "platform",
+  resource_hourly: "platform",
+  session_clients: "platform",
+  quota_plans: "platform",
+  quota_plan_members: "platform",
+  quota_policies: "platform",
+  quota_counters: "platform",
+  quota_events: "platform",
+  ai_providers: "platform",
+  ai_models: "platform",
+  ai_usage: "platform",
+  platform_settings: "platform",
+  alert_rules: "platform",
+  alert_state: "platform",
+  alert_deliveries: "platform",
+  platform_restrictions: "platform",
 };
 
 export interface ColumnSpec {

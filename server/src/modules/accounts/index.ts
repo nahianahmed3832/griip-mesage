@@ -16,6 +16,33 @@ import { type KeyBackupStore, SqliteKeyBackupStore } from "./keyBackupStore.js";
 import { MongoKeyBackupStore } from "./mongoKeyBackupStore.js";
 import { PasskeyService } from "./passkeys.js";
 
+// For the Platform Admin Console (modules/platformAdmin), which signs admins in with their account password.
+export type { AccountRow } from "./store.js";
+export { burnPasswordCheck, verifyPassword } from "./passwords.js";
+export {
+  accountStateCounts,
+  deviceCounts,
+  type DeviceInventoryRow,
+  deviceOf,
+  devicesPage,
+  latestSessionOfDevices,
+  type DeviceSummaryRow,
+  searchUsers,
+  signupsBetween,
+  signupsPerDay,
+  signupsSince,
+  signupTimes,
+  syntheticUserIds,
+  setIdentitySuspended,
+  type UserCounts,
+  userCounts,
+  userDevices,
+  usernames,
+  type UserStatus,
+  type UserSummaryRow,
+  userSummary,
+} from "./platformQueries.js";
+
 /**
  * Orbit 2.0 accounts (docs/ORBIT_2_ARCHITECTURE_2026-10-18.md): email-and-password sign-in, sessions, device setup,
  * workspaces and the legacy migration, as one module of the existing server.
@@ -31,7 +58,10 @@ export class Accounts {
   readonly keyBackups: KeyBackupService;
   readonly passkeys: PasskeyService;
 
+  private readonly db: AppContext["db"];
+
   constructor(ctx: AppContext, opts: { mailer?: Mailer; store?: AccountStore; recoveryStore?: RecoveryStore; keyBackupStore?: KeyBackupStore } = {}) {
+    this.db = ctx.db;
     // MONGODB_DOMAINS includes "accounts": the account rows live in MongoDB (docs/MONGODB.md).
     this.store =
       opts.store ?? (ctx.mongo?.owns("accounts") ? new MongoAccountStore(ctx.mongo, sqliteIdentityRows(ctx.db)) : new SqliteAccountStore(ctx.db));
@@ -66,7 +96,25 @@ export class Accounts {
     return this.service.sessions.stillValid(sessionId, deviceId, now());
   }
 
+  /**
+   * Whether the encryption identity [userId] is disabled or deleted. The Platform Admin Console (another module) asks
+   * this instead of reading the users table itself.
+   */
+  identityBlocked(userId: string): boolean {
+    const u = this.db.prepare("SELECT disabled_at, deleted_at FROM users WHERE id = ?").get(userId) as { disabled_at: number | null; deleted_at: number | null } | undefined;
+    return !!u && (u.disabled_at !== null || u.deleted_at !== null);
+  }
+
   async purgeExpired(): Promise<number> {
     return (await this.store.purgeExpired(now())) + (await this.recovery.purgeExpired()) + (await this.keyBackups.purgeExpired());
   }
 }
+
+// Account deletion for the Platform Admin Console (the same erasure people trigger themselves; docs/ACCOUNT_DELETION.md).
+export { eraseAccount, soleOwnedWorkspaces } from "./deletion.js";
+
+// Load-test provisioning (docs/LOADTEST_PROVISIONING.md), used by auth, organizations and messaging.
+export {
+  admitLoadtestAccount, checkLoadtestRequest, createLoadtestInvite, findLoadtestInvite, isSynthetic, LOADTEST_INVITE_MAX_DAYS, LOADTEST_INVITE_MAX_USES,
+  loadtestQuota, requireSyntheticScopeForPeople, type LoadtestPolicy, type QuotaState,
+} from "./loadtest.js";

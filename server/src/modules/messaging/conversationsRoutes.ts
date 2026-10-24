@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { requireSyntheticScopeForPeople } from "../accounts/index.js";
 import { availableUser, blockedEitherWay, dmDecision, notAvailable, REQUEST_MESSAGE_LIMIT, requireRequestBudget } from "../accounts/relationships/rules.js";
 import type { DmRequestRow } from "../accounts/relationships/store.js";
 import { mentionAllPermission } from "./mentions.js";
@@ -258,6 +259,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
     const { userId: other } = parse(DmBody, req.body);
     if (other === userId) throw badRequest("You can't start a direct conversation with yourself");
     const target = availableUser(ctx, other);
+    if (target) requireSyntheticScopeForPeople(db, userId, [other]);
     // Batch B6: unknown, disabled and blocked (either way) all answer the same, so a block isn't revealed.
     if (!target || blockedEitherWay(ctx, userId, other)) throw notAvailable();
     const key = [userId, other].sort().join("|");
@@ -356,6 +358,7 @@ export default async function conversationRoutes(app: FastifyInstance, ctx: AppC
     // Groups are server-local in this release: people on other servers can't be added (FEDERATION_PROTOCOL.md §7).
     const found = db.prepare(`SELECT id FROM users WHERE disabled_at IS NULL AND home_server_id IS NULL AND id IN (${ids.map(() => "?").join(",")})`).all(...ids) as { id: string }[];
     if (found.length !== ids.length) throw badRequest("One or more members do not exist or are on another server");
+    requireSyntheticScopeForPeople(db, userId, ids);
     const id = newId("c");
     const t = now();
     db.transaction(() => {

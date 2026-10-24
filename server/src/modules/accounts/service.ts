@@ -349,6 +349,8 @@ export class AccountService {
     this.requireNotThrottled(a.email, ip, reply);
     if (!(await verifyPassword(password, a.password_hash))) {
       this.recordFailure(a.email, ip);
+      // The person's sign-in history (Platform Admin Console): a wrong password for an existing account.
+      this.ctx.audit({ actorId: a.user_id, action: "account.login_failed", target: a.id });
       throw invalidCredentials();
     }
     if (needsRehash(a.password_hash, this.cfg.scryptLogN)) {
@@ -399,6 +401,11 @@ export class AccountService {
     const issued = await this.sessions.issue(a.id, body.deviceName ?? "Meldiq app", deviceId, now());
     const detail = [via === "passkey" ? "passkey" : null, deviceId ? "device" : null].filter(Boolean).join(",") || null;
     this.ctx.audit({ actorId: a.user_id, action: "account.login", target: issued.session.id, detail });
+    // Signed-in sessions per person (docs/QUOTAS.md): observed and warned only; signing in is never refused by a quota.
+    if (a.user_id && this.ctx.quotas?.hasPolicies("sessions.active")) {
+      const open = (await this.store.activeSessions(a.id, now())).length;
+      this.ctx.quotas.check("sessions.active", [{ type: "user", id: a.user_id }], 0, { measured: { user: open } });
+    }
     return this.respond(issued, (await this.store.accountById(a.id))!);
   }
 

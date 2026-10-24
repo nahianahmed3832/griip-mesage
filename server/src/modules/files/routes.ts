@@ -15,6 +15,7 @@ import { parse } from "../../shared/validation/index.js";
 import type { BlobKind } from "../../infrastructure/storage/index.js";
 import { ApiError, badRequest, notFound } from "../../shared/errors.js";
 import { newId, now } from "../../shared/utilities/util.js";
+import { refusal, scopesFor } from "../quotas/index.js";
 
 /**
  * Encrypted attachment relay. Clients encrypt files locally (AES-256-GCM, key travels inside the
@@ -55,6 +56,33 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     limited: boolean;
   }
   const uploaderOf = (userId: string, orgId: string | null): Uploader => ({ userId, orgId, limited: hasNewAccountLimits(ctx.db, userId) });
+
+  /**
+   * The unified quotas (docs/QUOTAS.md), after the server's own limits above: the largest single upload, stored bytes
+   * and this month's uploaded bytes, for the person, their community and the platform. Measured only for keys an
+   * operator governs; this month's bytes are reserved under [uploadId] (committed when stored, released if not).
+   */
+  const quotaAdmit = async (who: Uploader, size: number, streaming: number, uploadId: string, ttlMs: number): Promise<void> => {
+    const q = ctx.quotas;
+    const scopes = scopesFor(who.userId, who.orgId);
+    const one = q.check("files.max_upload_bytes", scopes, size);
+    if (!one.allowed) throw refusal(one);
+    if (q.hasPolicies("storage.bytes")) {
+      const t = now();
+      const bytes = async (stored: UsageFilter, pending: Omit<UsageFilter, "kept">) => (await files.storedUsage(stored)).bytes + (await files.pendingUsage(pending)).bytes;
+      const conversations = who.orgId ? ctx.authz.conversationIdsOf(who.orgId) : [];
+      const measured = {
+        user: (await bytes({ uploaders: [who.userId], liveAt: t }, { uploaders: [who.userId] })) + streaming,
+        org: who.orgId ? (await bytes({ conversations, liveAt: t }, { conversations })) + (inFlight.orgs.get(who.orgId) ?? 0) : 0,
+        global: (await bytes({ liveAt: t }, {})) + inFlight.bytes,
+      };
+      const stored = q.check("storage.bytes", scopes, size, { measured });
+      if (!stored.allowed) throw refusal(stored);
+    }
+    const month = q.check("files.upload_bytes", scopes, size, { reserve: true, idempotencyKey: `upload:${uploadId}`, ttlMs });
+    if (!month.allowed) throw refusal(month);
+  };
+  const quotaSettle = (uploadId: string, stored: number | null) => ctx.quotas.settleByKey(`upload:${uploadId}`, stored === null ? "release" : "commit", stored ?? undefined);
 
   /** Admits one more upload start this hour, or refuses with when to try again. */
   const admitStart = (userId: string, reply: { header: (k: string, v: string) => unknown }) => {
@@ -158,16 +186,18 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     const reserve = declared ?? cfg.attachmentMaxBytes;
     const who = uploaderOf(userId, conv.org_id);
     admitStart(userId, reply);
+    const id = newId("a");
     await quotaLock.run(async () => {
       const mine = inFlight.users.get(userId) ?? { count: 0, bytes: 0 };
       await checkQuotas(who, reserve, mine.bytes);
       if (mine.count >= cfg.attachmentMaxConcurrentPerUser || inFlight.count >= cfg.attachmentMaxConcurrent || exceeds(cfg.attachmentMaxPendingBytes, inFlight.bytes + reserve)) {
         throw new ApiError(429, "too_many_uploads", "Too many uploads at once. Try again in a moment.");
       }
+      await quotaAdmit(who, reserve, mine.bytes, id, 60 * 60_000);
       starts.record(userId, t);
       track(who, reserve, 1);
     });
-    const id = newId("a");
+    let storedSize: number | null = null;
     const tmp = spoolFor(id);
     let size = 0;
     const hash = crypto.createHash("sha256");
@@ -196,12 +226,15 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
         ctx.log.error({ err: e }, "attachment store write failed");
         throw new ApiError(503, "storage_unavailable", "The server couldn't store the file. Try again in a moment.");
       }
+      storedSize = size;
     } finally {
       track(who, reserve, -1);
+      quotaSettle(id, storedSize);
     }
     const expiresAt = t + cfg.attachmentTtlSeconds * 1000;
     await files.recordAttachment({ id, conversation_id: conv.id, uploader_user_id: userId, size, created_at: t, expires_at: expiresAt });
     ctx.usage?.add(conv.org_id, "files.upload_bytes", size);
+    ctx.telemetry?.activity.addTraffic(userId, "files.upload", size, t);
     // Federated conversation: the ciphertext is pushed to the other people's servers, so they download it from
     // their own server. Queued before the message that references it, and delivered in order.
     ctx.federation?.pushAttachment(conv.id, { id, conversationId: conv.id, uploaderUserId: userId, size, expiresAt });
@@ -218,7 +251,11 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     // Usage (round 7): bytes asked for, whether served here or from S3 (a range counts its own length).
     const orgOf = (ctx.authz.conversation(a.conversation_id)?.org_id ?? null) as string | null;
     const askedRange = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range ?? ""));
-    ctx.usage?.add(orgOf, "files.download_bytes", askedRange ? Math.max(0, (askedRange[2] === "" ? a.size - 1 : Math.min(Number(askedRange[2]), a.size - 1)) - Number(askedRange[1]) + 1) : a.size);
+    const asked = askedRange ? Math.max(0, (askedRange[2] === "" ? a.size - 1 : Math.min(Number(askedRange[2]), a.size - 1)) - Number(askedRange[1]) + 1) : a.size;
+    const downloadQuota = ctx.quotas.charge("files.download_bytes", scopesFor(userId, orgOf), asked);
+    if (!downloadQuota.allowed) throw refusal(downloadQuota);
+    ctx.usage?.add(orgOf, "files.download_bytes", asked);
+    ctx.telemetry?.activity.addTraffic(userId, "files.download", asked, now());
     // S3 with presigned downloads: after the checks above, a link valid for a few minutes (the client follows it; its
     // Range header still applies). The bucket itself stays private.
     const direct = await blobs.presignedGet("attachments", a.id);
@@ -314,6 +351,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
       const open = (await files.pendingUsage({ uploaders: [userId], liveAt: now() })).count;
       if (open >= cfg.directUploads.maxPendingPerUser) throw new ApiError(429, "too_many_uploads", "Too many uploads at once. Try again in a moment.");
       await checkQuotas(uploaderOf(userId, conv.org_id), body.size, 0);
+      await quotaAdmit(uploaderOf(userId, conv.org_id), body.size, 0, id, expiresAt - t + 60 * 60_000);
       starts.record(userId, t);
       await files.startUpload({
         id,
@@ -413,8 +451,13 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
     const expiresAt = t + cfg.attachmentTtlSeconds * 1000;
     // Exactly one of this and the expiry job wins: the attachment exists only if this upload session was still open.
     const recorded = await files.completeUpload(u.id, { id: u.id, conversation_id: conv.id, uploader_user_id: userId, size: u.size, created_at: t, expires_at: expiresAt });
-    if (!recorded) throw new ApiError(410, "upload_expired", "This upload took too long. Start it again.");
+    if (!recorded) {
+      quotaSettle(u.id, null);
+      throw new ApiError(410, "upload_expired", "This upload took too long. Start it again.");
+    }
+    quotaSettle(u.id, u.size);
     ctx.usage?.add(conv.org_id, "files.upload_bytes", u.size);
+    ctx.telemetry?.activity.addTraffic(userId, "files.upload", u.size, t);
     ctx.federation?.pushAttachment(conv.id, { id: u.id, conversationId: conv.id, uploaderUserId: userId, size: u.size, expiresAt });
     return { id: u.id, size: u.size, expiresAt };
   });
@@ -423,6 +466,7 @@ export default async function attachmentRoutes(app: FastifyInstance, ctx: AppCon
   app.delete("/v1/attachments/uploads/:id", auth, async (req) => {
     const u = await loadUpload(parse(idParams, req.params).id, me(req).userId);
     await files.abandonUpload(u);
+    quotaSettle(u.id, null);
     await processAbandonedUploads(ctx).catch(() => 0);
     return { ok: true };
   });

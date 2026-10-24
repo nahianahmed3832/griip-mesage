@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 import { type AppContext } from "../../app/context.js";
 import { type AuthInfo, authenticateToken, stillAuthenticated } from "../auth/index.js";
+import type { Conn } from "./hub.js";
 import { canSeeLastSeen, presenceModeOf, type ProfileRow, shownPresence } from "../accounts/profile.js";
 import { acknowledge } from "../messaging/messagesRoutes.js";
 import { now } from "../../shared/utilities/util.js";
@@ -73,7 +74,12 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
     // Browsers can't set headers on a WebSocket: they send {t:"auth", token} as their first frame instead (never in the
     // URL, so the token stays out of logs). Any other first frame, or none in time, closes the socket.
     let awaitingAuthFrame = header === undefined;
-    const authTimer = awaitingAuthFrame ? setTimeout(() => socket.close(4401, "unauthorized"), ctx.config.abuse.wsAuthTimeoutMs) : undefined;
+    const refuse = () => {
+      hub.stats.authFailures += 1;
+      socket.close(4401, "unauthorized");
+    };
+    const authTimer = awaitingAuthFrame ? setTimeout(refuse, ctx.config.abuse.wsAuthTimeoutMs) : undefined;
+    const client = ctx.telemetry?.classify(req.headers);
     socket.once("close", () => clearTimeout(authTimer));
     // Frames are handled one at a time, in order, each after the session is checked again (which may wait on the
     // account store); frames arriving before authentication finishes wait for it.
@@ -85,7 +91,7 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
         awaitingAuthFrame = false;
         clearTimeout(authTimer);
         const token = authFrameToken(raw);
-        if (token === undefined) socket.close(4401, "unauthorized");
+        if (token === undefined) refuse();
         else start(token);
         return;
       }
@@ -104,12 +110,23 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
       authenticateToken(ctx, token)
         .then((auth) => {
           if (!auth) {
-            socket.close(4401, "unauthorized");
+            refuse();
             return;
           }
           if (socket.readyState !== socket.OPEN) return;
+          // Open connections per person and in total (docs/QUOTAS.md), when an operator governs them.
+          if (ctx.quotas.hasPolicies("ws.connections")) {
+            const all = hub.connections();
+            const decision = ctx.quotas.check("ws.connections", [{ type: "user", id: auth.userId }, { type: "pool", id: "realtime" }], 1, {
+              measured: { user: all.filter((c) => c.userId === auth.userId).length, pool: all.length },
+            });
+            if (!decision.allowed) {
+              socket.close(4429, "connection allowance used up");
+              return;
+            }
+          }
           deviceId = auth.deviceId;
-          onFrame = open(socket, auth, token);
+          onFrame = open(socket, auth, token, client);
           const handle = onFrame;
           for (const raw of early.splice(0)) void hub.onDevice(deviceId, () => handle(raw)).catch((e) => ctx.log.warn({ err: e }, "websocket frame failed"));
         })
@@ -122,8 +139,10 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   /** A connection authenticated as [auth]: registered with the hub, sent its backlog; returns its frame handler. */
-  const open = (socket: WebSocket, auth: AuthInfo, token: string | undefined): ((raw: Buffer) => Promise<void>) => {
+  const open = (socket: WebSocket, auth: AuthInfo, token: string | undefined, client?: Conn["client"]): ((raw: Buffer) => Promise<void>) => {
     const conn = hub.add(socket, auth.userId, auth.deviceId);
+    conn.client = client;
+    conn.sessionId = auth.sessionId;
     db.prepare("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(now(), auth.deviceId);
     socket.send(hub.encode({ t: "hello", userId: auth.userId, deviceId: auth.deviceId, serverTime: now() }));
     void hub.onDevice(auth.deviceId, () => hub.flushBacklog(conn)).catch((err) => ctx.log.error({ err }, "backlog flush failed"));
@@ -152,6 +171,8 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
     const onFrame = async (raw: Buffer): Promise<void> => {
       alive = true;
       const t = now();
+      conn.lastFrameAt = t;
+      ctx.telemetry?.activity.addTraffic(auth.userId, "ws.in", raw.length, t);
       budget = Math.min(burst, budget + ((t - budgetAt) / 1000) * rate) - 1;
       budgetAt = t;
       if (budget < -burst) {
@@ -206,9 +227,9 @@ export default async function wsRoutes(app: FastifyInstance, ctx: AppContext) {
       }
     };
 
-    socket.on("close", () => {
+    socket.on("close", (code: number) => {
       clearInterval(heartbeat);
-      hub.remove(conn);
+      hub.remove(conn, code);
       if (db.open) db.prepare("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(now(), auth.deviceId);
     });
     return onFrame;

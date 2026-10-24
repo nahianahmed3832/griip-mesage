@@ -24,8 +24,20 @@ interface RouteStats {
 interface MinuteTotals {
   minute: number;
   requests: number;
+  clientErrors: number;
   serverErrors: number;
   buckets: number[];
+}
+
+/** One completed minute's requests, for the per-minute history the platform console keeps (modules/telemetry). */
+export interface MinuteSummary {
+  minute: number;
+  requests: number;
+  clientErrors: number;
+  serverErrors: number;
+  p50Ms: number | null;
+  p95Ms: number | null;
+  p99Ms: number | null;
 }
 
 export interface JobStats {
@@ -74,9 +86,14 @@ function bucketOf(ms: number): number {
 
 /** The 95th percentile as the upper bound of the bucket it falls in; null without samples (or beyond the last bound). */
 export function p95(buckets: readonly number[]): number | null {
+  return percentile(buckets, 0.95);
+}
+
+/** The [q] quantile (0–1) as the upper bound of the bucket it falls in; null without samples or beyond the last bound. */
+export function percentile(buckets: readonly number[], q: number): number | null {
   const total = buckets.reduce((a, b) => a + b, 0);
   if (total === 0) return null;
-  const target = Math.ceil(total * 0.95);
+  const target = Math.max(1, Math.ceil(total * q));
   let seen = 0;
   for (let i = 0; i < buckets.length; i++) {
     seen += buckets[i];
@@ -122,6 +139,7 @@ export class Metrics {
     const m = this.currentMinute();
     m.requests += 1;
     if (status >= 500) m.serverErrors += 1;
+    else if (status >= 400) m.clientErrors += 1;
     m.buckets[b] += 1;
   }
 
@@ -190,11 +208,37 @@ export class Metrics {
     };
   }
 
+  /**
+   * Latency percentiles over the window (the platform console; kept out of [snapshot], whose shape the apps' health
+   * view relies on).
+   */
+  windowPercentiles(): { p50Ms: number | null; p95Ms: number | null; p99Ms: number | null } {
+    const nowMinute = Math.floor(this.clock() / 60_000);
+    const recent = this.minutes.filter((m) => m.minute > nowMinute - WINDOW_MINUTES);
+    const buckets = emptyBuckets().map((_, i) => recent.reduce((a, m) => a + m.buckets[i], 0));
+    return { p50Ms: percentile(buckets, 0.5), p95Ms: percentile(buckets, 0.95), p99Ms: percentile(buckets, 0.99) };
+  }
+
+  /** The totals of epoch minute [minute] if it is still held (the last WINDOW_MINUTES), else null. */
+  minute(minute: number): MinuteSummary | null {
+    const m = this.minutes.find((x) => x.minute === minute);
+    if (!m) return null;
+    return {
+      minute,
+      requests: m.requests,
+      clientErrors: m.clientErrors,
+      serverErrors: m.serverErrors,
+      p50Ms: percentile(m.buckets, 0.5),
+      p95Ms: percentile(m.buckets, 0.95),
+      p99Ms: percentile(m.buckets, 0.99),
+    };
+  }
+
   private currentMinute(): MinuteTotals {
     const minute = Math.floor(this.clock() / 60_000);
     const last = this.minutes[this.minutes.length - 1];
     if (last?.minute === minute) return last;
-    const fresh = { minute, requests: 0, serverErrors: 0, buckets: emptyBuckets() };
+    const fresh = { minute, requests: 0, clientErrors: 0, serverErrors: 0, buckets: emptyBuckets() };
     this.minutes = [...this.minutes.filter((m) => m.minute > minute - WINDOW_MINUTES), fresh];
     return fresh;
   }

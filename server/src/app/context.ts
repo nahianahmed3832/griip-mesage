@@ -22,6 +22,9 @@ import type { UsageMeter } from "../modules/administration/usage/meter.js";
 import type { MeetingService } from "../modules/calls/meetings.js";
 import type { ReminderService } from "../modules/accounts/reminders/service.js";
 import type { BlobStore } from "../infrastructure/storage/index.js";
+import type { Telemetry } from "../modules/telemetry/index.js";
+import type { QuotaEngine } from "../modules/quotas/index.js";
+import type { AiService } from "../modules/ai/index.js";
 
 export interface AppContext {
   db: DB;
@@ -64,6 +67,12 @@ export interface AppContext {
   meetings: MeetingService;
   /** Usage metering per community and day (src/usage, docs/USAGE_AND_PLANS.md). */
   usage: UsageMeter;
+  /** Activity, traffic, concurrency and resource telemetry (modules/telemetry, docs/ANALYTICS_DEFINITIONS.md). */
+  telemetry: Telemetry;
+  /** The unified quota engine (modules/quotas, docs/QUOTAS.md): no policies, so nothing enforced, until an operator sets one. */
+  quotas: QuotaEngine;
+  /** AI provider connections and the gateway every AI request goes through (modules/ai, docs/AI_OPERATIONS.md). */
+  ai: AiService;
   log: FastifyBaseLogger;
   audit: (e: { actorId?: string | null; orgId?: string | null; action: string; target?: string | null; detail?: string | null }) => void;
 }

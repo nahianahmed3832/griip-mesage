@@ -47,6 +47,10 @@ import orgRoutes from "../modules/organizations/orgsRoutes.js";
 import roleRoutes from "../modules/organizations/rolesRoutes.js";
 import { Entitlements } from "../modules/administration/entitlements.js";
 import opsRoutes from "../modules/administration/ops/routes.js";
+import { platformSetting, registerPlatformAdmin } from "../modules/platformAdmin/index.js";
+import { Telemetry } from "../modules/telemetry/index.js";
+import { QuotaEngine, scopesFor } from "../modules/quotas/index.js";
+import { AiService, SecretBox } from "../modules/ai/index.js";
 import searchRoutes from "../modules/messaging/search/routes.js";
 import experimentRoutes from "../modules/administration/experiments/routes.js";
 import { UsageMeter } from "../modules/administration/usage/meter.js";
@@ -67,7 +71,7 @@ import { ApiError } from "../shared/errors.js";
 import { now } from "../shared/utilities/util.js";
 import wsRoutes from "../modules/realtime/ws.js";
 
-export const VERSION = "0.30.0";
+export const VERSION = "0.34.0";
 /**
  * The client API this server speaks and the oldest client API it accepts. Clients refuse a server whose
  * minClientApi is newer than theirs; servers from before these fields existed count as API 1.
@@ -76,6 +80,14 @@ export const API_VERSION = 2;
 export const MIN_CLIENT_API = 1;
 /** Version of the /v1/server-info document itself (fields are only ever added). */
 export const SERVER_INFO_VERSION = 1;
+
+/**
+ * The URL as logged. The Platform Admin Console searches people by name or email in query strings
+ * (/admin/v1/users?q=…): its query strings are never logged, so no address or search ends up in the logs.
+ */
+export function logUrl(url: string): string {
+  return url.startsWith("/admin/") ? url.split("?")[0] : url;
+}
 
 export interface BuiltApp {
   app: FastifyInstance;
@@ -106,7 +118,7 @@ export async function buildApp(
             serializers: {
               req: (r: { method: string; url: string; hostname?: string; ip?: string; socket?: { remotePort?: number } }) => ({
                 method: r.method,
-                url: r.url,
+                url: logUrl(r.url),
                 hostname: r.hostname,
                 remoteAddress: r.ip,
                 remotePort: r.socket?.remotePort,
@@ -160,6 +172,14 @@ export async function buildApp(
   ctx.reportSealer = ReportSealer.load(process.env, config.dataDir);
   ctx.entitlements = new Entitlements(config.entitlements, db);
   ctx.usage = new UsageMeter(db, ctx.files);
+  ctx.quotas = new QuotaEngine(db);
+  // Off until an operator turns it on in the console (the AI kill switch, a platform setting).
+  ctx.ai = new AiService(db, ctx.quotas, new SecretBox(config.platformSecretsKey), { enabled: () => platformSetting(db, "ai.enabled") });
+  // Activity, traffic, concurrency and resources (docs/ANALYTICS_DEFINITIONS.md): written once a minute.
+  ctx.telemetry = new Telemetry(ctx);
+  ctx.telemetry.recordVersion(VERSION);
+  if (config.telemetryTickMs > 0) ctx.telemetry.start(config.telemetryTickMs);
+  app.addHook("onClose", async () => ctx.telemetry.stop());
   ctx.reminders = new ReminderService(ctx);
   ctx.reminders.start(config.reminderTickMs);
   app.addHook("onClose", async () => ctx.reminders.stop());
@@ -203,6 +223,9 @@ export async function buildApp(
   // Every finished request, by route template (never the raw URL, which carries ids), for the health view.
   app.addHook("onResponse", async (req, reply) => {
     ctx.metrics.recordRequest(req.method, req.routeOptions?.url ?? "unmatched", reply.statusCode, reply.elapsedTime);
+    ctx.telemetry.onResponse(req, reply);
+    // Requests per person per day (docs/QUOTAS.md): observed and warned only, and only once an operator governs it.
+    if (req.auth && ctx.quotas.hasPolicies("api.requests")) ctx.quotas.charge("api.requests", scopesFor(req.auth.userId, null), 1);
   });
 
   // Attachment uploads are streamed to disk by their route (size and quota enforced while reading),
@@ -222,7 +245,7 @@ export async function buildApp(
       if (req.method === "OPTIONS") {
         return reply
           .header("access-control-allow-methods", "GET, POST, PUT, PATCH, DELETE")
-          .header("access-control-allow-headers", "authorization, content-type")
+          .header("access-control-allow-headers", "authorization, content-type, x-meldiq-client")
           .header("access-control-max-age", "600")
           .code(204)
           .send();
@@ -319,6 +342,8 @@ export async function buildApp(
   await app.register(async (scope) => communityRoutes(scope, ctx));
   await app.register(async (scope) => experimentRoutes(scope, ctx));
   await app.register(async (scope) => accountRoutes(scope, ctx, ctx.accounts));
+  // The Platform Admin Console's /admin/v1 (only with ADMIN_CONSOLE_ORIGIN set; its own sessions, roles and audit).
+  await registerPlatformAdmin(app, ctx, VERSION);
   const fed = ctx.federation;
   if (fed) {
     await app.register(async (scope) => federationPeerRoutes(scope, ctx, fed));

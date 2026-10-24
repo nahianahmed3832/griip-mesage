@@ -3,6 +3,8 @@ import type { AppContext } from "../../app/context.js";
 import { ApiError, unauthorized } from "../../shared/errors.js";
 import { now, sha256Hex } from "../../shared/utilities/util.js";
 
+export { revokeUserDevice } from "./routes.js";
+
 /**
  * The auth module's public API: who a request or a WebSocket is. A bearer token is either a v1 session token (device
  * key sign-in, routes.ts) or an accounts v2 access token bound to a device (modules/accounts).
@@ -85,4 +87,14 @@ export function requireAuth(ctx: AppContext) {
 export function me(req: FastifyRequest): AuthInfo {
   if (!req.auth) throw new ApiError(401, "unauthorized", "Authentication required");
   return req.auth;
+}
+
+/** Ends every v1 (device-signature) session of [userId]; the Platform Admin Console's session revocation and suspension. */
+export function endLegacySessions(ctx: AppContext, userId: string): number {
+  return ctx.db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId).changes;
+}
+
+/** How many v1 (device-signature) sessions [userId] has (the console's session view). */
+export function legacySessionCount(ctx: AppContext, userId: string): number {
+  return (ctx.db.prepare("SELECT COUNT(*) n FROM sessions WHERE user_id = ? AND expires_at > ?").get(userId, now()) as { n: number }).n;
 }
