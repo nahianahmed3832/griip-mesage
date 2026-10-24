@@ -128,6 +128,24 @@ class ContractFixturesTest {
 
     /** HTTP answers the app decodes: fixture name (method_path) to the model the app decodes it with. */
     private val http: Map<String, KSerializer<*>> = mapOf(
+        // AI Workforce (docs/AI_WORKFORCE.md, API 0.35.0).
+        "DELETE_v1_orgs_orgId_ai_agents_installId" to serializer<com.meldiq.android.data.ai.AiOkRes>(),
+        "GET_v1_conversations_id_ai_agents" to serializer<com.meldiq.android.data.ai.AiChannelAgentsRes>(),
+        "GET_v1_conversations_id_ai_posts" to serializer<com.meldiq.android.data.ai.AiPostsRes>(),
+        "GET_v1_orgs_orgId_ai_agents_installId" to serializer<com.meldiq.android.data.ai.AiAgentDetail>(),
+        "GET_v1_orgs_orgId_ai_catalog" to serializer<com.meldiq.android.data.ai.AiCatalog>(),
+        "GET_v1_orgs_orgId_ai_jobs" to serializer<com.meldiq.android.data.ai.AiJobsPage>(),
+        "GET_v1_orgs_orgId_ai_jobs_jobId" to serializer<com.meldiq.android.data.ai.AiJobRes>(),
+        "PATCH_v1_orgs_orgId_ai_agents_installId" to serializer<com.meldiq.android.data.ai.AiAgentRes>(),
+        "POST_v1_orgs_orgId_ai_agents" to serializer<com.meldiq.android.data.ai.AiAgentRes>(),
+        "POST_v1_orgs_orgId_ai_approvals_approvalId" to serializer<com.meldiq.android.data.ai.AiJobSummaryRes>(),
+        "POST_v1_orgs_orgId_ai_files" to serializer<com.meldiq.android.data.ai.AiFileRes>(),
+        "POST_v1_orgs_orgId_ai_jobs" to serializer<com.meldiq.android.data.ai.AiJobRes>(),
+        "POST_v1_orgs_orgId_ai_jobs_jobId_cancel" to serializer<com.meldiq.android.data.ai.AiJobSummaryRes>(),
+        "POST_v1_orgs_orgId_ai_jobs_jobId_retry" to serializer<com.meldiq.android.data.ai.AiJobSummaryRes>(),
+        "POST_v1_orgs_orgId_ai_jobs_jobId_revise" to serializer<com.meldiq.android.data.ai.AiJobSummaryRes>(),
+        "PUT_v1_orgs_orgId_ai_agents_installId_avatar" to serializer<com.meldiq.android.data.ai.AiAgentRes>(),
+        "PUT_v1_orgs_orgId_ai_agents_installId_channels_conversationId" to serializer<com.meldiq.android.data.ai.AiChannelsRes>(),
         "DELETE_v1_applications_id" to serializer<OkRes>(),
         "DELETE_v1_blocks_userId" to serializer<OkRes>(),
         "DELETE_v1_categories_id" to serializer<OkRes>(),
