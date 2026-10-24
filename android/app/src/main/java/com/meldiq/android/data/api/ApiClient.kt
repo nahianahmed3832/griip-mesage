@@ -87,7 +87,11 @@ class ApiClient(
     }
 
     /** Streams an already-encrypted file to the relay with progress; nothing is held in memory (T2.6). */
-    suspend fun uploadFile(path: String, file: File, onProgress: (Float) -> Unit): AttachmentUploadRes {
+    suspend fun uploadFile(path: String, file: File, onProgress: (Float) -> Unit): AttachmentUploadRes =
+        uploadStream(path, file, AttachmentUploadRes.serializer(), onProgress)
+
+    /** Streams [file] as the request body (application/octet-stream) with progress; the reply is JSON. */
+    suspend fun <T> uploadStream(path: String, file: File, de: kotlinx.serialization.KSerializer<T>, onProgress: (Float) -> Unit): T {
         val total = file.length()
         val body = object : RequestBody() {
             override fun contentType() = "application/octet-stream".toMediaType()
@@ -108,7 +112,7 @@ class ApiClient(
         }
         var res = execute("POST", path, body, true)
         if (res.first == 401 && reauthLock.withLock { reauth() }) res = execute("POST", path, body, true)
-        return decode(res, AttachmentUploadRes.serializer())
+        return decode(res, de)
     }
 
     /**

@@ -119,6 +119,8 @@ class ServerFeatures(private val api: ApiClient, private val clock: () -> Long =
         const val ORG_PHOTOS = "org-photos"
         /** Custom workspace roles and delegated permissions (2026-10-19, docs/WORKSPACE_ROLES.md). */
         const val CUSTOM_ROLES = "custom-roles"
+        /** Communities' AI agents (docs/AI_WORKFORCE.md): the AI agents page, channel agents and their posts. */
+        const val AI_WORKFORCE = "ai-workforce"
         private const val TTL_MS = 5 * 60_000L
     }
 }

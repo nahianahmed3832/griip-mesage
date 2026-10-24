@@ -76,6 +76,11 @@ sealed interface ServerEvent {
     @Serializable data class MeetingUpdated(val orgId: String, val meetingId: String? = null, val startsAt: Long? = null) : ServerEvent
     @Serializable data class MeetingSoon(val orgId: String? = null, val meetingId: String, val startsAt: Long? = null) : ServerEvent
 
+    /** AI Workforce (docs/AI_WORKFORCE.md): an agent posted in this channel; fetch its posts (not end-to-end encrypted). */
+    @Serializable data class AiPosts(val conversationId: String) : ServerEvent
+    /** AI Workforce: a job you asked for or may approve changed; fetch it (the fetch decides access). */
+    @Serializable data class AiJob(val orgId: String, val jobId: String) : ServerEvent
+
     /** A frame this app version doesn't know (a newer server). Ignored. */
     data class Unknown(val t: String) : ServerEvent
 }
@@ -131,6 +136,8 @@ object RealtimeCodec {
         "reminder.due" to ServerEvent.ReminderDue.serializer(),
         "meeting.updated" to ServerEvent.MeetingUpdated.serializer(),
         "meeting.soon" to ServerEvent.MeetingSoon.serializer(),
+        "ai.posts" to ServerEvent.AiPosts.serializer(),
+        "ai.job" to ServerEvent.AiJob.serializer(),
     )
     private val fieldless: Map<String, ServerEvent> = mapOf(
         "queue.drained" to ServerEvent.QueueDrained,

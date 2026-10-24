@@ -63,3 +63,42 @@ system, quotas through the existing gateway), and two decisions only the owner c
 Unit (JVM, no device): 708 Android tests, 0 failures, including `ShareHighAndSelectionTest` (High mode, the encoder
 rule, "sending less", share selection, the three-share cap). Lint: 0 errors. Not tried on a phone or the emulator yet:
 High mode needs a real phone's encoder, and several shares need three devices in one call.
+
+## 5. Android AI Workforce (2026-10-24, later the same day)
+
+The owner then said AI features are enabled and about to be released. The server and web work exists (another
+session, uncommitted in the main folder at the time: `server/src/modules/workforce`, `docs/AI_WORKFORCE.md`,
+Meldiq Web `src/ui/agents`). Android now matches Meldiq Web against those routes; nothing on the phone runs agents.
+
+| Piece | Where |
+|---|---|
+| Models for every answer (`views.ts`) and request (`aiWorkforce.ts`) | `data/ai/AiModels.kt` |
+| API client for `/v1/orgs/:orgId/ai/…` and `/v1/conversations/:id/ai/…`; streamed uploads; resumable downloads | `data/ai/AiWorkforceApi.kt`, `ApiClient.uploadStream` |
+| `ai.posts` / `ai.job` frames → screens refetch (ids only; the fetch decides access) | `RealtimeEvents.kt`, `MessageSignals.aiEvents`, `AiWorkforceSignals` |
+| @Agent / /command parsing, which recent messages may be shared (150 messages, 30,000 characters, 2,000 each), file checks, who steers and who approves | `data/ai/AgentRules.kt` |
+| A skill's options from its JSON Schema (choices, switches, numbers, text, lists) | `data/ai/SkillForm.kt` |
+| Community › AI agents: Agents (catalog, install), Manager, Requests (mine / everyone's for managers), Approvals, Files | `ui/screens/ai/AgentsScreen.kt` |
+| Ask sheet: agent, brief, options, files, share recent channel messages (off until picked), the notice, one idempotency key per sheet | `ui/screens/ai/AskAgentSheet.kt` |
+| Request view: real state, the job's own progress while it works, steps, files and earlier versions, approve / reject this version, request changes, answer, cancel, retry | `ui/screens/ai/JobSheet.kt` |
+| Agent settings: name, avatar and colour, role, description, language, style, instructions, review mode, limits, tools, channels and how it's asked, on/off, update, remove | `ui/screens/ai/AgentSettingsScreen.kt` |
+| Channels: a line above the composer when agents work there, their posts (labelled AI, not end-to-end encrypted), Ask; "@Agent …" and "/agent …" open the request instead of being sent encrypted | `ui/screens/ai/ChannelAgents.kt`, `ConversationScreen` |
+| Entry points: Community settings › More › AI agents, and a shortcut on the community panel, only when server-info lists `ai-workforce` | `CommunitySettingsScreen`, `CommunityHomeScreen` |
+| Strings in English, Chinese and Bengali (`aw_` keys) | `android/i18n/strings_ai.py` |
+
+Privacy: as on the web, a person's brief, chosen files and (only when they pick a number) the channel's recent
+messages as this phone decrypted them are the only content that reaches an agent; every sending and showing screen
+says it isn't end-to-end encrypted. Agent files open only through the app's FileProvider; a file that could install or
+run software isn't opened.
+
+Not done on Android: notifications for AI jobs (the server sends no push for them; while the app is open, screens update
+from the realtime frames), threads (requests go to the channel itself), changing role-limited invokers (web neither).
+
+Dependencies before release:
+- The server's AI routes have no route contracts, so `docs/api/openapi.json` doesn't list them and Android's
+  `ApiRoutesTest` fails on `/v1/orgs/{}/ai` and `/v1/conversations/{}/ai/…` until they're added (`npm run contracts`).
+- Android's `RealtimeCodecTest` expects `ai.posts` and `ai.job` in `docs/api/realtime.schema.json`, which the AI
+  server change adds. Land the server change with or before this one.
+
+Tests: `AgentRulesTest`, `SkillFormTest`, `AiModelsTest` (answers shaped as `views.ts` writes them). With the AI
+server's generated files: 719 of 720 Android tests pass (the route contract above). Not tried against a running AI
+server or on a phone: production has no AI Workforce yet, and no provider is configured anywhere.

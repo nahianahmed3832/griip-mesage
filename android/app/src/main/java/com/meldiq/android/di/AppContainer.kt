@@ -112,6 +112,9 @@ class AppContainer(
     val backups = com.meldiq.android.data.repo.BackupManager(app, db, session, java.io.File(app.filesDir, profile.attachmentsDir), profile.id)
     val calls = CallManager(app, api, db, session, messages, conversations, settings, scope)
     val voicePlayer = com.meldiq.android.voice.VoicePlayer(app)
+    /** AI Workforce (docs/AI_WORKFORCE.md): agents, jobs, approvals and files; signals from `ai.posts` / `ai.job` frames. */
+    val ai = com.meldiq.android.data.ai.AiWorkforceApi(api)
+    val aiSignals = com.meldiq.android.data.ai.AiWorkforceSignals()
     /** Push wake-ups for this profile (docs/BACKGROUND_DELIVERY.md); the profile id is the UnifiedPush instance. */
     val push = PushRegistrar(
         profile.id, PrefsPushStore(app), ApiPushServer(api, features),
@@ -126,6 +129,15 @@ class AppContainer(
         session.accountRenewal = { if (accounts.record?.tokens != null) accounts.refreshTokens() else null }
         messages.start()
         calls.start()
+        scope.launch {
+            messages.aiEvents.collect { e ->
+                when (e) {
+                    is com.meldiq.android.data.api.ServerEvent.AiPosts -> aiSignals.postsChanged(e.conversationId)
+                    is com.meldiq.android.data.api.ServerEvent.AiJob -> aiSignals.jobChanged()
+                    else -> {}
+                }
+            }
+        }
         history.start()
         scope.launch { orgs.loadSelection() }
         scope.launch { runCatching { threadSeen.load() } }

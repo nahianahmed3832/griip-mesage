@@ -197,6 +197,9 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
     val c = Griip.colors
     val ctx = LocalContext.current
     val conv by vm.conversation.collectAsStateWithLifecycle()
+    // AI Workforce (docs/AI_WORKFORCE.md): agents assigned to this channel, and the Ask sheet (agent, brief) when open.
+    val aiAgents = com.meldiq.android.ui.screens.ai.rememberChannelAgents(conv)
+    var aiAsk by remember { mutableStateOf<Pair<String?, String>?>(null) }
     val messages by vm.messages.collectAsStateWithLifecycle()
     val root by vm.rootMessage.collectAsStateWithLifecycle()
     val users by vm.users.collectAsStateWithLifecycle()
@@ -883,6 +886,7 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                 }
                 val slowmode by vm.slowmode.collectAsStateWithLifecycle()
                 if (threadRoot == null) com.meldiq.android.ui.screens.community.SlowmodeLine(slowmode)
+                conv?.orgId?.takeIf { threadRoot == null }?.let { org -> com.meldiq.android.ui.screens.ai.ChannelAgentsBar(org, conversationId, aiAgents) { aiAsk = null to "" } }
                 composerPreview?.let { p ->
                     Row(Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) { LinkPreviewCard(p, out = false, onOpen = {}) }
@@ -897,7 +901,14 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
                     onCancelContext = { vm.replyTo.value = null; vm.editing.value = null; if (editing != null) setText("") },
                     onAttach = { attachSheet = true },
                     onEmoji = { emojiSheet = true },
-                    onSend = { vm.send(text, communityExpressions.filter { it.kind == "emoji" }.map(vm.c.expressions::ref)); setText("") },
+                    onSend = {
+                        // "@Agent …" or "/agent …" asks an AI agent: it opens the request (with its notice) instead of
+                        // being sent as an end-to-end encrypted message, which the server could never read.
+                        val ask = if (threadRoot == null && editing == null) com.meldiq.android.data.ai.AgentRules.invocation(text, aiAgents.agents) else null
+                        if (ask != null) aiAsk = ask.installId to ask.brief
+                        else vm.send(text, communityExpressions.filter { it.kind == "emoji" }.map(vm.c.expressions::ref))
+                        setText("")
+                    },
                     placeholder = if (threadRoot != null) stringResource(R.string.b5_reply_thread_ph) else if (conv?.type == "CHANNEL") stringResource(R.string.b5_message_channel, title) else stringResource(R.string.b5_message_ph),
                     voice = VoiceComposerState(
                         draft = voiceDraft,
@@ -1129,6 +1140,15 @@ fun ConversationScreen(nav: NavHostController, conversationId: String, threadRoo
         }
     }
     if (newPostSheet) NewPostSheet(onDismiss = { newPostSheet = false }, forumTags = conv?.let { vm.c.conversations.forumTags(it) }.orEmpty(), guidelines = forumGuidelines[conversationId], onPost = { t, b, tags -> vm.sendForumPost(t, b, tags) })
+    aiAsk?.let { (agent, brief) ->
+        val org = conv?.orgId
+        if (org != null) com.meldiq.android.ui.screens.ai.AskAgentSheet(
+            org, aiAgents.agents.map { com.meldiq.android.ui.screens.ai.AskableAgent(it.id, it.displayName, it.canInvoke) },
+            initialAgent = agent, initialBrief = brief, conversationId = conversationId,
+            recent = remember(messages, users) { com.meldiq.android.data.ai.AgentRules.messagesToShare(messages, { id -> users[id]?.displayName.orEmpty() }, com.meldiq.android.data.ai.AgentRules.SHARE_MAX) },
+            onDismiss = { aiAsk = null }, onSent = { aiAsk = null },
+        )
+    }
     if (pollSheet) PollComposerSheet(onSend = { poll -> vm.sendRich(com.meldiq.android.data.model.RichContent(poll = poll)); pollSheet = false }, onDismiss = { pollSheet = false }, emojiPrefs = emojiPrefs)
     remindFor?.let { m ->
         com.meldiq.android.ui.screens.home.RemindSheet(

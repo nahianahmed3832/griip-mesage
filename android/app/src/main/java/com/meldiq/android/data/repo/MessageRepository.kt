@@ -126,6 +126,8 @@ class MessageRepository(
     val orgDeleted: SharedFlow<String> = signals.orgDeleted
     /** Reminders that went off or changed on another device ("reminder.due", "reminders.changed"): their ids. */
     val reminderEvents: SharedFlow<String> = signals.reminderEvents
+    /** AI Workforce frames (`ai.posts`, `ai.job`), for [com.meldiq.android.data.ai.AiWorkforceSignals]. */
+    val aiEvents: SharedFlow<com.meldiq.android.data.api.ServerEvent> = signals.aiEvents
     /** Workspaces whose personal preferences another device of this person changed ("prefs.updated"). */
     val prefsUpdated: SharedFlow<String> = signals.prefsUpdated
     val backlogDrained: MutableStateFlow<Boolean> = signals.backlogDrained
