@@ -91,7 +91,8 @@ verified text model never makes the other six ready. The console's **Set up** on
 route's capability on, sends one real verification request, and makes the model the route's default only if that
 passed (the previous default becomes its first fallback); a failure leaves the route as it was and says what to do next
 (key refused, model not available to the key, out of credit, wrong kind of output…). A verification passes only when
-the answer is the kind of output Meldiq consumes: non-empty text; for vision, the test image's colour named; a
+the answer is the kind of output Meldiq consumes: non-empty text; for vision, the colour of a 64×64 red test image named (0.37.1: a single pixel was misread as black by
+models that see images); a
 well-formed transcript; MP3 bytes for speech; PNG/JPEG/WebP/GIF bytes for images (also checked on every real image and
 speech request); one finite vector per input for embeddings. Text and vision verifications allow 512 output tokens,
 because reasoning models spend part of the budget before answering. A new or removed provider key clears every

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { isMp3, sniffImage } from "../src/modules/ai/index.js";
-import { proofOf } from "../src/modules/ai/verification.js";
+import { proofOf, VERIFY_REQUESTS } from "../src/modules/ai/verification.js";
 import { MemoryMailer } from "./support/accounts.js";
 import { ADMIN_ORIGIN, type ConsoleAdmin, consoleAdmin } from "./support/adminConsole.js";
 import { type Answer, chatText, type FakeCall, fakeProviders, openAiChat } from "./support/fakeAi.js";
@@ -99,6 +99,14 @@ describe("what a verification answer must prove", () => {
     expect(isMp3(MP3)).toBe(true);
     expect(isMp3(Buffer.from([0xff, 0xfb, 0x90]))).toBe(true);
     expect(isMp3(Buffer.from("{\"error\":1}"))).toBe(false);
+  });
+
+  it("the vision test shows a real image, not a single pixel models misread", () => {
+    const inv = VERIFY_REQUESTS.vision;
+    if (!("chat" in inv)) throw new Error("vision verification is a chat request");
+    const png = Buffer.from(inv.chat.messages[0]!.images![0]!.base64, "base64");
+    expect(sniffImage(png)).toBe("image/png");
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([64, 64]);
   });
 
   it("an answer of the wrong kind proves nothing, and says what to do", () => {

@@ -24,7 +24,7 @@ const policy = (scopeType: any, scopeId: string, limit: number | null, mode: any
 
 describe("resolution", () => {
   it("prefers override > own > plan > default, and ignores expired overrides", () => {
-    const t = { now: Date.parse("2026-10-24T12:00:00Z") };
+    const t = { now: Date.now() };
     const { db, q } = engineAt(t);
     q.setPolicy(policy("global", "default:user", 1000), "admin");
     expect(q.effective("files.upload_bytes", ME)).toMatchObject({ source: "default", limit: 1000 });

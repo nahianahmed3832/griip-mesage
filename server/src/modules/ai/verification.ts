@@ -14,8 +14,11 @@ import type { ProviderError } from "./providers.js";
  */
 const VERIFY_OUTPUT_TOKENS = 512;
 
-/** A 1×1 red PNG. */
-const RED_PIXEL = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
+/**
+ * A 64×64 solid red PNG. Not a single pixel: models scale images up before reading them, and gpt-6.1-sol called a 1×1
+ * red pixel "black" while naming this square red (production check, 2026-10-24).
+ */
+const RED_SQUARE = "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAb0lEQVR4nO3PAQkAAAyEwO9feoshgnABdLep8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3IPanc8OLDQitxAAAAAElFTkSuQmCC";
 const RED_WORDS = /\b(red|crimson|scarlet)\b/i;
 
 /** Half a second of 16 kHz mono silence as WAV. */
@@ -44,7 +47,7 @@ export const VERIFY_REQUESTS: Record<Capability, Invocation> = {
   vision: {
     capability: "vision",
     category: "vision",
-    chat: { messages: [{ role: "user", text: "What colour is this image? One word.", images: [{ mime: "image/png", base64: RED_PIXEL }] }], maxOutputTokens: VERIFY_OUTPUT_TOKENS },
+    chat: { messages: [{ role: "user", text: "What colour is this image? One word.", images: [{ mime: "image/png", base64: RED_SQUARE }] }], maxOutputTokens: VERIFY_OUTPUT_TOKENS },
   },
   transcription: { capability: "transcription", category: "transcription", audio: { bytes: silentWav(), mime: "audio/wav", name: "silence.wav", seconds: 0.5 } },
   speech: { capability: "speech", category: "speech", text: "OK." },
