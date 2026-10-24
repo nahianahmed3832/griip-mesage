@@ -1,6 +1,6 @@
 {
   "agent": {
-    "id": "agi_2z5bo89-UBpVXNvlEKb20Q",
+    "id": "agi_800nHo-THrN09Ro5rQh2bg",
     "agentId": "general_assistant",
     "version": 1,
     "state": "active",
@@ -25,6 +25,10 @@
       "everyone": true,
       "roles": []
     },
+    "autonomy": "guarded",
+    "maxRuntimeSec": null,
+    "maxAttempts": null,
+    "activeHours": null,
     "rev": 2,
     "skill": {
       "id": "general.assist",
@@ -33,7 +37,7 @@
       "category": "productivity"
     },
     "badge": "AI",
-    "createdAt": 1792823466609,
-    "updatedAt": 1792823466701
+    "createdAt": 1792832478944,
+    "updatedAt": 1792832479084
   }
 }

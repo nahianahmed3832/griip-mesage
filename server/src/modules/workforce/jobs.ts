@@ -63,6 +63,10 @@ export interface JobRow {
   started_at: number | null;
   finished_at: number | null;
   expires_at: number;
+  /** What started it besides a person (migration 051): its trigger, the job whose result it hands on, handoffs deep. */
+  trigger_id: string | null;
+  source_job_id: string | null;
+  chain: number;
 }
 
 export interface NewJob {
@@ -84,6 +88,9 @@ export interface NewJob {
   /** Until when the job may wait for people (approvals, answers) before it's closed. */
   deadlineAt: number;
   expiresAt: number;
+  triggerId?: string | null;
+  sourceJobId?: string | null;
+  chain?: number;
 }
 
 export class JobStore {
@@ -107,8 +114,9 @@ export class JobStore {
     this.db
       .prepare(
         `INSERT INTO ai_jobs (id, org_id, install_id, agent_id, version, skill_id, requested_by, conversation_id, thread_root, parent_job_id, root_job_id, depth,
-                              depends_on, state, input, max_attempts, next_at, deadline_at, idempotency_key, created_at, updated_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?)`,
+                              depends_on, state, input, max_attempts, next_at, deadline_at, idempotency_key, created_at, updated_at, expires_at,
+                              trigger_id, source_job_id, chain)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -132,8 +140,11 @@ export class JobStore {
         t,
         t,
         j.expiresAt,
+        j.triggerId ?? null,
+        j.sourceJobId ?? null,
+        j.chain ?? 0,
       );
-    this.event(id, "created", { depth: j.depth, parent: j.parentJobId });
+    this.event(id, "created", { depth: j.depth, parent: j.parentJobId, ...(j.triggerId ? { trigger: j.triggerId, chain: j.chain ?? 0 } : {}) });
     return this.get(id)!;
   }
 

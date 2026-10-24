@@ -49,6 +49,10 @@ export function installView(i: Install, mode: "review" | "auto") {
     maxJobsPerDay: i.maxJobsPerDay,
     maxConcurrent: i.maxConcurrent,
     invokers: i.invokers,
+    autonomy: i.autonomy,
+    maxRuntimeSec: i.maxRuntimeSec,
+    maxAttempts: i.maxAttempts,
+    activeHours: i.activeHours,
     rev: i.rev,
     skill: def ? { id: def.skill.id, version: def.skill.version, name: def.name, category: def.category } : null,
     /** Always shown with the name, so an agent can't pass for a person. */

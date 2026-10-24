@@ -96,6 +96,76 @@ Safety rules for running jobs: pausing executions or lowering concurrency stops 
 disabling a provider, model, skill or tool, or the kill switch, makes the next call of a running job fail with a clear
 error (it's retried later only if the cause is transient); cancelling aborts provider calls and ffmpeg at once.
 
+## 5b. Making agents operational: readiness, autonomy, triggers (2026-10-24)
+
+**Audit (what was real and what was only shown).** The catalog, installs, model gateway with verification and `auto`
+routing, job engine (leases, retries, deadlines, cancellation, idempotency, dependencies), tool gateway (permission
+re-checked on every call), approvals, quotas, Agent Manager delegation and the emergency stop were real and tested.
+Missing were: a way for agents to work with nobody present (no triggers or schedules), autonomy beyond review/auto,
+per-agent limits beyond jobs per day and concurrency, a readiness report and a test action, per-agent activity, and
+the Agent Manager checking that an agent has a model before handing it work. The "No verified model for …" warning was
+genuine: in production an OpenAI key was connected and passed its test (133 models), but no model had been approved,
+so no capability could be verified and routing had nothing to use.
+
+**Model setup in one step.** Approving a model in the console now offers the key's real model list (from the
+provider's own listing) and a checked box, "Use for AI agents", which turns Text on and sends one real verification
+request (`POST /admin/v1/ai/providers/:providerId/models/:model/agent-setup`, audited like the separate steps). Both
+kinds of agent work (quick replies, reasoning) route to Text models. Nothing is marked verified without that request.
+
+**Readiness** (`GET …/agents/:installId/readiness`): each check is computed from the rules a job runs under (platform
+and community switches, pause, kill switch, catalog version, the agent turned on, a verified routable model for each
+kind of work within the community's model allowance, required tools allowed and not external, the media engine,
+channels, and triggers in continuous mode). A check is `ok` only when a job would pass it; `missing` ones say who fixes
+them (`operator`: AI Control Center; `community`: this community's admins); `advice` ones don't block.
+
+**Test** (`POST …/agents/:installId/test`): a real short request through the normal path (quotas, routing, the
+agent's skill), as the admin. **Activity** (`GET …/activity`): counts from job records only (now, last 7 days,
+retries, typical duration, last success, last failure, next run); "no finished request" is shown as such, not as zero.
+Members see checks and counts; triggers (their requests, who they run as) only people with `ai.manage`.
+
+**Autonomy** (migration 051, `ai_agent_installs.autonomy`), enforced on the server; a higher level grants no tool,
+channel or permission:
+
+| Level | Who can start its work | Results | Triggers |
+|---|---|---|---|
+| manual | people only (Ask, @mention); the Agent Manager can't delegate to it and doesn't see it | reviewed | never run |
+| assisted (default for new and existing reviewed agents) | people and the Agent Manager | reviewed | never run |
+| guarded | people and the Agent Manager | internal results delivered without review; actions outside Meldiq always need approval | never run |
+| continuous | as guarded | as guarded | schedules, webhooks and handoffs run, inside its active hours |
+
+`executionMode` (review/auto) is now derived from autonomy, and the platform's approval floor can still force review.
+
+**Limits** per agent, only tighter than the skill's: requests per day, at the same time, longest run, tries, and
+active hours (a local window; triggers outside it wait for the next slot).
+
+**Triggers** (`ai_triggers`; `automation.ts`, `triggers.ts`; routes in `automationRoutes.ts`): durable, fired by the
+workforce worker (no browser or session needed), each run an ordinary job created as the person who set it up, so
+membership, invokers, channel post rights, quotas, approvals and the platform's switches are checked again each time.
+
+- **schedule**: every hour, day or week at a local time in a named time zone (DST handled). The slot is claimed with
+  a compare-and-set on `next_run_at`, and the job's idempotency key is the slot, so a slot starts at most one job even
+  across restarts; slots missed while the server was down fire once.
+- **webhook**: `POST /v1/ai/hooks/:triggerId` with `Authorization: Bearer <secret>` (shown once, stored as SHA-256,
+  compared in constant time; unknown and wrong look the same) and an optional `Idempotency-Key`; the same body within
+  ten minutes counts as the same delivery. The sent text is added to the request, which reaches the model as untrusted
+  material.
+- **after_agent**: when another agent's whole request completes, its summary and latest files are handed on (the next
+  job can read those files, never post them elsewhere). A handoff to itself or a direct loop is refused, and at most 3
+  handoffs run in a row.
+
+A trigger fires only for an active agent in continuous autonomy, inside active hours, when AI work isn't paused or
+switched off, when a verified model exists for its work, and while the person who set it up still holds "Manage AI
+agents". Waiting conditions are recorded without counting as failures; refusals count, and 5 in a row switch the
+trigger off. "Run now" runs its request immediately as the admin asking, in any autonomy. Uninstalling an agent
+removes its triggers and handoffs from it; past jobs and audit records stay.
+
+**Not possible, and shown as such**: triggers on new messages or channel files (messages and attachments are
+end-to-end encrypted; the server can't see them), and any action in an outside service (no connectors yet: social,
+ads, email, calendar, CRM, help desk, repositories, websites). The reference workflows therefore stand as follows:
+research and reporting on a schedule works (research agent + schedule + channel); video production works from a person's
+upload with a handoff to the next agent; social publishing and ad optimisation stop at drafts and reports a person acts
+on, because no social or advertising account can be connected.
+
 ## 6. Tools and approvals
 
 Every agent action goes through the tool gateway, which checks in order: the platform tool policy, the community's
@@ -238,18 +308,20 @@ real provider has been verified (no key on the development machine); `AI_WORKFOR
 ## 14. Deploying and rolling back
 
 1. Follow `DEPLOYMENT.md` (backup first; compare the VPS sources with this checkout, other sessions deploy too).
-2. Build the image (it now installs `ffmpeg` and `font-dejavu`); migrations 049 and 050 run at start (additive only).
+2. Build the image (it now installs `ffmpeg` and `font-dejavu`); migrations 049, 050 and 051 run at start (additive only).
 3. Deploy the console and Meldiq Web builds.
 4. In the console: providers and keys, models, capabilities, verify, routing; then switch AI and AI Workforce on and
    publish agents. Nothing changes for communities before that.
 
-Rollback: switch AI Workforce off (console or `ai-workforce-pause`), then roll back the image. Migrations 049 and 050 only add
+Rollback: switch AI Workforce off (console or `ai-workforce-pause`), then roll back the image. Migrations 049–051 only add
 tables and nullable columns; an older server ignores them. The blob store's `ai-files/` folder holds AI files; delete
 it only after deciding to drop that data.
 
 ## 15. Known limitations
 
-- Agents can't read channel history (§2). Android doesn't show agent posts or the AI agents area yet.
+- Agents can't read channel history (§2), so no trigger can react to messages or channel files (§5b).
+- Triggers and the configure steps are on the web; Android has the AI agents client but not these screens yet.
+- Skill options are chosen per request (Ask form), not stored per installation.
 - External actions (social, ads, email, calendar, CRM, help desk, repositories, websites, deployments) have no
   connectors: those tools refuse with `integration_not_configured`.
 - Speech: OpenAI only; Anthropic adapters do text and vision only. Gemini transcription timings are model estimates.

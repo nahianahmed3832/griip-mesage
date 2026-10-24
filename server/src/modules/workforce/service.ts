@@ -12,7 +12,9 @@ import { type AiFileRow, INPUT_MIMES, MAX_INPUT_BYTES, sniffMatches } from "./fi
 import { type JobRow, JobStore, MAX_DEPTH, MAX_JOBS_PER_ROOT } from "./jobs.js";
 import { mediaEngine } from "./media.js";
 import { readsMessages, type SharedMessage, sharedNote } from "./sharedMessages.js";
-import type { Activation, Install, Invokers } from "./store.js";
+import { type Activation, type Autonomy, type Install, type Invokers, modeOf } from "./store.js";
+import { ActiveHours } from "./triggers.js";
+import { modelsReady } from "./readiness.js";
 import { TOOL_INFO } from "./toolInfo.js";
 import type { AgentDef, ToolKey } from "./types.js";
 
@@ -47,6 +49,8 @@ export interface JobRequest {
   requestText: string | null;
   /** Messages of the channel the person's app decrypted and chose to share (AiJobBody.channelMessages). */
   channelMessages?: SharedMessage[] | null;
+  /** Started by a trigger (automation.ts), not a person in the moment: which, what it hands on, handoffs deep. */
+  origin?: { triggerId: string; sourceJobId: string | null; chain: number } | null;
 }
 
 export class Workforce {
@@ -180,6 +184,10 @@ export class Workforce {
       maxConcurrent: number | null;
       invokers: Invokers;
       upgradeTo: number;
+      autonomy: Autonomy;
+      maxRuntimeSec: number | null;
+      maxAttempts: number | null;
+      activeHours: ActiveHours | null;
     }>,
   ): Install {
     const cur = this.ownInstall(orgId, installId);
@@ -206,6 +214,23 @@ export class Workforce {
     if (p.language !== undefined && p.language !== null && !LANGUAGE.test(p.language)) throw new ApiError(400, "bad_request", "A language is a code like en, fr or pt-BR.");
     if (p.avatarColor !== undefined && p.avatarColor !== null && !/^#[0-9A-Fa-f]{6}$/.test(p.avatarColor)) throw new ApiError(400, "bad_request", "A colour is #RRGGBB.");
     if (p.invokers) for (const r of p.invokers.roles) if (!this.ctx.authz.roleGrant(r, orgId)) throw new ApiError(400, "bad_request", "A role isn't one of this community's.");
+    if (p.maxRuntimeSec != null && p.maxRuntimeSec > def.skill.limits.maxRuntimeSec) throw new ApiError(400, "bad_request", `${cur.displayName} runs for at most ${def.skill.limits.maxRuntimeSec} seconds.`);
+    if (p.maxAttempts != null && p.maxAttempts > def.skill.limits.maxAttempts) throw new ApiError(400, "bad_request", `${cur.displayName} tries at most ${def.skill.limits.maxAttempts} times.`);
+    const hours = p.activeHours ? ActiveHours.safeParse(p.activeHours) : null;
+    if (hours && !hours.success) throw new ApiError(400, "bad_request", `Active hours: ${hours.error.issues[0]?.message ?? "not valid"}`);
+    const activeHours = hours?.success ? hours.data : p.activeHours;
+    // Autonomy decides review; an older client's executionMode moves autonomy to the matching level.
+    const autonomy: Autonomy | undefined =
+      p.autonomy ??
+      (p.executionMode === undefined
+        ? undefined
+        : p.executionMode === "auto"
+          ? cur.autonomy === "continuous"
+            ? "continuous"
+            : "guarded"
+          : cur.autonomy === "manual"
+            ? "manual"
+            : "assisted");
     const next = this.d.store.updateInstall(installId, rev, {
       state: p.state,
       version,
@@ -217,10 +242,14 @@ export class Workforce {
       style: p.style,
       instructions: p.instructions?.slice(0, 2000),
       tools,
-      executionMode: p.executionMode,
+      executionMode: autonomy ? modeOf(autonomy) : undefined,
       maxJobsPerDay: p.maxJobsPerDay,
       maxConcurrent: p.maxConcurrent,
       invokers: p.invokers,
+      autonomy,
+      maxRuntimeSec: p.maxRuntimeSec,
+      maxAttempts: p.maxAttempts,
+      activeHours,
     });
     const changed = Object.keys(p).filter((k) => p[k as keyof typeof p] !== undefined);
     this.ctx.audit({ actorId: actor, orgId, action: "ai.agent_update", target: installId, detail: changed.join(",") });
@@ -251,6 +280,8 @@ export class Workforce {
     const cur = this.ownInstall(orgId, installId);
     for (const id of this.d.jobs.activeIdsOfInstall(installId)) this.d.jobs.requestCancel(id, "agent_removed");
     this.d.store.uninstall(cur.id);
+    // Its triggers go (and handoffs from it); past jobs and their records stay.
+    this.d.triggers.removeOfInstall(cur.id);
     this.ctx.audit({ actorId: actor, orgId, action: "ai.agent_uninstall", target: installId, detail: cur.agentId });
   }
 
@@ -394,10 +425,13 @@ export class Workforce {
         rootJobId: null,
         depth: 0,
         dependsOn: [],
-        maxAttempts: def.skill.limits.maxAttempts,
+        maxAttempts: Math.min(def.skill.limits.maxAttempts, install.maxAttempts ?? Infinity),
         idempotencyKey: r.idempotencyKey,
         deadlineAt: t + WAIT_MS,
         expiresAt: t + JOB_RETENTION_MS,
+        triggerId: r.origin?.triggerId ?? null,
+        sourceJobId: r.origin?.sourceJobId ?? null,
+        chain: r.origin?.chain ?? 0,
       });
       this.d.files.attach(r.fileIds, row.id, r.orgId, r.userId);
       if (shared) this.d.shared.add({ jobId: row.id, orgId: r.orgId, conversationId: r.conversationId!, sharedBy: r.userId, messages: shared });
@@ -448,6 +482,8 @@ export class Workforce {
     // No coordinator delegates to a coordinator (or itself): delegation can't loop.
     if (def.skill.tools.includes("agents.delegate") || target.id === parent.install_id) throw new ApiError(400, "bad_request", "An agent can't delegate to a coordinator.");
     if (parent.depth + 1 > MAX_DEPTH) throw new ApiError(400, "bad_request", "Delegation can't go deeper.");
+    if (target.autonomy === "manual") throw new ApiError(409, "agent_unavailable", `${target.displayName} only takes requests from people (manual autonomy).`);
+    if (!modelsReady(this.d, parent.org_id, def)) throw new ApiError(409, "agent_unavailable", `${target.displayName} has no verified model for its work yet.`);
     if (this.d.jobs.countInRoot(parent.root_job_id) >= MAX_JOBS_PER_ROOT) throw new ApiError(429, "quota_exceeded", "This request has started as many steps as it may.");
     requireInvoke(this.ctx, target, parent.requested_by);
     const missingTools = def.skill.requiredTools.filter((t) => !target.tools.includes(t));
@@ -475,7 +511,7 @@ export class Workforce {
         rootJobId: parent.root_job_id,
         depth: parent.depth + 1,
         dependsOn,
-        maxAttempts: def.skill.limits.maxAttempts,
+        maxAttempts: Math.min(def.skill.limits.maxAttempts, target.maxAttempts ?? Infinity),
         idempotencyKey: null,
         deadlineAt: t + WAIT_MS,
         expiresAt: t + JOB_RETENTION_MS,

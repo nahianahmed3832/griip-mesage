@@ -3,6 +3,7 @@ import type { DB } from "../../infrastructure/database/db.js";
 import { ApiError } from "../../shared/errors.js";
 import { newId } from "../../shared/utilities/util.js";
 import { TOOL_INFO } from "./toolInfo.js";
+import { ActiveHours } from "./triggers.js";
 import { AGENT_CATEGORIES, type AgentDef, TOOL_KEYS, type ToolKey, type ToolMode } from "./types.js";
 
 /**
@@ -54,6 +55,16 @@ export const DEFAULT_ENTITLEMENT: Entitlement = { enabled: true, agents: null, c
 export const Invokers = z.strictObject({ everyone: z.boolean(), roles: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,64}$/)).max(50) });
 export type Invokers = z.infer<typeof Invokers>;
 
+/**
+ * How much an agent does on its own (migration 051; docs/AI_WORKFORCE.md §5b), enforced by the server: manual takes
+ * only people's own requests; assisted also Agent Manager delegation, results reviewed; guarded delivers internal
+ * results without review; continuous also runs its triggers with nobody present.
+ */
+export const AUTONOMY = ["manual", "assisted", "guarded", "continuous"] as const;
+export type Autonomy = (typeof AUTONOMY)[number];
+/** The review setting each level implies (the platform's approval floor can still force review). */
+export const modeOf = (a: Autonomy): "review" | "auto" => (a === "guarded" || a === "continuous" ? "auto" : "review");
+
 export interface InstallRow {
   id: string;
   org_id: string;
@@ -75,6 +86,10 @@ export interface InstallRow {
   max_jobs_per_day: number | null;
   max_concurrent: number | null;
   invokers: string;
+  autonomy: Autonomy;
+  max_runtime_sec: number | null;
+  max_attempts: number | null;
+  active_hours: string | null;
   rev: number;
   installed_by: string;
   created_at: number;
@@ -100,6 +115,12 @@ export interface Install {
   maxJobsPerDay: number | null;
   maxConcurrent: number | null;
   invokers: Invokers;
+  autonomy: Autonomy;
+  /** Limits within the skill's own (null: the skill's). */
+  maxRuntimeSec: number | null;
+  maxAttempts: number | null;
+  /** When its triggers may start work (null: any time). */
+  activeHours: ActiveHours | null;
   rev: number;
   installedBy: string;
   createdAt: number;
@@ -125,6 +146,10 @@ export const toInstall = (r: InstallRow): Install => ({
   maxJobsPerDay: r.max_jobs_per_day,
   maxConcurrent: r.max_concurrent,
   invokers: Invokers.parse(JSON.parse(r.invokers)),
+  autonomy: r.autonomy,
+  maxRuntimeSec: r.max_runtime_sec,
+  maxAttempts: r.max_attempts,
+  activeHours: r.active_hours ? ActiveHours.parse(JSON.parse(r.active_hours)) : null,
   rev: r.rev,
   installedBy: r.installed_by,
   createdAt: r.created_at,
@@ -250,10 +275,29 @@ export class WorkforceStore {
     this.db
       .prepare(
         `INSERT INTO ai_agent_installs (id, org_id, agent_id, live_agent, version, state, display_name, avatar_color, description, role_title, style, instructions, tools,
-                                        execution_mode, max_jobs_per_day, invokers, rev, installed_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, 'balanced', '', ?, ?, ?, ?, 1, ?, ?, ?)`,
+                                        execution_mode, autonomy, max_jobs_per_day, invokers, rev, installed_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, 'balanced', '', ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
       )
-      .run(id, orgId, def.id, def.id, def.version, identity.displayName, identity.avatarColor, identity.description, identity.roleTitle, JSON.stringify(tools), def.defaults.executionMode, def.defaults.maxJobsPerDay, JSON.stringify({ everyone: true, roles: [] }), actor, t, t);
+      // A new agent starts reviewed (assisted) unless its catalog entry delivers on its own; never continuous.
+      .run(
+        id,
+        orgId,
+        def.id,
+        def.id,
+        def.version,
+        identity.displayName,
+        identity.avatarColor,
+        identity.description,
+        identity.roleTitle,
+        JSON.stringify(tools),
+        def.defaults.executionMode,
+        def.defaults.executionMode === "auto" ? "guarded" : "assisted",
+        def.defaults.maxJobsPerDay,
+        JSON.stringify({ everyone: true, roles: [] }),
+        actor,
+        t,
+        t,
+      );
     return this.install(id)!;
   }
 
@@ -276,6 +320,10 @@ export class WorkforceStore {
       maxJobsPerDay: number | null;
       maxConcurrent: number | null;
       invokers: Invokers;
+      autonomy: Autonomy;
+      maxRuntimeSec: number | null;
+      maxAttempts: number | null;
+      activeHours: ActiveHours | null;
     }>,
   ): Install {
     const cur = this.installRow(id);
@@ -289,7 +337,9 @@ export class WorkforceStore {
            role_title = COALESCE(?, role_title), avatar_color = CASE WHEN ? THEN ? ELSE avatar_color END, language = CASE WHEN ? THEN ? ELSE language END,
            style = COALESCE(?, style), instructions = COALESCE(?, instructions), tools = COALESCE(?, tools), execution_mode = COALESCE(?, execution_mode),
            max_jobs_per_day = CASE WHEN ? THEN ? ELSE max_jobs_per_day END, max_concurrent = CASE WHEN ? THEN ? ELSE max_concurrent END,
-           invokers = COALESCE(?, invokers), rev = rev + 1, updated_at = ?
+           invokers = COALESCE(?, invokers), autonomy = COALESCE(?, autonomy),
+           max_runtime_sec = CASE WHEN ? THEN ? ELSE max_runtime_sec END, max_attempts = CASE WHEN ? THEN ? ELSE max_attempts END,
+           active_hours = CASE WHEN ? THEN ? ELSE active_hours END, rev = rev + 1, updated_at = ?
          WHERE id = ?`,
       )
       .run(
@@ -311,6 +361,13 @@ export class WorkforceStore {
         v("maxConcurrent") ? 1 : 0,
         patch.maxConcurrent ?? null,
         patch.invokers ? JSON.stringify(patch.invokers) : null,
+        patch.autonomy ?? null,
+        v("maxRuntimeSec") ? 1 : 0,
+        patch.maxRuntimeSec ?? null,
+        v("maxAttempts") ? 1 : 0,
+        patch.maxAttempts ?? null,
+        v("activeHours") ? 1 : 0,
+        patch.activeHours ? JSON.stringify(patch.activeHours) : null,
         this.clock(),
         id,
       );

@@ -1,7 +1,7 @@
 {
   "agents": [
     {
-      "id": "agi_kfcQdg1RSIyriLNo1UaDvg",
+      "id": "agi_2BIJ3ZEH11Z-bcmfPwCT-Q",
       "agentId": "product_video_editor",
       "version": 1,
       "state": "active",
@@ -31,6 +31,10 @@
         "everyone": true,
         "roles": []
       },
+      "autonomy": "assisted",
+      "maxRuntimeSec": null,
+      "maxAttempts": null,
+      "activeHours": null,
       "rev": 2,
       "skill": {
         "id": "video.edit",
@@ -39,8 +43,8 @@
         "category": "media"
       },
       "badge": "AI",
-      "createdAt": 1792823466853,
-      "updatedAt": 1792823466861,
+      "createdAt": 1792832479131,
+      "updatedAt": 1792832479140,
       "activation": "mention",
       "canInvoke": true
     }

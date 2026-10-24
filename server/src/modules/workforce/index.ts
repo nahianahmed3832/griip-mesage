@@ -5,7 +5,9 @@ import { findAgent } from "./catalog/index.js";
 import { AiFiles } from "./files.js";
 import { JobStore } from "./jobs.js";
 import { AgentPosts } from "./posts.js";
+import { Automation } from "./automation.js";
 import { SharedMessageStore } from "./sharedMessages.js";
+import { TriggerStore } from "./triggers.js";
 import { WorkforceConsoleView } from "./consoleView.js";
 import { WorkforceRuntime } from "./runtime.js";
 import { Workforce } from "./service.js";
@@ -24,9 +26,12 @@ export class WorkforceModule implements Deps {
   readonly approvals: Approvals;
   readonly posts: AgentPosts;
   readonly shared: SharedMessageStore;
+  readonly triggers: TriggerStore;
   readonly service: Workforce;
   readonly tools: ToolGateway;
   readonly runtime: WorkforceRuntime;
+  /** Triggers: schedules, webhooks and handoffs (automation.ts). */
+  readonly automation: Automation;
   /** What the Platform Admin Console may use: metadata and operations, never content. */
   readonly console: WorkforceConsoleView;
 
@@ -41,9 +46,12 @@ export class WorkforceModule implements Deps {
     this.approvals = new Approvals(ctx.db, clock);
     this.posts = new AgentPosts(ctx.db, clock);
     this.shared = new SharedMessageStore(ctx.db, clock);
+    this.triggers = new TriggerStore(ctx.db, clock);
     this.service = new Workforce(this);
     this.tools = new ToolGateway(this, async (parent, installId, input, dependsOn, label) => this.service.createChild(parent, installId, input, dependsOn, label));
     this.runtime = new WorkforceRuntime(this, this.tools, (id, version) => findAgent(id, version));
+    this.automation = new Automation(this, this.service);
+    this.runtime.hooks = { onTick: () => void this.automation.fireDue(), onCompleted: (jobId) => this.automation.onCompleted(jobId) };
     this.console = new WorkforceConsoleView(this);
   }
 

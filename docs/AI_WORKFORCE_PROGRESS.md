@@ -45,6 +45,16 @@ Legend: [x] done and verified · [~] done, not fully verified · [ ] not done ·
 - [x] Sharing a channel's recent messages with a request, decrypted in the browser, with the notice and a channel post (migration 050; `AI_WORKFORCE.md` §2)
 - [ ] Android: agent posts and the AI agents area (not started)
 
+## Phase 7b: operational upgrade (2026-10-24, §5b)
+- [x] Console: the key's model list when approving, and one-step "Use for AI agents" (Text on + real verification)
+- [x] Readiness checks with who fixes what; Test (a real request); Activity (counts only)
+- [x] Autonomy levels manual / assisted / guarded / continuous, enforced; limits (runtime, tries, active hours)
+- [x] Durable triggers: schedules, signed webhooks, handoffs; dedupe, loop and chain limits; auto-off after 5 failures
+- [x] Agent Manager offers and delegates only to agents that can run (not manual, with a verified model)
+- [x] Web: Configure agent in 9 steps (identity, models, skills, channels, permissions, autonomy, triggers, limits, test)
+- [ ] Not deployed: migration 051, API, console and web builds wait for the owner's go-ahead
+- [ ] Android screens for configure and triggers
+
 ## Phase 8: verification
 - [x] Server tests: `ai_workforce_acceptance`, `ai_workforce_runtime`, `ai_workforce_skills`, `ai_gateway` (plus updated architecture, permissions, sweep, contracts suites)
 - [x] Acceptance scenario end to end (fake provider, real ffmpeg)

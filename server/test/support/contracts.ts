@@ -20,7 +20,7 @@ export const FIXTURES = path.resolve(here, "..", "..", "..", "shared", "contract
 
 const byRoute = new Map(ROUTE_CONTRACTS.map((c) => [`${c.method} ${c.url}`, c]));
 /** Fields whose values are credentials, even test ones: never written to fixtures. */
-const REDACT = new Set(["token", "accessToken", "refreshToken", "sessionToken", "codes", "recoveryCode"]);
+const REDACT = new Set(["token", "accessToken", "refreshToken", "sessionToken", "codes", "recoveryCode", "secret"]);
 /** Server-to-server routes speak their own protocol (docs/FEDERATION_PROTOCOL.md). */
 const PEER_ROUTE = /^\/(fed|core)\//;
 

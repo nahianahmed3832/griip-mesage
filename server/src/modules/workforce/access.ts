@@ -5,6 +5,7 @@ import type { Approvals } from "./approvals.js";
 import type { JobStore } from "./jobs.js";
 import type { AgentPosts } from "./posts.js";
 import type { SharedMessageStore } from "./sharedMessages.js";
+import type { TriggerStore } from "./triggers.js";
 import type { Install, TemplatePolicy, WorkforceStore } from "./store.js";
 import { TOOL_INFO } from "./toolInfo.js";
 import type { ToolKey } from "./types.js";
@@ -25,6 +26,7 @@ export interface Deps {
   approvals: Approvals;
   posts: AgentPosts;
   shared: SharedMessageStore;
+  triggers: TriggerStore;
   settings: WorkforceSettings;
   clock: () => number;
 }

@@ -11,6 +11,10 @@ import {
   AiInstallBody,
   AiInstallParams,
   AiInstallPatch,
+  AiActiveHours,
+  AiAutonomy,
+  AiHookBody,
+  AiHookParams,
   AiInvokers,
   AiJobBody,
   AiJobParams,
@@ -18,6 +22,10 @@ import {
   AiOrgParams,
   AiPostsQuery,
   AiReviseBody,
+  AiTriggerBody,
+  AiTriggerKind,
+  AiTriggerParams,
+  AiTriggerPatch,
   AiUploadQuery,
 } from "./aiWorkforce.js";
 import { zCount, zTime } from "./primitives.js";
@@ -59,6 +67,10 @@ export const AiInstallView = z.strictObject({
   maxJobsPerDay: int.nullable(),
   maxConcurrent: int.nullable(),
   invokers: AiInvokers,
+  autonomy: AiAutonomy,
+  maxRuntimeSec: int.nullable(),
+  maxAttempts: int.nullable(),
+  activeHours: AiActiveHours.nullable(),
   rev: int,
   skill: z.strictObject({ id: str, version: int, name: str, category: str }).nullable(),
   badge: z.literal("AI"),
@@ -181,6 +193,43 @@ export const AiPostView = z.strictObject({
   createdAt: zTime,
 });
 
+/** One check of an agent's readiness: "ok" only when a job would pass it; who can fix a missing one. */
+export const AiReadiness = z.strictObject({
+  ready: z.boolean(),
+  checks: z.array(z.strictObject({ key: str, label: str, status: z.enum(["ok", "missing", "advice"]), detail: str, fixBy: z.enum(["operator", "community"]).nullable() })),
+});
+
+export const AiTriggerView = z.strictObject({
+  id: str,
+  installId: str,
+  kind: AiTriggerKind,
+  enabled: z.boolean(),
+  label: str,
+  brief: str,
+  conversationId: nstr,
+  config: z.unknown(),
+  sourceInstallId: nstr,
+  runAs: str,
+  nextRunAt: ntime,
+  lastFiredAt: ntime,
+  lastJobId: nstr,
+  lastError: nstr,
+  failures: zCount,
+  rev: int,
+  createdAt: zTime,
+  updatedAt: zTime,
+});
+
+/** Counts from job records, never content. Null averageMs: nothing finished this week (not zero). */
+export const AiActivity = z.strictObject({
+  now: z.strictObject({ running: zCount, queued: zCount, waiting: zCount }),
+  week: z.strictObject({ completed: zCount, failed: zCount, cancelled: zCount, averageMs: zCount.nullable(), retries: zCount }),
+  lastSuccessAt: ntime,
+  lastFailure: z.strictObject({ at: zTime, code: nstr, message: str }).nullable(),
+  nextRunAt: ntime,
+  triggers: z.array(AiTriggerView),
+});
+
 const Agent = z.strictObject({ agent: AiInstallView });
 const Job = z.strictObject({ job: AiJobSummary });
 const Channels = z.strictObject({ channels: z.array(AiAssignment) });
@@ -289,6 +338,37 @@ export const aiWorkforceRoutes = [
     params: AiConversationParams,
     response: z.strictObject({ agents: z.array(AiInstallView.extend({ activation: Activation, canInvoke: z.boolean() })), permissions: AiPermissions }),
     errors: errs(),
+  }),
+  route({ method: "GET", url: "/v1/orgs/:orgId/ai/agents/:installId/readiness", tag, summary: "Whether an agent can work now: each check, what's missing and who can fix it.", auth: true, params: AiInstallParams, response: z.strictObject({ readiness: AiReadiness }), errors: errs() }),
+  route({ method: "GET", url: "/v1/orgs/:orgId/ai/agents/:installId/activity", tag, summary: "What an agent did lately and what's next (counts only).", auth: true, params: AiInstallParams, response: z.strictObject({ activity: AiActivity }), errors: errs() }),
+  route({ method: "POST", url: "/v1/orgs/:orgId/ai/agents/:installId/test", tag, summary: "Test an agent with a real short request through the normal path (ai.manage).", auth: true, params: AiInstallParams, response: z.strictObject({ job: AiJobDetail }), status: 202, errors: errs("agent_unavailable", "quota_exceeded", "ai_paused", "ai_disabled") }),
+  route({ method: "GET", url: "/v1/orgs/:orgId/ai/agents/:installId/triggers", tag, summary: "An agent's triggers (ai.manage).", auth: true, params: AiInstallParams, response: z.strictObject({ triggers: z.array(AiTriggerView) }), errors: errs() }),
+  route({
+    method: "POST",
+    url: "/v1/orgs/:orgId/ai/agents/:installId/triggers",
+    tag,
+    summary: "Add a trigger: a schedule, a webhook (its secret is returned once) or a handoff from another agent (ai.manage).",
+    auth: true,
+    params: AiInstallParams,
+    body: AiTriggerBody,
+    response: z.strictObject({ trigger: AiTriggerView, secret: nstr, hookUrl: nstr }),
+    status: 201,
+    errors: errs("agent_not_assigned", "conflict"),
+  }),
+  route({ method: "PATCH", url: "/v1/orgs/:orgId/ai/agents/:installId/triggers/:triggerId", tag, summary: "Change or switch a trigger on or off (ai.manage).", auth: true, params: AiTriggerParams, body: AiTriggerPatch, response: z.strictObject({ trigger: AiTriggerView }), errors: errs("agent_not_assigned", "conflict") }),
+  route({ method: "DELETE", url: "/v1/orgs/:orgId/ai/agents/:installId/triggers/:triggerId", tag, summary: "Remove a trigger (ai.manage).", auth: true, params: AiTriggerParams, response: z.strictObject({ removed: z.literal(true) }), errors: errs() }),
+  route({ method: "POST", url: "/v1/orgs/:orgId/ai/agents/:installId/triggers/:triggerId/run", tag, summary: "Run a trigger's request now, as the admin asking (ai.manage).", auth: true, params: AiTriggerParams, response: z.strictObject({ job: AiJobDetail }), status: 202, errors: errs("agent_unavailable", "quota_exceeded") }),
+  route({
+    method: "POST",
+    url: "/v1/ai/hooks/:triggerId",
+    tag,
+    summary: "An outside system starts a webhook trigger (Authorization: Bearer <its secret>; optional Idempotency-Key).",
+    auth: false,
+    params: AiHookParams,
+    body: AiHookBody,
+    response: z.strictObject({ jobId: nstr, started: z.boolean(), detail: str }),
+    status: 202,
+    errors: ["not_found"],
   }),
   route({ method: "GET", url: "/v1/conversations/:id/ai/posts", tag, summary: "What agents posted in a channel (not end-to-end encrypted).", auth: true, params: AiConversationParams, query: AiPostsQuery, response: z.strictObject({ posts: z.array(AiPostView) }), errors: errs() }),
 ];

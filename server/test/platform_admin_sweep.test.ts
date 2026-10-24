@@ -86,6 +86,7 @@ const GUARDED: Record<string, Permission> = {
   "GET /admin/v1/ai/models": "ai.view",
   "PUT /admin/v1/ai/providers/:providerId/models/:model/capabilities": "ai.manage",
   "POST /admin/v1/ai/providers/:providerId/models/:model/verify": "ai.manage",
+  "POST /admin/v1/ai/providers/:providerId/models/:model/agent-setup": "ai.manage",
   "PUT /admin/v1/ai/routing/:category": "ai.manage",
   "GET /admin/v1/ai/catalog": "ai.view",
   "PUT /admin/v1/ai/catalog/:agentId/:version": "ai.manage",

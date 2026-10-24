@@ -24,6 +24,12 @@ export const AiInstallBody = z.strictObject({
 
 export const AiInvokers = z.strictObject({ everyone: z.boolean(), roles: z.array(id).max(50) });
 
+/** How much an agent does on its own (docs/AI_WORKFORCE.md §5b); the server enforces each level. */
+export const AiAutonomy = z.enum(["manual", "assisted", "guarded", "continuous"]);
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+/** When an agent's triggers may start work, in a time zone (a window across midnight works too). */
+export const AiActiveHours = z.strictObject({ from: hhmm, to: hhmm, timeZone: z.string().min(1).max(64) });
+
 export const AiInstallPatch = z.strictObject({
   rev: z.number().int().nonnegative(),
   state: z.enum(["active", "disabled"]).optional(),
@@ -40,7 +46,39 @@ export const AiInstallPatch = z.strictObject({
   maxConcurrent: z.number().int().min(1).max(16).nullable().optional(),
   invokers: AiInvokers.optional(),
   upgradeTo: z.number().int().positive().optional(),
+  autonomy: AiAutonomy.optional(),
+  /** Within the skill's own limits (null: the skill's). */
+  maxRuntimeSec: z.number().int().min(10).max(3600).nullable().optional(),
+  maxAttempts: z.number().int().min(1).max(5).nullable().optional(),
+  activeHours: AiActiveHours.nullable().optional(),
 });
+
+export const AiTriggerParams = z.strictObject({ orgId: id, installId: id, triggerId: id });
+export const AiTriggerKind = z.enum(["schedule", "webhook", "after_agent"]);
+/**
+ * A trigger: work the agent starts with nobody present, as the person who sets it up. schedule config:
+ * {every: "hour"|"day"|"week", at: "HH:MM", weekday: 0–6, timeZone}; after_agent: sourceInstallId (another agent of
+ * the community whose finished requests are handed on); webhook: none (the secret is returned once).
+ */
+export const AiTriggerBody = z.strictObject({
+  kind: AiTriggerKind,
+  label: z.string().trim().min(1).max(80),
+  brief: z.string().trim().min(1).max(4000),
+  conversationId: id.nullable().default(null),
+  config: z.record(z.string(), z.unknown()).default({}),
+  sourceInstallId: id.nullable().default(null),
+});
+export const AiTriggerPatch = z.strictObject({
+  rev: z.number().int().positive(),
+  enabled: z.boolean().optional(),
+  label: z.string().trim().min(1).max(80).optional(),
+  brief: z.string().trim().min(1).max(4000).optional(),
+  conversationId: id.nullable().optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+});
+export const AiHookParams = z.strictObject({ triggerId: id });
+/** What an outside system POSTs to a webhook trigger: text added to the trigger's request as untrusted material. */
+export const AiHookBody = z.object({ text: z.string().max(8000).default("") });
 
 export const AiChannelBody = z.strictObject({ activation: z.enum(["mention", "command", "explicit"]).default("mention") });
 

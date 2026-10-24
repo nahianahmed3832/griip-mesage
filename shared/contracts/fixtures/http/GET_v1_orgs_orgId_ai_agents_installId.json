@@ -1,6 +1,6 @@
 {
   "agent": {
-    "id": "agi_QSNGSNNWQd-EImo9A2Wu2Q",
+    "id": "agi_gKAsk35_KdI95bYaRXUpNQ",
     "agentId": "general_assistant",
     "version": 1,
     "state": "active",
@@ -25,6 +25,10 @@
       "everyone": true,
       "roles": []
     },
+    "autonomy": "assisted",
+    "maxRuntimeSec": null,
+    "maxAttempts": null,
+    "activeHours": null,
     "rev": 1,
     "skill": {
       "id": "general.assist",
@@ -33,8 +37,8 @@
       "category": "productivity"
     },
     "badge": "AI",
-    "createdAt": 1792823466591,
-    "updatedAt": 1792823466591
+    "createdAt": 1792832478957,
+    "updatedAt": 1792832478957
   },
   "definition": {
     "id": "general_assistant",
@@ -123,11 +127,11 @@
   },
   "channels": [
     {
-      "installId": "agi_QSNGSNNWQd-EImo9A2Wu2Q",
-      "conversationId": "c_BNiWOq7hKDfQiOdCq5csFg",
+      "installId": "agi_gKAsk35_KdI95bYaRXUpNQ",
+      "conversationId": "c_AJG9qqJ1ZoDZ4Hq0Gb20MQ",
       "activation": "mention",
-      "addedBy": "u_7deo2XuI6z2nbziy4VanhA",
-      "addedAt": 1792823466595
+      "addedBy": "u_hpQrVR5Nt3XPiWvNfjpyUA",
+      "addedAt": 1792832478960
     }
   ],
   "tools": [

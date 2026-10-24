@@ -95,9 +95,14 @@ export class ToolGateway {
     return (this.d.ctx.db.prepare("SELECT id FROM ai_jobs WHERE root_job_id = ?").all(env.job.root_job_id) as { id: string }[]).map((r) => r.id);
   }
 
-  private fileOfTree(env: RunEnv, fileId: string): AiFileRow {
+  /**
+   * A file this run may use: one of its request's, or (when [handedOn]) a finished file of the job a handoff trigger
+   * passed on (automation.ts). Handed-on files can be read, never posted elsewhere.
+   */
+  private fileOfTree(env: RunEnv, fileId: string, handedOn = true): AiFileRow {
     const row = this.d.files.row(fileId);
-    if (!row || row.org_id !== env.job.org_id || !row.job_id || !this.treeJobIds(env).includes(row.job_id) || row.role === "avatar") {
+    const fromSource = handedOn && !!row?.job_id && row.job_id === env.job.source_job_id && row.role === "artifact";
+    if (!row || row.org_id !== env.job.org_id || !row.job_id || (!fromSource && !this.treeJobIds(env).includes(row.job_id)) || row.role === "avatar") {
       throw new ApiError(404, "not_found", "That file isn't part of this request.");
     }
     return row;
@@ -132,7 +137,7 @@ export class ToolGateway {
       case "channel.post": {
         const a = raw as ToolSignatures["channel.post"]["args"];
         if (!env.job.conversation_id) return { posted: false, postId: null };
-        for (const id of a.fileIds ?? []) this.fileOfTree(env, id);
+        for (const id of a.fileIds ?? []) this.fileOfTree(env, id, false);
         const post = d.posts.add({
           orgId: env.job.org_id,
           conversationId: env.job.conversation_id,
@@ -193,7 +198,7 @@ export class ToolGateway {
     if (!ARTIFACT_MIMES.has(m.mime)) throw new ApiError(400, "bad_request", `Agents can't make ${m.mime} files.`);
     if (size === 0 || size > MAX_ARTIFACT_BYTES) throw new ApiError(413, "too_large", "A deliverable is 1 byte to 200 MB.");
     if (env.written.length >= env.agent.skill.limits.maxOutputFiles) throw new ApiError(400, "bad_request", "This job made as many files as it may.");
-    if (m.supersedes) this.fileOfTree(env, m.supersedes);
+    if (m.supersedes) this.fileOfTree(env, m.supersedes, false);
     let reservation: string | null = null;
     if (d.ctx.quotas.hasPolicies("ai.file_bytes")) {
       // Agents' files count for the community and the platform (a person's own uploads count for them).
@@ -231,7 +236,7 @@ export class ToolGateway {
     // A final export in review mode needs the person's approval of exactly the preview they saw.
     if (a.quality === "final" && env.mode === "review") {
       if (!a.previewFileId) throw new ApiError(409, "approval_required", "A final export needs an approved preview.");
-      const preview = this.fileOfTree(env, a.previewFileId);
+      const preview = this.fileOfTree(env, a.previewFileId, false);
       d.approvals.require(a.approvalId, { jobId: env.job.id, action: "media.render", artifactId: preview.id, artifactSha: preview.sha256 });
       if (preview.approval_state === "superseded") throw new ApiError(409, "approval_stale", "The approved preview was replaced by a newer one.");
       // The person who approved must still be allowed to approve.

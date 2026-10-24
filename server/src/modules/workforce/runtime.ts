@@ -12,6 +12,7 @@ import type { JobRow } from "./jobs.js";
 import type { RunEnv, ToolGateway } from "./tools.js";
 import { extractJson } from "./prompting.js";
 import type { AgentDef, ChatInput, SkillContext, SkillModels, SkillOutcome } from "./types.js";
+import { modelsReady } from "./readiness.js";
 
 /**
  * The job worker (docs/AI_WORKFORCE.md §5): claims due jobs within the platform's concurrency and each community's,
@@ -30,6 +31,8 @@ export class WorkforceRuntime {
   private timer: NodeJS.Timeout | null = null;
   private ticking = false;
   private stats = { lastTickAt: null as number | null, claimed: 0, completed: 0, failed: 0, recovered: 0, lastError: null as string | null };
+  /** Set by the module (automation.ts): schedules due on each tick, and handoffs when a job completes. */
+  hooks: { onTick?: () => void; onCompleted?: (jobId: string) => void } = {};
 
   constructor(
     private readonly d: Deps,
@@ -68,6 +71,11 @@ export class WorkforceRuntime {
       }
       const s = this.d.settings;
       if (!s.enabled() || s.paused() || !this.d.ctx.ai.enabled) return;
+      try {
+        this.hooks.onTick?.();
+      } catch (e) {
+        this.stats.lastError = (e as Error).message.slice(0, 200);
+      }
       const free = s.maxConcurrency() - this.running.size;
       if (free <= 0) return;
       const counts = this.d.jobs.runningCounts();
@@ -142,7 +150,7 @@ export class WorkforceRuntime {
       if (!h.held) stop("lost");
       else if (h.cancel) stop("cancel");
     }, HEARTBEAT_MS);
-    const limitSec = Math.min(def.skill.limits.maxRuntimeSec, template.policy.maxRuntimeSec ?? Number.POSITIVE_INFINITY);
+    const limitSec = Math.min(def.skill.limits.maxRuntimeSec, template.policy.maxRuntimeSec ?? Number.POSITIVE_INFINITY, install.maxRuntimeSec ?? Number.POSITIVE_INFINITY);
     const deadline = setTimeout(() => stop("timeout"), limitSec * 1000);
     const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "meldiq-job-"));
     const env: RunEnv = { job: row, install, agent: def, mode: effectiveMode(install, template.policy, d.settings.approvalFloor()), signal: ctl.signal, tempDir, materialized: new Map(), written: [] };
@@ -221,8 +229,14 @@ export class WorkforceRuntime {
           return this.notify(row.id);
         }
       }
-      if (d.jobs.complete(row.id, w, out.data, outcome.summary)) this.stats.completed++;
-      else this.cancelIfAsked(row.id);
+      if (d.jobs.complete(row.id, w, out.data, outcome.summary)) {
+        this.stats.completed++;
+        try {
+          this.hooks.onCompleted?.(row.id);
+        } catch (e) {
+          this.stats.lastError = (e as Error).message.slice(0, 200);
+        }
+      } else this.cancelIfAsked(row.id);
       return this.notify(row.id);
     }
     if (outcome.kind === "await_approval") {
@@ -324,7 +338,9 @@ export class WorkforceRuntime {
     };
     const root = d.jobs.get(row.root_job_id) ?? row;
     const inputJobs = [...new Set([row.id, root.id, ...(row.parent_job_id ? [row.parent_job_id] : [])])];
-    const inputs = d.files.ofJobs(inputJobs, "input").map((f) => ({ id: f.id, name: f.name, mime: f.mime, size: f.size, sha256: f.sha256 }));
+    // A handoff (automation.ts) also passes on the finished files of the job that triggered it: its latest versions.
+    const handedOn = row.source_job_id ? d.files.ofJobs([row.source_job_id], "artifact").filter((f) => f.approval_state !== "superseded" && f.approval_state !== "rejected") : [];
+    const inputs = [...d.files.ofJobs(inputJobs, "input"), ...handedOn].map((f) => ({ id: f.id, name: f.name, mime: f.mime, size: f.size, sha256: f.sha256 }));
     const checkpoint = row.checkpoint ? (JSON.parse(row.checkpoint) as unknown) : null;
     const revisionNote = checkpoint && typeof checkpoint === "object" && typeof (checkpoint as { revisionNote?: unknown }).revisionNote === "string" ? (checkpoint as { revisionNote: string }).revisionNote : null;
     return {
@@ -366,6 +382,8 @@ export class WorkforceRuntime {
           const def = findAgent(i.agentId, i.version);
           if (!def || i.state !== "active" || i.id === install.id || def.skill.tools.includes("agents.delegate")) return [];
           if (invokeRefusal(d.ctx, i, row.requested_by) || def.skill.requiredTools.some((t) => !i.tools.includes(t))) return [];
+          // Only agents that can run now and take delegated work: not manual, and with a verified model for their work.
+          if (i.autonomy === "manual" || !modelsReady(d, row.org_id, def)) return [];
           const st = d.store.templateState(def.id, def.version).status;
           if (st !== "published" && st !== "retired") return [];
           return [{ installId: i.id, agentId: def.id, name: i.displayName, roleTitle: i.roleTitle, description: i.description, capabilities: [...def.capabilities], inputHint: def.inputHint }];
