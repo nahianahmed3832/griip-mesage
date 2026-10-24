@@ -7,7 +7,7 @@
 | VPS | Hostinger VM 1245833, `srv1245833.hstgr.cloud`, **72.60.107.88** (Ubuntu 24.04, 2 vCPU, 8 GB) |
 | Compose project | **`griip-internal-messaging`** |
 | Directory | **`/opt/griip-internal-messaging`** (root, 0750; `.env` 0600) |
-| Services | `api` (`griip-internal-messaging-api:0.36.0` since 2026-10-24 09:30 UTC, built on the VPS; `0.35.0-rollback`, `0.34.0-rollback` and older `-rollback` tags kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
+| Services | `api` (`griip-internal-messaging-api:0.37.0` since 2026-10-24 10:05 UTC, built on the VPS; `0.36.0-rollback`, `0.35.0-rollback` and older `-rollback` tags kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
 | Volume / network | `griip-internal-messaging_api-data`, `griip-internal-messaging_default` |
 | Public URLs | **`https://msg.meldiq.app`** (API + WebSocket) and **`wss://rtc.meldiq.app`** (LiveKit signalling) since 2026-10-22; the former `msg.griipbuddy.cloud` and `rtc.griipbuddy.cloud` still serve the same backends for apps installed earlier |
 | TLS | host nginx: `meldiq-msg.conf` (certificate `meldiq-msg`, msg and rtc.meldiq.app) and `griip-message.conf` (certificate `griip-message`, the former names); both renew automatically (certbot, webroot `/var/www/griip-message-acme`). `meldiq-admin.conf` (certificate `admin.meldiq.app`, certbot `--nginx`, renews automatically) since 2026-10-23 |
@@ -129,6 +129,33 @@ Passkeys failed in the app installed from Google Play: Play signs it with its ap
 | Checks after | `/healthz` 0.35.0 on msg.meldiq.app and msg.griipbuddy.cloud; `assetlinks.json` lists `com.meldiq.android` with the debug and Play keys; passkey options answer. Google's Digital Asset Links check still said "not linked" right after (its answer is cached up to an hour) |
 
 Rollback: copy the backup's `.env` back and recreate `api` the same way.
+
+### API 0.37.0 and console 0.5.0 (2026-10-24, 10:05 UTC, owner's go-ahead)
+
+Capability routes (`AI_WORKFORCE.md` §4; internal-beta `a9633d8`). Audit of production first: the OpenAI provider
+had a key but **0 approved models**, so all seven routes were empty; the two failed jobs (Agent Manager,
+`ai_not_configured`) stopped at routing before any provider request, so 0 model requests and $0 were correct. This
+release: one-step **Set up** per route (approve, capability on, real verification, activate only if it passed), output-type
+checks with a next step on failure, six route states, verification cleared when a key changes, requests no route can
+serve refused up front (`503 ai_not_configured`), failed-job diagnosis, failed-before-model jobs and verification requests
+counted apart. No migration. Web unchanged (0.5.0-beta-ac31d7d; its browser tests updated in `734e098`).
+
+| Step | Result |
+|---|---|
+| Checks before | server **983 passed** / 11 skipped (new `ai_route_setup.test.ts`, 11 tests), `tsc` and build clean; console typecheck, lint, format, 17 unit tests, 5 browser tests; web 8 agent browser tests against this server |
+| Pre-flight | running 0.36.0; VPS `server/` byte-equal to `90782e9`; `.env` unchanged since 08:37 UTC |
+| Backup | `backups/pre-0.37.0-20261024T100256Z`: integrity ok, schema 51, 39 users, `.env` + `compose.yaml` copies; image tagged `0.36.0-rollback`; sources kept as `server.pre-0.37.0` |
+| Build | `docker build -t griip-internal-messaging-api:0.37.0 server`, detached on the VPS (`build-0.37.0.log`, exit 0) |
+| Rehearsal | snapshot copy, `--network none`, env without FCM lines: schema 51 both sides, integrity ok, 39 users, AI on; removed after |
+| Switch | `compose.yaml` image 0.37.0, `validate-env.sh` 0 errors, `config -q`, `up -d --no-deps --no-build api`: healthy, 0 restarts, no errors in the log |
+| Console | release `0.5.0-20261024T100424Z` (sha256 checked, secret scan clean), `nginx -t` ok; `verify.sh` all passed; serves the new bundle |
+| Checks after | `/healthz` 0.37.0 on msg.meldiq.app and msg.griipbuddy.cloud; Meldiq Web `verify.sh` all passed (API 0.37.0 through the site); the set-up route 403 without a session on the console host, 404 on the app host (like every admin route); `platform-audit-verify` ok; backup `post-0.37.0-20261024T100702Z` verified |
+
+Not done by the release: no route was set up with a real model (that needs the operator's console session and their
+provider account); routes stay "Not configured" until the owner uses Set up on each.
+
+Rollback: `compose.yaml` image back to `0.36.0-rollback`, `up -d --no-deps --no-build api` (no schema change). Console:
+`bash /root/meldiq-admin-0.5.0-20261024T100424Z/rollback.sh`. Web needs nothing.
 
 ### API 0.36.0, console 0.4.0 and Meldiq Web 0.5.0-beta-ac31d7d (2026-10-24, 09:30 UTC, owner's go-ahead)
 
