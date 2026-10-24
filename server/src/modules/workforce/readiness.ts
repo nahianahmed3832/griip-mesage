@@ -36,6 +36,16 @@ export function routedModel(d: Deps, orgId: string, category: RoutingCategory): 
   return first ? { providerId: first.candidate.providerId, model: first.candidate.model } : null;
 }
 
+/**
+ * The kinds of work [def] can't do without that no verified model serves for this community, ignoring a provider
+ * that's only failing for the moment (its circuit closes again by itself). Empty: requests may be admitted.
+ */
+export function unroutedCategories(d: Deps, orgId: string, def: AgentDef): RoutingCategory[] {
+  const ent = d.store.entitlement(orgId);
+  const allowed = ent.models ? new Set(ent.models) : null;
+  return def.skill.requiredCategories.filter((c) => d.ctx.ai.routing.route(c, allowed, { ignoreCircuit: true }).ordered.length === 0);
+}
+
 /** Whether every kind of work [def] can't do without has a verified model now (the Agent Manager's check). */
 export function modelsReady(d: Deps, orgId: string, def: AgentDef): boolean {
   return d.ctx.ai.enabled && def.skill.requiredCategories.every((c) => routedModel(d, orgId, c) !== null);

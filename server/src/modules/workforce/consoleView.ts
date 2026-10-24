@@ -1,8 +1,12 @@
 import type { DB } from "../../infrastructure/database/db.js";
+import { ROUTING_CATEGORIES, type RoutingCategory } from "../ai/index.js";
 import type { JobRow, JobState } from "./jobs.js";
 import type { Entitlement, TemplatePolicy, TemplateStatus } from "./store.js";
 import type { ToolKey, ToolMode } from "./types.js";
 import type { WorkforceModule } from "./index.js";
+
+/** Steps of failed requests checked for model use per overview (well under SQLite's bound-parameter limit). */
+const MAX_FAILED_STEPS = 5000;
 
 /**
  * What the Platform Admin Console reads about AI Workforce (modules/platformAdmin): counts, states, durations, sizes
@@ -29,6 +33,16 @@ export function jobStats(w: WorkforceModule, from: number) {
   const failures = db.prepare("SELECT error_code code, COUNT(*) count FROM ai_jobs WHERE state = 'failed' AND created_at >= ? AND error_code IS NOT NULL GROUP BY error_code ORDER BY count DESC LIMIT 20").all(from) as { code: string; count: number }[];
   const queue = db.prepare("SELECT state, COUNT(*) count FROM ai_jobs WHERE state IN ('queued','planning','running','awaiting_input','awaiting_approval') GROUP BY state").all() as { state: JobState; count: number }[];
   const oldest = db.prepare("SELECT MIN(created_at) t FROM ai_jobs WHERE state = 'queued'").get() as { t: number | null };
+  // Failed requests whose whole tree never sent a model request (refused by routing, quotas or checks before that).
+  const failedTrees = db
+    .prepare(
+      `SELECT j.id root, s.id step FROM ai_jobs j JOIN ai_jobs s ON s.root_job_id = j.id
+        WHERE j.state = 'failed' AND j.parent_job_id IS NULL AND j.created_at >= ? ORDER BY j.created_at DESC LIMIT ?`,
+    )
+    .all(from, MAX_FAILED_STEPS) as { root: string; step: string }[];
+  const used = w.ctx.ai.jobUsage(failedTrees.map((r) => r.step));
+  const reached = new Set(failedTrees.filter((r) => used.has(r.step)).map((r) => r.root));
+  const beforeModel = { n: new Set(failedTrees.map((r) => r.root).filter((root) => !reached.has(root))).size };
   return {
     created: n("created"),
     completed: n("completed"),
@@ -40,6 +54,7 @@ export function jobStats(w: WorkforceModule, from: number) {
     byAgent: byAgent.map((r) => ({ ...r, completed: r.completed ?? 0, failed: r.failed ?? 0 })),
     byOrg: byOrg.map((r) => ({ ...r, completed: r.completed ?? 0, failed: r.failed ?? 0 })),
     failures,
+    failedBeforeModel: beforeModel.n,
     queue,
     oldestQueuedAt: oldest.t,
   };
@@ -244,6 +259,14 @@ export class WorkforceConsoleView {
 
   steps(jobId: string): JobMeta[] {
     return this.w.jobs.children(jobId).map((j) => jobMeta(this.w, j));
+  }
+
+  /** For a job that failed for want of a model, the kind of work no model served (read from its error); else null. */
+  failedRoute(jobId: string): RoutingCategory | null {
+    const j = this.w.jobs.get(jobId);
+    if (!j || j.error_code !== "ai_not_configured" || !j.error_detail) return null;
+    const detail = j.error_detail.toLowerCase();
+    return (Object.keys(ROUTING_CATEGORIES) as RoutingCategory[]).find((c) => detail.includes(ROUTING_CATEGORIES[c].label.toLowerCase())) ?? null;
   }
 
   /** Kinds and numbers only: events never hold content (docs/AI_WORKFORCE.md §8). */

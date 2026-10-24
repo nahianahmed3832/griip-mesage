@@ -4,4 +4,5 @@ export { type Fetch, MODEL_ID, PROVIDER_KINDS, PROVIDER_LABELS, type ProviderKin
 export { SecretBox, secretsKey } from "./secrets.js";
 export { ADAPTER_SUPPORT, type Capability, CAPABILITIES, CAPABILITY_LABELS, type ChatImage, type ChatMessage, type TranscriptSegment } from "./capabilities.js";
 export { type CallContext, GATEWAY_FEATURES, type Invocation, type InvocationResult, type InvokeOutcome, LIMITS as GATEWAY_LIMITS } from "./gateway.js";
-export { type Candidate, isRoutingCategory, type ModelRef, refKey, ROUTING_CATEGORIES, type RoutePolicy, type RoutingCategory } from "./routing.js";
+export { type Candidate, isRoutingCategory, type ModelRef, refKey, ROUTE_STATUSES, type RouteStatus, ROUTING_CATEGORIES, type RoutePolicy, type RoutingCategory } from "./routing.js";
+export { isMp3, sniffImage } from "./verification.js";

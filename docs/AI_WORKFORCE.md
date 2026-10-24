@@ -84,6 +84,28 @@ other compatible model ordered by the category's preference (cost from the opera
 p50, or the operator's rank); excluding disabled providers and models, models the community isn't entitled to, and
 providers whose circuit is open (3 consecutive failures in 5 minutes). Every decision is stored with the usage row.
 
+**Routes (0.37.0).** Each of the seven categories (reasoning and long documents, quick replies and classification, image
+understanding, speech to text, text to speech, image generation, embeddings) is set up and verified on its own: a
+verified text model never makes the other six ready. The console's **Set up** on a route
+(`POST /admin/v1/ai/routing/:category/setup`, `ai.manage`) approves the chosen model if needed (unpriced), turns the
+route's capability on, sends one real verification request, and makes the model the route's default only if that
+passed (the previous default becomes its first fallback); a failure leaves the route as it was and says what to do next
+(key refused, model not available to the key, out of credit, wrong kind of output…). A verification passes only when
+the answer is the kind of output Meldiq consumes: non-empty text; for vision, the test image's colour named; a
+well-formed transcript; MP3 bytes for speech; PNG/JPEG/WebP/GIF bytes for images (also checked on every real image and
+speech request); one finite vector per input for embeddings. Text and vision verifications allow 512 output tokens,
+because reasoning models spend part of the budget before answering. A new or removed provider key clears every
+verification of that provider's models.
+
+Each route reports one state: `ready`, `not_configured`, `untested`, `failed`, `unavailable` (verified, but its provider's
+circuit is open) or `disabled` (the kill switch, a cost ceiling, or a default switched off), with its default model's last
+verification and the last agent request it served. A request whose agent needs a category no verified model serves is
+refused at once with `503 ai_not_configured` naming the category (a provider that's only failing for the moment doesn't
+refuse it: its circuit closes by itself); nothing is queued that could only fail. The console's job view says where a
+failed job stopped (before or after model requests), why, and how to recover it: the requester (or a community admin)
+retries it from the request once its route works, with the failure kept in its events. The overview counts failed jobs
+that never reached a model, and the console's verification requests apart from agents' usage.
+
 ## 5. Jobs
 
 States: `queued`, `planning`, `running`, `awaiting_input`, `awaiting_approval`, `completed`, `failed`, `cancelled`.
@@ -325,6 +347,8 @@ it only after deciding to drop that data.
 - External actions (social, ads, email, calendar, CRM, help desk, repositories, websites, deployments) have no
   connectors: those tools refuse with `integration_not_configured`.
 - Speech: OpenAI only; Anthropic adapters do text and vision only. Gemini transcription timings are model estimates.
+- Embeddings can be routed and verified, but no feature uses vectors yet: the Customer Support skill's knowledge-base
+  retrieval ranks passages by keywords, and there is no vector store. Semantic search is not operational.
 - No PDF reading (no text extraction on the server).
 - The worker runs in the API process; one server process (SQLite) is the supported setup.
 - Local ffmpeg (Homebrew 9.0.2) lacks `subtitles` and `drawtext`: captions become a subtitle track and the title is

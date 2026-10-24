@@ -16,6 +16,7 @@ import {
 } from "./capabilities.js";
 import { type Fetch, ProviderError, type ProviderKind } from "./providers.js";
 import { type AiRouting, type Candidate, ROUTING_CATEGORIES, type RoutingCategory } from "./routing.js";
+import { nextStepFor, type Proof, proofOf, VERIFY_REQUESTS } from "./verification.js";
 
 /**
  * The capability gateway (docs/AI_WORKFORCE.md §4): what AI Workforce jobs call. Order, like AiService.complete:
@@ -295,67 +296,26 @@ export class AiGateway {
 
   /**
    * A capability's verification: one real, minimal request straight to the model (no routing; the capability needn't
-   * be verified yet). Counted as a usage row with feature "console.verify". Returns what can be shown: never content.
+   * be verified yet), whose answer must be the right kind of output (verification.ts). Counted as a usage row with
+   * feature "console.verify". Returns what can be shown, never content, and on failure what to do next.
    */
-  async verify(providerId: string, model: string, capability: Capability): Promise<{ ok: boolean; detail: string; latencyMs: number }> {
+  async verify(providerId: string, model: string, capability: Capability): Promise<{ ok: boolean; detail: string; latencyMs: number; nextStep: string | null }> {
     const p = this.access.provider(providerId);
     if (!p) throw new ApiError(404, "not_found", "No such provider.");
     const inv = VERIFY_REQUESTS[capability];
     const ctx: CallContext = { feature: "console.verify", userId: null, orgId: null };
     const t0 = this.opts.clock();
-    let ok = false;
-    let detail: string;
+    let proof: Proof;
     try {
       const r = await this.send({ providerId, kind: p.kind, model }, inv, p.timeoutMs);
-      const proof = proofOf(r);
-      ok = proof !== null;
-      detail = proof ?? "the answer was empty";
-      this.record(ctx, { providerId, model, capability, route: "verify", outcome: ok ? "ok" : "error", status: 200, tokensSource: "none", latencyMs: this.opts.clock() - t0, errorKind: ok ? null : "empty" });
+      proof = proofOf(capability, r);
+      this.record(ctx, { providerId, model, capability, route: "verify", outcome: proof.ok ? "ok" : "error", status: 200, tokensSource: "none", latencyMs: this.opts.clock() - t0, errorKind: proof.ok ? null : "wrong_output" });
     } catch (e) {
       const pe = e instanceof ProviderError ? e : new ProviderError("unexpected", null);
-      detail = `${pe.kind}${pe.status ? ` (HTTP ${pe.status})` : ""}`;
+      proof = { ok: false, detail: `${pe.kind}${pe.status ? ` (HTTP ${pe.status})` : ""}`, nextStep: nextStepFor(pe) };
       this.record(ctx, { providerId, model, capability, route: "verify", outcome: pe.kind === "timeout" ? "timeout" : "error", status: pe.status, tokensSource: "none", latencyMs: this.opts.clock() - t0, errorKind: pe.kind });
     }
-    this.routing.recordVerification(providerId, model, capability, ok, detail);
-    return { ok, detail, latencyMs: this.opts.clock() - t0 };
+    this.routing.recordVerification(providerId, model, capability, proof.ok, proof.detail);
+    return { ok: proof.ok, detail: proof.detail, latencyMs: this.opts.clock() - t0, nextStep: proof.ok ? null : proof.nextStep };
   }
 }
-
-/** What a verification answer proves, in words that hold no content; null when it proves nothing. */
-function proofOf(r: InvocationResult): string | null {
-  if ("chat" in r) return r.chat.text.trim().length > 0 ? `answered (${r.chat.outputTokens ?? "?"} tokens)` : null;
-  if ("transcript" in r) return `transcribed (timings: ${r.transcript.timing})`;
-  if ("embeddings" in r) return (r.embeddings.vectors[0]?.length ?? 0) > 0 ? `${r.embeddings.vectors[0]!.length} dimensions` : null;
-  return r.binary.bytes.length > 0 ? `${r.binary.mime}, ${r.binary.bytes.length} bytes` : null;
-}
-
-/** A 1×1 red PNG. */
-const RED_PIXEL = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
-
-/** Half a second of 16 kHz mono silence as WAV. */
-function silentWav(): Buffer {
-  const samples = 8000;
-  const b = Buffer.alloc(44 + samples * 2);
-  b.write("RIFF", 0, "latin1");
-  b.writeUInt32LE(36 + samples * 2, 4);
-  b.write("WAVEfmt ", 8, "latin1");
-  b.writeUInt32LE(16, 16);
-  b.writeUInt16LE(1, 20);
-  b.writeUInt16LE(1, 22);
-  b.writeUInt32LE(16000, 24);
-  b.writeUInt32LE(32000, 28);
-  b.writeUInt16LE(2, 32);
-  b.writeUInt16LE(16, 34);
-  b.write("data", 36, "latin1");
-  b.writeUInt32LE(samples * 2, 40);
-  return b;
-}
-
-const VERIFY_REQUESTS: Record<Capability, Invocation> = {
-  text: { capability: "text", category: "fast", chat: { messages: [{ role: "user", text: "Reply with the single word: pong" }], maxOutputTokens: 16 } },
-  vision: { capability: "vision", category: "vision", chat: { messages: [{ role: "user", text: "What colour is this image? One word.", images: [{ mime: "image/png", base64: RED_PIXEL }] }], maxOutputTokens: 16 } },
-  transcription: { capability: "transcription", category: "transcription", audio: { bytes: silentWav(), mime: "audio/wav", name: "silence.wav", seconds: 0.5 } },
-  speech: { capability: "speech", category: "speech", text: "OK." },
-  image_generation: { capability: "image_generation", category: "image_generation", prompt: "A plain red square." },
-  embeddings: { capability: "embeddings", category: "embeddings", texts: ["pong"] },
-};

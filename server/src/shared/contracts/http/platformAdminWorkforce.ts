@@ -109,6 +109,8 @@ export const AdminWorkforceOverview = z.strictObject({
       }),
     ),
     failures: z.array(z.strictObject({ code: z.string(), count: zCount })),
+    /** Failed requests that never sent a model request (refused before reaching a provider): they cost nothing. */
+    failedBeforeModel: zCount,
   }),
   usage: z.strictObject({
     requests: zCount,
@@ -143,6 +145,8 @@ export const AdminWorkforceOverview = z.strictObject({
       }),
     ),
     mediaSeconds: zCount,
+    /** The console's own verification requests (real provider calls, not agents' usage). */
+    verifications: z.strictObject({ requests: zCount, failed: zCount }),
   }),
   storage: z.strictObject({
     files: zCount,
@@ -210,6 +214,27 @@ export const AdminAiModels = z.strictObject({
       prefer: z.enum(["quality", "cost", "latency"]),
       maxPriceMicro: zMaybeNum,
       updatedAt: zTime.nullable(),
+      /** ready · not_configured · untested · failed · unavailable (provider failing now) · disabled (switch or policy). */
+      status: z.enum(["ready", "not_configured", "untested", "failed", "unavailable", "disabled"]),
+      statusDetail: z.string(),
+      /** The default model's last verification for this route's capability (null: no default, or it isn't on). */
+      verification: z
+        .strictObject({
+          at: zTime.nullable(),
+          ok: z.boolean().nullable(),
+          detail: z.string().nullable(),
+        })
+        .nullable(),
+      /** The latest agent request this route served. */
+      lastExecution: z
+        .strictObject({
+          at: zTime,
+          providerId: z.string(),
+          model: z.string(),
+          outcome: z.string(),
+          errorKind: z.string().nullable(),
+        })
+        .nullable(),
       /** What `auto` would try right now, in order, and why the others are left out. */
       route: z.array(
         z.strictObject({
@@ -223,6 +248,7 @@ export const AdminAiModels = z.strictObject({
           providerId: z.string(),
           model: z.string(),
           why: z.string(),
+          code: z.string(),
         }),
       ),
     }),
@@ -262,10 +288,23 @@ export const AdminVerified = z.strictObject({
   ok: z.boolean(),
   detail: z.string(),
   latencyMs: zCount,
+  /** On failure, what to do next (invalid key, no access to the model, out of credit, wrong kind of output…). */
+  nextStep: z.string().nullable(),
 });
 /** Setting an approved model up for agents in one step: Text on, then the same real verification request. */
 export const AdminAgentSetupBody = z.strictObject({ reason: zReason });
 export const AdminRoutingParams = z.strictObject({ category: zCategory });
+/** One-step route set-up: approve the model if needed, turn the capability on, verify, activate only if verified. */
+export const AdminRouteSetupBody = z.strictObject({
+  providerId: zRef,
+  model: zAiModel,
+  reason: zReason,
+});
+export const AdminRouteSetup = AdminVerified.extend({
+  /** Whether it became the route's default (only after its verification passed). */
+  activated: z.boolean(),
+  models: AdminAiModels,
+});
 export const AdminRoutingBody = z.strictObject({
   providerId: zRef.nullable(),
   model: zAiModel.nullable(),
@@ -462,6 +501,16 @@ export const AdminJobs = z.strictObject({
 export const AdminJobParams = z.strictObject({ jobId: zRef });
 export const AdminJobDetail = z.strictObject({
   job: zAdminJob,
+  /** For a failed job: where it stopped, why, and how it can be recovered (no content). */
+  diagnosis: z
+    .strictObject({
+      stage: z.enum(["before any model request", "after model requests"]),
+      category: zCategory.nullable(),
+      reason: z.string(),
+      retryReady: z.boolean().nullable(),
+      recovery: z.string(),
+    })
+    .nullable(),
   /** Kinds and numbers only (states, steps, tools, models, error kinds): no content. */
   events: z.array(
     z.strictObject({

@@ -61,6 +61,37 @@ export interface CapabilityState {
   verifyDetail: string | null;
 }
 
+/** Why a model can't serve a capability now; the console words each one with EXCLUSION_REASONS. */
+export const EXCLUSION_REASONS = {
+  adapter: "the adapter can't send this request",
+  provider_off: "provider disabled or without a credential",
+  model_off: "model not allowed",
+  capability_off: "capability not turned on",
+  verify_failed: "last verification failed",
+  unverified: "not verified yet",
+  entitlement: "not in this community's entitlement",
+  circuit: "provider failing (circuit open)",
+  unpriced: "no price entered; this category has a cost ceiling",
+  over_ceiling: "above this category's cost ceiling",
+} as const;
+export type Exclusion = keyof typeof EXCLUSION_REASONS;
+export interface Excluded {
+  providerId: string;
+  model: string;
+  why: string;
+  code: Exclusion;
+}
+
+/**
+ * A route's state for the console: ready (a verified model would serve it now), not_configured (no approved model has
+ * the capability on), untested (on but never verified), failed (its verification failed), unavailable (verified, but
+ * its provider is failing right now) or disabled (switched off, or kept out by policy such as a cost ceiling).
+ */
+export const ROUTE_STATUSES = ["ready", "not_configured", "untested", "failed", "unavailable", "disabled"] as const;
+export type RouteStatus = (typeof ROUTE_STATUSES)[number];
+
+const POLICY_EXCLUSIONS: ReadonlySet<Exclusion> = new Set(["unpriced", "over_ceiling"]);
+
 export type ModelRef = { providerId: string; model: string };
 export const refKey = (r: ModelRef) => `${r.providerId}/${r.model}`;
 
@@ -116,6 +147,14 @@ export class AiRouting {
       for (const c of current) if (!want.has(c)) this.db.prepare("DELETE FROM ai_model_capabilities WHERE provider_id = ? AND model = ? AND capability = ?").run(providerId, model, c);
       for (const c of want) if (!current.has(c)) this.db.prepare("INSERT INTO ai_model_capabilities (provider_id, model, capability) VALUES (?, ?, ?)").run(providerId, model, c);
     })();
+  }
+
+  /**
+   * Clears every verification of a provider's models (its key changed or was removed): a new key may not reach the
+   * same models, so each route it served stops until verified again.
+   */
+  invalidateProvider(providerId: string, why: string): void {
+    this.db.prepare("UPDATE ai_model_capabilities SET verified_at = NULL, verify_ok = NULL, verify_detail = ? WHERE provider_id = ?").run(why, providerId);
   }
 
   recordVerification(providerId: string, model: string, capability: Capability, ok: boolean, detail: string): void {
@@ -206,7 +245,7 @@ export class AiRouting {
   }
 
   /** Every model that can serve [capability] right now, with why the others can't (for the console). */
-  eligible(capability: Capability, allowed: ReadonlySet<string> | null): { ok: Candidate[]; excluded: { providerId: string; model: string; why: string }[] } {
+  eligible(capability: Capability, allowed: ReadonlySet<string> | null, opts: { ignoreCircuit?: boolean } = {}): { ok: Candidate[]; excluded: Excluded[] } {
     const rows = this.db
       .prepare(
         `SELECT p.id provider_id, p.kind, p.name, p.enabled p_enabled, p.secret_ciphertext IS NOT NULL has_key, m.model, m.enabled m_enabled, m.auto_routable,
@@ -218,28 +257,29 @@ export class AiRouting {
       )
       .all(capability) as (CandidateRow & { p_enabled: number; has_key: number; m_enabled: number; auto_routable: number; cap_on: number; verify_ok: number | null })[];
     const ok: Candidate[] = [];
-    const excluded: { providerId: string; model: string; why: string }[] = [];
+    const excluded: Excluded[] = [];
     const open = new Map<string, boolean>();
+    const failing = (providerId: string) => !opts.ignoreCircuit && (open.get(providerId) ?? open.set(providerId, this.circuitOpen(providerId)).get(providerId)!);
     for (const r of rows) {
-      const why = !ADAPTER_SUPPORT[r.kind].includes(capability)
-        ? "the adapter can't send this request"
+      const code: Exclusion | null = !ADAPTER_SUPPORT[r.kind].includes(capability)
+        ? "adapter"
         : !r.p_enabled || !r.has_key
-          ? "provider disabled or without a credential"
+          ? "provider_off"
           : !r.m_enabled
-            ? "model not allowed"
+            ? "model_off"
             : !r.cap_on
-              ? "capability not turned on"
+              ? "capability_off"
               : r.verify_ok !== 1
                 ? r.verify_ok === 0
-                  ? "last verification failed"
-                  : "not verified yet"
+                  ? "verify_failed"
+                  : "unverified"
                 : allowed && !allowed.has(refKey({ providerId: r.provider_id, model: r.model }))
-                  ? "not in this community's entitlement"
-                  : (open.get(r.provider_id) ?? open.set(r.provider_id, this.circuitOpen(r.provider_id)).get(r.provider_id))
-                    ? "provider failing (circuit open)"
+                  ? "entitlement"
+                  : failing(r.provider_id)
+                    ? "circuit"
                     : null;
-      if (why) {
-        excluded.push({ providerId: r.provider_id, model: r.model, why });
+      if (code) {
+        excluded.push({ providerId: r.provider_id, model: r.model, why: EXCLUSION_REASONS[code], code });
         continue;
       }
       ok.push({
@@ -263,16 +303,23 @@ export class AiRouting {
    * The ordered models for one request in [category]: the category's default, its fallbacks, then the other
    * routable candidates by the category's preference. Each comes with the reason it's in the list.
    */
-  route(category: RoutingCategory, allowed: ReadonlySet<string> | null): { ordered: { candidate: Candidate; reason: string }[]; excluded: { providerId: string; model: string; why: string }[] } {
+  route(
+    category: RoutingCategory,
+    allowed: ReadonlySet<string> | null,
+    opts: { ignoreCircuit?: boolean } = {},
+  ): { ordered: { candidate: Candidate; reason: string }[]; excluded: Excluded[] } {
     const capability = ROUTING_CATEGORIES[category].capability;
     const policy = this.policies().find((p) => p.category === category)!;
-    const { ok, excluded } = this.eligible(capability, allowed);
+    const { ok, excluded } = this.eligible(capability, allowed, opts);
     const priceOf = (c: Candidate) => (capability === "text" || capability === "vision" ? c.outputPriceMicro : capability === "transcription" ? c.minutePriceMicro : c.requestPriceMicro);
     const within = ok.filter((c) => {
       if (policy.maxPriceMicro === null) return true;
       const price = priceOf(c);
       const fits = price !== null && price <= policy.maxPriceMicro;
-      if (!fits) excluded.push({ providerId: c.providerId, model: c.model, why: price === null ? "no price entered; this category has a cost ceiling" : "above this category's cost ceiling" });
+      if (!fits) {
+        const code = price === null ? "unpriced" : "over_ceiling";
+        excluded.push({ providerId: c.providerId, model: c.model, why: EXCLUSION_REASONS[code], code });
+      }
       return fits;
     });
     const byKey = new Map(within.map((c) => [refKey(c), c]));
@@ -292,5 +339,31 @@ export class AiRouting {
       .sort((a, b) => (policy.prefer === "cost" ? nullsLast(priceOf(a), priceOf(b)) : policy.prefer === "latency" ? nullsLast(a.p50Ms, b.p50Ms) : nullsLast(a.qualityRank, b.qualityRank)) || refKey(a).localeCompare(refKey(b)));
     for (const c of rest) ordered.push({ candidate: c, reason: `auto:${category} by ${policy.prefer}` });
     return { ordered, excluded };
+  }
+
+  /** A route's state (see ROUTE_STATUSES) and one plain sentence saying why. */
+  status(category: RoutingCategory, aiEnabled: boolean): { status: RouteStatus; detail: string } {
+    if (!aiEnabled) return { status: "disabled", detail: "AI requests are switched off (the ai.enabled kill switch)." };
+    const { ordered, excluded } = this.route(category, null);
+    const first = ordered[0]?.candidate;
+    if (first) return { status: "ready", detail: `${first.model} (${first.providerName}) serves it, verified.` };
+    const models = (codes: Exclusion[]) => [...new Set(excluded.filter((e) => codes.includes(e.code)).map((e) => e.model))].slice(0, 3).join(", ");
+    if (models(["circuit"])) return { status: "unavailable", detail: `${models(["circuit"])} is verified, but its provider's recent requests all failed: routing skips it for a few minutes.` };
+    if (models([...POLICY_EXCLUSIONS])) return { status: "disabled", detail: `Verified models are kept out by this route's cost ceiling (${models([...POLICY_EXCLUSIONS])}).` };
+    if (models(["verify_failed"])) return { status: "failed", detail: `Verification failed for ${models(["verify_failed"])}. Open it to see why, then verify again or pick another model.` };
+    if (models(["unverified"])) return { status: "untested", detail: `${models(["unverified"])} has this capability on but isn't verified yet.` };
+    const policy = this.policies().find((p) => p.category === category)!;
+    const fallen = excluded.find((e) => e.providerId === policy.providerId && e.model === policy.model && (e.code === "provider_off" || e.code === "model_off"));
+    if (fallen) return { status: "disabled", detail: `Its default, ${fallen.model}, is switched off (${fallen.why}).` };
+    return { status: "not_configured", detail: "No approved model has this capability turned on. Use Set up to pick and verify one." };
+  }
+
+  /** The latest agent request this category's routing served (feature "workforce"), or null. */
+  lastExecution(category: RoutingCategory): { at: number; providerId: string; model: string; outcome: string; errorKind: string | null } | null {
+    const prefix = `auto:${category} `;
+    const r = this.db
+      .prepare("SELECT at, provider_id, model, outcome, error_kind FROM ai_usage WHERE feature = 'workforce' AND substr(route, 1, ?) = ? ORDER BY id DESC LIMIT 1")
+      .get(prefix.length, prefix) as { at: number; provider_id: string; model: string; outcome: string; error_kind: string | null } | undefined;
+    return r ? { at: r.at, providerId: r.provider_id, model: r.model, outcome: r.outcome, errorKind: r.error_kind } : null;
   }
 }

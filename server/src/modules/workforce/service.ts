@@ -3,6 +3,7 @@ import type { Readable } from "node:stream";
 import type { AppContext } from "../../app/context.js";
 import { ApiError } from "../../shared/errors.js";
 import { namesOf } from "../accounts/index.js";
+import { ROUTING_CATEGORIES } from "../ai/index.js";
 import { conversationMemberIds } from "../messaging/index.js";
 import { orgMemberIds } from "../organizations/index.js";
 import { refusal, scopesFor } from "../quotas/index.js";
@@ -14,7 +15,7 @@ import { mediaEngine } from "./media.js";
 import { readsMessages, type SharedMessage, sharedNote } from "./sharedMessages.js";
 import { type Activation, type Autonomy, type Install, type Invokers, modeOf } from "./store.js";
 import { ActiveHours } from "./triggers.js";
-import { modelsReady } from "./readiness.js";
+import { modelsReady, unroutedCategories } from "./readiness.js";
 import { TOOL_INFO } from "./toolInfo.js";
 import type { AgentDef, ToolKey } from "./types.js";
 
@@ -408,6 +409,8 @@ export class Workforce {
       if (!def.skill.files.mimes.includes(f.mime)) throw new ApiError(400, "bad_request", `${install.displayName} can't read ${f.mime} files.`);
       if (f.size > def.skill.files.maxBytes) throw new ApiError(413, "too_large", `${f.name} is larger than ${install.displayName} accepts.`);
     }
+    // Checked last: a request that couldn't be accepted anyway says what's wrong with it first.
+    this.requireRoutes(r.orgId, def);
     const job = this.ctx.db.transaction(() => {
       this.admitQuota(install, r.userId, template.policy.maxJobsPerDay ?? null);
       const t = this.d.clock();
@@ -540,6 +543,17 @@ export class Workforce {
     return j;
   }
 
+  /**
+   * Refuses a request no model could serve, instead of queueing a job that can only fail: each kind of work the agent
+   * can't do without needs a verified model this community may use.
+   */
+  private requireRoutes(orgId: string, def: AgentDef): void {
+    const missing = unroutedCategories(this.d, orgId, def);
+    if (!missing.length) return;
+    const labels = missing.map((c) => ROUTING_CATEGORIES[c].label.toLowerCase()).join(" and ");
+    throw new ApiError(503, "ai_not_configured", `${def.name} can't work yet: no verified model for ${labels}. A platform operator sets one up in the AI Control Center.`, { categories: missing });
+  }
+
   /** Who may steer a job (cancel, retry, revise, answer): who asked, or people with ai.manage. */
   private steerable(orgId: string, jobId: string, userId: string): JobRow {
     const j = this.visibleJob(orgId, jobId, userId);
@@ -569,6 +583,8 @@ export class Workforce {
     const template = this.d.store.templateState(install.agentId, install.version);
     if (template.status !== "published" && template.status !== "retired") throw new ApiError(409, "agent_unavailable", "This agent is turned off on the platform.");
     requireInvoke(this.ctx, install, cur.requested_by);
+    const def = findAgent(install.agentId, install.version);
+    if (def) this.requireRoutes(orgId, def);
     const j = this.ctx.db.transaction(() => {
       this.admitQuota(install, cur.requested_by, template.policy.maxJobsPerDay ?? null);
       return this.d.jobs.retry(jobId);

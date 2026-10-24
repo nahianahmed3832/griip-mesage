@@ -242,13 +242,17 @@ describe("jobs", () => {
     expect(d.attempts).toBe(2);
   });
 
-  it("fail plainly when no verified model offers what the agent needs", async () => {
+  it("refuse plainly, without queueing a job, when no verified model offers what the agent needs", async () => {
     const providers = (await admin.browser.expect(200, "GET", "/admin/v1/ai")).providers as { id: string }[];
     const pid = providers[0]!.id;
     await admin.browser.expect(200, "PUT", `/admin/v1/ai/providers/${pid}/models/gpt-test/capabilities`, { capabilities: [], reason: REASON });
-    const j = await ask(a, general);
-    await run();
-    expect((await job(a, j.id)).error.code).toBe("ai_not_configured");
+    const before = h.ctx.db.prepare("SELECT COUNT(*) n FROM ai_jobs").get() as { n: number };
+    const r = await failure(ask(a, general));
+    expect(r.status).toBe(503);
+    expect(r.body.error.code).toBe("ai_not_configured");
+    expect(r.body.error.message).toMatch(/no verified model for quick replies/);
+    expect(r.body.error.details.categories).toEqual(["fast"]);
+    expect(h.ctx.db.prepare("SELECT COUNT(*) n FROM ai_jobs").get()).toEqual(before);
     await admin.browser.expect(200, "PUT", `/admin/v1/ai/providers/${pid}/models/gpt-test/capabilities`, { capabilities: ["text"], reason: REASON });
     await admin.browser.expect(200, "POST", `/admin/v1/ai/providers/${pid}/models/gpt-test/verify`, { capability: "text", reason: REASON });
   });

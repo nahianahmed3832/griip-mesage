@@ -24,6 +24,7 @@ import {
   type ToolMode,
   type WorkforceConsoleView,
 } from "../workforce/index.js";
+import { jobDiagnosis, routeStates, setupRoute } from "./aiRoutesAdmin.js";
 import type { PlatformAudit } from "./audit.js";
 import type { AdminPrincipal } from "./auth.js";
 import type { RequestMeta } from "./credentials.js";
@@ -121,14 +122,29 @@ export class AdminWorkforce {
           name: names.get(o.orgId) ?? null,
         })),
       },
-      usage: { ...usage, mediaSeconds: Math.round(this.w.mediaSeconds(from)) },
+      usage: {
+        ...usage,
+        mediaSeconds: Math.round(this.w.mediaSeconds(from)),
+        verifications: ai.verificationUsage(from),
+      },
       storage: this.w.storage(),
       installs: {
         active: counts.reduce((n, c) => n + c.active, 0),
         disabled: counts.reduce((n, c) => n + c.disabled, 0),
         communities: this.w.communitiesWithAgents(),
       },
-      issues: this.issues(controls, media.available),
+      issues: [
+        ...this.issues(controls, media.available),
+        ...(jobFigures.failedBeforeModel > 0
+          ? [
+              {
+                severity: "warning" as const,
+                area: "jobs",
+                message: `${jobFigures.failedBeforeModel === 1 ? "1 failed job" : `${jobFigures.failedBeforeModel} failed jobs`} never reached a model, so they cost nothing and sent no model requests. Open Jobs to see why and how to recover them.`,
+              },
+            ]
+          : []),
+      ],
     };
   }
 
@@ -292,12 +308,14 @@ export class AdminWorkforce {
         };
       }),
     );
+    const states = routeStates(this.ctx);
     return {
       models: rows,
       routing: routing.policies().map((r) => {
         const route = routing.route(r.category, null);
         return {
           ...r,
+          ...states.get(r.category)!,
           label: ROUTING_CATEGORIES[r.category].label,
           capability: ROUTING_CATEGORIES[r.category].capability,
           route: route.ordered.map((o) => ({
@@ -456,6 +474,36 @@ export class AdminWorkforce {
       r.ok ? "success" : "failed",
     );
     return r;
+  }
+
+  /** Set up: approve, turn on, verify with a real request, and activate only if that passed (aiRoutesAdmin.ts). */
+  async setupRoute(
+    p: AdminPrincipal,
+    category: string,
+    b: { providerId: string; model: string; reason: string },
+    meta: RequestMeta,
+  ) {
+    if (!isRoutingCategory(category))
+      throw new ApiError(404, "not_found", "No such category.");
+    const r = await setupRoute(
+      this.ctx,
+      (action, targetType, targetId, detail, outcome) =>
+        this.record(
+          p,
+          action,
+          targetType,
+          targetId,
+          b.reason,
+          meta,
+          detail,
+          outcome,
+        ),
+      category,
+      b.providerId,
+      b.model,
+      p.account.id,
+    );
+    return { ...r, models: this.models() };
   }
 
   setRouting(
@@ -779,8 +827,10 @@ export class AdminWorkforce {
   job(jobId: string) {
     const j = this.w.job(jobId);
     if (!j) throw new ApiError(404, "not_found", "No such job.");
+    const job = this.withUsage([j])[0]!;
     return {
-      job: this.withUsage([j])[0]!,
+      job,
+      diagnosis: jobDiagnosis(this.ctx, job),
       events: this.w.events(j.id),
       steps: this.withUsage(this.w.steps(j.id)),
     };

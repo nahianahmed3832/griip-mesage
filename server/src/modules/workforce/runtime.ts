@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod/v4";
 import { ApiError } from "../../shared/errors.js";
-import type { CallContext, Invocation, RoutingCategory } from "../ai/index.js";
+import { type CallContext, type Invocation, isMp3, type RoutingCategory, sniffImage } from "../ai/index.js";
 import { effectiveMode, type Deps, invokeRefusal } from "./access.js";
 import { findAgent } from "./catalog/index.js";
 import { payloadHash } from "./approvals.js";
@@ -322,11 +322,15 @@ export class WorkforceRuntime {
       async image(prompt, size) {
         const r = await invoke({ capability: "image_generation", category: "image_generation", prompt, size });
         if (!("binary" in r)) throw new ApiError(500, "internal", "Unexpected model answer.");
-        return r.binary;
+        // Stored as what the bytes really are; anything else never becomes a deliverable.
+        const mime = sniffImage(r.binary.bytes);
+        if (!mime) throw new ApiError(502, "provider_error", "The model's answer wasn't a usable image.", { kind: "wrong_output" });
+        return { bytes: r.binary.bytes, mime };
       },
       async speech(t, voice) {
         const r = await invoke({ capability: "speech", category: "speech", text: t, voice });
         if (!("binary" in r)) throw new ApiError(500, "internal", "Unexpected model answer.");
+        if (!isMp3(r.binary.bytes)) throw new ApiError(502, "provider_error", "The model's answer wasn't MP3 audio.", { kind: "wrong_output" });
         return r.binary;
       },
       async embed(texts) {

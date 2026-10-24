@@ -11,6 +11,7 @@ import {
   AdminModelPath,
   AdminOrgAiBody,
   AdminRoutingBody,
+  AdminRouteSetupBody,
   AdminRoutingParams,
   AdminToolBody,
   AdminToolParams,
@@ -89,6 +90,17 @@ export default async function adminWorkforceRoutes(
         metaOf(req),
       );
     },
+  );
+  app.post(
+    "/admin/v1/ai/routing/:category/setup",
+    needs("ai.manage"),
+    async (req) =>
+      w.setupRoute(
+        principal(req),
+        parse(AdminRoutingParams, req.params).category,
+        parse(AdminRouteSetupBody, req.body),
+        metaOf(req),
+      ),
   );
   app.put("/admin/v1/ai/routing/:category", needs("ai.manage"), async (req) =>
     w.setRouting(

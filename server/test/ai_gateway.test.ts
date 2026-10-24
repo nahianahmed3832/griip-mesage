@@ -109,7 +109,7 @@ describe("routing", () => {
     t.ai.routing.recordVerification(p, "m1", "text", false, "auth");
     const r = t.ai.routing.route("reasoning", null);
     expect(r.ordered).toEqual([]);
-    expect(r.excluded).toEqual([{ providerId: p, model: "m1", why: "last verification failed" }]);
+    expect(r.excluded).toEqual([{ providerId: p, model: "m1", why: "last verification failed", code: "verify_failed" }]);
     await expect(t.ai.gateway.invoke(ctx, text("x"))).rejects.toMatchObject({ code: "ai_not_configured" });
     expect(t.calls).toHaveLength(0);
   });

@@ -55,6 +55,16 @@ Legend: [x] done and verified · [~] done, not fully verified · [ ] not done ·
 - [x] In production since 2026-10-24 09:30 UTC: API 0.36.0 (migration 051), console 0.4.0, web 0.5.0-beta-ac31d7d (`DEPLOYMENT.md`)
 - [ ] Android screens for configure and triggers
 
+## Phase 7c: capability routes (2026-10-24, API 0.37.0, §4)
+- [x] Production audit: an OpenAI provider with a key but 0 approved models, so all seven routes were empty; both failed
+  jobs (Agent Manager) stopped at routing (`ai_not_configured`) before any provider request, so 0 requests and $0 were correct
+- [x] One-step route set-up per category (approve, capability on, real verification, activate only if passed)
+- [x] Verification checks the output type (text, the test image's colour, transcript, MP3, image bytes, finite vectors) and names the next step
+- [x] Route states (ready, not configured, untested, failed, unavailable, disabled) with last verification and last request
+- [x] A new or removed key clears its models' verifications; requests no route can serve are refused, not queued
+- [x] Failed-job diagnosis and recovery in the console; failed-before-model jobs and verification requests counted apart
+- [ ] Owner: Set up each route in the console with real models (no real provider call was made by the developer)
+
 ## Phase 8: verification
 - [x] Server tests: `ai_workforce_acceptance`, `ai_workforce_runtime`, `ai_workforce_skills`, `ai_gateway` (plus updated architecture, permissions, sweep, contracts suites)
 - [x] Acceptance scenario end to end (fake provider, real ffmpeg)
@@ -71,7 +81,7 @@ Legend: [x] done and verified · [~] done, not fully verified · [ ] not done ·
 ## Remaining work, in order
 1. Owner decisions: whether agents may ever read channel history (changes the E2EE promise; proposal in
    `AI_AGENT_CHANNEL_READ_PROPOSAL.md`), and which outside connectors to build first.
-2. Configure a real provider in the console; verify text, vision and transcription; publish agents; run the video scenario with real footage.
+2. In the console, Set up each of the seven routes with real models (Models & routing); publish agents; run the video scenario with real footage.
 3. Build the image on the VPS and confirm the media engine line (burned-in captions and text overlay need Alpine's ffmpeg to have `subtitles` and `drawtext`).
 4. Android: render agent posts in channels and add the AI agents area (with sharing recent messages, as on the web).
 5. Connectors for external actions (each with its own approval flow), PDF text extraction.

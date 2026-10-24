@@ -206,7 +206,7 @@ export class AiService {
     return this.providers().find((p) => p.id === id)!;
   }
 
-  /** Stores (or rotates) the provider's key, encrypted; the previous one is gone. The key is never returned. */
+  /** Stores (or rotates) the provider's key, encrypted; the previous one is gone and its models must be verified again. The key is never returned. */
   setCredential(id: string, apiKey: string): void {
     this.row(id);
     const sealed = this.box.seal(apiKey, boundTo(id));
@@ -214,12 +214,14 @@ export class AiService {
     this.db
       .prepare("UPDATE ai_providers SET secret_ciphertext = ?, secret_set_at = ?, last_test_at = NULL, last_test_ok = NULL, last_test_detail = NULL, updated_at = ? WHERE id = ?")
       .run(sealed, t, t, id);
+    this.routing.invalidateProvider(id, "The provider's key changed: verify again.");
   }
 
   /** Removes the key and disables the provider (revocation at the provider is the operator's step there). */
   clearCredential(id: string): void {
     this.row(id);
     this.db.prepare("UPDATE ai_providers SET secret_ciphertext = NULL, secret_set_at = NULL, enabled = 0, updated_at = ? WHERE id = ?").run(this.now(), id);
+    this.routing.invalidateProvider(id, "The provider's key was removed.");
   }
 
   private key(r: ProviderRow): string {
@@ -408,6 +410,15 @@ export class AiService {
       .prepare(`SELECT job_id, COUNT(*) requests, SUM(COALESCE(cost_micro,0)) cost FROM ai_usage WHERE job_id IN (${jobIds.map(() => "?").join(",")}) GROUP BY job_id`)
       .all(...jobIds) as { job_id: string; requests: number; cost: number }[];
     return new Map(rows.map((r) => [r.job_id, { requests: r.requests, costMicro: r.cost }]));
+  }
+
+  /** Requests the console's verifications sent since [from]: real provider calls, kept apart from agents' usage. */
+  verificationUsage(from: number): { requests: number; failed: number } {
+    const r = this.db.prepare("SELECT COUNT(*) requests, SUM(outcome IN ('error','timeout')) failed FROM ai_usage WHERE feature = 'console.verify' AND at >= ?").get(from) as {
+      requests: number;
+      failed: number | null;
+    };
+    return { requests: r.requests, failed: r.failed ?? 0 };
   }
 
   /** One community's AI Workforce requests and estimated cost since [from]. */
