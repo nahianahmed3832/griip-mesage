@@ -7,6 +7,9 @@
  *   users                          list usernames and device counts
  *   invite <orgSlug> [ROLE] [uses] create an org invite (ROLE: ADMIN|MEMBER|GUEST)
  *   reg-invite [uses] [days] [note] create a registration invite (default 1 use, 7 days)
+ *   loadtest-invite [uses] [days] [note]  load-test provisioning invite (synthetic accounts; default 100 uses, 30 days)
+ *   loadtest-status                 synthetic accounts created in the last hour / 24 h, communities, invites
+ *   loadtest-disable-all            disable every synthetic account and end its sessions
  *   reg-invites                    list registration invites (hint, uses, expiry; never the code)
  *   reg-invite-revoke <hint|id>    revoke a registration invite
  *   disable <username>             disable an account and drop its sessions
@@ -34,6 +37,9 @@
  *                                  workflows, documents, developer keys, AI, groups); --purge --yes deletes them (back up first)
  *   community-migration [--verify] convert branches and teams into roles and categories (also runs at start-up);
  *                                  --verify compares everyone's visible channels with the old structure
+ *   platform-admin-grant | platform-admin-list | platform-admin-revoke | platform-admin-reset-passkeys |
+ *   platform-audit-verify          Platform Admin Console roles, enrolment codes and its audit chain
+ *                                  (src/modules/platformAdmin/cli.ts)
  */
 import { MongoRelationshipStore } from "./modules/accounts/relationships/mongoStore.js";
 import { type RelationshipStore, SqliteRelationshipStore } from "./modules/accounts/relationships/store.js";
@@ -45,6 +51,7 @@ import { openDatabase } from "./infrastructure/database/db.js";
 import { ServerIdentity } from "./modules/federation/identity.js";
 import { Hub } from "./modules/realtime/hub.js";
 import { endNewAccountLimits } from "./app/middleware/abuse.js";
+import { createLoadtestInvite, LOADTEST_INVITE_MAX_DAYS, LOADTEST_INVITE_MAX_USES } from "./modules/accounts/index.js";
 import { createRegistrationInvite } from "./modules/organizations/invites.js";
 import type { AppContext } from "./app/context.js";
 import { runCleanup } from "./modules/administration/jobs.js";
@@ -57,6 +64,7 @@ import { RETIRED_COMMANDS, runRetiredCommand } from "./modules/administration/re
 import { migrateBranchesAndTeams, verifyCommunityMigration } from "./modules/organizations/communityMigration.js";
 import { openMongo } from "./infrastructure/database/mongo/index.js";
 import { MongoRelayStore } from "./modules/messaging/relay/mongoStore.js";
+import { PLATFORM_ADMIN_COMMANDS, runPlatformAdminCommand } from "./modules/platformAdmin/index.js";
 import { MongoFileStore } from "./modules/files/mongoStore.js";
 import { type FileStore, SqliteFileStore } from "./modules/files/store.js";
 import { type RelayStore, SqliteRelayStore } from "./modules/messaging/relay/store.js";
@@ -88,6 +96,16 @@ const db = openDatabase(cfg.databasePath);
 if (RETIRED_COMMANDS.includes(cmd)) {
   try {
     process.exitCode = runRetiredCommand(cmd, rest, db);
+  } catch (e) {
+    console.error((e as Error).message);
+    process.exitCode = 1;
+  }
+  db.close();
+  process.exit();
+}
+if (PLATFORM_ADMIN_COMMANDS.includes(cmd)) {
+  try {
+    process.exitCode = await runPlatformAdminCommand(cmd, rest, cfg, db);
   } catch (e) {
     console.error((e as Error).message);
     process.exitCode = 1;
@@ -159,11 +177,49 @@ switch (cmd) {
     }
     break;
   }
+  case "loadtest-invite": {
+    // Load-test provisioning (docs/LOADTEST_PROVISIONING.md): accounts it admits are synthetic and counted against
+    // LOADTEST_REGISTRATION_HOURLY_LIMIT / _DAILY_LIMIT, not the public per-network limits.
+    const [uses = "100", days = "30", ...note] = rest;
+    try {
+      const { code } = createLoadtestInvite(db, { maxUses: Number(uses), days: Number(days), note: note.join(" ") || null });
+      console.log(`${code}  (load-test provisioning, ${uses} use(s), ${days} day(s))`);
+    } catch (e) {
+      console.error(`usage: loadtest-invite [uses 1-${LOADTEST_INVITE_MAX_USES}] [days ≤${LOADTEST_INVITE_MAX_DAYS}] [note]  (${(e as Error).message})`);
+      process.exit(2);
+    }
+    break;
+  }
+  case "loadtest-status": {
+    const t = now();
+    const n = (sql: string, ...args: unknown[]) => (db.prepare(sql).get(...args) as { n: number }).n;
+    console.table({
+      "created in the last hour": n("SELECT COUNT(*) n FROM loadtest_registrations WHERE created_at > ?", t - 3_600_000),
+      "created in the last 24 hours": n("SELECT COUNT(*) n FROM loadtest_registrations WHERE created_at > ?", t - 86_400_000),
+      "synthetic accounts (active)": n("SELECT COUNT(*) n FROM users WHERE synthetic = 1 AND disabled_at IS NULL"),
+      "synthetic accounts (disabled)": n("SELECT COUNT(*) n FROM users WHERE synthetic = 1 AND disabled_at IS NOT NULL"),
+      "load-test communities": n("SELECT COUNT(*) n FROM orgs WHERE synthetic = 1"),
+      "active load-test invites": n("SELECT COUNT(*) n FROM registration_invites WHERE purpose = 'loadtest' AND revoked_at IS NULL AND expires_at > ? AND uses < max_uses", t),
+    });
+    break;
+  }
+  case "loadtest-disable-all": {
+    // Cleanup: disables every synthetic account and ends its sessions (real accounts are never touched).
+    const ids = (db.prepare("SELECT id FROM users WHERE synthetic = 1 AND disabled_at IS NULL").all() as { id: string }[]).map((r) => r.id);
+    db.transaction(() => {
+      for (const id of ids) {
+        db.prepare("UPDATE users SET disabled_at = ? WHERE id = ?").run(now(), id);
+        db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
+      }
+    })();
+    console.log(`disabled ${ids.length} synthetic account(s)`);
+    break;
+  }
   case "reg-invites":
     console.table(
       db
         .prepare(
-          "SELECT id, code_hint hint, note, uses, max_uses, datetime(expires_at / 1000, 'unixepoch') expires, revoked_at IS NOT NULL revoked FROM registration_invites ORDER BY created_at DESC",
+          "SELECT id, purpose, code_hint hint, note, uses, max_uses, datetime(expires_at / 1000, 'unixepoch') expires, revoked_at IS NOT NULL revoked FROM registration_invites ORDER BY created_at DESC",
         )
         .all(),
     );

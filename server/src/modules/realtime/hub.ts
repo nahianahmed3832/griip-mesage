@@ -40,6 +40,34 @@ export interface Conn {
   flushAgain: boolean;
   /** When this socket opened: when it closes, items queued since then may still be unacknowledged (push wake-ups). */
   openedAt: number;
+  /** The last frame received (the platform console's live connection table). */
+  lastFrameAt?: number;
+  /** The app session it authenticated with (accounts v2), if any. */
+  sessionId?: string;
+  /** The client kind of the upgrade request (modules/telemetry/client.ts). */
+  client?: { platform: string; client: string; version: string; os: string };
+}
+
+/** Counters since the process started, for the per-minute presence sample (modules/telemetry). */
+export interface RealtimeStats {
+  connects: number;
+  disconnects: number;
+  /** Closed without a close frame (network loss) or terminated by the heartbeat. */
+  abnormal: number;
+  /** Sockets refused for bad, missing or expired credentials. */
+  authFailures: number;
+}
+
+/** A live socket as the platform console sees it: who, which device, which client, since when. Never content. */
+export interface ConnView {
+  userId: string;
+  deviceId: string;
+  sessionId: string | null;
+  openedAt: number;
+  lastFrameAt: number | null;
+  platform: string;
+  client: string;
+  version: string;
 }
 
 /**
@@ -59,6 +87,9 @@ export class Hub {
   onDeviceOffline: (deviceId: string, openedAt: number) => void = () => {};
   /** Sees every frame before it is sent; the test harness checks them against the contract (test/support/contracts.ts). */
   observe: ((e: ServerEvent) => void) | null = null;
+  /** Bytes sent to a person's sockets (modules/telemetry counts WebSocket traffic per person). */
+  onBytesOut: (userId: string, bytes: number) => void = () => {};
+  readonly stats: RealtimeStats = { connects: 0, disconnects: 0, abnormal: 0, authFailures: 0 };
 
   /** The text of one WebSocket frame: only contract events can be sent (src/shared/contracts/realtime.ts). */
   encode(e: ServerEvent): string {
@@ -88,6 +119,7 @@ export class Hub {
       }
     }
     set.add(conn);
+    this.stats.connects += 1;
     let devs = this.byUser.get(userId);
     const wasOnline = !!devs && devs.size > 0;
     if (!devs) this.byUser.set(userId, (devs = new Set()));
@@ -96,7 +128,10 @@ export class Hub {
     return conn;
   }
 
-  remove(conn: Conn): void {
+  /** [code]: the WebSocket close code; 1006 (no close frame, or the heartbeat's terminate) counts as abnormal. */
+  remove(conn: Conn, code?: number): void {
+    this.stats.disconnects += 1;
+    if (code === 1006) this.stats.abnormal += 1;
     const set = this.byDevice.get(conn.deviceId);
     if (set) {
       set.delete(conn);
@@ -130,11 +165,37 @@ export class Hub {
     return this.byDevice.size;
   }
 
+  /** Every open socket (bounded by the connections this process holds). */
+  connections(): ConnView[] {
+    const out: ConnView[] = [];
+    for (const set of this.byDevice.values()) {
+      for (const c of set) {
+        out.push({
+          userId: c.userId,
+          deviceId: c.deviceId,
+          sessionId: c.sessionId ?? null,
+          openedAt: c.openedAt,
+          lastFrameAt: c.lastFrameAt ?? null,
+          platform: c.client?.platform ?? "unknown",
+          client: c.client?.client ?? "",
+          version: c.client?.version ?? "",
+        });
+      }
+    }
+    return out;
+  }
+
+  /** Sends [data] on one socket and counts its bytes for the person. */
+  private sendOn(c: Conn, data: string): void {
+    c.ws.send(data);
+    this.onBytesOut(c.userId, Buffer.byteLength(data));
+  }
+
   sendToDevice(deviceId: string, msg: ServerEvent): boolean {
     const set = this.byDevice.get(deviceId);
     if (!set || set.size === 0) return false;
     const data = this.encode(msg);
-    for (const c of set) if (c.ws.readyState === 1) c.ws.send(data);
+    for (const c of set) if (c.ws.readyState === 1) this.sendOn(c, data);
     return true;
   }
 
@@ -202,7 +263,7 @@ export class Hub {
     const data = this.encode({ t: "queue", items: rows.map(queueItemToWire), more: false });
     for (const c of this.byDevice.get(deviceId) ?? []) {
       if (c.ws.readyState !== 1) continue;
-      if (!c.flushing) c.ws.send(data);
+      if (!c.flushing) this.sendOn(c, data);
       else if (c.held.length + rows.length <= HELD_LIMIT) c.held.push(...rows);
       else c.heldOverflow = true;
     }
@@ -239,16 +300,16 @@ export class Hub {
       conn.heldOverflow = false;
       conn.held = [];
     }
-    conn.ws.send(this.encode({ t: "queue", items: batch.map(queueItemToWire), more, backlog: true }));
+    this.sendOn(conn, this.encode({ t: "queue", items: batch.map(queueItemToWire), more, backlog: true }));
     if (more) return;
     // Everything from here to the switch below is synchronous, so a live item can't slip between the held ones and
     // the next live push.
     const late = conn.held.filter((r) => !conn.sentIds.has(r.id)).sort((a, b) => a.id - b.id);
     conn.held = [];
     conn.sentIds.clear();
-    if (late.length) conn.ws.send(this.encode({ t: "queue", items: late.map(queueItemToWire), more: false }));
+    if (late.length) this.sendOn(conn, this.encode({ t: "queue", items: late.map(queueItemToWire), more: false }));
     conn.flushing = false;
-    conn.ws.send(this.encode({ t: "queue.drained" }));
+    this.sendOn(conn, this.encode({ t: "queue.drained" }));
   }
 }
 

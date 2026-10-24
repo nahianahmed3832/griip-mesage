@@ -5,6 +5,7 @@ import { type Authz, parsePermissionList } from "./authz.js";
 import { roleAssignmentRefusal } from "./permissions/rules.js";
 import { ApiError } from "../../shared/errors.js";
 import { humanCode, newId, normalizeCode, now, sha256Hex } from "../../shared/utilities/util.js";
+import { requireSyntheticScopeForOrg } from "./syntheticScope.js";
 
 export interface OrgInviteRow {
   id: string;
@@ -102,7 +103,8 @@ export function inviteAlreadySatisfied(authz: Authz, db: DB, inv: OrgInviteRow, 
 
 /** A usable registration invite for this code. */
 export function findRegistrationInvite(db: DB, code: string): RegistrationInviteRow | undefined {
-  const inv = db.prepare("SELECT * FROM registration_invites WHERE code_hash = ?").get(sha256Hex(normalizeCode(code))) as
+  // Load-test invites (purpose 'loadtest') only work on the load-test path (modules/auth/loadtestProvisioning.ts).
+  const inv = db.prepare("SELECT * FROM registration_invites WHERE code_hash = ? AND purpose = 'registration'").get(sha256Hex(normalizeCode(code))) as
     | RegistrationInviteRow
     | undefined;
   return usable(inv) ? inv : undefined;
@@ -135,6 +137,7 @@ export function joinOrgByInvite(ctx: AppContext, inv: OrgInviteRow, userId: stri
   const existing = authz.orgRole(inv.org_id, userId);
   const rank: Record<string, number> = { GUEST: 0, MEMBER: 1, ADMIN: 2, OWNER: 3 };
   if (authz.isBanned(inv.org_id, userId)) throw new ApiError(403, "banned", "You've been banned from this community");
+  requireSyntheticScopeForOrg(db, userId, inv.org_id);
   if (!existing) {
     // Batch B4: a community can pause joining for a while (Security actions).
     if (authz.pausedUntil(inv.org_id, "invites", t)) throw new ApiError(403, "invites_paused", "This community has paused new members for now. Try again later.");

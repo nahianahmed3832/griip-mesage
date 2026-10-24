@@ -989,6 +989,50 @@
           "properties": {
             "t": {
               "type": "string",
+              "const": "ai.posts"
+            },
+            "conversationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "t",
+            "conversationId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "t": {
+              "type": "string",
+              "const": "ai.job"
+            },
+            "orgId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "jobId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "t",
+            "orgId",
+            "jobId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "t": {
+              "type": "string",
               "const": "meeting.updated"
             },
             "orgId": {

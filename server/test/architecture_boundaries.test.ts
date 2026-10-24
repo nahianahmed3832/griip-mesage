@@ -80,7 +80,7 @@ const TABLE_OWNERS: Readonly<Record<string, string>> = {
     "accounts",
     "accounts account_sessions account_codes legacy_tickets account_recovery_codes account_recovery_tickets account_passkeys account_passkey_challenges " +
       "account_key_backups account_key_unlocks users devices user_blocks nav_preferences connections dm_requests " +
-      "messaging_settings reminders reminder_occurrences registration_invites",
+      "messaging_settings reminders reminder_occurrences registration_invites loadtest_registrations",
   ),
   ...owned(
     "organizations",
@@ -106,6 +106,26 @@ const TABLE_OWNERS: Readonly<Record<string, string>> = {
   ...owned(
     "federation",
     "federation_blocks federation_domains federation_inbox federation_nonces federation_outbox federation_peers",
+  ),
+  // The Platform Admin Console (migration 046).
+  ...owned(
+    "platformAdmin",
+    "platform_admins platform_admin_passkeys platform_admin_enrolments platform_admin_challenges platform_admin_sessions " +
+      "platform_audit platform_incidents platform_incident_events platform_settings alert_rules alert_state alert_deliveries " +
+      "platform_restrictions",
+  ),
+  // Platform Admin 2.0 (migration 048).
+  ...owned(
+    "telemetry",
+    "activity_daily telemetry_epochs traffic_user_daily presence_samples presence_hourly resource_samples resource_hourly session_clients",
+  ),
+  ...owned("quotas", "quota_plans quota_plan_members quota_policies quota_counters quota_reservations quota_events"),
+  ...owned("ai", "ai_providers ai_models ai_usage ai_model_capabilities ai_routing"),
+  // AI Workforce 1.0 (migration 049).
+  ...owned(
+    "workforce",
+    "ai_agent_templates ai_tool_policies ai_org_entitlements ai_agent_installs ai_agent_channels ai_jobs ai_job_events ai_files " +
+      "ai_approvals ai_channel_posts ai_shared_messages",
   ),
 };
 

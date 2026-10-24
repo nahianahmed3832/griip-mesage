@@ -23,6 +23,8 @@ services:
       LIVEKIT_API_URL: http://livekit:7880
     volumes:
       - api-data:/data
+      # The host collector's output (deploy/scripts/host-metrics.py), read-only; an empty folder when it isn't installed.
+      - ./host-metrics:/host-metrics:ro
     ports:
       # Loopback only: the existing reverse proxy terminates TLS and forwards here.
       - "127.0.0.1:${API_HOST_PORT:-18080}:8080"

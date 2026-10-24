@@ -22,6 +22,7 @@ import { activeStatus, privacyOf } from "../accounts/profile.js";
 import { canonical, isValidPublicKey, keyFingerprint, verifyEd25519 } from "../../shared/utilities/crypto.js";
 import { findOrgInvite, findRegistrationInvite, INVITE_PROBLEMS, joinOrgByInvite, lookupOrgInvite, orgInviteProblem } from "../organizations/invites.js";
 import { removePushEndpoint } from "../notifications/service.js";
+import { admitLoadtestAccount, checkLoadtestRequest, findLoadtestInvite, loadtestQuota, type QuotaState } from "../accounts/index.js";
 import { ApiError, badRequest, conflict, forbidden, notFound, unauthorized } from "../../shared/errors.js";
 import { humanCode, newId, normalizeCode, now, sha256Hex } from "../../shared/utilities/util.js";
 import { evictUserDevicesFromCalls } from "../calls/routes.js";
@@ -134,9 +135,26 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
     if (ctx.config.registrationMode === "invite" && !body.inviteCode) {
       throw new ApiError(403, "invite_required", "Registration needs an invitation code");
     }
+    // An operator's load-test invite takes the load-test path in either mode: its own quotas instead of the public
+    // per-network limits, and a synthetic account (docs/LOADTEST_PROVISIONING.md).
+    const loadtest = body.inviteCode ? findLoadtestInvite(ctx.db, body.inviteCode) : undefined;
+    const lt = ctx.config.loadtestRegistration;
+    if (loadtest) {
+      try {
+        checkLoadtestRequest(lt, req.ip);
+        const q = loadtestQuota(ctx.db, lt, now());
+        if (q.lastHour >= lt.hourly || q.lastDay >= lt.daily) {
+          reply.header("retry-after", String(Math.max(1, Math.ceil(q.retryAfterMs / 1000))));
+          throw new ApiError(429, "loadtest_quota", "The load-test provisioning quota is used up for now", { lastHour: q.lastHour, lastDay: q.lastDay });
+        }
+      } catch (e) {
+        if (e instanceof ApiError) req.log.warn({ event: "loadtest_registration_refused", reason: e.code, network: networkKey(req.ip) }, "load-test registration refused");
+        throw e;
+      }
+    }
     // Open registration is limited per network and per day, also before any key work. Only accounts actually created
     // are counted, so a refused or failed attempt doesn't use up anyone's allowance.
-    const open = ctx.config.registrationMode === "open";
+    const open = ctx.config.registrationMode === "open" && !loadtest;
     const network = networkKey(req.ip);
     if (open) {
       const wait = Math.max(registeredFrom.hour.retryAfterMs(network), registeredFrom.day.retryAfterMs(network));
@@ -159,7 +177,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
     const deviceId = newId("d");
     // Accounts made without an invitation start with smaller allowances (docs/ABUSE_CONTROLS.md › New accounts).
     const limitedUntil = open && abuse.newAccountDays > 0 ? t + abuse.newAccountDays * DAY_MS : null;
-    let admitted: { via: string | null; joined: { orgId: string; inviteId: string; role: string } | null };
+    let admitted: { via: string | null; joined: { orgId: string; inviteId: string; role: string } | null; quota?: QuotaState };
     try {
       admitted = ctx.db.transaction(() => {
         ctx.db
@@ -172,6 +190,11 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
             "INSERT INTO devices (id, user_id, name, signing_key, encryption_key, certificate, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
           )
           .run(deviceId, userId, body.device.name, body.device.signingKey, body.device.encryptionKey, body.device.certificate, t);
+        if (loadtest) {
+          // Re-checked inside the transaction: better-sqlite3 runs it whole, so concurrent sign-ups can't overshoot.
+          const q = admitLoadtestAccount(ctx.db, lt, loadtest.id, userId, network, t);
+          return { via: `loadtest-invite:${loadtest.id}`, joined: null, quota: q };
+        }
         if (ctx.config.registrationMode === "invite") {
           // Looked up inside the transaction so two registrations can't both take an invite's last use.
           const reg = findRegistrationInvite(ctx.db, body.inviteCode!);
@@ -191,9 +214,17 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
       })();
     } catch (e) {
       if (String(e).includes("UNIQUE")) throw conflict("That username is already taken");
+      if (e instanceof ApiError && loadtest) {
+        const retry = (e.details as { retryAfter?: number } | undefined)?.retryAfter;
+        if (retry) reply.header("retry-after", String(retry));
+        req.log.warn({ event: "loadtest_registration_refused", reason: e.code, network }, "load-test registration refused");
+      }
       throw e;
     }
     const { via, joined } = admitted;
+    if (loadtest && admitted.quota) {
+      req.log.info({ event: "loadtest_registration", lastHour: admitted.quota.lastHour, lastDay: admitted.quota.lastDay }, "synthetic load-test account created");
+    }
     if (open) {
       registeredFrom.hour.record(network, t);
       registeredFrom.day.record(network, t);
@@ -387,11 +418,7 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
       | undefined;
     if (!d) throw notFound("Device not found");
     if (d.revoked_at) return { ok: true };
-    ctx.db.transaction(() => revokeDeviceRows(ctx, id, now()))();
-    ctx.audit({ actorId: userId, action: "device.revoke", target: id, detail: id === deviceId ? "self" : null });
-    ctx.hub.disconnectDevice(id, "device revoked");
-    notifyKeyChange(ctx, userId);
-    await evictUserDevicesFromCalls(ctx, userId);
+    await revokeUserDevice(ctx, userId, id, id === deviceId ? "self" : null);
     return { ok: true };
   });
 
@@ -407,6 +434,22 @@ export default async function authRoutes(app: FastifyInstance, ctx: AppContext) 
  * Removes a device from its account: no session (v1 or v2) works for it any more, nothing more is queued for it and it
  * isn't woken. Run inside a transaction; the caller disconnects its sockets and tells contacts (notifyKeyChange).
  */
+/**
+ * Removes one of [userId]'s devices the way the person removing it in the app does: its sessions end, its sockets
+ * close, its queued deliveries and wake-up addresses go, and everyone sharing a conversation refreshes the device list.
+ * [detail] goes to the audit log ("self", "platform_admin"…). Returns false when it was already removed.
+ */
+export async function revokeUserDevice(ctx: AppContext, userId: string, deviceId: string, detail: string | null): Promise<boolean> {
+  const d = ctx.db.prepare("SELECT revoked_at FROM devices WHERE id = ? AND user_id = ?").get(deviceId, userId) as { revoked_at: number | null } | undefined;
+  if (!d || d.revoked_at) return false;
+  ctx.db.transaction(() => revokeDeviceRows(ctx, deviceId, now()))();
+  ctx.audit({ actorId: userId, action: "device.revoke", target: deviceId, detail });
+  ctx.hub.disconnectDevice(deviceId, "device revoked");
+  notifyKeyChange(ctx, userId);
+  await evictUserDevicesFromCalls(ctx, userId);
+  return true;
+}
+
 export function revokeDeviceRows(ctx: AppContext, deviceId: string, t: number): void {
   ctx.db.prepare("UPDATE devices SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL").run(t, deviceId);
   ctx.db.prepare("DELETE FROM sessions WHERE device_id = ?").run(deviceId);

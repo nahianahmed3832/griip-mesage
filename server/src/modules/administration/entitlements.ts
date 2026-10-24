@@ -37,7 +37,7 @@ const RETIRED_KEYS: readonly string[] = [
   "inbox.accounts",
 ];
 
-const LABELS: Record<EntitlementKey, string> = {
+export const LABELS: Record<EntitlementKey, string> = {
   "roles.custom": "Custom roles",
   members: "Members (including guests)",
   "storage.bytes": "Stored file bytes",
@@ -127,4 +127,14 @@ export class Entitlements {
       }
     })();
   }
+}
+
+/** Every organization's own limits, newest first (the Platform Admin Console's billing page). */
+export function orgLimitOverrides(db: DB, limit = 500): { org_id: string; key: string; limit_value: number; set_at: number }[] {
+  return db.prepare("SELECT org_id, key, limit_value, set_at FROM org_entitlements ORDER BY set_at DESC LIMIT ?").all(limit) as {
+    org_id: string;
+    key: string;
+    limit_value: number;
+    set_at: number;
+  }[];
 }

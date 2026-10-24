@@ -2,4 +2,5 @@
  * The messaging module's public API (docs/architecture/ARCHITECTURE_1_0_PLAN.md §3.2): what other modules may use.
  */
 export type { QueueInsert, QueueItemRow, RelayStats, RelayStore, Submission } from "./relay/store.js";
-export { conversationPeers } from "./peers.js";
+export { conversationMemberIds, conversationPeers } from "./peers.js";
+export { channelCounts } from "./platformQueries.js";

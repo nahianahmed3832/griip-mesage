@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { requireSyntheticScopeForOrg } from "./syntheticScope.js";
 import {
   ApplicationAnswerBody,
   ApplicationQuestionsBody,
@@ -93,6 +94,7 @@ export default async function applicationRoutes(app: FastifyInstance, ctx: AppCo
     const questions = o ? joinQuestions(o) : null;
     if (!o || o.visibility !== "public" || !questions) throw notFound("This community doesn't take applications");
     if (authz.orgRole(id, userId)) throw conflict("You're already a member");
+    requireSyntheticScopeForOrg(db, userId, id);
     if (authz.isBanned(id, userId)) throw new ApiError(403, "banned", "You've been banned from this community");
     if (authz.pausedUntil(id, "invites", now())) throw new ApiError(403, "invites_paused", "This community has paused new members for now. Try again later.");
     if (body.answers.length !== questions.length || body.answers.some((a) => !a)) throw badRequest("Answer every question");

@@ -6,6 +6,7 @@ import { purgeHistory } from "../messaging/history/routes.js";
 import { broadcastCall, type CallRow, endCallRow, evictFromCall, loadCall, scheduleLost } from "../calls/routes.js";
 import { removeFromWorkspace } from "../organizations/orgsRoutes.js";
 import { now } from "../../shared/utilities/util.js";
+import { PlatformAdminStore } from "../platformAdmin/index.js";
 
 export interface CleanupResult {
   queue: number;
@@ -36,6 +37,10 @@ export interface CleanupResult {
   disabledDisconnected: number;
   callRecordsPruned: number;
   auditPruned: number;
+  /** Platform Admin Console sessions, passkey ceremonies and enrolment codes past their time (its audit is never pruned). */
+  platformAdmin: number;
+  /** Quota reservations of operations that never finished, given back (docs/QUOTAS.md). */
+  quotaReservations: number;
   /** Batch B4: closed reports past their 90 days. */
   reportsPurged: number;
   /** Expired sign-in flows, webhook delivery ids, channel notifications from apps and old finished jobs. */
@@ -43,6 +48,8 @@ export interface CleanupResult {
   reminders: number;
   /** Guests whose membership end date passed, taken out of the workspace (round 7, docs/WORKSPACE_C5.md). */
   guestsExpired: number;
+  /** AI Workforce: finished jobs, their files and channel posts past their 30 days (docs/AI_WORKFORCE.md). */
+  aiWorkforce: number;
 }
 
 /**
@@ -104,9 +111,20 @@ export async function runCleanup(ctx: AppContext): Promise<CleanupResult> {
     disabledDisconnected,
     callRecordsPruned: 0,
     auditPruned: 0,
+    platformAdmin: new PlatformAdminStore(db).purgeExpired(t),
+    quotaReservations: ctx.quotas ? ctx.quotas.expireReservations() : 0,
     reportsPurged: 0,
     guestsExpired: 0,
+    aiWorkforce: 0,
   };
+  if (ctx.workforce) {
+    try {
+      const w = await ctx.workforce.cleanup();
+      r.aiWorkforce = w.jobs + w.files + w.posts;
+    } catch (e) {
+      ctx.log.error({ errorType: (e as Error).name }, "AI Workforce cleanup failed");
+    }
+  }
   // Usage gauges (seats, stored bytes, call minutes), at most every ten minutes (docs/USAGE_AND_PLANS.md).
   try {
     await ctx.usage?.snapshot();

@@ -16,7 +16,8 @@ ENV NODE_ENV=production \
     DATA_DIR=/data \
     PORT=8080
 WORKDIR /app
-RUN apk add --no-cache tini wget && mkdir -p /data && chown node:node /data
+# ffmpeg and a font: AI Workforce's media engine (docs/AI_WORKFORCE.md); the server detects what it can do at start.
+RUN apk add --no-cache tini wget ffmpeg font-dejavu && mkdir -p /data && chown node:node /data
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node migrations ./migrations

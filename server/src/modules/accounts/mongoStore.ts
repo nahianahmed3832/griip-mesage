@@ -52,6 +52,8 @@ const PATCHABLE: readonly (keyof AccountPatch)[] = [
   "legacy_linked_at",
   "selected_workspace_id",
   "admitted_via",
+  // Suspension by a platform admin (the Platform Admin Console, 2026-10-23).
+  "disabled_at",
 ];
 
 function strip<T extends { _id: unknown }>(d: T | null): Omit<T, "_id"> | undefined {
@@ -268,6 +270,20 @@ export class MongoAccountStore implements AccountStore {
       .toArray();
     // A removed device's sessions may not be marked yet (routes/auth.ts › revokeDeviceRows): they're over all the same.
     return rows.filter((r) => !r.device_id || this.identity.deviceRevokedAt(r.device_id) === null).map((r) => strip(r)!);
+  }
+
+  async recentSessions(accountId: string, since: number, limit: number): Promise<SessionRow[]> {
+    const rows = await this.sessions
+      .find({ account_id: accountId, expires_at: { $gt: since }, $or: [{ revoked_at: null }, { revoked_at: { $gt: since } }] }, this.o)
+      .sort({ last_used_at: -1 })
+      .limit(limit)
+      .toArray();
+    return rows.map((r) => strip(r)!);
+  }
+
+  async sessionHolders(at: number): Promise<number> {
+    const ids = await this.sessions.distinct("account_id", { revoked_at: null, expires_at: { $gt: at }, refresh_expires_at: { $gt: at } }, this.o);
+    return ids.length;
   }
 
   async putCode(row: CodeRow): Promise<void> {
