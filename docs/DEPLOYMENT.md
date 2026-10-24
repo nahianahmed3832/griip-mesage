@@ -7,7 +7,7 @@
 | VPS | Hostinger VM 1245833, `srv1245833.hstgr.cloud`, **72.60.107.88** (Ubuntu 24.04, 2 vCPU, 8 GB) |
 | Compose project | **`griip-internal-messaging`** |
 | Directory | **`/opt/griip-internal-messaging`** (root, 0750; `.env` 0600) |
-| Services | `api` (`griip-internal-messaging-api:0.37.0` since 2026-10-24 10:05 UTC, built on the VPS; `0.36.0-rollback`, `0.35.0-rollback` and older `-rollback` tags kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
+| Services | `api` (`griip-internal-messaging-api:0.37.1` since 2026-10-24 13:05 UTC, built on the VPS; `0.37.0-rollback`, `0.36.0-rollback` and older `-rollback` tags kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
 | Volume / network | `griip-internal-messaging_api-data`, `griip-internal-messaging_default` |
 | Public URLs | **`https://msg.meldiq.app`** (API + WebSocket) and **`wss://rtc.meldiq.app`** (LiveKit signalling) since 2026-10-22; the former `msg.griipbuddy.cloud` and `rtc.griipbuddy.cloud` still serve the same backends for apps installed earlier |
 | TLS | host nginx: `meldiq-msg.conf` (certificate `meldiq-msg`, msg and rtc.meldiq.app) and `griip-message.conf` (certificate `griip-message`, the former names); both renew automatically (certbot, webroot `/var/www/griip-message-acme`). `meldiq-admin.conf` (certificate `admin.meldiq.app`, certbot `--nginx`, renews automatically) since 2026-10-23 |
@@ -129,6 +129,20 @@ Passkeys failed in the app installed from Google Play: Play signs it with its ap
 | Checks after | `/healthz` 0.35.0 on msg.meldiq.app and msg.griipbuddy.cloud; `assetlinks.json` lists `com.meldiq.android` with the debug and Play keys; passkey options answer. Google's Digital Asset Links check still said "not linked" right after (its answer is cached up to an hour) |
 
 Rollback: copy the backup's `.env` back and recreate `api` the same way.
+
+### API 0.37.1 and the first routes (2026-10-24, 13:05 UTC, owner's request)
+
+Fix (internal-beta `37642c9`): the vision verification image is a 64×64 red square instead of one pixel, which
+gpt-6.1-sol read as "black" (it names the square red; checked in production). Pre-flight: VPS `server/` equal to
+`a9633d8`. Backup `pre-0.37.1-20261024T130344Z` (integrity ok, schema 51, 39 users); image tagged `0.37.0-rollback`;
+rehearsal on the copy ok; switch healthy, 0 restarts, no errors; `/healthz` 0.37.1 on both hosts. Server 984 tests passed
+after fixing a quota test pinned to 12:00 UTC today. Rollback: image `0.37.0-rollback`.
+
+Routes, at the owner's request, through the console's own set-up code (`setupRoute`, audited as `cli` with a reason) and
+in the console by the owner: **reasoning, quick replies and image understanding → `gpt-6.1-sol`** (OpenAI "GriipBuddy"),
+each verified by a real request; quick replies keeps `gpt-5.4-mini-2026-03-17` as its fallback. `gpt-6.1-sol` can't
+serve speech to text (the transcription endpoint answered 404), text to speech, image generation or embeddings: those
+four routes need dedicated models and stay unconfigured.
 
 ### API 0.37.0 and console 0.5.0 (2026-10-24, 10:05 UTC, owner's go-ahead)
 
