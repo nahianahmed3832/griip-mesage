@@ -63,6 +63,22 @@ object CallMediaPolicy {
      */
     fun canShareAppSound(sdk: Int): Boolean = sdk >= 29
 
+    /** A video encoder on this phone, as [canShareHigh] needs it. */
+    data class Encoder(val mime: String, val hardware: Boolean, val does1080p60: Boolean)
+
+    /** High screen sharing ([ShareMode.HIGH]) needs a hardware VP8 encoder (what calls send) that reports 1080p at 60 fps. */
+    fun canShareHigh(encoders: List<Encoder>): Boolean = encoders.any { it.mime == "video/x-vnd.on2.vp8" && it.hardware && it.does1080p60 }
+
+    /**
+     * Whether a High share is sending clearly less than asked (the phone's encoder, heat or the network): under 45 fps or
+     * under 1000 lines on the short edge, measured. Null stats (not measured yet) aren't "less".
+     */
+    fun sendingLessThanHigh(sent: VideoStats?): Boolean {
+        if (sent == null) return false
+        val lines = minOf(sent.width, sent.height)
+        return lines in 1 until 1000 || (sent.fps != null && sent.fps < 45)
+    }
+
     /** Your own picture is mirrored only for the front camera, like a mirror; the back camera shows the world as it is. */
     fun mirrorPreview(isLocal: Boolean, backCamera: Boolean): Boolean = isLocal && !backCamera
 
@@ -155,12 +171,17 @@ class VideoStatsSampler {
  * - [GAME]: games and video. Up to 1280×720 at 30 fps and 3.5 Mbit/s; congestion lowers sharpness and keeps motion
  *   smooth. 720p is what phones encode at 30 fps without heating up, and what a receiving phone shows anyway.
  *
- * Both use VP8 with one layer. H.264 isn't used yet: hardware H.264 encoders differ by phone, and the other phones'
+ * - [HIGH] (2026-10-24, Meldiq Web's High): up to 1920×1080 at 60 fps and 8 Mbit/s, congestion lowers sharpness first.
+ *   Offered only on a phone whose hardware VP8 encoder reports 1080p60 ([CallMediaPolicy.canShareHigh]); a software
+ *   encoder at that rate heats the phone and drops frames. What's actually sent shows on the sharing banner.
+ *
+ * All use VP8 with one layer. H.264 isn't used yet: hardware H.264 encoders differ by phone, and the other phones'
  * decoders and the frame encryption need checking on real devices first (`MELDIQ_CALLING_SCREENSHARE_AUDIT.md` §4).
  */
 enum class ShareMode(val maxLong: Int, val maxShort: Int, val fps: Int, val maxBitrate: Int, val keepFrameRate: Boolean) {
     TEXT(CallMediaPolicy.SCREEN_MAX_LONG, CallMediaPolicy.SCREEN_MAX_SHORT, CallMediaPolicy.SCREEN_FPS, CallMediaPolicy.SCREEN_MAX_BITRATE, keepFrameRate = false),
     GAME(1280, 720, 30, 3_500_000, keepFrameRate = true),
+    HIGH(1920, 1080, 60, 8_000_000, keepFrameRate = true),
     ;
 
     companion object {

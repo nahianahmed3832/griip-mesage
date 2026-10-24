@@ -21,6 +21,7 @@ import android.media.projection.MediaProjectionManager
 import android.util.Log
 import android.widget.Toast
 import com.meldiq.android.R
+import com.meldiq.android.call.CallMediaPolicy
 import com.meldiq.android.call.ShareMode
 import com.meldiq.android.BuildConfig
 import androidx.activity.compose.BackHandler
@@ -196,7 +197,9 @@ fun CallOverlay() {
 
     val remote = s.participants.filter { !it.isLocal }
     val local = s.participants.firstOrNull { it.isLocal }
-    val screen = s.participants.firstOrNull { it.screen != null && !it.isLocal }
+    // Several shares (2026-10-24): the one this phone watches ([CallTiles.watchedShare]), chosen in the share tray.
+    val sharers = s.participants.filter { it.screen != null && !it.isLocal }
+    val screen = sharers.firstOrNull { it.identity == s.watchingShare } ?: sharers.firstOrNull()
     val mode = CallTiles.mode(s.isGroup, s.phase, remote.size, remote.any { it.camera != null }, screen != null)
     // Full-screen media (one-to-one video, a shared screen) gets scrims, and a tap can hide the controls for a clear
     // view; the grid keeps its tiles clear of the controls instead.
@@ -228,7 +231,7 @@ fun CallOverlay() {
             } else {
                 VideoTile(remote.first().camera, Modifier.fillMaxSize())
             }
-            CallTiles.Mode.ScreenWithStrip -> ScreenStage(screen!!, s.participants, showChrome, onFlip = calls::flipCamera)
+            CallTiles.Mode.ScreenWithStrip -> ScreenStage(screen!!, sharers, s.participants, showChrome, onWatch = calls::watchShare, onFlip = calls::flipCamera)
             CallTiles.Mode.Grid -> ParticipantGrid(
                 s.participants,
                 // Room for the status lines above and the controls below, which never cover a tile.
@@ -327,8 +330,22 @@ fun CallOverlay() {
                 ) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(Color.White))
                     Spacer(Modifier.width(10.dp))
-                    val what = stringResource(if (s.shareMode == ShareMode.GAME) R.string.b11_sharing_game else R.string.b11_sharing)
-                    Text(if (s.shareAppSound) what + " · " + stringResource(R.string.b11_with_sound) else what, style = Griip.type.bodyMedium, color = Color.White, modifier = Modifier.weight(1f))
+                    val what = stringResource(
+                        when (s.shareMode) {
+                            ShareMode.GAME -> R.string.b11_sharing_game
+                            ShareMode.HIGH -> R.string.vid_sharing_high
+                            ShareMode.TEXT -> R.string.b11_sharing
+                        },
+                    )
+                    // High, measured: say so when the phone or the network sends clearly less than 1080p at 60 fps.
+                    val sent = s.stats?.sendingScreen
+                    val less = s.shareMode == ShareMode.HIGH && CallMediaPolicy.sendingLessThanHigh(sent)
+                    val parts = listOfNotNull(
+                        what,
+                        stringResource(R.string.b11_with_sound).takeIf { s.shareAppSound },
+                        sent?.takeIf { less }?.let { stringResource(R.string.vid_sending_less, minOf(it.width, it.height), (it.fps ?: 0.0).toInt()) },
+                    )
+                    Text(parts.joinToString(" · "), style = Griip.type.bodyMedium, color = Color.White, modifier = Modifier.weight(1f))
                     Text(stringResource(R.string.b11_stop), style = Griip.type.button, color = Color.White, modifier = Modifier.clip(Shapes.pill).background(Color.White.copy(alpha = 0.22f)).pressable({ calls.stopScreenShare() }).padding(horizontal = 14.dp, vertical = 6.dp))
                 }
             }
@@ -371,7 +388,14 @@ fun CallOverlay() {
                     onMic = { calls.toggleMic() },
                     onCamera = { if (s.cameraOn) calls.toggleCamera() else permission(true) { calls.toggleCamera() } },
                     onAudio = onAudio,
-                    onShare = { if (s.screenSharing) calls.stopScreenShare() else explainShare = true },
+                    onShare = {
+                        when {
+                            s.screenSharing -> calls.stopScreenShare()
+                            // A fourth screen waits for one to stop (as on Meldiq Web), before Android's consent is asked.
+                            !CallTiles.canStartShare(sharers.size) -> Toast.makeText(ctx, ctx.getString(R.string.vid_share_full, CallTiles.MAX_SHARES), Toast.LENGTH_LONG).show()
+                            else -> explainShare = true
+                        }
+                    },
                     onEnd = { calls.hangup() },
                 )
             }
@@ -447,7 +471,10 @@ private fun CallerHero(s: CallUiState, modifier: Modifier) {
             }
             CallPhase.Ended -> when (s.endReason) {
                 "declined" -> "Call declined"; "busy" -> "Busy"; "missed" -> "No answer"; "error" -> "Call failed"
-                "lost" -> "Call ended: the connection was lost"; else -> "Call ended"
+                "lost" -> "Call ended: the connection was lost"
+                // API 0.33.0: the same account joined the call on another device, which keeps it (newest wins).
+                "joined_elsewhere" -> stringResource(R.string.vid_joined_elsewhere)
+                else -> "Call ended"
             }
             else -> ""
         }
@@ -558,10 +585,15 @@ private fun ParticipantGrid(participants: List<ParticipantUi>, modifier: Modifie
 
 /** A shared screen, as large as it fits with its aspect kept, above a strip with everyone's tile. */
 @Composable
-private fun ScreenStage(sharer: ParticipantUi, participants: List<ParticipantUi>, showChrome: Boolean, onFlip: () -> Unit) {
+private fun ScreenStage(
+    sharer: ParticipantUi, sharers: List<ParticipantUi>, participants: List<ParticipantUi>, showChrome: Boolean,
+    onWatch: (String) -> Unit, onFlip: () -> Unit,
+) {
     Column(Modifier.fillMaxSize().windowInsetsPadding(CallInsets).padding(top = if (showChrome) 92.dp else 8.dp, bottom = if (showChrome) 128.dp else 8.dp)) {
+        if (sharers.size > 1) ShareTray(sharers, sharer.identity, onWatch)
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            VideoTile(sharer.screen, Modifier.fillMaxSize(), fit = true)
+            // Keyed by whose screen it is, so switching shares binds the new track instead of reusing the old renderer.
+            key(sharer.identity) { VideoTile(sharer.screen, Modifier.fillMaxSize(), fit = true) }
             if (showChrome) ScreenLabel(sharer.name, Modifier.align(Alignment.TopCenter))
         }
         Row(
@@ -576,6 +608,35 @@ private fun ScreenStage(sharer: ParticipantUi, participants: List<ParticipantUi>
                         if (p.isLocal && p.camera != null) FlipCameraButton(onFlip, Modifier.align(Alignment.TopEnd).padding(4.dp))
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Every screen shared in the call (2026-10-24, as on Meldiq Web): Watching on the one shown, Watch on the others. The
+ * choice is this phone's only; the others' screens aren't drawn, so the media server stops sending them (adaptive stream).
+ */
+@Composable
+private fun ShareTray(sharers: List<ParticipantUi>, watching: String, onWatch: (String) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        sharers.forEach { p ->
+            val on = p.identity == watching
+            val label = stringResource(if (on) R.string.vid_share_watching else R.string.vid_share_watch)
+            Row(
+                Modifier.clip(Shapes.pill).background(if (on) Color.White.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.12f))
+                    .pressable({ if (!on) onWatch(p.identity) }, onClickLabel = stringResource(R.string.vid_share_of, p.name))
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.ScreenShare, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.vid_share_of, p.name), style = Griip.type.label, color = Color.White, maxLines = 1)
+                Spacer(Modifier.width(8.dp))
+                Text(label, style = Griip.type.caption, color = Color.White.copy(alpha = if (on) 1f else 0.75f))
             }
         }
     }
@@ -797,7 +858,8 @@ private fun VerificationPanel(s: CallUiState, modifier: Modifier, onClose: () ->
  */
 @Composable
 fun CallPipView(s: CallUiState) {
-    val remote = s.participants.firstOrNull { !it.isLocal && it.screen != null } ?: s.participants.firstOrNull { !it.isLocal }
+    val remote = s.participants.firstOrNull { !it.isLocal && it.screen != null && it.identity == s.watchingShare }
+        ?: s.participants.firstOrNull { !it.isLocal && it.screen != null } ?: s.participants.firstOrNull { !it.isLocal }
     val track = remote?.screen ?: remote?.camera
     Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
         if (track != null) VideoTile(track, Modifier.fillMaxSize(), fit = remote?.screen != null)

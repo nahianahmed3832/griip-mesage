@@ -731,4 +731,13 @@
     <string name="ux_passkey_exists">Your password manager already has a passkey for this account.</string>
     <string name="ux_passkey_no_manager">This phone has no password manager that can save passkeys. Turn on Google Password Manager in Settings, then try again.</string>
     <string name="ux_passkey_sign_in">Sign in with a passkey</string>
+    <string name="vid_high">High: 1080p, 60 fps</string>
+    <string name="vid_high_sub">Smoothest and sharpest. Uses more battery and data; lowered when the network or heat can\'t keep up.</string>
+    <string name="vid_sharing_high">Sharing · High</string>
+    <string name="vid_sending_less">sending %1$dp at %2$d fps</string>
+    <string name="vid_share_full">%1$d screens are already shared. Ask someone to stop sharing first.</string>
+    <string name="vid_share_of">%1$s\'s screen</string>
+    <string name="vid_share_watch">Watch</string>
+    <string name="vid_share_watching">Watching</string>
+    <string name="vid_joined_elsewhere">You joined this call on another device</string>
 </resources>

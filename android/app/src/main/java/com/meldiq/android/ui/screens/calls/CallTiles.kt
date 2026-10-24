@@ -44,6 +44,18 @@ object CallTiles {
         return remotes + listOfNotNull(local)
     }
 
+    /** Screens shared at once in a call (2026-10-24, as on Meldiq Web): a fourth share waits for one to stop. */
+    const val MAX_SHARES = 3
+
+    /**
+     * Whose share this phone watches when several are shared (2026-10-24, as on Meldiq Web): the one already watched
+     * while it lasts, so a new share never takes over; otherwise the first of [sharers]; null when nobody shares.
+     */
+    fun watchedShare(sharers: List<String>, watching: String?): String? = watching?.takeIf { it in sharers } ?: sharers.firstOrNull()
+
+    /** Whether this phone may start sharing: fewer than [MAX_SHARES] other people share already. */
+    fun canStartShare(othersSharing: Int): Boolean = othersSharing < MAX_SHARES
+
     data class Grid(val columns: Int, val rows: Int)
 
     /** Columns and rows for [count] tiles: everyone visible at once up to 12 (the media server's limit). */

@@ -731,4 +731,13 @@
     <string name="ux_passkey_exists">আপনার পাসওয়ার্ড ম্যানেজারে এই অ্যাকাউন্টের পাসকি আগে থেকেই আছে।</string>
     <string name="ux_passkey_no_manager">এই ফোনে পাসকি রাখার মতো পাসওয়ার্ড ম্যানেজার নেই। সেটিংসে Google Password Manager চালু করে আবার চেষ্টা করুন।</string>
     <string name="ux_passkey_sign_in">পাসকি দিয়ে সাইন ইন করুন</string>
+    <string name="vid_high">উচ্চ: 1080p, 60 fps</string>
+    <string name="vid_high_sub">সবচেয়ে মসৃণ ও স্পষ্ট। বেশি ব্যাটারি ও ডেটা লাগে; নেটওয়ার্ক বা গরম সামলাতে না পারলে কমে যায়।</string>
+    <string name="vid_sharing_high">শেয়ার হচ্ছে · উচ্চ</string>
+    <string name="vid_sending_less">পাঠানো হচ্ছে %1$dp, %2$d fps</string>
+    <string name="vid_share_full">ইতিমধ্যে %1$dটি স্ক্রিন শেয়ার হচ্ছে। আগে কাউকে শেয়ার বন্ধ করতে বলুন।</string>
+    <string name="vid_share_of">%1$s-এর স্ক্রিন</string>
+    <string name="vid_share_watch">দেখুন</string>
+    <string name="vid_share_watching">দেখছেন</string>
+    <string name="vid_joined_elsewhere">আপনি অন্য একটি ডিভাইসে এই কলে যোগ দিয়েছেন</string>
 </resources>

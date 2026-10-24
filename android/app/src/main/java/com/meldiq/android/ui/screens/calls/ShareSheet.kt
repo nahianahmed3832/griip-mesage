@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Article
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.Icon
@@ -20,6 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.meldiq.android.R
 import com.meldiq.android.call.CallMediaPolicy
+import com.meldiq.android.call.ShareEncoders
 import com.meldiq.android.call.ShareMode
 import com.meldiq.android.ui.components.GlassSheet
 import com.meldiq.android.ui.components.GriipSwitch
@@ -35,13 +37,16 @@ import com.meldiq.android.ui.theme.Griip
 fun ShareSheet(initialMode: ShareMode, initialSound: Boolean, onContinue: (ShareMode, Boolean) -> Unit, onDismiss: () -> Unit) {
     val c = Griip.colors
     val soundPossible = CallMediaPolicy.canShareAppSound(Build.VERSION.SDK_INT)
-    var mode by remember { mutableStateOf(initialMode) }
+    val highPossible = remember { ShareEncoders.highSupported }
+    var mode by remember { mutableStateOf(if (initialMode == ShareMode.HIGH && !highPossible) ShareMode.GAME else initialMode) }
     var sound by remember { mutableStateOf(initialSound && soundPossible) }
     GlassSheet(onDismiss, title = stringResource(R.string.b11_title)) {
         Column {
             Text(stringResource(R.string.b11_warning), style = Griip.type.bodySmall, color = c.textSecondary, modifier = Modifier.padding(bottom = 8.dp))
             ModeRow(ShareMode.TEXT, mode, Icons.Rounded.Article, R.string.b11_text, R.string.b11_text_sub) { mode = it }
             ModeRow(ShareMode.GAME, mode, Icons.Rounded.SportsEsports, R.string.b11_game, R.string.b11_game_sub) { mode = it }
+            // 2026-10-24: 1080p at 60 fps, only where this phone's hardware encoder can do it ([ShareEncoders]).
+            if (highPossible) ModeRow(ShareMode.HIGH, mode, Icons.Rounded.HighQuality, R.string.vid_high, R.string.vid_high_sub) { mode = it }
             ListCard(
                 stringResource(R.string.b11_sound),
                 subtitle = stringResource(if (soundPossible) R.string.b11_sound_short else R.string.b11_sound_old),

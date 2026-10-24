@@ -112,6 +112,8 @@ data class CallUiState(
     /** Batch B11: what this share is tuned for, and whether app sound goes with it (both only while sharing). */
     val shareMode: ShareMode = ShareMode.TEXT,
     val shareAppSound: Boolean = false,
+    /** Whose shared screen this phone shows when several are shared ([CallTiles.watchedShare]); null: nobody shares. */
+    val watchingShare: String? = null,
     /** The call's sound is on the speaker now (from [audioRoute]; kept for the picture-in-picture and older callers). */
     val speakerOn: Boolean = false,
     val participants: List<ParticipantUi> = emptyList(),
@@ -944,9 +946,11 @@ class CallManager(
             listOf(ui(r.localParticipant, true)) + r.remoteParticipants.values.map { ui(it, false) },
             identity = { it.identity }, isLocal = { it.isLocal }, firstSeen = { synchronized(firstSeen) { firstSeen[it] ?: Long.MAX_VALUE } },
         )
+        val sharers = list.filter { !it.isLocal && it.screen != null }.map { it.identity }
         _state.update {
             it.copy(
                 participants = list,
+                watchingShare = com.meldiq.android.ui.screens.calls.CallTiles.watchedShare(sharers, it.watchingShare),
                 micOn = r.localParticipant.isMicrophoneEnabled,
                 cameraOn = r.localParticipant.isCameraEnabled,
                 screenSharing = r.localParticipant.isScreenShareEnabled,
@@ -1099,6 +1103,11 @@ class CallManager(
             _state.update { it.copy(error = "Screen sharing can start once the call is connected.") }
             return@launch
         }
+        val othersSharing = _state.value.participants.count { !it.isLocal && it.screen != null }
+        if (!com.meldiq.android.ui.screens.calls.CallTiles.canStartShare(othersSharing)) {
+            _state.update { it.copy(error = context.getString(R.string.vid_share_full, com.meldiq.android.ui.screens.calls.CallTiles.MAX_SHARES)) }
+            return@launch
+        }
         stoppingShare = false
         applyShareMode(r, mode)
         try {
@@ -1133,6 +1142,11 @@ class CallManager(
         Log.i(TAG, "screen capture stopped (${if (ours) "Stop in Meldiq" else "by Android or the status bar"})")
         if (!ours) _state.update { it.copy(notice = "Screen sharing stopped") }
         refreshParticipants()
+    }
+
+    /** Shows [identity]'s shared screen (one of several); nothing changes for anyone else. */
+    fun watchShare(identity: String) {
+        _state.update { s -> if (s.participants.any { it.identity == identity && !it.isLocal && it.screen != null }) s.copy(watchingShare = identity) else s }
     }
 
     /** Stops sharing only; the call goes on (leaving is the End button). */

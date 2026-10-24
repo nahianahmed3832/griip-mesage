@@ -748,4 +748,13 @@ S = {
 "ux_passkey_exists": ("Your password manager already has a passkey for this account.", "你的密码管理器中已有此账号的通行密钥。", "আপনার পাসওয়ার্ড ম্যানেজারে এই অ্যাকাউন্টের পাসকি আগে থেকেই আছে।"),
 "ux_passkey_no_manager": ("This phone has no password manager that can save passkeys. Turn on Google Password Manager in Settings, then try again.", "此手机没有可保存通行密钥的密码管理器。请在设置中开启 Google 密码管理工具后重试。", "এই ফোনে পাসকি রাখার মতো পাসওয়ার্ড ম্যানেজার নেই। সেটিংসে Google Password Manager চালু করে আবার চেষ্টা করুন।"),
 "ux_passkey_sign_in": ("Sign in with a passkey", "使用通行密钥登录", "পাসকি দিয়ে সাইন ইন করুন"),
+"vid_high": ("High: 1080p, 60 fps", "高画质：1080p，60 帧", "উচ্চ: 1080p, 60 fps"),
+"vid_high_sub": ("Smoothest and sharpest. Uses more battery and data; lowered when the network or heat can't keep up.", "最流畅、最清晰。耗电和流量更多；网络或发热跟不上时会自动降低。", "সবচেয়ে মসৃণ ও স্পষ্ট। বেশি ব্যাটারি ও ডেটা লাগে; নেটওয়ার্ক বা গরম সামলাতে না পারলে কমে যায়।"),
+"vid_sharing_high": ("Sharing · High", "共享中 · 高画质", "শেয়ার হচ্ছে · উচ্চ"),
+"vid_sending_less": ("sending %1$dp at %2$d fps", "实际发送 %1$dp，%2$d 帧", "পাঠানো হচ্ছে %1$dp, %2$d fps"),
+"vid_share_full": ("%1$d screens are already shared. Ask someone to stop sharing first.", "已有 %1$d 个屏幕在共享。请先请他人停止共享。", "ইতিমধ্যে %1$dটি স্ক্রিন শেয়ার হচ্ছে। আগে কাউকে শেয়ার বন্ধ করতে বলুন।"),
+"vid_share_of": ("%1$s's screen", "%1$s 的屏幕", "%1$s-এর স্ক্রিন"),
+"vid_share_watch": ("Watch", "观看", "দেখুন"),
+"vid_share_watching": ("Watching", "正在观看", "দেখছেন"),
+"vid_joined_elsewhere": ("You joined this call on another device", "你已在另一台设备上加入此通话", "আপনি অন্য একটি ডিভাইসে এই কলে যোগ দিয়েছেন"),
 }

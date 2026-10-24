@@ -731,4 +731,13 @@
     <string name="ux_passkey_exists">你的密码管理器中已有此账号的通行密钥。</string>
     <string name="ux_passkey_no_manager">此手机没有可保存通行密钥的密码管理器。请在设置中开启 Google 密码管理工具后重试。</string>
     <string name="ux_passkey_sign_in">使用通行密钥登录</string>
+    <string name="vid_high">高画质：1080p，60 帧</string>
+    <string name="vid_high_sub">最流畅、最清晰。耗电和流量更多；网络或发热跟不上时会自动降低。</string>
+    <string name="vid_sharing_high">共享中 · 高画质</string>
+    <string name="vid_sending_less">实际发送 %1$dp，%2$d 帧</string>
+    <string name="vid_share_full">已有 %1$d 个屏幕在共享。请先请他人停止共享。</string>
+    <string name="vid_share_of">%1$s 的屏幕</string>
+    <string name="vid_share_watch">观看</string>
+    <string name="vid_share_watching">正在观看</string>
+    <string name="vid_joined_elsewhere">你已在另一台设备上加入此通话</string>
 </resources>
