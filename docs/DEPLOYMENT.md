@@ -115,6 +115,21 @@ Not verifiable on production yet: no one can connect an app there (`integrations
 provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
 `up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
 
+### Passkeys for the Play app (2026-10-24, 08:38 UTC, owner's go-ahead; settings only, API 0.35.0 unchanged)
+
+Passkeys failed in the app installed from Google Play: Play signs it with its app signing key
+(`C9:98:DB:04:A0:B3:03:E1:71:D5:B6:E4:07:C8:DB:84:26:24:1E:21:95:B9:69:C6:40:99:78:78:DF:0B:8D:46`), which wasn't in
+`PASSKEY_ANDROID_APPS`, so Android wouldn't link the app to msg.meldiq.app (docs/PASSKEYS.md).
+
+| Step | Result |
+|---|---|
+| Backup | `backups/pre-passkey-play-key-20261024T083719Z`: archive verified (integrity ok, schema 50, 39 users), `.env` and `compose.yaml` copies |
+| Config | `.env`: `PASSKEY_ANDROID_APPS` += `com.meldiq.android=C9:98:DB:04:…` (no other line changed); `validate-env.sh` 0 errors (the 2 usual warnings); `config -q` ok; the 0.35.0 image parsed the three entries with the network off |
+| Switch | `up -d --no-deps --no-build --force-recreate api` (same image): healthy, 0 restarts, no errors in the log |
+| Checks after | `/healthz` 0.35.0 on msg.meldiq.app and msg.griipbuddy.cloud; `assetlinks.json` lists `com.meldiq.android` with the debug and Play keys; passkey options answer. Google's Digital Asset Links check still said "not linked" right after (its answer is cached up to an hour) |
+
+Rollback: copy the backup's `.env` back and recreate `api` the same way.
+
 ### API 0.35.0, AI Workforce 1.0 and console 0.3.0 (2026-10-24, 06:22 UTC, owner's go-ahead)
 
 0.34.0 **plus** AI Workforce 1.0 (`AI_WORKFORCE.md`): the shared model gateway, the agent runtime and its 21 agents,

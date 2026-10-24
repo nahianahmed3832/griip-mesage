@@ -37,8 +37,14 @@ Settings (`deploy/.env.example`):
 - `PASSKEY_WEB_ORIGINS` (API 0.30.0): web apps on other hosts, e.g. `https://web.meldiq.app`. See "Relying parties".
 - `PASSKEY_ANDROID_APPS`: `package=FINGERPRINT` entries. Each becomes an allowed origin
   (`android:apk-key-hash:…`) and an entry of `assetlinks.json`. Production lists `com.meldiq.android` and
-  `com.meldiq.android.test` with the debug certificate the test builds are signed with; **add the release signing
-  certificate's fingerprint before shipping a release build**, or passkeys won't be offered to it.
+  `com.meldiq.android.test` with the debug certificate the test builds are signed with, and (since 2026-10-24)
+  `com.meldiq.android` with **Google Play's app signing key** `C9:98:DB:04:…:0B:8D:46`: an app installed from Play is
+  signed with Play's key, not the upload key, and without it Android refused every passkey from the Play app (found on
+  the owner's HONOR ELI-AN00). A release APK installed outside Play is signed with the upload key, whose fingerprint
+  would need its own entry.
+- On the phone, a passkey store must be switched on (Settings › Passwords / Autofill › Google, or another passkey
+  provider). Where none is, Google only offers "Create passkey on another device" (a QR code), as on the HONOR phone
+  whose own Keychain was the autofill service.
 
 The nginx site already passes `/.well-known/assetlinks.json` to the API over HTTPS (only `acme-challenge` is served
 on port 80).
