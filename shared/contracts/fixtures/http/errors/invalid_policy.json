@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "invalid_policy",
+    "message": "Make payments is never allowed for agents."
+  }
+}

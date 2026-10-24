@@ -26,6 +26,7 @@ export {
   deviceOf,
   devicesPage,
   latestSessionOfDevices,
+  namesOf,
   type DeviceSummaryRow,
   searchUsers,
   signupsBetween,

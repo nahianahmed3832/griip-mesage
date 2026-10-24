@@ -18,7 +18,7 @@ export type ScopeType = "global" | "pool" | "plan" | "org" | "user";
 
 export interface QuotaKeyDef {
   label: string;
-  unit: "bytes" | "count" | "tokens" | "micro_usd";
+  unit: "bytes" | "count" | "tokens" | "micro_usd" | "seconds";
   kind: QuotaKind;
   period: QuotaPeriod;
   /** Scopes whose own usage this key is checked against (plan policies apply to the plan's members' scopes). */
@@ -119,6 +119,43 @@ export const QUOTA_KEYS = {
     scopes: ["global", "org", "user"],
     enforceable: ["soft", "block"],
     enforcedAt: "The AI gateway (estimate from the operator's model prices; never an invoice)",
+  },
+  // AI Workforce (docs/AI_WORKFORCE.md). Metered quantities only: no credit or price conversion lives here.
+  "ai.jobs": {
+    label: "AI agent jobs per day",
+    unit: "count",
+    kind: "counter",
+    period: "day",
+    scopes: ["global", "org", "user"],
+    enforceable: ["soft", "throttle", "block"],
+    enforcedAt: "Asking an agent (before the job is created; delegated steps count too)",
+  },
+  "ai.active_jobs": {
+    label: "AI agent jobs active at once",
+    unit: "count",
+    kind: "gauge",
+    period: "none",
+    scopes: ["global", "org", "user"],
+    enforceable: ["soft", "block"],
+    enforcedAt: "Asking an agent (jobs queued, running or waiting for people, counted in the same transaction)",
+  },
+  "ai.media_seconds": {
+    label: "Video rendered per month",
+    unit: "seconds",
+    kind: "counter",
+    period: "month",
+    scopes: ["global", "org", "user"],
+    enforceable: ["soft", "block"],
+    enforcedAt: "The media engine (reserved before a render, settled with the rendered length)",
+  },
+  "ai.file_bytes": {
+    label: "AI files stored",
+    unit: "bytes",
+    kind: "gauge",
+    period: "none",
+    scopes: ["global", "org", "user"],
+    enforceable: ["soft", "block"],
+    enforcedAt: "Uploads to agents and files agents make (before they're stored)",
   },
 } as const satisfies Record<string, QuotaKeyDef>;
 

@@ -9,7 +9,8 @@ import { Readable } from "node:stream";
  * bytes, under keys that carry no names, conversation ids or message metadata.
  */
 
-export type BlobKind = "attachments" | "profile-photos";
+/** "ai-files": what people sent to AI agents and what agents made (docs/AI_WORKFORCE.md); never end-to-end encrypted. */
+export type BlobKind = "attachments" | "profile-photos" | "ai-files";
 
 export interface BlobRange {
   start: number;
@@ -77,9 +78,13 @@ export class LocalBlobStore implements BlobStore {
   readonly backend = "local" as const;
   readonly spoolDir: string;
 
-  constructor(private dirs: Record<BlobKind, string>) {
-    for (const d of Object.values(dirs)) fs.mkdirSync(d, { recursive: true });
-    this.spoolDir = dirs.attachments;
+  private readonly dirs: Record<BlobKind, string>;
+
+  /** [dirs]["ai-files"] defaults to an "ai-files" folder next to the attachments folder. */
+  constructor(dirs: Record<Exclude<BlobKind, "ai-files">, string> & { "ai-files"?: string }) {
+    this.dirs = { ...dirs, "ai-files": dirs["ai-files"] ?? path.join(path.dirname(dirs.attachments), "ai-files") };
+    for (const d of Object.values(this.dirs)) fs.mkdirSync(d, { recursive: true });
+    this.spoolDir = this.dirs.attachments;
   }
 
   pathOf(kind: BlobKind, id: string): string {

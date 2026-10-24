@@ -248,3 +248,18 @@ export function latestSessionOfDevices(db: DB, deviceIds: string[]): Map<string,
 export function signupsBetween(db: DB, from: number, to: number): number {
   return (db.prepare("SELECT COUNT(*) n FROM users WHERE created_at >= ? AND created_at < ? AND home_server_id IS NULL AND synthetic = 0").get(from, to) as { n: number }).n;
 }
+
+/**
+ * Display names and usernames of [userIds] (AI Workforce's impersonation check: an agent can't be named like a member
+ * of its community). Names only.
+ */
+export function namesOf(db: DB, userIds: readonly string[]): { id: string; username: string; displayName: string }[] {
+  if (userIds.length === 0) return [];
+  const out: { id: string; username: string; displayName: string }[] = [];
+  for (let i = 0; i < userIds.length; i += 500) {
+    const chunk = userIds.slice(i, i + 500);
+    const rows = db.prepare(`SELECT id, username, display_name FROM users WHERE id IN (${chunk.map(() => "?").join(",")})`).all(...chunk) as { id: string; username: string; display_name: string }[];
+    for (const r of rows) out.push({ id: r.id, username: r.username, displayName: r.display_name });
+  }
+  return out;
+}

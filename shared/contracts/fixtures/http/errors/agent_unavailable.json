@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "agent_unavailable",
+    "message": "This agent is turned off on the platform."
+  }
+}

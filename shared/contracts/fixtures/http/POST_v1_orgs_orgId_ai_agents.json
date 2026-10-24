@@ -1,0 +1,39 @@
+{
+  "agent": {
+    "id": "agi_QSNGSNNWQd-EImo9A2Wu2Q",
+    "agentId": "general_assistant",
+    "version": 1,
+    "state": "active",
+    "displayName": "General Assistant",
+    "avatar": null,
+    "avatarColor": "#3E63DD",
+    "description": "Answers questions, drafts short texts and summarises what you send it.",
+    "roleTitle": "AI assistant",
+    "language": null,
+    "style": "balanced",
+    "instructions": "",
+    "tools": [
+      "files.read",
+      "files.write",
+      "channel.post"
+    ],
+    "executionMode": "review",
+    "effectiveMode": "review",
+    "maxJobsPerDay": null,
+    "maxConcurrent": null,
+    "invokers": {
+      "everyone": true,
+      "roles": []
+    },
+    "rev": 1,
+    "skill": {
+      "id": "general.assist",
+      "version": 1,
+      "name": "General Assistant",
+      "category": "productivity"
+    },
+    "badge": "AI",
+    "createdAt": 1792823466591,
+    "updatedAt": 1792823466591
+  }
+}

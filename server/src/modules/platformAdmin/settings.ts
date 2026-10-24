@@ -22,6 +22,31 @@ export const SETTINGS = {
     schema: z.boolean(),
     default: false,
   },
+  // AI Workforce (docs/AI_WORKFORCE.md §5 and §9). They change what the job engine does at once, not only the console.
+  "ai.workforce.enabled": {
+    label: "AI Workforce available",
+    description: "Off: communities can't install or ask agents, and no job starts. Jobs already running finish their current step and stop.",
+    schema: z.boolean(),
+    default: false,
+  },
+  "ai.workforce.paused": {
+    label: "New AI jobs paused",
+    description: "An emergency pause: no new job is accepted or started. Running steps finish; jobs waiting in the queue stay there until it's lifted.",
+    schema: z.boolean(),
+    default: false,
+  },
+  "ai.workforce.max_concurrency": {
+    label: "AI jobs running at once",
+    description: "How many agent jobs this server works on at the same time. Lowering it takes effect for the next job; running ones aren't stopped.",
+    schema: z.number().int().min(0).max(16),
+    default: 2,
+  },
+  "ai.workforce.approval_floor": {
+    label: "Approval policy",
+    description: "standard: each community chooses review or automatic for internal work. strict: every agent works in review mode, whatever its community chose.",
+    schema: z.enum(["standard", "strict"]),
+    default: "standard" as "standard" | "strict",
+  },
   "analytics.excluded_users": {
     label: "People left out of analytics",
     description: "User ids of internal and test accounts. Load-test accounts are always left out. Applies to past figures too.",

@@ -188,6 +188,21 @@ export const TABLE_DOMAINS: Readonly<Record<string, TableDomain>> = {
   alert_state: "platform",
   alert_deliveries: "platform",
   platform_restrictions: "platform",
+  // AI Workforce (migration 049): model capabilities and routing, the catalog's state, communities' agents, jobs,
+  // files' records, approvals and agent posts. Kept in SQLite in every mode, like the rest of the platform tables.
+  ai_model_capabilities: "platform",
+  ai_routing: "platform",
+  ai_agent_templates: "platform",
+  ai_tool_policies: "platform",
+  ai_org_entitlements: "platform",
+  ai_agent_installs: "platform",
+  ai_agent_channels: "platform",
+  ai_jobs: "platform",
+  ai_job_events: "platform",
+  ai_shared_messages: "platform",
+  ai_files: "platform",
+  ai_approvals: "platform",
+  ai_channel_posts: "platform",
 };
 
 export interface ColumnSpec {

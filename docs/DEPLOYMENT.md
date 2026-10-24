@@ -7,13 +7,13 @@
 | VPS | Hostinger VM 1245833, `srv1245833.hstgr.cloud`, **72.60.107.88** (Ubuntu 24.04, 2 vCPU, 8 GB) |
 | Compose project | **`griip-internal-messaging`** |
 | Directory | **`/opt/griip-internal-messaging`** (root, 0750; `.env` 0600) |
-| Services | `api` (`griip-internal-messaging-api:0.28.0` since 2026-10-23 05:07 UTC, built on the VPS; `0.27.0-rollback`, `0.26.0-rollback`, `0.25.0-rollback`, `0.24.0-rollback`, `0.13.0-rollback`, `0.12.0-rollback`, `0.11.0-rollback`, `0.10.0-rollback`, `0.9.0-rollback` and `0.8.1-rollback` kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
+| Services | `api` (`griip-internal-messaging-api:0.35.0` since 2026-10-24 06:22 UTC, built on the VPS; `0.34.0-rollback`, `0.33.0-rollback` and older `-rollback` tags kept), `livekit` (`livekit/livekit-server:v1.13.10`), `ntfy` (`binwiederhier/ntfy:v2.31.1`) |
 | Volume / network | `griip-internal-messaging_api-data`, `griip-internal-messaging_default` |
 | Public URLs | **`https://msg.meldiq.app`** (API + WebSocket) and **`wss://rtc.meldiq.app`** (LiveKit signalling) since 2026-10-22; the former `msg.griipbuddy.cloud` and `rtc.griipbuddy.cloud` still serve the same backends for apps installed earlier |
-| TLS | host nginx: `meldiq-msg.conf` (certificate `meldiq-msg`, msg and rtc.meldiq.app) and `griip-message.conf` (certificate `griip-message`, the former names); both renew automatically (certbot, webroot `/var/www/griip-message-acme`) |
+| TLS | host nginx: `meldiq-msg.conf` (certificate `meldiq-msg`, msg and rtc.meldiq.app) and `griip-message.conf` (certificate `griip-message`, the former names); both renew automatically (certbot, webroot `/var/www/griip-message-acme`). `meldiq-admin.conf` (certificate `admin.meldiq.app`, certbot `--nginx`, renews automatically) since 2026-10-23 |
 | Ports | 127.0.0.1:18080 → api, 127.0.0.1:17880 → LiveKit HTTP. Public: **7881/tcp** (ICE TCP), **7882/udp** (media) |
 | Firewall | Hostinger group "web-only" (id 376928): 22, 80, 443 plus 7881/tcp and 7882/udp, which were added for this project |
-| DNS | Hostinger DNS for `meldiq.app`: A records `msg`, `rtc` and `web` → 72.60.107.88. Hostinger DNS for `griipbuddy.cloud`: A records `msg` and `rtc` → 72.60.107.88 (former names) |
+| DNS | Hostinger DNS for `meldiq.app`: A records `msg`, `rtc`, `web` and `admin` (since 2026-10-23) → 72.60.107.88. Hostinger DNS for `griipbuddy.cloud`: A records `msg` and `rtc` → 72.60.107.88 (former names) |
 
 Nothing else on the server was modified. No other Compose project, volume, nginx site or certificate was touched.
 
@@ -114,6 +114,88 @@ Branch `api-0.8.1-web-return`. No migrations (schema stays 28).
 Not verifiable on production yet: no one can connect an app there (`integrations-status`: no `INTEGRATIONS_TOKEN_KEY`, no
 provider credentials, 0 installs). Rollback: `image: griip-internal-messaging-api:0.8.0-rollback`, the same
 `up -d --no-deps --no-build api` (the extra variable is ignored by 0.8.0).
+
+### API 0.35.0, AI Workforce 1.0 and console 0.3.0 (2026-10-24, 06:22 UTC, owner's go-ahead)
+
+0.34.0 **plus** AI Workforce 1.0 (`AI_WORKFORCE.md`): the shared model gateway, the agent runtime and its 21 agents,
+channel requests, and sharing a channel's recent messages with a request. The console's AI Control Center ships as
+console release `0.3.0-20261024T061918Z`. Migrations **049** and **050** are additive. The image now installs `ffmpeg`
+and `font-dejavu` for the media engine. **AI Workforce is off** (`ai.workforce.enabled` false): nothing changes for
+communities until an operator switches it on in the console. No provider has been verified with a real key yet.
+Meldiq Web followed at 06:54 UTC as release **0.5.0-beta-e41839b**: the agents UI ported onto `origin/main` (the first
+build was on a checkout 58 commits behind production web), branch `ai-workforce-web` in orbit_web, not yet merged.
+Rollback `bash /root/meldiq-web-0.5.0-beta-e41839b/rollback.sh`; record in orbit_web `docs/MELDIQ_WEB_STATUS.md`.
+After the deploy, the workforce routes were also registered in the route contracts (`aiWorkforceRoutes.ts`, docs and
+fixtures only, no runtime change), so the web's contract test decodes their real answers.
+
+| Step | Result |
+|---|---|
+| Checks before | `tsc` clean, build ok; server **955 passed** / 11 skipped (SQLite; MongoDB mode not run, since production has no MongoDB). Console: typecheck, lint, format, 17 unit tests, 5 browser tests on the production build under the production CSP |
+| Pre-flight | running 0.34.0; VPS `server/` compared file by file with this checkout: every line present only on the VPS was the 0.34.0 form of a line AI Workforce changes, so no other session's work was missing. Console: only this session's files changed since release 0.2.0 |
+| Backup | `backups/pre-0.35.0-20261024T061828Z`: integrity ok, schema 48, 39 users, `.env` + `compose.yaml` copies; image tagged `0.34.0-rollback`; sources kept as `server.pre-0.35.0` |
+| Build | `docker build -t griip-internal-messaging-api:0.35.0 server` (`build-0.35.0.log`); ffmpeg 8.1.2 and ffprobe in the image |
+| Rehearsal | copy of the snapshot, `--network none`, the env without its FCM lines (the FCM file isn't mounted there): migrations 049 and 050 applied, schema 50, integrity ok, 39 users, all `ai_*` tables present, `ai-workforce-status` shows the workforce off; removed after |
+| Config | no `.env` change; `compose.yaml` image 0.35.0; `validate-env.sh` 0 errors (the 2 usual warnings); `config -q` ok |
+| Switch | `up -d --no-deps --no-build api`: healthy within seconds, 0 restarts, no errors or warnings in the log; LiveKit and ntfy not restarted |
+| Console | release `0.3.0-20261024T061918Z` (sha256 checked) by `install-release.sh`; `nginx -t` ok (the two existing warnings) |
+| Checks after | `/healthz` 0.35.0 on msg.meldiq.app and msg.griipbuddy.cloud; server-info 61 features incl. `ai-workforce`; `POST /v1/orgs/:id/ai/jobs` 401 without a session; `verify.sh` 0 restarts, 42 GB free; `platform-audit-verify` ok; console `verify.sh` 16/16 and the live sign-in page without errors (only the signed-out session check's 401); backup `post-0.35.0-20261024T062320Z` verified (schema 50, 39 users) |
+
+Rollback: `compose.yaml` image back to `0.34.0-rollback`, `up -d --no-deps --no-build api` (migrations 049 and 050 are
+additive; 0.34.0 ignores their tables). Console: `bash /root/meldiq-admin-0.3.0-20261024T061918Z/rollback.sh`.
+
+### API 0.34.0 and Platform Admin 2.0 (2026-10-23, 21:05 UTC, owner's go-ahead)
+
+0.33.0 ("newest device wins in a call", deployed earlier that evening by another session from branch
+`call-newest-device-wins`, commit b48436f) **plus** Platform Admin 2.0: telemetry (activity, traffic, presence, resources),
+the unified quota engine, AI provider operations, alert rules and the incident lifecycle, devices and sessions, and
+console release `0.2.0-20261023T210202Z` (meldiq_central_admin `docs/ADMIN_2_REPORT.md`). b48436f was applied to this
+checkout as a patch (clean; `calls/routes.ts` then identical to production), version 0.34.0. Migration **048**
+(additive: new tables, nullable columns, one index on `audit_log(actor_id, at)`). New docs: ANALYTICS_DEFINITIONS.md,
+RESOURCE_MONITORING.md, QUOTAS.md, AI_OPERATIONS.md, ALERTS.md, PLATFORM_SETTINGS.md, DEVICES_AND_SESSIONS.md.
+
+| Step | Result |
+|---|---|
+| Checks before | `tsc` clean; server **878 passed** / 10 skipped (SQLite, incl. the merged `call_newest_device` suite); MongoDB mode 873 passed, 1 failed: `ordering.test.ts` (duplicate deliveries under the full parallel run, a flake seen before this release; passes 3/3 alone); the new suites (telemetry, quotas, AI, console insights, calls) pass in MongoDB mode. Console: typecheck, lint, format, 17 unit tests, 4 browser tests on the production build under the production CSP (all 2.0 pages, phone width) |
+| Pre-flight | running 0.33.0 (not in this checkout); VPS `server/` compared file by file: its only change beyond 0.32.0 was b48436f |
+| Backup | `backups/pre-0.34.0-20261023T210227Z`: integrity ok, schema 47, 39 users, `.env` + `compose.yaml` copies; image tagged `0.33.0-rollback` |
+| Build | `docker build -t griip-internal-messaging-api:0.34.0 server` |
+| Rehearsal | copy of the snapshot, `--network none`, the image's uid: migration 048 applied, schema 48, integrity ok, 39 users and 14 accounts unchanged, new tables present; removed after |
+| Config | `.env` += `PLATFORM_SECRETS_KEY` (generated on the server with `openssl rand -hex 32`, never displayed; in the `.env` backup policy like the other secrets) and `HOST_METRICS_FILE=/host-metrics/metrics.json`; `compose.yaml`: image 0.34.0 and `./host-metrics:/host-metrics:ro`; `validate-env.sh` 0 errors (the 2 warnings are the existing ones: open registration, APP_ENV) |
+| Host collector | `scripts/host-metrics.py` + systemd `meldiq-host-metrics.{service,timer}` (every 30 s, sandboxed): host interface, api / livekit / ntfy, 18 other containers summed as "other" |
+| Switch | `up -d --no-deps --no-build api`: healthy, 0 restarts, no errors in the log |
+| Console | release `0.2.0-20261023T210202Z` (sha256 checked) by `install-release.sh`; `nginx -t` ok (the two existing warnings) |
+| Checks after | console `verify.sh` 16/16; `/healthz` 0.34.0 on msg.meldiq.app and msg.griipbuddy.cloud; Meldiq Web loads; the new `/admin/v1` routes answer 401 without a session; telemetry writing (56 series incl. host network and per-service, presence and activity rows); no quota policy and no AI provider (nothing enforced, nothing called); `platform-audit-verify` ok (11 rows); the live sign-in page without console errors; backup `post-0.34.0-20261023T210646Z` verified (schema 48, 39 users) |
+
+Rollback: `compose.yaml` image back to `0.33.0-rollback`, `up -d --no-deps --no-build api` (migration 048 is additive; 0.33.0
+ignores its tables). Console: `bash /root/meldiq-admin-0.2.0-20261023T210202Z/rollback.sh`. Collector: `systemctl disable
+--now meldiq-host-metrics.timer`. Nothing enforces until a quota policy is written, and AI is off by default.
+
+### API 0.32.0 and the Platform Admin Console (2026-10-23, 17:22 UTC, owner's go-ahead)
+
+0.31.0 (load-test provisioning, migration 047; deployed earlier that day by another session from sources not in this
+checkout) **plus** the Platform Admin Console's server side (`src/modules/platformAdmin/`, migration 046,
+docs/PLATFORM_ADMIN_CONSOLE.md), and the console itself at **https://admin.meldiq.app** (repository folder
+`meldiq_central_admin`, its `docs/DEPLOYMENT_RUNBOOK.md`). 0.31.0's sources were copied from the VPS and its changes
+applied to this checkout (`internal-beta`, uncommitted) as a patch; the console's changes went on top; version 0.32.0.
+
+| Step | Result |
+|---|---|
+| Checks before | merged code: `tsc` clean; server 821 passed / 10 skipped (SQLite); MongoDB mode: the only failure was the table-owner architecture test, which needed 0.31.0's `loadtest_registrations` table registered (fixed, then passing). Console: typecheck, lint, format, 17 unit tests, 4 browser tests on the production build under the production CSP |
+| Pre-flight | running 0.31.0, healthy; VPS `server/` identical to the copy merged (rsync checksum dry run); 45 GB free; the upload changed only the console's files and the version |
+| Backup | `backups/pre-0.32.0-20261023T171851Z`: integrity ok, schema 47, 39 users, `.env` + `compose.yaml` copies; image tagged `0.31.0-rollback`; sources kept as `server.pre-0.32.0` |
+| Build | `docker build -t griip-internal-messaging-api:0.32.0 server` (nohup) |
+| Rehearsal | copy of the snapshot, `--network none`, uid 1000: migrations 045, **046**, 047 all applied; 39 users; `verify-backup` ok; the console's tables present and empty; removed after |
+| Config | `.env` += `ADMIN_CONSOLE_ORIGIN=https://admin.meldiq.app` (no secrets); parsed by the new image with the data volume read-only before the switch (idle 15 min, max 8 h, step-up 5 min, no network allowlist); `validate-env.sh` 0 errors |
+| Switch | `compose.yaml` image 0.32.0, `config -q`, `up -d --no-deps --no-build api`: healthy |
+| DNS | Hostinger: A `admin` → 72.60.107.88 added in append mode; every other record of the zone unchanged; resolving on 8.8.8.8 and 1.1.1.1 within a minute |
+| TLS | `certbot certonly --nginx -d admin.meldiq.app`: until 2027-01-21, renews automatically |
+| Console | release `0.1.0-20261023T164325Z` (sha256 checked on the VPS) installed by its `install-release.sh`: `/opt/meldiq-admin/releases/…`, site `meldiq-admin.conf` and snippet `meldiq-admin-headers.conf`; `nginx -t` ok (the two "protocol options redefined" warnings come from `meldiq-web.conf` and `metallicon-server.conf`, as before) |
+| Checks after | `verify.sh` ok, restarts 0, no errors in the log; `/healthz` 0.32.0 on msg.meldiq.app, msg.griipbuddy.cloud and through web.meldiq.app; server-info features unchanged (60); console `verify.sh` 16/16 (TLS, redirect, CSP and headers, immutable assets, no source maps, 403 without the console header, 401 without a session, `no-store`, cross-site change refused, `/v1` not reachable on the console's host, `/admin/v1` 404 on msg.meldiq.app); the live sign-in page in a browser without console errors; `platform-audit-verify` ok (0 rows); backup `post-0.32.0-20261023T172527Z` verified (schema 47, 39 users) |
+
+No console admin exists yet: the owner grants their own account with `platform-admin-grant` (meldiq_central_admin
+`docs/DEPLOYMENT_RUNBOOK.md` §7). Rollback: console `rollback.sh` or remove `sites-enabled/meldiq-admin.conf`; API
+`image: griip-internal-messaging-api:0.31.0-rollback` and the same `up -d` (0.31.0 ignores the console's tables and
+`ADMIN_CONSOLE_ORIGIN`).
 
 ### API 0.29.0 (2026-10-23, 09:44 UTC, owner's go-ahead)
 

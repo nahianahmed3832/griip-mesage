@@ -9,7 +9,7 @@ export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
 export const PROVIDER_LABELS: Record<ProviderKind, string> = { anthropic: "Anthropic", openai: "OpenAI", google: "Google AI (Gemini API)" };
 
-const BASE: Record<ProviderKind, string> = {
+export const BASE: Record<ProviderKind, string> = {
   anthropic: "https://api.anthropic.com",
   openai: "https://api.openai.com",
   google: "https://generativelanguage.googleapis.com",
@@ -17,9 +17,11 @@ const BASE: Record<ProviderKind, string> = {
 
 export const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/;
 
-export type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal: AbortSignal }) => Promise<{
+export type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string | FormData; signal: AbortSignal }) => Promise<{
   status: number;
   json(): Promise<unknown>;
+  /** Binary answers (speech). Fakes in tests may leave it out. */
+  arrayBuffer?(): Promise<ArrayBuffer>;
 }>;
 
 export interface Completion {
@@ -30,7 +32,7 @@ export interface Completion {
 
 export class ProviderError extends Error {
   constructor(
-    readonly kind: "timeout" | "network" | "auth" | "rate_limited" | "bad_request" | "server" | "unexpected",
+    readonly kind: "timeout" | "network" | "auth" | "rate_limited" | "bad_request" | "server" | "unexpected" | "cancelled",
     readonly status: number | null,
   ) {
     super(`provider ${kind}${status ? ` (${status})` : ""}`);
@@ -42,7 +44,7 @@ export class ProviderError extends Error {
   }
 }
 
-function headers(kind: ProviderKind, key: string): Record<string, string> {
+export function headers(kind: ProviderKind, key: string): Record<string, string> {
   if (kind === "anthropic") return { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" };
   if (kind === "openai") return { authorization: `Bearer ${key}`, "content-type": "application/json" };
   return { "x-goog-api-key": key, "content-type": "application/json" };
@@ -55,18 +57,38 @@ function classify(status: number): ProviderError["kind"] {
   return "bad_request";
 }
 
-async function call(fetchFn: Fetch, url: string, init: { method: string; headers: Record<string, string>; body?: string }, timeoutMs: number): Promise<unknown> {
+/**
+ * One request with a timeout; [signal] also aborts it (a cancelled job). Answers are JSON, or bytes with "binary".
+ * Only the status and an error kind leave this function on failure: provider error bodies can echo the input.
+ */
+export async function call(
+  fetchFn: Fetch,
+  url: string,
+  init: { method: string; headers: Record<string, string>; body?: string | FormData },
+  timeoutMs: number,
+  signal?: AbortSignal,
+  as: "json" | "binary" = "json",
+): Promise<unknown> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  const onAbort = () => ctl.abort();
+  if (signal?.aborted) ctl.abort();
+  signal?.addEventListener("abort", onAbort, { once: true });
   try {
     const res = await fetchFn(url, { ...init, signal: ctl.signal });
     if (res.status < 200 || res.status >= 300) throw new ProviderError(classify(res.status), res.status);
+    if (as === "binary") {
+      if (!res.arrayBuffer) throw new ProviderError("unexpected", res.status);
+      return Buffer.from(await res.arrayBuffer());
+    }
     return await res.json();
   } catch (e) {
     if (e instanceof ProviderError) throw e;
+    if (signal?.aborted) throw new ProviderError("cancelled", null);
     throw new ProviderError(ctl.signal.aborted ? "timeout" : "network", null);
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 

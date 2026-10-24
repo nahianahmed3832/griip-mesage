@@ -4,6 +4,8 @@ import { newId } from "../../shared/utilities/util.js";
 import { type QuotaEngine, refusal, scopesFor } from "../quotas/index.js";
 import { complete, type Fetch, listModels, MODEL_ID, PROVIDER_LABELS, type ProviderKind, ProviderError } from "./providers.js";
 import type { SecretBox } from "./secrets.js";
+import { AiGateway } from "./gateway.js";
+import { AiRouting } from "./routing.js";
 
 /**
  * AI operations (docs/AI_OPERATIONS.md): provider connections, approved models and their prices, and the one gateway
@@ -90,12 +92,33 @@ export function costMicro(m: Pick<ModelRow, "input_price_micro" | "output_price_
 }
 
 export class AiService {
+  /** Capabilities per model and `auto` routing (routing.ts). */
+  readonly routing: AiRouting;
+  /** The capability gateway AI Workforce jobs call (gateway.ts). */
+  readonly gateway: AiGateway;
+
   constructor(
     private readonly db: DB,
     private readonly quotas: QuotaEngine,
     private readonly box: SecretBox,
     private readonly opts: { fetch?: Fetch; enabled: () => boolean; clock?: () => number },
-  ) {}
+  ) {
+    const clock = () => this.now();
+    this.routing = new AiRouting(db, clock);
+    this.gateway = new AiGateway(
+      db,
+      quotas,
+      this.routing,
+      {
+        provider: (id) => {
+          const r = this.db.prepare("SELECT * FROM ai_providers WHERE id = ?").get(id) as ProviderRow | undefined;
+          return r ? { id: r.id, kind: r.kind, timeoutMs: r.timeout_ms, maxRetries: r.max_retries } : null;
+        },
+        openKey: (id) => this.key(this.row(id)),
+      },
+      { fetch: () => this.fetch, enabled: () => this.enabled, clock },
+    );
+  }
 
   private get fetch(): Fetch {
     return this.opts.fetch ?? ((url, init) => fetch(url, init) as unknown as ReturnType<Fetch>);
@@ -239,8 +262,12 @@ export class AiService {
       .run(providerId, model, m.enabled ? 1 : 0, m.inputPriceMicro, m.outputPriceMicro, m.priceSource.trim(), priced ? this.now() : null);
   }
 
+  /** Removes an approved model with its capabilities and their verifications (approving it again starts over). */
   removeModel(providerId: string, model: string): void {
-    this.db.prepare("DELETE FROM ai_models WHERE provider_id = ? AND model = ?").run(providerId, model);
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM ai_model_capabilities WHERE provider_id = ? AND model = ?").run(providerId, model);
+      this.db.prepare("DELETE FROM ai_models WHERE provider_id = ? AND model = ?").run(providerId, model);
+    })();
   }
 
   private record(u: {
@@ -339,6 +366,54 @@ export class AiService {
     const latencyMs = this.now() - t0;
     this.record({ providerId: done.p.id, model: done.m.model, feature: req.feature, userId: req.userId, orgId: req.orgId, outcome: "ok", status: 200, input, output, tokensSource: reported ? "provider" : "estimate", cost, latencyMs });
     return { text: done.out.text, inputTokens: done.out.inputTokens, outputTokens: done.out.outputTokens, costMicro: cost, providerId: done.p.id, model: done.m.model, latencyMs };
+  }
+
+  /** AI Workforce's model use since [from]: totals, by capability, by provider and model (with p50), by community. */
+  workforceUsage(from: number) {
+    const totals = this.db
+      .prepare(
+        `SELECT COUNT(*) requests, SUM(outcome IN ('error','timeout')) failed, SUM(COALESCE(input_tokens,0)) inputTokens, SUM(COALESCE(output_tokens,0)) outputTokens,
+                SUM(COALESCE(cost_micro,0)) costMicro, SUM(outcome = 'ok' AND cost_micro IS NULL) unpriced FROM ai_usage WHERE feature = 'workforce' AND at >= ?`,
+      )
+      .get(from) as Record<string, number | null>;
+    const n = (k: string) => Number(totals[k] ?? 0);
+    const byCapability = this.db
+      .prepare("SELECT COALESCE(capability, 'text') capability, COUNT(*) requests, SUM(outcome IN ('error','timeout')) failed, SUM(COALESCE(cost_micro,0)) costMicro FROM ai_usage WHERE feature = 'workforce' AND at >= ? GROUP BY 1 ORDER BY requests DESC")
+      .all(from) as { capability: string; requests: number; failed: number; costMicro: number }[];
+    const byProvider = (
+      this.db
+        .prepare("SELECT provider_id providerId, model, COUNT(*) requests, SUM(outcome IN ('error','timeout')) failed, SUM(COALESCE(cost_micro,0)) costMicro FROM ai_usage WHERE feature = 'workforce' AND at >= ? GROUP BY provider_id, model ORDER BY requests DESC LIMIT 50")
+        .all(from) as { providerId: string; model: string; requests: number; failed: number; costMicro: number }[]
+    ).map((r) => {
+      const l = (this.db.prepare("SELECT latency_ms l FROM ai_usage WHERE feature = 'workforce' AND provider_id = ? AND model = ? AND outcome = 'ok' AND at >= ? AND latency_ms IS NOT NULL ORDER BY latency_ms").all(r.providerId, r.model, from) as { l: number }[]).map((x) => x.l);
+      return { ...r, p50Ms: l.length ? l[Math.floor((l.length - 1) / 2)]! : null };
+    });
+    const byOrg = this.db
+      .prepare("SELECT org_id orgId, COUNT(*) requests, SUM(COALESCE(cost_micro,0)) costMicro FROM ai_usage WHERE feature = 'workforce' AND at >= ? AND org_id IS NOT NULL GROUP BY org_id ORDER BY requests DESC LIMIT 20")
+      .all(from) as { orgId: string; requests: number; costMicro: number }[];
+    return { requests: n("requests"), failed: n("failed"), inputTokens: n("inputTokens"), outputTokens: n("outputTokens"), estimatedCostMicro: n("costMicro"), unpricedRequests: n("unpriced"), byCapability, byProvider, byOrg };
+  }
+
+  /** The latest routing decisions (one usage row each): which model served which capability, and how it was chosen. */
+  recentRoutes(limit: number) {
+    return this.db
+      .prepare("SELECT at, provider_id providerId, model, capability, route, outcome, error_kind errorKind, latency_ms latencyMs FROM ai_usage WHERE route IS NOT NULL ORDER BY id DESC LIMIT ?")
+      .all(limit) as { at: number; providerId: string; model: string; capability: string | null; route: string | null; outcome: string; errorKind: string | null; latencyMs: number | null }[];
+  }
+
+  /** Requests and estimated cost per job (AI Workforce's job lists). */
+  jobUsage(jobIds: string[]): Map<string, { requests: number; costMicro: number }> {
+    if (!jobIds.length) return new Map();
+    const rows = this.db
+      .prepare(`SELECT job_id, COUNT(*) requests, SUM(COALESCE(cost_micro,0)) cost FROM ai_usage WHERE job_id IN (${jobIds.map(() => "?").join(",")}) GROUP BY job_id`)
+      .all(...jobIds) as { job_id: string; requests: number; cost: number }[];
+    return new Map(rows.map((r) => [r.job_id, { requests: r.requests, costMicro: r.cost }]));
+  }
+
+  /** One community's AI Workforce requests and estimated cost since [from]. */
+  orgUsage(orgId: string, from: number): { requests: number; costMicro: number } {
+    const r = this.db.prepare("SELECT COUNT(*) requests, SUM(COALESCE(cost_micro,0)) cost FROM ai_usage WHERE feature = 'workforce' AND org_id = ? AND at >= ?").get(orgId, from) as { requests: number; cost: number | null };
+    return { requests: r.requests, costMicro: r.cost ?? 0 };
   }
 
   /** Usage since [from] (ms): totals, by provider and model, by feature, by day, and latency percentiles. */

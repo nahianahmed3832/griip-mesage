@@ -25,6 +25,7 @@ import type { BlobStore } from "../infrastructure/storage/index.js";
 import type { Telemetry } from "../modules/telemetry/index.js";
 import type { QuotaEngine } from "../modules/quotas/index.js";
 import type { AiService } from "../modules/ai/index.js";
+import type { WorkforceModule } from "../modules/workforce/index.js";
 
 export interface AppContext {
   db: DB;
@@ -73,6 +74,8 @@ export interface AppContext {
   quotas: QuotaEngine;
   /** AI provider connections and the gateway every AI request goes through (modules/ai, docs/AI_OPERATIONS.md). */
   ai: AiService;
+  /** AI Workforce: communities' agents, their jobs, and the runtime the console controls (docs/AI_WORKFORCE.md). */
+  workforce: WorkforceModule;
   log: FastifyBaseLogger;
   audit: (e: { actorId?: string | null; orgId?: string | null; action: string; target?: string | null; detail?: string | null }) => void;
 }

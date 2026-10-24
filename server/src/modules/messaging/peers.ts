@@ -12,3 +12,8 @@ export function conversationPeers(ctx: AppContext, userId: string): string[] {
       .all(userId, userId) as { user_id: string }[]
   ).map((r) => r.user_id);
 }
+
+/** The members of one conversation (AI Workforce tells them an agent posted; the fetch that follows checks access). */
+export function conversationMemberIds(ctx: AppContext, conversationId: string): string[] {
+  return (ctx.db.prepare("SELECT user_id FROM conversation_members WHERE conversation_id = ?").all(conversationId) as { user_id: string }[]).map((r) => r.user_id);
+}
