@@ -63,7 +63,8 @@ Legend: [x] done and verified · [~] done, not fully verified · [ ] not done ·
 - [x] Route states (ready, not configured, untested, failed, unavailable, disabled) with last verification and last request
 - [x] A new or removed key clears its models' verifications; requests no route can serve are refused, not queued
 - [x] Failed-job diagnosis and recovery in the console; failed-before-model jobs and verification requests counted apart
-- [ ] Owner: Set up each route in the console with real models (no real provider call was made by the developer)
+- [x] All seven routes set up and verified with real OpenAI requests (2026-10-24): gpt-6.1-sol for reasoning, quick replies
+  and image understanding; whisper-1, gpt-4o-mini-tts, gpt-image-2, text-embedding-3-small for the media routes
 
 ## Phase 8: verification
 - [x] Server tests: `ai_workforce_acceptance`, `ai_workforce_runtime`, `ai_workforce_skills`, `ai_gateway` (plus updated architecture, permissions, sweep, contracts suites)

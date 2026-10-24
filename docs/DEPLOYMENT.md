@@ -144,6 +144,11 @@ each verified by a real request; quick replies keeps `gpt-5.4-mini-2026-03-17` a
 serve speech to text (the transcription endpoint answered 404), text to speech, image generation or embeddings: those
 four routes need dedicated models and stay unconfigured.
 
+Media routes, at the owner's request (same audited set-up code, 13:50 UTC): speech to text → `whisper-1` (provider
+timings), text to speech → `gpt-4o-mini-tts` (MP3), image generation → `gpt-image-2` (PNG), embeddings →
+`text-embedding-3-small` (1536 dimensions), each verified by a real request. **All seven routes ready.** API healthy,
+0 restarts, no errors, audit chain intact. Embeddings still feed no feature (no vector store; `AI_WORKFORCE.md` §15).
+
 ### API 0.37.0 and console 0.5.0 (2026-10-24, 10:05 UTC, owner's go-ahead)
 
 Capability routes (`AI_WORKFORCE.md` §4; internal-beta `a9633d8`). Audit of production first: the OpenAI provider
