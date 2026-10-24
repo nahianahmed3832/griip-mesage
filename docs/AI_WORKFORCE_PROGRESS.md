@@ -52,7 +52,7 @@ Legend: [x] done and verified · [~] done, not fully verified · [ ] not done ·
 - [x] Durable triggers: schedules, signed webhooks, handoffs; dedupe, loop and chain limits; auto-off after 5 failures
 - [x] Agent Manager offers and delegates only to agents that can run (not manual, with a verified model)
 - [x] Web: Configure agent in 9 steps (identity, models, skills, channels, permissions, autonomy, triggers, limits, test)
-- [ ] Not deployed: migration 051, API, console and web builds wait for the owner's go-ahead
+- [x] In production since 2026-10-24 09:30 UTC: API 0.36.0 (migration 051), console 0.4.0, web 0.5.0-beta-ac31d7d (`DEPLOYMENT.md`)
 - [ ] Android screens for configure and triggers
 
 ## Phase 8: verification
